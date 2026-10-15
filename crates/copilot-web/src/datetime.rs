@@ -72,6 +72,26 @@ pub fn parse_lax(raw: &str) -> Result<NaiveDateTime, DateTimeError> {
     }
 }
 
+/// Parse like a Pydantic `datetime` field, then `time_utils.to_naive_utc`:
+/// an aware value (an offset, `Z`, or a unix timestamp) is converted to UTC,
+/// a naive one is taken to be UTC already.
+pub fn parse_lax_utc(raw: &str) -> Result<NaiveDateTime, DateTimeError> {
+    let wall = parse_lax(raw)?;
+    let config = DateTimeConfig {
+        timestamp_unit: TimestampUnit::Infer,
+        time_config: TimeConfig {
+            microseconds_precision_overflow_behavior:
+                MicrosecondsPrecisionOverflowBehavior::Truncate,
+            unix_timestamp_offset: Some(0),
+        },
+    };
+    let offset = DateTime::parse_bytes_with_config(raw.as_bytes(), &config)
+        .ok()
+        .and_then(|dt| dt.time.tz_offset)
+        .unwrap_or(0);
+    Ok(wall - chrono::Duration::seconds(i64::from(offset)))
+}
+
 /// `err.get_documentation()`, as pydantic-core puts it in its message.
 fn speedate_message(e: &speedate::ParseError) -> &'static str {
     e.get_documentation().unwrap_or_default()
@@ -107,6 +127,16 @@ fn wall_clock(
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    #[test]
+    fn utc_conversion_follows_to_naive_utc() {
+        let iso = |raw: &str| copilot_core::time::to_pydantic_iso(parse_lax_utc(raw).unwrap());
+        assert_eq!(iso("2026-01-02T03:04:05+05:00"), "2026-01-01T22:04:05");
+        assert_eq!(iso("2026-01-02T03:04:05Z"), "2026-01-02T03:04:05");
+        assert_eq!(iso("2026-01-02T03:04:05"), "2026-01-02T03:04:05");
+        assert_eq!(iso("2026-01-02"), "2026-01-02T00:00:00");
+        assert!(parse_lax_utc("nope").is_err());
+    }
 
     #[test]
     fn matches_pydantic_vectors() {

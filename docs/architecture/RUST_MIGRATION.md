@@ -84,6 +84,7 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-ai-analyst` | `app/ai_analyst/`, palace drainer/sweeper jobs | `/api/ai_analyst/*` (25 routes), consolidation digest, CPython-exact `difflib` |
 | `copilot-customer-portal` | `app/customer_portal/` (`ai_reports`, `ai_requests`) | `/api/customer_portal/ai_reports/*` (6 routes); every other portal path is still proxied |
 | `copilot-customers` | `app/customers/` (reads) | `GET /api/customers/*` (7 routes); creating, changing and deleting customers provisions Graylog/Grafana/Wazuh and stays in Python |
+| `copilot-incidents` | `app/incidents/` (`routes/db_operations.py` and its services, `middleware/tag_access.py`'s single-alert rule, `services/verdict_stats.py`) | the `GET` routes of `/api/incidents/db_operations` (35): alerts (list, one, combined filter, per-key listings, filter options, verdict statistics), cases (list, one, per-key listings, filter options, files, tasks, timeline), the per-customer AI-trigger and Shuffle rows, the ingest field dictionaries; still Python: every write, the three routes that read the Wazuh indexer, the MinIO listing and downloads |
 | `copilot-healthchecks` | `app/healthchecks/agents/` (database half) | `GET /api/healthcheck/*` (4 routes); the classification is shared with the customer routes. `POST /logs` (Wazuh indexer) stays in Python |
 | `copilot-platform` | `app/version/`, `app/audit/` (reads) | `GET /api/version/check` (PEP 440 compare; `COPILOT_VERSION_CHECK_URL` points it at a mirror), `GET /api/audit`, `/actions`, `/{id}` |
 | `copilot-identity` | `app/auth/routes/auth.py`, `routes/totp.py`, `routes/customer_users.py`, `routes/sso.py`, `routes/passkey.py`, `routes/security_admin.py`, `services/totp.py`, `services/customer_assignment.py`, `services/sso.py`, `services/passkey.py`, `services/security_admin.py`, `services/temp_password_email.py`; the branding merge of `app/customer_portal/services/branding.py` and the palette of `customer_report_branding.py` | login (`/token`, `/token/customer-portal`, the deprecated JSON `/login`), `/refresh`, the six `/2fa/*` routes, user management (`/register`, `/users`, `/users/{id}`, `/reset-password`, `/reset-password/me`, `/delete/{id}`, `/users/{id}/role/by-name`, `/users/{id}/customers`, `/me/customers`), SSO (`/sso/*`: settings, allowlist, Azure, Google, Cloudflare Access), passkeys (`/passkey/*`), the admin Security tab (`/security/*`: users, SMTP status, 2FA reset, the temporary-password email's templates, preview and send over SMTP); the enrolment QR code, the 2FA brute-force counter |
@@ -275,6 +276,24 @@ but keeps untagged alerts out of lists — and `copilot_auth::tags` pins the
 table. Admins, the scheduler and portal users bypass tag RBAC; a responder
 gets the analyst role's tags.
 
+**Incidents.** `copilot-incidents` answers the `GET` routes of
+`/api/incidents/db_operations`; every other method on those paths, and the
+paths it does not route (`/available-source/*`, `/available-indices/*`,
+`/mappings/*` read the Wazuh indexer; `/case-report-template` and the two
+downloads read MinIO), fall through to Python. Responses are the Pydantic
+models in their field order, including the two timestamp renderings
+(`AlertOut`'s `…T03:04:05.000Z`, the SQLModel rows' `…T03:04:05`). The
+relationships SQLAlchemy `selectinload`s come back in the order MySQL scans
+them — comments and assets by id, tags and IoCs by their link table's key,
+linked cases by case id — and the loaders use those keys; a joined listing
+is not de-duplicated (an alert with two matching assets is listed and counted
+twice), as the ORM query is not. Every listing and count goes through
+`AlertVisibility`; one alert is checked with `check_alert_tag_access` (the
+*list* rule on its tags, before the customer check), cases by customer only.
+An IoC whose stored type is not an `AlertIocValue` makes Pydantic raise in
+`IoCBase(...)`: the backend's `ValueError` 400 with Pydantic's own text, on
+every route that loads that alert, and so it is here.
+
 **Talon.** `crates/copilot-talon/src/contract.rs` types every request and
 response of Talon's HTTP channel (`talon-http`): `/investigate`,
 `/investigations`, `/message` (SSE frames), `/session/reset`, `/status`,
@@ -319,6 +338,9 @@ not provoked.
 | `/talon/*` upstream failure text | `requests` exception text | status plus Talon's `{"error"}` text | actionable |
 | TLS to Talon | `verify=False` | verified; `TALON_VERIFY_TLS=false` opts out | the request carries Talon's API key |
 | `triggered_by` of an investigation a person starts (analyst, replay, portal request) | not sent: Talon records the job as `webhook` | `manual` (Talon registers it so, Liohtml/talahon#4) | the job says who started it |
+| scoped branch of `GET /incidents/db_operations/alerts/{status,source,asset,assigned-to,title}/…`, `/alert/{ioc,tag}/…` | customer codes only, no tag RBAC; a scope that resolves to no customer (an unassigned analyst, a subset of foreign codes) passes `customer_codes=[]`, which the filter reads as "no filter": **every tenant's alerts** | the one alert visibility (customers *and* tags); nothing visible → an empty page; the counts follow the same visibility | tenant leak (and tag RBAC bypass) |
+| `GET /incidents/db_operations/alert/context/{id}` | any analyst reads any tenant's context | owner = the customer of the alert its asset belongs to, fail-closed (`Access denied to alert context {id}`) | tenant leak |
+| `GET /incidents/db_operations/case/data-store` | every tenant's case files | the caller's customers' only | tenant leak |
 | `GET /talon/jobs/{alert_id}/verdict` | — | Talon's structured verdict for the newest of the alert's jobs, tenancy-checked like `/jobs/{alert_id}` | Rust-only addition |
 | palace search hits | numeric `id` → 400 | stringified | robustness |
 | "latest" row on a same-second tie (`alerts_with_reports/{alert_id}`, portal recent reports) | whichever row MySQL's plan reaches first — varies with the data | the newest id, the rule the portal's `MAX(id)` already uses | deterministic |
@@ -380,7 +402,7 @@ Python backend today: ~200 k lines in 930 files.
 | **0 — done** | foundation; `ai_analyst` (2.4 k), `connectors/talon` | the Talon integration surface |
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
-| 3 | `notifications` (7.2 k) — retires the bridge; `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust |
+| 3 | `notifications` (7.2 k) — retires the bridge; `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Incidents so far: the `GET` routes of `/db_operations` (`copilot-incidents`, `rust_parity_incidents_e2e.py`) |
 | 4 | `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 

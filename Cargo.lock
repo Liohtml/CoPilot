@@ -462,6 +462,7 @@ dependencies = [
  "copilot-gateway",
  "copilot-healthchecks",
  "copilot-identity",
+ "copilot-incidents",
  "copilot-platform",
  "copilot-talon",
  "copilot-web",
@@ -652,6 +653,24 @@ dependencies = [
  "tracing",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "copilot-incidents"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-web",
+ "http",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
