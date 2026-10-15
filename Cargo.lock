@@ -667,6 +667,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-markdown"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "copilot-platform"
 version = "0.2.0"
 dependencies = [
