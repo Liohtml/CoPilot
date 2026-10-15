@@ -1120,3 +1120,258 @@ async fn case_task_assignment_notifies_and_template_routes_split() {
         json!({"template": null, "success": false, "message": "Template id=999999999 not found"})
     );
 }
+
+// ---------------------------------------------------------------------------
+// /api/incidents/alerts: the Velociraptor Sigma exclusion rules
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn velo_sigma_exclusions_crud_tenancy_and_fall_through() {
+    const A: &str = "/api/incidents/alerts";
+    const X: &str = "/api/incidents/alerts/create/velo-sigma/exclusion";
+    let legacy = MockServer::start().await;
+    let h = harness_or_skip!(Some(&legacy));
+    let s = &h.suffix.clone();
+    let seeded = seed(&h).await;
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let admin = h.token(&format!("admin{s}"), "admin");
+
+    // Created in context: provenance checked, link comment left on the alert.
+    let body = json!({
+        "name": format!("Updater {s}"),
+        "channel": "Microsoft-Windows-Sysmon/Operational",
+        "field_matches": {"Image": "C:\\u.exe", "CommandLine": "u --check"},
+        "customer_code": format!("acme{s}"),
+        "source_alert_id": seeded.tagged,
+        "source_case_id": seeded.case_acme,
+        "created_by": "spoofed",
+    });
+    let (st, created) = h.call("POST", X, Some(&analyst), Some(body)).await;
+    assert_eq!(st.as_u16(), 200, "{created}");
+    let rule = &created["exclusion_response"];
+    let id = rule["id"].as_i64().unwrap();
+    let keys: Vec<&str> = rule
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "name",
+            "description",
+            "channel",
+            "title",
+            "field_matches",
+            "customer_code",
+            "enabled",
+            "source_alert_id",
+            "source_case_id",
+            "id",
+            "created_by",
+            "created_at",
+            "last_matched_at",
+            "match_count"
+        ]
+    );
+    assert_eq!(rule["created_by"], json!(format!("analyst{s}")));
+    // MySQL's JSON order, as the refresh reads it back.
+    assert_eq!(
+        serde_json::to_string(&rule["field_matches"]).unwrap(),
+        r#"{"Image":"C:\\u.exe","CommandLine":"u --check"}"#
+    );
+    assert_eq!(
+        created["message"],
+        json!("Exclusion rule created successfully")
+    );
+    let comment: String = sqlx::query_scalar(
+        "SELECT comment FROM incident_management_comment WHERE alert_id = ? ORDER BY id DESC LIMIT 1",
+    )
+    .bind(seeded.tagged)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        comment,
+        format!(
+            "Exclusion rule created from this alert: #{id} \"Updater {s}\" (customer acme{s}, \
+             enabled) by analyst{s}"
+        )
+    );
+
+    // Provenance and customer of another tenant.
+    for (body, want) in [
+        (
+            json!({"name": "x", "source_alert_id": seeded.beta}),
+            format!(
+                "Access denied to alert {} - insufficient customer permissions",
+                seeded.beta
+            ),
+        ),
+        (
+            json!({"name": "x", "source_case_id": seeded.case_beta}),
+            format!("Access denied to case {}", seeded.case_beta),
+        ),
+        (
+            json!({"name": "x", "customer_code": format!("beta{s}")}),
+            format!("Access denied to customer beta{s} - insufficient customer permissions"),
+        ),
+    ] {
+        let (st, out) = h.call("POST", X, Some(&analyst), Some(body)).await;
+        assert_eq!(st.as_u16(), 403, "{out}");
+        assert_eq!(out["message"], json!(want));
+    }
+    let (st, out) = h
+        .call(
+            "POST",
+            X,
+            Some(&analyst),
+            Some(json!({"name": "x", "source_case_id": 999999999})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), &out["message"]),
+        (404, &json!("Case not found"))
+    );
+
+    // Another tenant's rule reads as missing; shared rules stay everyone's.
+    let beta_rule = h
+        .exec(&format!(
+            "INSERT INTO incident_management_velo_sigma_exclusion (name, customer_code, created_by, \
+             created_at, match_count, enabled, field_matches) VALUES ('Beta {s}', 'beta{s}', 'admin', \
+             '2026-03-01 10:00:00', 0, 1, NULL)"
+        ))
+        .await;
+    for (m, uri) in [
+        ("GET", format!("{X}/{beta_rule}")),
+        ("DELETE", format!("{X}/{beta_rule}")),
+        (
+            "POST",
+            format!("{A}/velo-sigma/exclusion/{beta_rule}/toggle"),
+        ),
+    ] {
+        let (st, out) = h.call(m, &uri, Some(&analyst), None).await;
+        assert_eq!(
+            (st.as_u16(), &out["message"]),
+            (404, &json!("Exclusion rule not found")),
+            "{m}"
+        );
+    }
+    let (st, out) = h
+        .call(
+            "PATCH",
+            &format!("{X}/{beta_rule}"),
+            Some(&analyst),
+            Some(json!({"name": "x"})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 404, "{out}");
+    let (_, listed) = h
+        .call("GET", &format!("{X}?limit=1000"), Some(&analyst), None)
+        .await;
+    let seen: Vec<i64> = ids(&listed, "exclusions");
+    assert!(seen.contains(&id) && !seen.contains(&beta_rule));
+    assert_eq!(
+        listed["pagination"]["total"].as_u64().unwrap() as usize,
+        seen.len()
+    );
+    let (_, listed) = h
+        .call("GET", &format!("{X}?limit=1000"), Some(&admin), None)
+        .await;
+    assert!(ids(&listed, "exclusions").contains(&beta_rule));
+    let (_, one) = h
+        .call(
+            "GET",
+            &format!("{X}?source_alert_id={}", seeded.tagged),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(ids(&one, "exclusions"), vec![id]);
+
+    // Edits: only what was sent; a JSON null is stored as JSON null.
+    let (st, out) = h
+        .call(
+            "PATCH",
+            &format!("{X}/{id}"),
+            Some(&analyst),
+            Some(json!({"field_matches": null, "description": "benign", "customer_code": format!("beta{s}")})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 403, "{out}");
+    let (st, out) = h
+        .call(
+            "PATCH",
+            &format!("{X}/{id}"),
+            Some(&analyst),
+            Some(json!({"field_matches": null, "description": "benign"})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200, "{out}");
+    assert_eq!(out["exclusion_response"]["field_matches"], Value::Null);
+    assert_eq!(
+        out["exclusion_response"]["name"],
+        json!(format!("Updater {s}"))
+    );
+    let (is_null, kind): (bool, Option<String>) = sqlx::query_as(
+        "SELECT field_matches IS NULL, CAST(JSON_TYPE(field_matches) AS CHAR) FROM \
+         incident_management_velo_sigma_exclusion WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!((is_null, kind.as_deref()), (false, Some("NULL")));
+    let (st, out) = h
+        .call(
+            "POST",
+            &format!("{A}/velo-sigma/exclusion/{id}/toggle"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), &out["exclusion_response"]["enabled"]),
+        (200, &json!(false))
+    );
+    let (st, out) = h
+        .call("DELETE", &format!("{X}/{id}"), Some(&analyst), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            200,
+            json!({"message": "Exclusion rule deleted successfully", "success": true})
+        )
+    );
+
+    // The rest of /api/incidents/alerts is Python's.
+    for (m, p) in [
+        (
+            "GET",
+            format!("/alert/{}/velo-sigma/exclusion-draft", seeded.tagged),
+        ),
+        (
+            "POST",
+            format!("/alert/{}/velo-sigma/exclusion-dry-run", seeded.tagged),
+        ),
+        ("POST", "/create/manual".to_string()),
+        ("POST", "/create/velo-sigma".to_string()),
+        ("PUT", "/create/velo-sigma/exclusion/1".to_string()),
+    ] {
+        Mock::given(method(m))
+            .and(path(format!("{A}{p}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+            .mount(&legacy)
+            .await;
+        let (st, out) = h
+            .call(m, &format!("{A}{p}"), Some(&admin), Some(json!({})))
+            .await;
+        assert_eq!(
+            (st.as_u16(), out),
+            (200, json!({"from": "python"})),
+            "{m} {p}"
+        );
+    }
+}

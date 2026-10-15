@@ -10,6 +10,7 @@ pub mod case_templates;
 pub mod case_writes;
 pub mod common;
 pub mod config_writes;
+pub mod exclusions;
 pub mod reads;
 pub mod tag_access;
 pub mod task_writes;
@@ -28,4 +29,5 @@ pub fn db_operations(ctx: AppContext) -> Router {
 }
 
 pub use case_templates::case_templates;
+pub use exclusions::alerts;
 pub use tag_access::tag_access;

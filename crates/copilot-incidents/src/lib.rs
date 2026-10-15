@@ -43,7 +43,7 @@ pub mod verdict_stats;
 pub mod views;
 pub mod writes;
 
-pub use routes::{case_templates, db_operations, tag_access};
+pub use routes::{alerts, case_templates, db_operations, tag_access};
 
 use copilot_db::schema::TableRequirement;
 
@@ -211,6 +211,25 @@ pub const REQUIREMENTS: &[TableRequirement] = &[
     TableRequirement {
         table: "incident_management_threshold_alert_metadata",
         columns: &["alert_id"],
+    },
+    TableRequirement {
+        table: "incident_management_velo_sigma_exclusion",
+        columns: &[
+            "id",
+            "name",
+            "description",
+            "channel",
+            "title",
+            "field_matches",
+            "customer_code",
+            "created_by",
+            "created_at",
+            "last_matched_at",
+            "match_count",
+            "enabled",
+            "source_alert_id",
+            "source_case_id",
+        ],
     },
     TableRequirement {
         table: "custom_alert_creation_settings",

@@ -597,12 +597,16 @@ ID_KINDS = {
     "entity_id": None,
     "template_id": "template",
     "user_id": "user",
+    "source_alert_id": "alert",
+    "source_case_id": "case",
 }
 LIST_ID_KEYS = {"updated_alert_ids", "not_updated_alert_ids", "deleted_alert_ids", "not_deleted_alert_ids", "missing", "alert_ids"}
 TIME_KEYS = {"time_closed", "verdict_at", "created_at", "updated_at", "timestamp", "case_closed_time", "completed_at"}
 
 
 def _kind_of(obj):
+    if "match_count" in obj and "field_matches" in obj:
+        return "excl"
     if "alert_name" in obj:
         return "alert"
     if "case_name" in obj:
@@ -1334,6 +1338,7 @@ async def writes(py, rs, tok, ids, body_of):
     await pair("dictionary: duplicate rows, configured source (500)", "DELETE", f"{P}/configured/sources/{SOURCE}", adm)
 
     await tasks_templates_tags(pair, call, label, label_str, lid, L, ID, tok, ids, body_of)
+    await exclusions(pair, call, label, lid, L, ID, tok, ids, same_rows)
 
 
 async def tasks_templates_tags(pair, call, label, label_str, lid, L, ID, tok, ids, body_of):
@@ -1595,6 +1600,182 @@ async def tasks_templates_tags(pair, call, label, label_str, lid, L, ID, tok, id
             await s_.execute(text("DELETE FROM role_tag_access WHERE role_id = 3 AND tag_id IN (:a, :b)"), {"a": t1, "b": t2})
             await s_.execute(text("DELETE FROM user_tag_access WHERE tag_id IN (:a, :b)"), {"a": t1, "b": t2})
             await s_.commit()
+
+
+async def exclusions(pair, call, label, lid, L, ID, tok, ids, same_rows):
+    """The Velociraptor Sigma exclusion rules of /api/incidents/alerts (CRUD and toggle)."""
+    adm, ana, portal, nobody = tok["admin"], tok["analyst"], tok["portal"], tok["nobody"]
+    A = "/api/incidents/alerts"
+    X = f"{A}/create/velo-sigma/exclusion"
+    T = lambda i: f"{A}/velo-sigma/exclusion/{i}/toggle"  # noqa: E731
+    E = lambda key: lambda s: lid(s, key)  # noqa: E731
+
+    async def row_of(side, key):
+        found = await rows(
+            "SELECT name, description, channel, title, field_matches IS NULL AS sql_null, CAST(field_matches AS CHAR) AS fm, "
+            "customer_code, created_by, last_matched_at, match_count, enabled, source_alert_id, source_case_id "
+            "FROM incident_management_velo_sigma_exclusion WHERE id = :i",
+            i=lid(side, key),
+        )
+        return [norm(r, L[side]) for r in found]
+
+    async def link_comments(side, alert_key):
+        found = await rows(
+            "SELECT comment, user_name FROM incident_management_comment WHERE alert_id = :a AND comment LIKE 'Exclusion rule created%' "
+            "ORDER BY id",
+            a=lid(side, alert_key),
+        )
+        out = []
+        for c in found:
+            text_ = c["comment"]
+            for excl_id, lab in L[side].get("excl", {}).items():
+                text_ = text_.replace(f"#{excl_id} ", f"#{lab} ")
+            out.append((text_, c["user_name"]))
+        return out
+
+    print("\n=== incidents alerts: Velociraptor Sigma exclusion rules ===")
+    await pair("exclusions: no token", "GET", X, None, exact=True)
+    await pair("exclusions: portal scope", "GET", X, portal, exact=True)
+    await pair("exclusions: query errors", "GET", f"{X}?skip=x&limit=1.5&enabled_only=maybe&source_alert_id=z", ana, exact=True)
+    await pair("exclusion create: malformed JSON, no token", "POST", X, None, raw=b'{"name": ', exact=True)
+    await pair("exclusion create: empty body", "POST", X, ana, {}, exact=True)
+    await pair(
+        "exclusion create: body errors",
+        "POST",
+        X,
+        ana,
+        {"name": 5, "field_matches": [1], "enabled": "x", "source_alert_id": "y", "created_by": 3},
+        exact=True,
+    )
+    await pair("exclusion create: not an object", "POST", X, ana, [1], exact=True)
+    await pair("exclusion create: missing source alert", "POST", X, ana, {"name": "x", "source_alert_id": 999999999}, exact=True)
+    await pair("exclusion create: another tenant's alert", "POST", X, ana, {"name": "x", "source_alert_id": ids["b1"]}, exact=True)
+    await pair("exclusion create: missing source case", "POST", X, ana, {"name": "x", "source_case_id": 999999999}, exact=True)
+    await pair("exclusion create: another tenant's case", "POST", X, ana, {"name": "x", "source_case_id": ids["cb1"]}, exact=True)
+    await pair("exclusion: not an int", "GET", f"{X}/abc", ana, exact=True)
+    await pair("exclusion: missing", "GET", f"{X}/999999999", ana, exact=True)
+    await pair("exclusion update: path and body errors", "PATCH", f"{X}/abc", ana, {"enabled": "x", "field_matches": "s"}, exact=True)
+    await pair("exclusion update: missing", "PATCH", f"{X}/999999999", ana, {"name": "x"}, exact=True)
+    await pair("exclusion delete: missing", "DELETE", f"{X}/999999999", ana, exact=True)
+    await pair("exclusion toggle: missing", "POST", T(999999999), ana, exact=True)
+    await pair("exclusion toggle: not an int", "POST", T("x"), ana, exact=True)
+
+    has_w4 = "w4" in ID["p"] and "c4" in ID["p"]
+    first = {
+        "name": f"Excl one {SFX}",
+        "description": "benign updater",
+        "channel": "Microsoft-Windows-Sysmon/Operational",
+        "title": "Proc Access",
+        "field_matches": {"Image": "C:\\u.exe", "CommandLine": "u --check", "zeta": 1, "a": {"b": [1, 2.5, None]}},
+        "customer_code": CUST_A,
+        "created_by": "spoofed",
+    }
+    rp, rr = await pair(
+        "exclusion create (in context)",
+        "POST",
+        X,
+        ana,
+        lambda s: {**first, **({"source_alert_id": lid(s, "w4"), "source_case_id": lid(s, "c4")} if has_w4 else {})},
+    )
+    if not (rp.status_code == rr.status_code == 200):
+        return
+    label("x1", rp.json()["exclusion_response"]["id"], rr.json()["exclusion_response"]["id"], "excl")
+    await same_rows("exclusion create: stored row", lambda s: row_of(s, "x1"))
+    if has_w4:
+        await same_rows("exclusion create: link comment on the alert", lambda s: link_comments(s, "w4"))
+    rp, rr = await pair("exclusion create: minimal (admin)", "POST", X, adm, {"name": f"Excl two {SFX}"})
+    label("x2", rp.json()["exclusion_response"]["id"], rr.json()["exclusion_response"]["id"], "excl")
+    await same_rows("exclusion create: minimal, stored row (JSON null)", lambda s: row_of(s, "x2"))
+    rp, rr = await pair(
+        "exclusion create: empty dict, disabled, empty customer",
+        "POST",
+        X,
+        ana,
+        {"name": f"Excl three {SFX}", "field_matches": {}, "enabled": False, "customer_code": ""},
+    )
+    label("x3", rp.json()["exclusion_response"]["id"], rr.json()["exclusion_response"]["id"], "excl")
+    await same_rows("exclusion create: empty dict, stored row", lambda s: row_of(s, "x3"))
+    await pair("exclusion: get", "GET", lambda s: f"{X}/{E('x1')(s)}", ana)
+    if has_w4:
+        await pair("exclusions: by source alert", "GET", lambda s: f"{X}?source_alert_id={lid(s, 'w4')}", ana)
+        await pair("exclusions: by source case", "GET", lambda s: f"{X}?source_case_id={lid(s, 'c4')}&enabled_only=true", ana)
+    await pair("exclusions: list (admin)", "GET", f"{X}?limit=1000", adm, exact=True)
+    await pair("exclusions: enabled only, paged", "GET", f"{X}?enabled_only=yes&skip=1&limit=2", adm, exact=True)
+    await pair("exclusions: limit 0", "GET", f"{X}?limit=0", adm, exact=True)
+    await pair("exclusions: negative skip (500)", "GET", f"{X}?skip=-1", adm, exact=True)
+    await pair(
+        "exclusion update",
+        "PATCH",
+        lambda s: f"{X}/{E('x1')(s)}",
+        ana,
+        {"name": f"Excl one renamed {SFX}", "description": None, "field_matches": {"Image": "C:\\v.exe"}, "enabled": False},
+    )
+    await same_rows("exclusion update: stored row", lambda s: row_of(s, "x1"))
+    await pair("exclusion update: field_matches null", "PATCH", lambda s: f"{X}/{E('x1')(s)}", ana, {"field_matches": None})
+    await same_rows("exclusion update: JSON null stored", lambda s: row_of(s, "x1"))
+    await pair("exclusion update: nothing", "PATCH", lambda s: f"{X}/{E('x1')(s)}", ana, {})
+    await pair("exclusion update: name null (500)", "PATCH", lambda s: f"{X}/{E('x1')(s)}", ana, {"name": None})
+    await pair("exclusion update: same values", "PATCH", lambda s: f"{X}/{E('x3')(s)}", ana, {"field_matches": {}, "enabled": False})
+    await same_rows("exclusion update: same values, stored row", lambda s: row_of(s, "x3"))
+    await pair("exclusion toggle", "POST", lambda s: T(E("x1")(s)), ana)
+    await pair("exclusion toggle back", "POST", lambda s: T(E("x1")(s)), ana)
+    await pair("exclusion delete", "DELETE", lambda s: f"{X}/{E('x3')(s)}", ana)
+    await pair("exclusion delete again", "DELETE", lambda s: f"{X}/{E('x3')(s)}", ana)
+
+    # DIFF_BY_DESIGN: a rule scoped to a customer is that tenant's.
+    async with AsyncSession(async_engine) as s_:
+        rule_b = (
+            await s_.execute(
+                text(
+                    "INSERT INTO incident_management_velo_sigma_exclusion (name, customer_code, created_by, created_at, match_count, "
+                    "enabled, field_matches) VALUES (:n, :c, 'admin', UTC_TIMESTAMP(), 0, 1, 'null')",
+                ),
+                {"n": f"Excl B {SFX}", "c": CUST_B},
+            )
+        ).lastrowid
+        await s_.commit()
+    r1, r2 = await call("p", "GET", f"{X}/{rule_b}", ana), await call("r", "GET", f"{X}/{rule_b}", ana)
+    check(
+        "DIFF_BY_DESIGN another tenant's exclusion rule (analyst): Python returns it, Rust 404",
+        r1.status_code == 200 and r2.status_code == 404 and r2.json() == {"success": False, "message": "Exclusion rule not found"},
+        f"{r1.status_code} {r1.text[:200]} / {r2.status_code} {r2.text[:200]}",
+    )
+    r1, r2 = await call("p", "GET", f"{X}?limit=1000", ana), await call("r", "GET", f"{X}?limit=1000", ana)
+    py_ids = [e["id"] for e in r1.json()["exclusions"]]
+    rs_ids = [e["id"] for e in r2.json()["exclusions"]]
+    check(
+        "DIFF_BY_DESIGN exclusion list (analyst): Python lists other tenants', Rust drops them, order and total follow",
+        rule_b in py_ids
+        and rule_b not in rs_ids
+        and lid("r", "x2") in rs_ids
+        and rs_ids == [i for i in py_ids if i in rs_ids]
+        and r2.json()["pagination"]["total"] == len(rs_ids),
+        f"{py_ids} / {rs_ids}",
+    )
+    r2 = await call("r", "GET", f"{X}?limit=1000", nobody)
+    check(
+        "DIFF_BY_DESIGN exclusion list (unassigned analyst): Rust only the shared rules",
+        r2.status_code == 200 and all(e["customer_code"] in (None, "") for e in r2.json()["exclusions"]),
+        r2.text[:300],
+    )
+    for name, method, path_, body in (
+        ("edit", "PATCH", f"{X}/{rule_b}", {"enabled": False}),
+        ("toggle", "POST", T(rule_b), None),
+        ("delete", "DELETE", f"{X}/{rule_b}", None),
+    ):
+        r2 = await call("r", method, path_, ana, body)
+        check(f"DIFF_BY_DESIGN {name} another tenant's exclusion rule (analyst): Rust 404", r2.status_code == 404, r2.text[:200])
+    left = await rows("SELECT enabled FROM incident_management_velo_sigma_exclusion WHERE id = :i", i=rule_b)
+    check("DIFF_BY_DESIGN another tenant's exclusion rule is untouched by Rust", left == [{"enabled": 1}], str(left))
+    r2 = await call("r", "POST", X, ana, {"name": "x", "customer_code": CUST_B})
+    check(
+        "DIFF_BY_DESIGN exclusion rule for another tenant (analyst): Python 200, Rust 403",
+        r2.status_code == 403
+        and r2.json() == {"success": False, "message": f"Access denied to customer {CUST_B} - insufficient customer permissions"},
+        r2.text[:200],
+    )
+    r2 = await call("r", "PATCH", f"{X}/{lid('r', 'x1')}", ana, {"customer_code": CUST_B})
+    check("DIFF_BY_DESIGN move an exclusion rule to another tenant (analyst): Rust 403", r2.status_code == 403, r2.text[:200])
 
 
 if __name__ == "__main__":

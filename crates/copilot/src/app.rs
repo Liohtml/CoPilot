@@ -76,6 +76,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The template CRUD; the library and /suggest stay in Python.
     "/api/incidents/case_templates",
     "/api/incidents/tag_access",
+    // Of /api/incidents/alerts only the Velociraptor Sigma exclusion rules
+    // (CRUD and toggle); alert creation, the Sigma ingest, the exclusion
+    // draft and dry-run stay in Python.
+    "/api/incidents/alerts/create/velo-sigma/exclusion",
+    "/api/incidents/alerts/velo-sigma/exclusion",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -264,6 +269,10 @@ impl App {
             .nest(
                 "/api/incidents/tag_access",
                 copilot_incidents::tag_access(self.ctx.clone()),
+            )
+            .nest(
+                "/api/incidents/alerts",
+                copilot_incidents::alerts(self.ctx.clone()),
             )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
