@@ -53,7 +53,9 @@ pub struct TemplateTaskRow {
     pub order_index: i32,
 }
 
-const TEMPLATE_COLS: &str = "id, name, is_default, match_field, match_value";
+/// `select(CaseTemplate)`'s column list (the sort below must be the same
+/// query: ties are left to MySQL).
+const TEMPLATE_COLS: &str = crate::routes::case_templates::TEMPLATE_COLS;
 
 async fn first_template(
     db: &Db,
@@ -73,7 +75,10 @@ async fn first_template(
     } else {
         " AND source IS NULL"
     });
-    sql.push_str(" ORDER BY is_default DESC, created_at DESC, id DESC");
+    sql.push_str(
+        " ORDER BY incident_management_case_template.is_default DESC, \
+         incident_management_case_template.created_at DESC",
+    );
     let mut q = sqlx::query_as::<_, TemplateRow>(&sql);
     if let Some(c) = customer {
         q = q.bind(c);

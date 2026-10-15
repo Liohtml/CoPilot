@@ -1024,3 +1024,99 @@ async fn case_writes_keep_the_timeline_and_notify() {
             .unwrap();
     assert!(paused.is_none());
 }
+
+#[tokio::test]
+async fn case_task_assignment_notifies_and_template_routes_split() {
+    let legacy = MockServer::start().await;
+    let h = harness_or_skip!(Some(&legacy));
+    let s = &h.suffix.clone();
+    let seeded = seed(&h).await;
+    let sinks = with_sinks(&h);
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+
+    let (st, body) = send(
+        &sinks.router,
+        "POST",
+        &format!("{P}/case/{}/tasks", seeded.case_acme),
+        &analyst,
+        Some(json!({"title": "Check the host", "mandatory": true})),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    let task = body["task"]["id"].as_i64().unwrap();
+    let (st, body) = send(
+        &sinks.router,
+        "PATCH",
+        &format!("{P}/case/tasks/{task}"),
+        &analyst,
+        Some(json!({"assigned_to": format!(" admin{s} "), "status": "DONE"})),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["task"]["assigned_to"], json!(format!("admin{s}")));
+    assert_eq!(body["task"]["completed_by"], json!(format!("analyst{s}")));
+    let events = sinks.notes.snapshot();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        serde_json::to_value(&events[0]).unwrap(),
+        json!({
+            "customer_code": null, "trigger": "case_task_assigned", "severity": "Informational",
+            "subject": "Check the host",
+            "summary": format!("Task 'Check the host' on case #{} was assigned to admin{s}.", seeded.case_acme),
+            "entity_type": "case_task", "entity_id": task,
+            "dedupe_key": format!("case_task:{task}:case_task_assigned:admin{s}"), "link_url": null,
+            "assignee_username": format!("admin{s}"), "actor_username": format!("analyst{s}"),
+            "context": {"title": "Check the host", "case_id": seeded.case_acme},
+        })
+    );
+    let timeline: Vec<String> = sqlx::query_scalar(
+        "SELECT event_type FROM incident_management_case_event WHERE case_id = ? ORDER BY id",
+    )
+    .bind(seeded.case_acme)
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    assert!(timeline.ends_with(&[
+        "task_added".to_string(),
+        "task_status_changed".to_string(),
+        "task_assigned".to_string()
+    ]));
+
+    // Templates: the CRUD is Rust, the library and /suggest stay in Python.
+    const T: &str = "/api/incidents/case_templates";
+    for p in [
+        "/suggest",
+        "/library",
+        "/library/k1",
+        "/library/refresh",
+        "/library/k1/import",
+    ] {
+        Mock::given(path(format!("{T}{p}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+            .mount(&legacy)
+            .await;
+    }
+    let admin = h.token(&format!("admin{s}"), "admin");
+    for (m, p) in [
+        ("GET", "/suggest?customer_code=x"),
+        ("GET", "/library"),
+        ("GET", "/library/k1"),
+        ("POST", "/library/refresh"),
+        ("POST", "/library/k1/import"),
+    ] {
+        let (st, body) = h.call(m, &format!("{T}{p}"), Some(&admin), None).await;
+        assert_eq!(
+            (st.as_u16(), body),
+            (200, json!({"from": "python"})),
+            "{m} {p}"
+        );
+    }
+    let (st, body) = h
+        .call("GET", &format!("{T}/999999999"), Some(&admin), None)
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    assert_eq!(
+        body,
+        json!({"template": null, "success": false, "message": "Template id=999999999 not found"})
+    );
+}

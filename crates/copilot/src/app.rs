@@ -70,9 +70,12 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/security",
     // /api/incidents/db_operations but the Wazuh-indexer reads (/available-source,
     // /available-indices, /mappings), the MinIO routes (case files, report
-    // templates, DELETE /case/{id}), POST /case/notification (Shuffle) and the
-    // case-task writes: those fall through to the legacy backend.
+    // templates, DELETE /case/{id}) and POST /case/notification (Shuffle):
+    // those fall through to the legacy backend.
     "/api/incidents/db_operations",
+    // The template CRUD; the library and /suggest stay in Python.
+    "/api/incidents/case_templates",
+    "/api/incidents/tag_access",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -254,6 +257,14 @@ impl App {
                 "/api/incidents/db_operations",
                 copilot_incidents::db_operations(self.ctx.clone()),
             )
+            .nest(
+                "/api/incidents/case_templates",
+                copilot_incidents::case_templates(self.ctx.clone()),
+            )
+            .nest(
+                "/api/incidents/tag_access",
+                copilot_incidents::tag_access(self.ctx.clone()),
+            )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
@@ -273,15 +284,37 @@ impl App {
                 let fallback = Router::new()
                     .fallback(copilot_gateway::proxy_handler)
                     .with_state(proxy.clone());
+                // Static paths still served by Python under a prefix whose
+                // `/{id}` route would otherwise capture them.
+                let mut app = app;
+                for path in copilot_incidents::routes::case_templates::LEGACY_PATHS {
+                    let proxy = proxy.clone();
+                    app = app.route(
+                        &format!("/api/incidents/case_templates{path}"),
+                        axum::routing::any(
+                            move |req: Request| async move { proxy.forward(req).await },
+                        ),
+                    );
+                }
                 app.method_not_allowed_fallback({
                     let proxy = proxy.clone();
                     move |req: Request| async move { proxy.forward(req).await }
                 })
                 .fallback_service(fallback)
             }
-            None => app
-                .method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
-                .fallback(root_or_404),
+            None => {
+                // Without Python nothing serves these; keep `/{template_id}`
+                // from answering them.
+                let mut app = app;
+                for path in copilot_incidents::routes::case_templates::LEGACY_PATHS {
+                    app = app.route(
+                        &format!("/api/incidents/case_templates{path}"),
+                        axum::routing::any(|| async { ApiError::RouteNotFound }),
+                    );
+                }
+                app.method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
+                    .fallback(root_or_404)
+            }
         }
     }
 }

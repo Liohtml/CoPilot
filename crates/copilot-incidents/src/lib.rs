@@ -43,7 +43,7 @@ pub mod verdict_stats;
 pub mod views;
 pub mod writes;
 
-pub use routes::db_operations;
+pub use routes::{case_templates, db_operations, tag_access};
 
 use copilot_db::schema::TableRequirement;
 

@@ -39,6 +39,8 @@ CUST_A, CUST_B = f"INC_A{SFX}", f"INC_B{SFX}"
 CUST_P, CUST_R = f"INC_P{SFX}", f"INC_R{SFX}"
 ADMIN, ANALYST, PORTAL = f"inc_admin{SFX}", f"inc_analyst{SFX}", f"inc_portal{SFX}"
 NOBODY, TAGGED, RESPONDER = f"inc_nobody{SFX}", f"inc_tagged{SFX}", f"inc_resp{SFX}"
+# Twin users for the tag-access writes.
+USER_P, USER_R = f"inc_tp{SFX}", f"inc_tr{SFX}"
 SOURCE = f"src{SFX}"
 P = "/api/incidents/db_operations"
 
@@ -77,6 +79,7 @@ async def seed():
             (f"tmpl-cs-{SFX}", CUST_A, SOURCE, 1, None, "2026-01-02 00:00:00"),
             (f"tmpl-c-{SFX}", CUST_A, None, 0, None, "2026-01-01 00:00:00"),
             (f"tmpl-fm-{SFX}", CUST_A, SOURCE, 0, "data_win_system_eventID", "2026-01-03 00:00:00"),
+            (f"tmpl-b-{SFX}", CUST_B, None, 0, None, "2026-01-04 00:00:00"),
         ):
             ids[name] = await ins(
                 "INSERT INTO incident_management_case_template (name, customer_code, source, is_default, match_field, match_value, "
@@ -114,7 +117,7 @@ async def seed():
             c=CUST_A,
             w=json.dumps({d: [["08:00", "12:00"], ["13:00", "18:00"]] for d in ("mon", "tue", "wed", "thu", "fri")}),
         )
-        for name, role in ((ADMIN, 1), (ANALYST, 2), (PORTAL, 4), (NOBODY, 2), (TAGGED, 2), (RESPONDER, 5)):
+        for name, role in ((ADMIN, 1), (ANALYST, 2), (PORTAL, 4), (NOBODY, 2), (TAGGED, 2), (RESPONDER, 5), (USER_P, 2), (USER_R, 2)):
             ids[name] = await ins(
                 "INSERT INTO `user` (username, password, email, created_at, role_id) VALUES (:n, 'x', 'i@example.com', UTC_TIMESTAMP(), :r)",
                 n=name,
@@ -592,6 +595,8 @@ ID_KINDS = {
     "alert_context_id": "ctx",
     "task_id": None,
     "entity_id": None,
+    "template_id": "template",
+    "user_id": "user",
 }
 LIST_ID_KEYS = {"updated_alert_ids", "not_updated_alert_ids", "deleted_alert_ids", "not_deleted_alert_ids", "missing", "alert_ids"}
 TIME_KEYS = {"time_closed", "verdict_at", "created_at", "updated_at", "timestamp", "case_closed_time", "completed_at"}
@@ -602,6 +607,12 @@ def _kind_of(obj):
         return "alert"
     if "case_name" in obj:
         return "case"
+    if "is_default" in obj and "tasks" in obj:
+        return "template"
+    if "template_id" in obj and "title" in obj:
+        return "ttask"
+    if "title" in obj and "mandatory" in obj and "status" in obj:
+        return "task"
     if "comment" in obj:
         return "comment"
     if "context" in obj:
@@ -629,9 +640,14 @@ def norm(value, labels, keep=(), key=None, owner=None):
         for text_, label in labels.get("str", {}).items():
             value = value.replace(text_, label)
         if key in ("message", "detail"):
-            for kind in ("alert", "case"):
-                for id_, label in labels.get(kind, {}).items():
-                    value = re.sub(rf"\b{kind} {id_}\b", f"{kind} {label}", value)
+            # "alert 5", "Alert id=5", "case id=7", "Case task 9", "template id=3": the id after
+            # its kind's word, labelled (or "<new>").
+            for kind in ("alert", "case", "task", "template"):
+
+                def sub(m, kind=kind):
+                    return f"{m.group(1)}{labels.get(kind, {}).get(int(m.group(2)), '<new>')}"
+
+                value = re.sub(rf"(?i)(\b{kind}(?: id=| ))(\d+)\b", sub, value)
     return value
 
 
@@ -718,11 +734,12 @@ async def writes(py, rs, tok, ids, body_of):
             kw["headers"] = {**kw["headers"], "Content-Type": "application/json"}
         return await client[side].request(method, path, **kw)
 
-    async def pair(name, method, path, t, body=None, keep=(), raw=None, exact=False, extra=()):
+    async def pair(name, method, path, t, body=None, keep=(), raw=None, exact=False, extra=(), order=("p", "r")):
         """`path` and `body` are callables of the side ("p" / "r") or plain values. `exact`: the
-        same request on both sides, compared without labels; `extra`: keys masked as well."""
+        same request on both sides, compared without labels; `extra`: keys masked as well;
+        `order`: which side goes first."""
         out = {}
-        for side in ("p", "r"):
+        for side in order:
             p = path(side) if callable(path) else path
             b = body(side) if callable(body) else body
             out[side] = await call(side, method, p, t, b, raw)
@@ -1315,6 +1332,269 @@ async def writes(py, rs, tok, ids, body_of):
     await pair("dictionary: after source delete", "GET", lambda s: f"{P}/fields-assets-title-and-timefield?source={SRC[s]}", adm)
     await pair("dictionary: duplicate rows (500)", "DELETE", f"{P}/field_name/rule_id/{SOURCE}", adm)
     await pair("dictionary: duplicate rows, configured source (500)", "DELETE", f"{P}/configured/sources/{SOURCE}", adm)
+
+    await tasks_templates_tags(pair, call, label, label_str, lid, L, ID, tok, ids, body_of)
+
+
+async def tasks_templates_tags(pair, call, label, label_str, lid, L, ID, tok, ids, body_of):
+    adm, ana, portal = tok["admin"], tok["analyst"], tok["portal"]
+    C1 = lambda s: lid(s, "c1")  # noqa: E731
+    C3 = lambda s: lid(s, "c3")  # noqa: E731
+    W2 = lambda s: lid(s, "w2")  # noqa: E731
+
+    print("\n=== incidents writes: case tasks ===")
+    await pair("task add: errors", "POST", f"{P}/case/x/tasks", ana, {"order_index": -1, "mandatory": "maybe"})
+    await pair("task add: portal scope", "POST", lambda s: f"{P}/case/{C3(s)}/tasks", portal, {"title": "t"})
+    await pair("task add: another tenant", "POST", f"{P}/case/{ids['cb1']}/tasks", ana, {"title": "t"})
+    await pair("task add: alert not linked", "POST", lambda s: f"{P}/case/{C3(s)}/tasks", ana, lambda s: {"title": "t", "alert_id": W2(s)})
+    rp, rr = await pair(
+        "task add: case-wide",
+        "POST",
+        lambda s: f"{P}/case/{C3(s)}/tasks",
+        ana,
+        {"title": "Interview the user", "description": "d", "mandatory": True, "order_index": 3},
+    )
+    if rp.status_code == rr.status_code == 200 and rp.json()["task"] and rr.json()["task"]:
+        label("t1", rp.json()["task"]["id"], rr.json()["task"]["id"], "task")
+    await pair(
+        "task add: on a linked alert",
+        "POST",
+        lambda s: f"{P}/case/{C1(s)}/tasks",
+        ana,
+        lambda s: {"title": "Check host", "alert_id": W2(s)},
+    )
+    T1 = lambda s: lid(s, "t1")  # noqa: E731
+    await pair("task update: missing", "PATCH", f"{P}/case/tasks/999999999", ana, {"status": "DONE"})
+    await pair("task update: bad status", "PATCH", lambda s: f"{P}/case/tasks/{T1(s)}", ana, {"status": "done"})
+    await pair("task update: mandatory not necessary", "PATCH", lambda s: f"{P}/case/tasks/{T1(s)}", ana, {"status": "NOT_NECESSARY"})
+    await pair(
+        "task update: unknown assignee after a status change",
+        "PATCH",
+        lambda s: f"{P}/case/tasks/{T1(s)}",
+        ana,
+        {"status": "DONE", "evidence_comment": "e", "assigned_to": f" ghost{SFX} "},
+    )
+    await pair(
+        "task update: done, evidence, assignee",
+        "PATCH",
+        lambda s: f"{P}/case/tasks/{T1(s)}",
+        ana,
+        {"status": "DONE", "evidence_comment": "y" * 150, "assigned_to": f" {ADMIN} "},
+    )
+    await pair(
+        "task update: back to TODO, unassign",
+        "PATCH",
+        lambda s: f"{P}/case/tasks/{T1(s)}",
+        ana,
+        {"status": "TODO", "assigned_to": None, "evidence_comment": None},
+    )
+    await pair("task update: nothing sent", "PATCH", lambda s: f"{P}/case/tasks/{T1(s)}", ana, {})
+    await pair("task update: portal scope", "PATCH", lambda s: f"{P}/case/tasks/{T1(s)}", portal, {})
+    await pair("case tasks after updates", "GET", lambda s: f"{P}/case/{C3(s)}/tasks", ana)
+    await pair(
+        "apply template: alert not linked",
+        "POST",
+        lambda s: f"{P}/case/{C3(s)}/apply-template/{ids[f'tmpl-c-{SFX}']}?alert_id={W2(s)}",
+        ana,
+    )
+    await pair("apply template: errors", "POST", f"{P}/case/x/apply-template/y?alert_id=z", ana)
+    await pair("apply template", "POST", lambda s: f"{P}/case/{C3(s)}/apply-template/{ids[f'tmpl-c-{SFX}']}", ana)
+    await pair(
+        "apply template: on a linked alert",
+        "POST",
+        lambda s: f"{P}/case/{C1(s)}/apply-template/{ids[f'tmpl-c-{SFX}']}?alert_id={W2(s)}",
+        ana,
+    )
+    await pair("apply template: missing template", "POST", lambda s: f"{P}/case/{C3(s)}/apply-template/999999999", ana)
+    await pair("case tasks after the templates", "GET", lambda s: f"{P}/case/{C3(s)}/tasks", ana)
+    await pair("case timeline after the tasks", "GET", lambda s: f"{P}/case/{C3(s)}/timeline", ana)
+    await pair("task delete", "DELETE", lambda s: f"{P}/case/tasks/{T1(s)}", ana)
+    await pair("task delete again", "DELETE", lambda s: f"{P}/case/tasks/{T1(s)}", ana)
+
+    print("\n=== incidents writes: case templates ===")
+    CT = "/api/incidents/case_templates"
+    TW = {"p": f"srcP{SFX}", "r": f"srcR{SFX}"}  # labelled "<SRC>" by the dictionary section
+
+    def tmpl(s, **kw):
+        return {
+            "name": f"Twin template {SFX}",
+            "description": "playbook",
+            "customer_code": CUST_A,
+            "source": TW[s],
+            "is_default": True,
+            "tasks": [{"title": "Second", "order_index": 2, "mandatory": True}, {"title": "First", "guidelines": "g"}],
+            **kw,
+        }
+
+    await pair("templates: portal scope", "GET", CT, portal)
+    await pair("templates: list, bad bool", "GET", f"{CT}?include_global=maybe", adm)
+    await pair("template create: errors", "POST", CT, ana, {"name": "x" * 256, "tasks": [{"order_index": -1}, 5]})
+    await pair("template create: half a match pair", "POST", CT, ana, lambda s: tmpl(s, match_field="f"))
+    rp, rr = await pair("template create", "POST", CT, ana, tmpl)
+    if rp.status_code == rr.status_code == 200 and rp.json()["template"] and rr.json()["template"]:
+        label("tp1", rp.json()["template"]["id"], rr.json()["template"]["id"], "template")
+    rp, rr = await pair("template create: second default of the scope", "POST", CT, ana, lambda s: tmpl(s, tasks=[]))
+    if rp.status_code == rr.status_code == 200 and rp.json()["template"] and rr.json()["template"]:
+        label("tp2", rp.json()["template"]["id"], rr.json()["template"]["id"], "template")
+    TP1 = lambda s: lid(s, "tp1")  # noqa: E731
+    await pair("template: first one demoted", "GET", lambda s: f"{CT}/{TP1(s)}", ana)
+    await pair("template: missing", "GET", f"{CT}/999999999", ana)
+    await pair("template: not an int", "GET", f"{CT}/abc", ana)
+    for q in (f"customer_code={CUST_A}", f"customer_code={CUST_A}&source={SOURCE}&include_global=false", f"source=nope{SFX}"):
+        await pair(f"templates: list {q}", "GET", f"{CT}?{q}", adm, exact=True)
+    await pair("templates: list everything", "GET", CT, adm, exact=True)
+    # DIFF_BY_DESIGN: a template scoped to another customer is that tenant's.
+    tb = ids[f"tmpl-b-{SFX}"]
+    r1, r2 = await call("p", "GET", f"{CT}/{tb}", ana), await call("r", "GET", f"{CT}/{tb}", ana)
+    check(
+        "DIFF_BY_DESIGN another tenant's template (analyst): Python returns it, Rust as missing",
+        r1.json()["success"] and r2.json() == {"template": None, "success": False, "message": f"Template id={tb} not found"},
+        f"{r1.text[:200]} / {r2.text[:200]}",
+    )
+    r1, r2 = await call("p", "GET", CT, ana), await call("r", "GET", CT, ana)
+    py_ids = [t["id"] for t in r1.json()["templates"]]
+    rs_ids = [t["id"] for t in r2.json()["templates"]]
+    check(
+        "DIFF_BY_DESIGN template list (analyst): Python lists other tenants', Rust drops them, order kept",
+        tb in py_ids and tb not in rs_ids and rs_ids == [i for i in py_ids if i in rs_ids],
+        f"{py_ids} / {rs_ids}",
+    )
+    r2 = await call("r", "POST", CT, ana, {"name": "x", "customer_code": CUST_B})
+    check(
+        "DIFF_BY_DESIGN template for another tenant (analyst): Rust 403",
+        r2.status_code == 403,
+        r2.text[:200],
+    )
+    r2 = await call("r", "PATCH", f"{CT}/{tb}", ana, {"name": "x"})
+    check("DIFF_BY_DESIGN edit another tenant's template (analyst): Rust as missing", r2.json()["success"] is False, r2.text[:200])
+    r2 = await call("r", "POST", f"{P}/case/{C3('r')}/apply-template/{tb}", ana)
+    check(
+        "DIFF_BY_DESIGN apply another tenant's template (analyst): Rust copies nothing",
+        r2.status_code == 200 and r2.json()["tasks_added"] == 0,
+        r2.text[:200],
+    )
+    await pair("template update: half a match pair", "PATCH", lambda s: f"{CT}/{TP1(s)}", ana, {"match_value": "1"})
+    await pair("template update: errors", "PATCH", lambda s: f"{CT}/{TP1(s)}", ana, {"is_default": "x", "name": 5})
+    await pair(
+        "template update",
+        "PATCH",
+        lambda s: f"{CT}/{TP1(s)}",
+        ana,
+        {"name": f"Renamed {SFX}", "description": None, "is_default": True, "match_field": "rule_id", "match_value": "5"},
+    )
+    await pair("template update: missing", "PATCH", f"{CT}/999999999", ana, {"name": "x"})
+    await pair("template: second one demoted", "GET", lambda s: f"{CT}/{lid(s, 'tp2')}", ana)
+    rp, rr = await pair("template task add", "POST", lambda s: f"{CT}/{TP1(s)}/tasks", ana, {"title": "Third", "order_index": 1})
+    if rp.status_code == rr.status_code == 200 and rp.json()["task"] and rr.json()["task"]:
+        label("tt1", rp.json()["task"]["id"], rr.json()["task"]["id"], "ttask")
+    await pair("template task add: missing template", "POST", f"{CT}/999999999/tasks", ana, {"title": "x"})
+    await pair(
+        "template task update",
+        "PATCH",
+        lambda s: f"{CT}/tasks/{lid(s, 'tt1')}",
+        ana,
+        {"title": "Third!", "mandatory": True, "description": None},
+    )
+    await pair("template task update: missing", "PATCH", f"{CT}/tasks/999999999", ana, {"title": "x"})
+    tasks_p = (await call("p", "GET", f"{CT}/{TP1('p')}", ana)).json()["template"]["tasks"]
+    tasks_r = (await call("r", "GET", f"{CT}/{TP1('r')}", ana)).json()["template"]["tasks"]
+    for i, (tp, tr) in enumerate(zip(tasks_p, tasks_r)):
+        label(f"tt{i}x", tp["id"], tr["id"], "ttask")
+    await pair("template reorder: foreign ids", "POST", lambda s: f"{CT}/{TP1(s)}/tasks/reorder", ana, [999999999, 5])
+    await pair("template reorder: not a list", "POST", lambda s: f"{CT}/{TP1(s)}/tasks/reorder", ana, {"ids": []})
+    await pair(
+        "template reorder",
+        "POST",
+        lambda s: f"{CT}/{TP1(s)}/tasks/reorder",
+        ana,
+        lambda s: [lid(s, "tt2x"), lid(s, "tt0x"), lid(s, "tt2x")],
+    )
+    await pair("template reorder: missing", "POST", f"{CT}/999999999/tasks/reorder", ana, [])
+    # A case built from the template keeps its tasks when the template goes.
+    await pair("apply the twin template", "POST", lambda s: f"{P}/case/{C3(s)}/apply-template/{TP1(s)}", ana)
+    await pair("template task delete", "DELETE", lambda s: f"{CT}/tasks/{lid(s, 'tt1')}", ana)
+    await pair("template task delete: missing", "DELETE", f"{CT}/tasks/999999999", ana)
+    await pair("template delete", "DELETE", lambda s: f"{CT}/{TP1(s)}", ana)
+    await pair("template delete: missing", "DELETE", f"{CT}/999999999", ana)
+    await pair("case tasks keep their snapshots", "GET", lambda s: f"{P}/case/{C3(s)}/tasks", ana)
+
+    print("\n=== incidents writes: tag access ===")
+    TA = "/api/incidents/tag_access"
+    async with AsyncSession(async_engine) as s_:
+        configured = (await s_.execute(text("SELECT COUNT(*) FROM incident_management_tag_access_settings"))).scalar_one()
+    if configured:
+        print("  SKIP  tag access writes: incident_management_tag_access_settings already configured")
+        return
+    users = {"p": USER_P, "r": USER_R}
+    uid = {}
+    async with AsyncSession(async_engine) as s_:
+        for side, name in users.items():
+            uid[side] = (await s_.execute(text("SELECT id FROM `user` WHERE username = :n"), {"n": name})).scalar_one()
+    label("user", uid["p"], uid["r"], "user")
+    label_str(USER_P, USER_R, "<user>")
+    t1, t2 = ids["tag_t1"], ids["tag_t2"]
+    try:
+        await pair("settings: analyst", "GET", f"{TA}/settings", ana)
+        await pair("settings: created on first read (Rust first)", "GET", f"{TA}/settings", adm, order=("r", "p"))
+        await pair(
+            "settings: default_tag without id (analyst: 400 first)",
+            "PUT",
+            f"{TA}/settings",
+            ana,
+            {"enabled": True, "untagged_alert_behavior": "default_tag"},
+        )
+        await pair("settings: errors", "PUT", f"{TA}/settings", adm, {"untagged_alert_behavior": "never"})
+        await pair("settings: analyst", "PUT", f"{TA}/settings", ana, {"enabled": True})
+        await pair(
+            "settings: unknown tag",
+            "PUT",
+            f"{TA}/settings",
+            adm,
+            {"enabled": True, "untagged_alert_behavior": "default_tag", "default_tag_id": 999999999},
+        )
+        await pair(
+            "settings: put",
+            "PUT",
+            f"{TA}/settings",
+            adm,
+            {"enabled": False, "untagged_alert_behavior": "default_tag", "default_tag_id": t1},
+        )
+        await pair("tags (portal)", "GET", f"{TA}/tags", portal, exact=True)
+        await pair("tags: no token", "GET", f"{TA}/tags", None)
+        await pair("user access: analyst", "GET", lambda s: f"{TA}/user/{uid[s]}", ana)
+        await pair("user access: missing user", "GET", f"{TA}/user/999999999", adm)
+        await pair("user access: errors", "PUT", f"{TA}/user/x", adm, {"tag_ids": ["y"]})
+        await pair("user access: unknown tag", "PUT", lambda s: f"{TA}/user/{uid[s]}", adm, {"tag_ids": [t1, 999999999]})
+        await pair("user access: set", "PUT", lambda s: f"{TA}/user/{uid[s]}", adm, {"tag_ids": [t2, t1, t2]})
+        await pair("user access: add", "POST", lambda s: f"{TA}/user/{uid[s]}/add", adm, {"tag_ids": [t1, t1]})
+        await pair("user access: get", "GET", lambda s: f"{TA}/user/{uid[s]}", adm)
+        await pair("user access: remove", "POST", lambda s: f"{TA}/user/{uid[s]}/remove", adm, {"tag_ids": [t2]})
+        await pair("user access: remove nothing", "POST", lambda s: f"{TA}/user/{uid[s]}/remove", adm, {"tag_ids": []})
+        await pair("user access: set empty", "PUT", lambda s: f"{TA}/user/{uid[s]}", adm, {"tag_ids": []})
+        await pair("role access: missing role", "GET", f"{TA}/role/999", adm)
+        for step, method, path_, body in (
+            ("set", "PUT", f"{TA}/role/3", {"tag_ids": [t2, t1]}),
+            ("add", "POST", f"{TA}/role/3/add", {"tag_ids": [t1]}),
+            ("get", "GET", f"{TA}/role/3", None),
+            ("remove", "POST", f"{TA}/role/3/remove", {"tag_ids": [t1]}),
+        ):
+            await pair(f"role access: {step}", method, path_, adm, body, exact=True)
+        for enabled in (False, True):
+            await pair(
+                f"settings: enabled={enabled}",
+                "PUT",
+                f"{TA}/settings",
+                adm,
+                {"enabled": enabled, "untagged_alert_behavior": "admin_only"},
+            )
+            for who in ("admin", "analyst", "portal", "tagged", "responder", "nobody"):
+                await pair(f"me ({who}, rbac={enabled})", "GET", f"{TA}/me", tok[who], exact=True)
+    finally:
+        async with AsyncSession(async_engine) as s_:
+            await s_.execute(text("DELETE FROM incident_management_tag_access_settings"))
+            await s_.execute(text("DELETE FROM role_tag_access WHERE role_id = 3 AND tag_id IN (:a, :b)"), {"a": t1, "b": t2})
+            await s_.execute(text("DELETE FROM user_tag_access WHERE tag_id IN (:a, :b)"), {"a": t1, "b": t2})
+            await s_.commit()
 
 
 if __name__ == "__main__":
