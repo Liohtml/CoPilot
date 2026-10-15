@@ -20,11 +20,13 @@
 
 #![warn(missing_docs)]
 
+pub mod agents;
 pub mod ai_analyst;
 pub mod alerts;
 pub mod audit;
 pub mod connectors;
 pub mod customer_portal;
+pub mod customers;
 pub mod pool;
 pub mod scheduler;
 pub mod schema;

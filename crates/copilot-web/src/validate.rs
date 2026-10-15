@@ -477,6 +477,17 @@ impl Validator {
         Some(n)
     }
 
+    /// Coerce a string to a datetime (Pydantic lax mode, [`crate::datetime`]).
+    pub fn check_datetime(&mut self, at: &Loc, raw: &str) -> Option<chrono::NaiveDateTime> {
+        match crate::datetime::parse_lax(raw) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                self.push(e.kind, at.clone(), e.msg);
+                None
+            }
+        }
+    }
+
     /// Required integer field.
     pub fn req_int(
         &mut self,

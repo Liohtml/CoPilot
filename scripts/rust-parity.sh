@@ -17,11 +17,14 @@ cd "$(dirname "$0")/.."
 : "${JWT_SECRET:=e2e-test-secret-not-the-default}"
 : "${PYTHON:=backend/.venv/bin/python}"
 PORT="${RUST_PARITY_PORT:-5199}"
+# The harness serves a GitHub "latest release" stand-in here for /api/version/check.
+RELEASE_STUB_PORT="${RELEASE_STUB_PORT:-5198}"
 
 cargo build -q -p copilot
 env -i PATH="$PATH" HOME="$HOME" \
   COPILOT_DATABASE_URL="mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_URL}/copilot" \
   JWT_SECRET="$JWT_SECRET" COPILOT_BIND=127.0.0.1 COPILOT_PORT="$PORT" \
+  COPILOT_VERSION_CHECK_URL="http://127.0.0.1:${RELEASE_STUB_PORT}/releases/latest" \
   RUST_LOG="${RUST_LOG:-warn}" ./target/debug/copilot --root /nonexistent serve &
 RS_PID=$!
 trap 'kill $RS_PID 2>/dev/null || true' EXIT
@@ -33,5 +36,5 @@ done
 cd backend
 MYSQL_URL="$MYSQL_URL" MYSQL_USER="$MYSQL_USER" MYSQL_PASSWORD="$MYSQL_PASSWORD" \
   MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-unused}" JWT_SECRET="$JWT_SECRET" \
-  RUST_BASE_URL="http://127.0.0.1:${PORT}" PYTHONPATH="$PWD" \
+  RUST_BASE_URL="http://127.0.0.1:${PORT}" RELEASE_STUB_PORT="$RELEASE_STUB_PORT" PYTHONPATH="$PWD" \
   "${PYTHON_ABS:-$OLDPWD/$PYTHON}" tests/e2e/rust_parity_e2e.py

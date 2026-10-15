@@ -148,7 +148,8 @@ impl Harness {
     }
 }
 
-async fn harness(legacy: Option<&MockServer>) -> Option<Harness> {
+/// `extra` is appended to the `.env` the app is configured from.
+async fn harness_env(legacy: Option<&MockServer>, extra: &str) -> Option<Harness> {
     let url = std::env::var("COPILOT_TEST_DATABASE_URL").ok()?;
     let mut env = format!(
         "JWT_SECRET={SECRET}\nCOPILOT_DATABASE_URL={url}\nCONNECTOR_CACHE_TTL_SECONDS=0\n\
@@ -157,6 +158,7 @@ async fn harness(legacy: Option<&MockServer>) -> Option<Harness> {
     if let Some(l) = legacy {
         env.push_str(&format!("COPILOT_LEGACY_URL={}\n", l.uri()));
     }
+    env.push_str(extra);
     let cfg = CopilotConfig::from_env(Path::new("."), &EnvFile::isolated(&env)).unwrap();
     let db = Db::connect(&cfg.database).await.unwrap();
     let app = App::new(&cfg, db.clone()).unwrap();
@@ -181,7 +183,10 @@ fn rand_suffix() -> u32 {
 
 macro_rules! harness_or_skip {
     ($legacy:expr) => {
-        match harness($legacy).await {
+        harness_or_skip!($legacy, "")
+    };
+    ($legacy:expr, $extra:expr) => {
+        match harness_env($legacy, $extra).await {
             Some(h) => h,
             None => {
                 eprintln!("COPILOT_TEST_DATABASE_URL not set; skipping");
@@ -1485,6 +1490,488 @@ async fn customer_portal_ai_reports_follow_tag_rbac() {
     assert_eq!(granted.0, 200, "{}", granted.1);
     assert_eq!(granted.1["has_analysis"], true);
     assert_eq!(granted_insights.1["total_reports"], 1);
+}
+
+impl Harness {
+    /// An agent of `customer`, last seen `wazuh_ago` minutes ago (negative:
+    /// in the future), with an optional Velociraptor check-in.
+    async fn agent(
+        &self,
+        customer: &str,
+        agent_id: &str,
+        wazuh_ago: i64,
+        velo_ago: Option<i64>,
+    ) -> i64 {
+        let (velo_id, velo_seen) = match velo_ago {
+            Some(m) => (
+                format!("'C.{agent_id}'"),
+                format!("UTC_TIMESTAMP() - INTERVAL {m} MINUTE"),
+            ),
+            None => ("NULL".into(), "NULL".into()),
+        };
+        self.exec(&format!(
+            "INSERT INTO agents (agent_id, ip_address, os, hostname, label, critical_asset, \
+             wazuh_last_seen, velociraptor_id, velociraptor_last_seen, wazuh_agent_version, \
+             wazuh_agent_status, customer_code, quarantined) VALUES ('{agent_id}', '10.0.0.1', \
+             'Linux', 'host-{agent_id}', 'lbl', 0, UTC_TIMESTAMP() - INTERVAL {wazuh_ago} MINUTE, \
+             {velo_id}, {velo_seen}, '4.9.0', 'active', '{customer}', 0)"
+        ))
+        .await
+    }
+}
+
+#[tokio::test]
+async fn customer_and_healthcheck_reads() {
+    let legacy = MockServer::start().await;
+    let h = harness_or_skip!(Some(&legacy));
+    h.seed().await;
+    let s = h.suffix.clone();
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+    let msg = |b: &Value| b["message"].as_str().unwrap_or_default().to_string();
+    h.exec(&format!(
+        "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, \
+         customer_meta_graylog_stream, customer_meta_grafana_org_id, customer_meta_wazuh_group, \
+         customer_meta_index_retention, customer_meta_portainer_stack_id) VALUES \
+         ('{acme}', 'acme corp', 'idx', 'stream', '7', 'grp', '30d', 4)"
+    ))
+    .await;
+    let (fresh, stale, future, velo, other) = (
+        format!("a{s}1"),
+        format!("a{s}2"),
+        format!("a{s}3"),
+        format!("a{s}4"),
+        format!("b{s}1"),
+    );
+    h.agent(&acme, &fresh, 5, None).await;
+    h.agent(&acme, &stale, 600, None).await;
+    h.agent(&acme, &future, -600, None).await;
+    h.agent(&acme, &velo, 1, Some(2)).await;
+    h.agent(&beta, &other, 5, Some(5)).await;
+
+    // --- List: scoped, searchable, capped ---------------------------------------
+    let list = |q: &str| format!("/api/customers?search={s}{q}");
+    let codes = |b: &Value| -> Vec<String> {
+        b["customers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["customer_code"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let (st, body) = h.call("GET", &list(""), Some(&admin), None).await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(codes(&body), [acme.clone(), beta.clone()]);
+    assert_eq!(body["customers"][0]["is_provisioned"], true);
+    assert_eq!(body["customers"][1]["is_provisioned"], false);
+    assert_eq!(body["message"], "Customers fetched successfully");
+    let (_, body) = h.call("GET", &list(""), Some(&analyst), None).await;
+    assert_eq!(
+        codes(&body),
+        std::slice::from_ref(&acme),
+        "an analyst sees only their customers"
+    );
+    let (_, body) = h.call("GET", &list("&limit=1"), Some(&admin), None).await;
+    assert_eq!(codes(&body).len(), 1);
+    let (st, body) = h.call("GET", &list("&limit=0"), Some(&admin), None).await;
+    assert_eq!(st, 422, "{body}");
+    let (st, body) = h.call("GET", &list(""), Some(&portal), None).await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            403,
+            "Insufficient permissions. Required one of: admin, analyst".into()
+        )
+    );
+
+    // --- One customer ----------------------------------------------------------
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{acme}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["customer"]["customer_name"], "acme corp");
+    assert_eq!(body["customer"]["is_provisioned"], Value::Null);
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{beta}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (403, format!("Access denied to customer {beta}"))
+    );
+    let (st, body) = h
+        .call("GET", "/api/customers/nosuch-e2e", Some(&admin), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            404,
+            "Customer with customer_code nosuch-e2e not found".into()
+        )
+    );
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{acme}/meta"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(body["customer_meta"]["customer_meta_portainer_stack_id"], 4);
+    assert_eq!(
+        body["customer_meta"]["customer_meta_wazuh_api_port"],
+        Value::Null
+    );
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{beta}/meta"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            404,
+            format!("Customer meta with customer_code {beta} not found")
+        )
+    );
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{beta}/full"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        body["message"],
+        "Customer fetched successfully but customer meta not found"
+    );
+    assert_eq!(body["customer_meta"], Value::Null);
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{acme}/full"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        body["message"],
+        "Customer and customer meta fetched successfully"
+    );
+
+    // --- Agents and their health -----------------------------------------------
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{acme}/agents"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    let agents = body["agents"].as_array().unwrap();
+    assert_eq!(agents.len(), 4, "{body}");
+    assert_eq!(agents[0]["wazuh_agent_status"], "active");
+    assert_eq!(agents[0]["quarantined"], false);
+    let ids = |b: &Value, key: &str| -> Vec<String> {
+        b[key]
+            .as_array()
+            .unwrap_or_else(|| panic!("{key}: {b}"))
+            .iter()
+            .map(|a| a["agent_id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{acme}/agents/healthcheck/wazuh"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        ids(&body, "healthy_wazuh_agents"),
+        [fresh.clone(), velo.clone()]
+    );
+    assert_eq!(
+        ids(&body, "unhealthy_wazuh_agents"),
+        [stale.clone(), future.clone()]
+    );
+    assert_eq!(body["healthy_velociraptor_agents"], Value::Null);
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{acme}/agents/healthcheck/velociraptor?minutes=1"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        ids(&body, "healthy_velociraptor_agents"),
+        Vec::<String>::new(),
+        "2 min > 1 min"
+    );
+    assert_eq!(ids(&body, "unhealthy_velociraptor_agents").len(), 4);
+    let (st, _) = h
+        .call(
+            "GET",
+            &format!("/api/customers/{acme}/agents/healthcheck/wazuh?days=x"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 422);
+
+    let (_, body) = h
+        .call("GET", "/api/healthcheck/wazuh", Some(&analyst), None)
+        .await;
+    let seen = [
+        ids(&body, "healthy_wazuh_agents"),
+        ids(&body, "unhealthy_wazuh_agents"),
+    ]
+    .concat();
+    assert!(
+        seen.contains(&fresh) && !seen.contains(&other),
+        "scoped to acme: {seen:?}"
+    );
+    let (_, body) = h
+        .call(
+            "GET",
+            "/api/healthcheck/velociraptor?hours=1",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert!(ids(&body, "healthy_velociraptor_agents").contains(&other));
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/healthcheck/wazuh/{other}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (403, format!("Access denied to agent {other}"))
+    );
+    let (st, _) = h
+        .call(
+            "GET",
+            "/api/healthcheck/wazuh/nope-e2e",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 403, "an unknown agent fails closed for a scoped caller");
+    let (st, body) = h
+        .call("GET", "/api/healthcheck/wazuh/nope-e2e", Some(&admin), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (404, "Agent with agent_id nope-e2e not found".into())
+    );
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("/api/healthcheck/velociraptor/{velo}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        ids(&body, "healthy_velociraptor_agents"),
+        std::slice::from_ref(&velo)
+    );
+
+    // --- Writes and unported routes still reach Python -------------------------
+    for (m, p) in [
+        ("POST", "/api/customers".to_string()),
+        ("PUT", format!("/api/customers/{acme}")),
+        ("DELETE", format!("/api/customers/{acme}/meta")),
+        ("POST", "/api/healthcheck/logs".to_string()),
+    ] {
+        Mock::given(method(m))
+            .and(path(p.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+            .expect(1)
+            .mount(&legacy)
+            .await;
+        let (st, body) = h.call(m, &p, Some(&admin), Some(json!({}))).await;
+        assert_eq!(
+            (st.as_u16(), body),
+            (200, json!({"from": "python"})),
+            "{m} {p}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn audit_reads_and_version_check() {
+    let github = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/releases/latest"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://example.com/r",
+            "published_at": "2026-10-01T00:00:00Z", "body": "notes"})))
+        .mount(&github)
+        .await;
+    let h = harness_or_skip!(
+        None,
+        &format!(
+            "COPILOT_VERSION_CHECK_URL={}/releases/latest\n",
+            github.uri()
+        )
+    );
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let msg = |b: &Value| b["message"].as_str().unwrap_or_default().to_string();
+
+    // --- Version: no token needed ----------------------------------------------
+    let (st, body) = h.call("GET", "/api/version/check", None, None).await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true, "message": "New version v9.9.9 available!",
+               "current_version": copilot_platform::version::CURRENT_VERSION,
+               "latest_version": "9.9.9", "is_outdated": true,
+               "release_url": "https://example.com/r", "release_notes": "notes",
+               "published_at": "2026-10-01T00:00:00Z"})
+    );
+
+    // --- Audit: admin only, the get_current_user way ---------------------------
+    let entity = format!("e2e{s}");
+    for (i, (ts, result)) in [
+        ("2026-01-01 10:00:00", "success"),
+        ("2026-01-01 11:00:00", "failure"),
+        ("2026-01-01 12:00:00", "success"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        h.exec(&format!(
+            "INSERT INTO audit_log (timestamp, actor_user_id, actor_username, customer_code, action, \
+             entity_type, entity_id, result, old_value, new_value, details) VALUES ('{ts}', 1, \
+             'admin{s}', '{c}', 'case.create', 'case', '{entity}', '{result}', \
+             '{{\"enabled\": false, \"a\": 1}}', NULL, 'row {i}')",
+            c = h.code("acme")
+        ))
+        .await;
+    }
+    let audit = |q: &str| format!("/api/audit?entity_id={entity}{q}");
+    let (st, body) = h.call("GET", &audit(""), Some(&admin), None).await;
+    assert_eq!(st, 200, "{body}");
+    let details: Vec<_> = body["audit_logs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["details"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(details, ["row 2", "row 1", "row 0"], "newest first");
+    assert_eq!(
+        body["pagination"],
+        json!({"total": 3, "skip": 0, "limit": 100})
+    );
+    assert_eq!(body["message"], "Retrieved 3 of 3 audit log entries");
+    assert_eq!(
+        body["audit_logs"][0]["old_value"],
+        json!({"a": 1, "enabled": false}),
+        "MySQL's JSON key order"
+    );
+    let (_, body) = h
+        .call("GET", &audit("&result=failure"), Some(&admin), None)
+        .await;
+    assert_eq!(body["pagination"]["total"], 1);
+    let (_, body) = h
+        .call(
+            "GET",
+            &audit("&start_time=2026-01-01T11:00:00%2B05:00&skip=1&limit=1"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        body["pagination"],
+        json!({"total": 2, "skip": 1, "limit": 1}),
+        "offset dropped"
+    );
+    assert_eq!(body["audit_logs"][0]["details"], "row 1");
+    let (_, body) = h
+        .call("GET", &audit("&search=ROW%201"), Some(&admin), None)
+        .await;
+    assert_eq!(body["pagination"]["total"], 1, "case-insensitive search");
+    let (st, body) = h
+        .call("GET", &audit("&start_time=abc&limit=0"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 422);
+    assert_eq!(body["details"].as_array().unwrap().len(), 2, "{body}");
+    assert_eq!(body["message"], "Value is too small.");
+    assert_eq!(
+        body["details"][1]["message"],
+        "start_time: Input should be a valid datetime or date, input is too short"
+    );
+
+    let (st, body) = h.call("GET", &audit(""), Some(&analyst), None).await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            403,
+            "Insufficient permissions. Required scope: admin".into()
+        )
+    );
+    let (st, body) = h.call("GET", &audit(""), None, None).await;
+    assert_eq!((st.as_u16(), msg(&body)), (401, "Not authenticated".into()));
+    let (st, body) = h.call("GET", &audit(""), Some("garbage"), None).await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (401, "Could not decode token: 401: Invalid token".into())
+    );
+
+    let (_, body) = h
+        .call("GET", "/api/audit/actions", Some(&admin), None)
+        .await;
+    assert!(
+        body["actions"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("ai_analysis.request"))
+    );
+    assert_eq!(body["results"], json!(["success", "failure"]));
+    let id = h
+        .scalar_i64(&format!(
+            "SELECT MIN(id) FROM audit_log WHERE entity_id = '{entity}'"
+        ))
+        .await;
+    let (_, body) = h
+        .call("GET", &format!("/api/audit/{id}"), Some(&admin), None)
+        .await;
+    assert_eq!(body["audit_log"]["details"], "row 0");
+    assert_eq!(body["message"], "Audit log entry retrieved successfully");
+    let (st, body) = h
+        .call("GET", "/api/audit/999999999", Some(&admin), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (404, "Audit log 999999999 not found".into())
+    );
+    let (st, _) = h.call("GET", "/api/audit/abc", Some(&admin), None).await;
+    assert_eq!(st, 422);
 }
 
 #[tokio::test]

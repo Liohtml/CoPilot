@@ -1,6 +1,7 @@
 //! Query-string helpers with FastAPI's semantics.
 
 use axum::extract::FromRequestParts;
+use chrono::NaiveDateTime;
 use http::request::Parts;
 use serde_json::Value;
 
@@ -58,6 +59,19 @@ impl QueryPairs {
                 .check_int(&loc("query", name), &Value::String(raw.into()), rules)
                 .unwrap_or(default),
         }
+    }
+
+    /// `Optional[int] = Query(None, …)`.
+    pub fn opt_int(&self, v: &mut Validator, name: &str, rules: IntRules) -> Option<i64> {
+        let raw = self.get(name)?;
+        v.check_int(&loc("query", name), &Value::String(raw.into()), rules)
+    }
+
+    /// `Optional[datetime] = Query(None)`: Pydantic's lax parsing, as the
+    /// wall clock the Python backend binds into SQL (see [`crate::datetime`]).
+    pub fn opt_datetime(&self, v: &mut Validator, name: &str) -> Option<NaiveDateTime> {
+        let raw = self.get(name)?;
+        v.check_datetime(&loc("query", name), raw)
     }
 
     /// `customer_codes_query`: `?customer_codes=a&customer_codes=b`, then
@@ -126,5 +140,24 @@ mod tests {
         q.int_or(&mut v, "bad", IntRules::default(), 5);
         assert_eq!(v.errors().len(), 2);
         assert_eq!(v.errors()[0].kind, "less_than_equal");
+    }
+
+    #[test]
+    fn optional_int_and_datetime_queries() {
+        let q = QueryPairs::parse(Some("n=7&t=2026-01-02T03%3A04%3A05%2B05%3A00&bad=x&d="));
+        let mut v = Validator::new();
+        assert_eq!(q.opt_int(&mut v, "n", IntRules::default()), Some(7));
+        assert_eq!(q.opt_int(&mut v, "missing", IntRules::default()), None);
+        assert_eq!(
+            q.opt_datetime(&mut v, "t")
+                .map(copilot_core::time::to_pydantic_iso),
+            Some("2026-01-02T03:04:05".to_string()),
+            "the offset is dropped, as pymysql does"
+        );
+        assert!(v.errors().is_empty());
+        assert_eq!(q.opt_datetime(&mut v, "d"), None);
+        assert_eq!(q.opt_int(&mut v, "bad", IntRules::default()), None);
+        let kinds: Vec<_> = v.errors().iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, ["datetime_from_date_parsing", "int_parsing"]);
     }
 }

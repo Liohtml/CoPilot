@@ -18,6 +18,9 @@ copilot-web = { workspace = true }
 copilot-talon = { workspace = true }
 copilot-ai-analyst = { workspace = true }
 copilot-customer-portal = { workspace = true }
+copilot-customers = { workspace = true }
+copilot-healthchecks = { workspace = true }
+copilot-platform = { workspace = true }
 copilot-gateway = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

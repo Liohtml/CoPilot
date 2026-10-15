@@ -19,6 +19,9 @@ file.
  frontend / portal ───►│ /api/ai_analyst/*   copilot-ai-analyst            │
                        │ /api/customer_portal/ai_reports/*                  │
                        │                     copilot-customer-portal        │
+                       │ GET /api/customers/*         copilot-customers     │
+                       │ GET /api/healthcheck/*       copilot-healthchecks  │
+                       │ /api/version/*, /api/audit/* copilot-platform      │
  Talon MCP tools  ───►│ /api/talon/*        copilot-talon ───────────────────► Talon :3100
                        │ /_copilot/health                                   │
                        │ anything else ──►   copilot-gateway (stream) ────────► Python backend
@@ -43,7 +46,7 @@ file.
   order, with the same error envelopes and 422 texts. This is not a goal on
   paper: `backend/tests/e2e/rust_parity_e2e.py` sends identical requests to
   both implementations on one database and compares the answers
-  (120 checks, all equal; see §5).
+  (181 checks, all equal; see §5).
 
 Enable it:
 
@@ -73,6 +76,9 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-talon` | `app/connectors/talon/` | **the Talon contract** (`contract.rs`), client, `/api/talon/*` |
 | `copilot-ai-analyst` | `app/ai_analyst/`, palace drainer/sweeper jobs | `/api/ai_analyst/*` (25 routes), consolidation digest, CPython-exact `difflib` |
 | `copilot-customer-portal` | `app/customer_portal/` (`ai_reports`, `ai_requests`) | `/api/customer_portal/ai_reports/*` (6 routes); every other portal path is still proxied |
+| `copilot-customers` | `app/customers/` (reads) | `GET /api/customers/*` (7 routes); creating, changing and deleting customers provisions Graylog/Grafana/Wazuh and stays in Python |
+| `copilot-healthchecks` | `app/healthchecks/agents/` (database half) | `GET /api/healthcheck/*` (4 routes); the classification is shared with the customer routes. `POST /logs` (Wazuh indexer) stays in Python |
+| `copilot-platform` | `app/version/`, `app/audit/` (reads) | `GET /api/version/check` (PEP 440 compare; `COPILOT_VERSION_CHECK_URL` points it at a mirror), `GET /api/audit`, `/actions`, `/{id}` |
 | `copilot-gateway` | — | legacy proxy and notification bridge; deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `palace drain|sweep` |
 
@@ -101,7 +107,12 @@ path → tenancy → query → body.
 
 **Auth.** `require_any_scope` messages and order (`Not authenticated`,
 `Expired signature`, `Invalid token`, the 2FA text, `User not found`,
-`Insufficient permissions. Required one of: …`). A responder's token carries
+`Insufficient permissions. Required one of: …`) — `copilot_web::Authorized`.
+Routes guarded by `Security(get_current_user, scopes=[…])` instead need
+*every* scope and word failures differently (`Could not decode token: 401:
+Expired signature`, `Insufficient permissions. Required scope: admin`) —
+`copilot_web::ScopedUser`. A token without `sub` is a bare 500 either way:
+Python's exception handler decodes the token again and fails. A responder's token carries
 `["responder", "analyst"]`. Route gating follows the token's scopes; tenancy
 follows the user's live `role_id` and `user_customer_access`, fail-closed
 (`enforce_owned_object_access`: an object with no resolvable owner is a 403 for
@@ -113,6 +124,21 @@ identically whichever service wrote it. Same-second ties are broken
 explicitly: lists by ascending id (what MySQL returns for the Python queries),
 "latest" lookups (`LIMIT 1`, the portal's recent reports) by the newest id —
 Python leaves the latter to MySQL's plan (§4).
+
+Where a Python query has no `ORDER BY` (the customer list, a customer's
+agents, the healthcheck fleet), the Rust query keeps its exact shape —
+filters in the same order, no ordering added — so MySQL picks the same plan
+and the same row order.
+
+**Request values.** `datetime` query and body fields parse with the crate
+Pydantic itself uses, `speedate`, pinned to pydantic-core's version
+(`copilot_web::datetime`): the same accepted forms (ISO 8601, date only,
+unix seconds or milliseconds) and the same `datetime_from_date_parsing`
+messages. The value used in SQL is the wall clock without its offset,
+because that is what `pymysql` sends. Vectors generated from pydantic
+(`scripts/gen-pydantic-datetime-vectors.py`) and from `packaging`
+(`scripts/gen-pep440-vectors.py`, the version compare) pin both; re-run them
+after upgrading either Python package.
 
 **Alert visibility.** One definition, as in Python:
 `copilot_db::visibility::AlertVisibility` (customer scoping *and* tag RBAC,
@@ -165,6 +191,7 @@ Each is covered by a test and listed in the parity harness.
 | `/talon/*` upstream failure text | `requests` exception text | status plus Talon's `{"error"}` text | actionable |
 | palace search hits | numeric `id` → 400 | stringified | robustness |
 | "latest" row on a same-second tie (`alerts_with_reports/{alert_id}`, portal recent reports) | whichever row MySQL's plan reaches first — varies with the data | the newest id, the rule the portal's `MAX(id)` already uses | deterministic |
+| agent healthcheck clock | `datetime.now()`: the process's local time (UTC in the image) | UTC | the `*_last_seen` columns hold UTC; equal in the shipped image |
 
 ---
 
@@ -175,7 +202,7 @@ Each is covered by a test and listed in the parity harness.
 | unit | every crate | nothing |
 | contract | `copilot-talon/src/contract.rs`, `copilot-core/src/notify.rs`, `backend/tests/test_notification_rust_bridge.py` | nothing |
 | end-to-end | `crates/copilot/tests/e2e.rs` — the production router against MySQL at the Alembic head, Talon and Python replaced by recorders | MySQL |
-| parity | `backend/tests/e2e/rust_parity_e2e.py` via `scripts/rust-parity.sh` — real FastAPI routers vs. the running Rust binary, one database; Talon is a local stub both backends call | MySQL + Python venv |
+| parity | `backend/tests/e2e/rust_parity_e2e.py` via `scripts/rust-parity.sh` — real FastAPI routers vs. the running Rust binary, one database; Talon and GitHub's release API are local stubs both backends call; an unhandled Python error compares as the bare 500 uvicorn sends | MySQL + Python venv |
 
 ```bash
 # disposable MySQL on 13306, schema from the fixture (or `alembic upgrade head`)
@@ -201,10 +228,10 @@ Python backend today: ~200 k lines in 930 files.
 | Phase | Modules (Python lines) | Notes |
 |---|---|---|
 | **0 — done** | foundation; `ai_analyst` (2.4 k), `connectors/talon` | the Talon integration surface |
-| **1 — in progress** | **done:** `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC). **Next:** `customers` (1.1 k, reads), `version`, `audit` reads, `status`/`healthchecks` | read-mostly |
+| **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | 2 | `auth` (5 k): `/auth/token`, 2FA (TOTP, Fernet key compatible), refresh, users, SSO, passkeys | the Rust service starts issuing tokens |
 | 3 | `notifications` (7.2 k) — retires the bridge; `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust |
-| 4 | `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time | largest surface; each is independent |
+| 4 | `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the
@@ -219,7 +246,8 @@ rewrite: they talk to the same API.
 3. `schema.rs` / `services.rs` / `routes.rs` on `copilot-web`; handlers check
    in FastAPI's order.
 4. Mount it in `crates/copilot/src/app.rs` and add the prefix to
-   `PORTED_PREFIXES`.
+   `PORTED_PREFIXES` (`GET /api/…` when only that method is ported: other
+   methods on those paths are 405s the binary forwards to Python).
 5. Extend the e2e suite and the parity harness; every intentional difference
    goes in §4 with a test.
 6. Background work: hand over through `scheduled_job_metadata`, never run in

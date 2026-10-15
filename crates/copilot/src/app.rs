@@ -5,6 +5,9 @@
 //! frontend / portal ──►│ /api/ai_analyst/*  → copilot-ai-analyst             │
 //!                      │ /api/customer_portal/ai_reports/*                    │
 //!                      │                    → copilot-customer-portal         │
+//!                      │ GET /api/customers/*   → copilot-customers           │
+//!                      │ GET /api/healthcheck/* → copilot-healthchecks        │
+//!                      │ /api/version/*, /api/audit/* → copilot-platform      │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -30,15 +33,23 @@ use copilot_db::audit::DbAuditSink;
 use copilot_db::connectors::ConnectorCache;
 use copilot_db::schema::{self, TableRequirement};
 use copilot_gateway::{LegacyNotificationSink, LegacyProxy};
+use copilot_platform::PlatformState;
+use copilot_platform::version::VersionChecker;
 use copilot_talon::{TalonConnector, TalonState};
 use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
 use copilot_web::{ApiError, AppContext, AppDeps};
 
 /// Route prefixes this build answers itself. Everything else is proxied.
+/// A method prefix (`GET /api/customers`) means only that method is ported;
+/// other methods on those paths go to Python.
 pub const PORTED_PREFIXES: &[&str] = &[
     "/api/ai_analyst",
     "/api/talon",
     "/api/customer_portal/ai_reports",
+    "GET /api/customers",
+    "GET /api/healthcheck",
+    "/api/version",
+    "/api/audit",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -50,6 +61,26 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     let mut all = schema::CORE_REQUIREMENTS.to_vec();
     all.extend_from_slice(copilot_db::ai_analyst::REQUIREMENTS);
     all.extend_from_slice(copilot_db::customer_portal::REQUIREMENTS);
+    all.extend_from_slice(copilot_db::customers::REQUIREMENTS);
+    all.extend_from_slice(copilot_db::agents::REQUIREMENTS);
+    all.push(TableRequirement {
+        table: "audit_log",
+        columns: &[
+            "id",
+            "timestamp",
+            "actor_user_id",
+            "actor_username",
+            "customer_code",
+            "action",
+            "entity_type",
+            "entity_id",
+            "result",
+            "old_value",
+            "new_value",
+            "source_ip",
+            "details",
+        ],
+    });
     all.push(TableRequirement {
         table: "scheduled_job_metadata",
         columns: &["job_id", "last_success", "time_interval", "enabled"],
@@ -63,6 +94,8 @@ pub struct App {
     pub ctx: AppContext,
     /// Talon connector (also used by the palace jobs).
     pub talon: TalonConnector,
+    /// GitHub release lookup for `/api/version/check`.
+    pub version: VersionChecker,
     /// Legacy backend, if configured.
     pub legacy: Option<LegacyProxy>,
 }
@@ -91,6 +124,8 @@ impl App {
             .unwrap_or(false);
         let talon = TalonConnector::new(connectors.clone(), verify_tls)
             .context("building the Talon client")?;
+        let version = VersionChecker::new(cfg.version_check_url.clone())
+            .context("building the release-check client")?;
         let ctx = AppContext::new(AppDeps {
             db: db.clone(),
             jwt: JwtCodec::new(&cfg.jwt_secret),
@@ -101,7 +136,12 @@ impl App {
             http: reqwest::Client::new(),
             log_handled_errors: true,
         });
-        Ok(Self { ctx, talon, legacy })
+        Ok(Self {
+            ctx,
+            talon,
+            version,
+            legacy,
+        })
     }
 
     /// The full router: ported modules, health, and the legacy fallback.
@@ -109,6 +149,10 @@ impl App {
         let state = TalonState {
             ctx: self.ctx.clone(),
             talon: self.talon.clone(),
+        };
+        let platform = PlatformState {
+            ctx: self.ctx.clone(),
+            version: self.version.clone(),
         };
         let ported = Router::new()
             .nest("/api/ai_analyst", copilot_ai_analyst::router(state.clone()))
@@ -119,6 +163,19 @@ impl App {
                 "/api/customer_portal",
                 copilot_customer_portal::router(state),
             )
+            .nest(
+                "/api/customers",
+                copilot_customers::router(self.ctx.clone()),
+            )
+            .nest(
+                "/api/healthcheck",
+                copilot_healthchecks::router(self.ctx.clone()),
+            )
+            .nest(
+                "/api/version",
+                copilot_platform::version_router(platform.clone()),
+            )
+            .nest("/api/audit", copilot_platform::audit_router(platform))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

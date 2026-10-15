@@ -21,6 +21,9 @@ copilot-web = { path = "crates/copilot-web" }
 copilot-talon = { path = "crates/copilot-talon" }
 copilot-ai-analyst = { path = "crates/copilot-ai-analyst" }
 copilot-customer-portal = { path = "crates/copilot-customer-portal" }
+copilot-customers = { path = "crates/copilot-customers" }
+copilot-healthchecks = { path = "crates/copilot-healthchecks" }
+copilot-platform = { path = "crates/copilot-platform" }
 copilot-gateway = { path = "crates/copilot-gateway" }
 
 # --- async runtime ---
@@ -43,6 +46,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"]
 
 # --- time ---
 chrono = { version = "0.4", features = ["serde"] }
+# The parser behind Pydantic's `datetime` fields: the same version pydantic-core
+# pins, so request timestamps parse (and fail) exactly as in the Python backend.
+speedate = "=0.17.0"
+# `EnumMessage::get_documentation()`: speedate's error sentences (its own strum).
+strum = "0.27"
 
 # --- storage ---
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "mysql", "chrono", "json", "macros"] }

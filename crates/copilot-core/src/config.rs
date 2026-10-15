@@ -118,6 +118,9 @@ pub struct CopilotConfig {
     pub max_body_bytes: usize,
     /// Emit JSON logs.
     pub json_logs: bool,
+    /// Where `GET /api/version/check` looks up the latest release
+    /// (`COPILOT_VERSION_CHECK_URL`; `None` = GitHub). For tests and mirrors.
+    pub version_check_url: Option<String>,
 }
 
 impl CopilotConfig {
@@ -209,6 +212,10 @@ impl CopilotConfig {
             json_logs: env
                 .get("COPILOT_LOG_FORMAT")
                 .is_some_and(|v| v.trim().eq_ignore_ascii_case("json")),
+            version_check_url: env
+                .get("COPILOT_VERSION_CHECK_URL")
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
         })
     }
 }

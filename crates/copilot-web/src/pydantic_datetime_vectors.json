@@ -1,0 +1,253 @@
+{
+ "pydantic": "2.13.4",
+ "pydantic_core": "2.46.4",
+ "vectors": [
+  {
+   "input": "2026-01-02T03:04:05",
+   "ok": "2026-01-02T03:04:05"
+  },
+  {
+   "input": "2026-01-02 03:04:05",
+   "ok": "2026-01-02T03:04:05"
+  },
+  {
+   "input": "2026-01-02t03:04:05",
+   "ok": "2026-01-02T03:04:05"
+  },
+  {
+   "input": "2026-01-02_03:04:05",
+   "ok": "2026-01-02T03:04:05"
+  },
+  {
+   "input": "2026-01-02",
+   "ok": "2026-01-02T00:00:00"
+  },
+  {
+   "input": "2026-01-02T03:04:05Z",
+   "ok": "2026-01-02T03:04:05"
+  },
+  {
+   "input": "2026-01-02T03:04:05z",
+   "ok": "2026-01-02T03:04:05"
+  },
+  {
+   "input": "2026-01-02T03:04:05+05:00",
+   "ok": "2026-01-02T03:04:05"
+  },
+  {
+   "input": "2026-01-02T03:04:05-0130",
+   "ok": "2026-01-02T03:04:05"
+  },
+  {
+   "input": "2026-01-02T03:04:05+05",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "2026-01-02T03:04:05.123456",
+   "ok": "2026-01-02T03:04:05.123456"
+  },
+  {
+   "input": "2026-01-02T03:04:05,5",
+   "ok": "2026-01-02T03:04:05.500000"
+  },
+  {
+   "input": "2026-01-02T03:04:05.1234567",
+   "ok": "2026-01-02T03:04:05.123456"
+  },
+  {
+   "input": "2026-01-02T03:04:05.123456789123",
+   "ok": "2026-01-02T03:04:05.123456"
+  },
+  {
+   "input": "2026-01-02T03:04",
+   "ok": "2026-01-02T03:04:00"
+  },
+  {
+   "input": "2026-01-02T03",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "2026-01-02T",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "2026-01-02T03:04:60",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "2026-01-02T23:59:59",
+   "ok": "2026-01-02T23:59:59"
+  },
+  {
+   "input": "1700000000",
+   "ok": "2023-11-14T22:13:20"
+  },
+  {
+   "input": "1700000000.5",
+   "ok": "2023-11-14T22:13:20.500000"
+  },
+  {
+   "input": "-1",
+   "ok": "1969-12-31T23:59:59"
+  },
+  {
+   "input": "0",
+   "ok": "1970-01-01T00:00:00"
+  },
+  {
+   "input": "20260102",
+   "ok": "1970-08-23T11:48:22"
+  },
+  {
+   "input": "17000000000000",
+   "ok": "2508-09-16T06:13:20"
+  },
+  {
+   "input": "1700000000123",
+   "ok": "2023-11-14T22:13:20.123000"
+  },
+  {
+   "input": "1e9",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, input is too short"
+  },
+  {
+   "input": "1700000000.123456789",
+   "ok": "2023-11-14T22:13:20.123457"
+  },
+  {
+   "input": "99999999999999999999",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, invalid date separator, expected `-`"
+  },
+  {
+   "input": "abc",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, input is too short"
+  },
+  {
+   "input": "",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, input is too short"
+  },
+  {
+   "input": " ",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, input is too short"
+  },
+  {
+   "input": "2026-13-01",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, month value is outside expected range of 1-12"
+  },
+  {
+   "input": "2026-02-30",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, day value is outside expected range"
+  },
+  {
+   "input": "2026-01-02T25:00:00",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "2026-1-2",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, input is too short"
+  },
+  {
+   "input": " 2026-01-02",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, invalid character in year"
+  },
+  {
+   "input": "2026-01-02 ",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "2026/01/02",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, invalid date separator, expected `-`"
+  },
+  {
+   "input": "2026-01-02X03:04:05",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "2026-01-02T03:04:05+25:00",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "2026-01-02T03:04:05+05:00:00",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "0001-01-01T00:00:00",
+   "ok": "0001-01-01T00:00:00"
+  },
+  {
+   "input": "9999-12-31T23:59:59.999999",
+   "ok": "9999-12-31T23:59:59.999999"
+  },
+  {
+   "input": "2024-02-29",
+   "ok": "2024-02-29T00:00:00"
+  },
+  {
+   "input": "2023-02-29",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, day value is outside expected range"
+  },
+  {
+   "input": "2026-01-02T03:04:05.",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "2026-01-02T03:04:05Zjunk",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "+2026-01-02",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, invalid character in year"
+  },
+  {
+   "input": "2026-01-02T03:4:05",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, unexpected extra characters at the end of the input"
+  },
+  {
+   "input": "12345",
+   "ok": "1970-01-01T03:25:45"
+  },
+  {
+   "input": "2026",
+   "ok": "1970-01-01T00:33:46"
+  },
+  {
+   "input": "2026-01",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, input is too short"
+  },
+  {
+   "input": "2026-01-0",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, input is too short"
+  },
+  {
+   "input": "T03:04:05",
+   "type": "datetime_from_date_parsing",
+   "msg": "Input should be a valid datetime or date, input is too short"
+  }
+ ]
+}

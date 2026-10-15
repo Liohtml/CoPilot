@@ -80,6 +80,36 @@ class _TalonStub(BaseHTTPRequestHandler):
         pass
 
 
+# GitHub stand-in for /version/check, on the port scripts/rust-parity.sh hands the Rust
+# service as COPILOT_VERSION_CHECK_URL. RELEASE[0] is what it answers next.
+RELEASE = [{"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://example.com/r", "body": None}]
+RELEASE_STUB_PORT = int(os.environ.get("RELEASE_STUB_PORT", "5198"))
+
+
+class _ReleaseStub(BaseHTTPRequestHandler):
+    def do_GET(self):  # noqa: N802 - http.server API
+        status, body = (200, RELEASE[0]) if self.path == "/releases/latest" else (404, {"message": "Not Found"})
+        payload = json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, *args):
+        pass
+
+
+def start_release_stub():
+    server = ThreadingHTTPServer(("127.0.0.1", RELEASE_STUB_PORT), _ReleaseStub)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{RELEASE_STUB_PORT}/releases/latest"
+    import app.version.services.version as version_service
+
+    version_service.VERSION_CHECK_URL = url
+    return url
+
+
 def start_talon_stub():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _TalonStub)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -107,16 +137,24 @@ def mask(value):
 
 def build_python_app():
     from app.ai_analyst.routes.ai_analyst import ai_analyst_router
+    from app.audit.routes.audit import audit_router
     from app.connectors.talon.routes.talon import talon_router
     from app.customer_portal.routes.ai_reports import customer_portal_ai_reports_router
+    from app.customers.routes.customers import customers_router
+    from app.healthchecks.agents.routes.agents import healtcheck_agents_router
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.version.routes.version import version_router
 
     api = APIRouter(prefix="/api")
     api.include_router(ai_analyst_router, prefix="/ai_analyst")
     api.include_router(talon_router, prefix="/talon")
     api.include_router(customer_portal_ai_reports_router, prefix="/customer_portal")
+    api.include_router(customers_router, prefix="/customers")
+    api.include_router(healtcheck_agents_router, prefix="/healthcheck")
+    api.include_router(version_router, prefix="/version")
+    api.include_router(audit_router, prefix="/audit")
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -187,6 +225,49 @@ async def seed():
                 {"n": key, "c": CUST_A},
             )
             alerts[key] = r.lastrowid
+        # Customer meta for A; agents fresh / stale / future / with Velociraptor for A, one for B.
+        await s.execute(
+            text(
+                "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, "
+                "customer_meta_graylog_stream, customer_meta_grafana_org_id, customer_meta_wazuh_group, "
+                "customer_meta_portainer_stack_id) VALUES (:c, :c, 'idx', 'stream', '7', 'grp', 4)",
+            ),
+            {"c": CUST_A},
+        )
+        for agent_id, code, wazuh_ago, velo_ago in (
+            (f"pa{SFX}1", CUST_A, 5, None),
+            (f"pa{SFX}2", CUST_A, 600, None),
+            (f"pa{SFX}3", CUST_A, -600, None),
+            (f"pa{SFX}4", CUST_A, 1, 2),
+            (f"pb{SFX}1", CUST_B, 5, 5),
+        ):
+            await s.execute(
+                text(
+                    "INSERT INTO agents (agent_id, ip_address, os, hostname, label, critical_asset, wazuh_last_seen, "
+                    "velociraptor_id, velociraptor_last_seen, wazuh_agent_version, wazuh_agent_status, customer_code, "
+                    "quarantined) VALUES (:a, '10.0.0.1', 'Linux', :h, 'lbl', 0, UTC_TIMESTAMP() - INTERVAL :w MINUTE, "
+                    ":vid, IF(:v IS NULL, NULL, UTC_TIMESTAMP() - INTERVAL :v MINUTE), '4.9.0', 'active', :c, 0)",
+                ),
+                {
+                    "a": agent_id,
+                    "h": f"host-{agent_id}",
+                    "w": wazuh_ago,
+                    "vid": f"C.{agent_id}" if velo_ago else None,
+                    "v": velo_ago,
+                    "c": code,
+                },
+            )
+        for i, (ts, result) in enumerate(
+            (("2026-01-01 10:00:00", "success"), ("2026-01-01 11:00:00", "failure"), ("2026-01-01 12:00:00", "success")),
+        ):
+            await s.execute(
+                text(
+                    "INSERT INTO audit_log (timestamp, actor_user_id, actor_username, customer_code, action, entity_type, "
+                    "entity_id, result, old_value, new_value, details) VALUES (:t, 1, :u, :c, 'case.create', 'case', :e, :r, "
+                    '\'{"enabled": false, "a": [1, 2]}\', NULL, :d)',
+                ),
+                {"t": ts, "u": ADMIN, "c": CUST_A, "e": f"par{SFX}", "r": result, "d": f"Row {i}"},
+            )
         # The Talon connector is global: point it at the stub before either backend reads it.
         await s.execute(text("DELETE FROM connectors WHERE connector_name = 'Talon'"))
         await s.execute(
@@ -204,9 +285,11 @@ async def seed():
 
 
 async def main():
+    start_release_stub()
     alerts = await seed()
     a, b = alerts[CUST_A], alerts[CUST_B]
-    py = httpx.AsyncClient(transport=httpx.ASGITransport(app=build_python_app()), base_url="http://py")
+    # raise_app_exceptions=False: an unhandled error is the bare 500 uvicorn would send.
+    py = httpx.AsyncClient(transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False), base_url="http://py")
     rs = httpx.AsyncClient(base_url=RUST, timeout=30)
     t_admin = token(ADMIN, ["admin"])
     t_analyst = token(ANALYST, ["analyst"])
@@ -233,7 +316,11 @@ async def main():
         if masked:
             b1, b2 = mask(b1), mask(b2)
         ok = r1.status_code == r2.status_code and b1 == b2
-        check(name, ok, f"python {r1.status_code} {json.dumps(b1)[:600]}\n        rust   {r2.status_code} {json.dumps(b2)[:600]}")
+        check(
+            f"{name} [{r1.status_code}]",
+            ok,
+            f"python {r1.status_code} {json.dumps(b1)[:600]}\n        rust   {r2.status_code} {json.dumps(b2)[:600]}",
+        )
         return r1, r2
 
     # --- Writes through each backend (distinct keys, masked comparison) -------------
@@ -600,6 +687,97 @@ async def main():
                 await s_.execute(text("DELETE FROM incident_management_alert_to_tag WHERE tag_id = :t"), {"t": tag_id})
                 await s_.execute(text("DELETE FROM incident_management_alerttag WHERE id = :t"), {"t": tag_id})
                 await s_.commit()
+
+    # --- Phase 1: customers, healthchecks, audit, version -----------------------------
+    print("\n=== customers / healthcheck / audit / version ===")
+    await same("customers: list (admin)", "GET", f"/api/customers?search={SFX}", t_admin)
+    await same("customers: list (analyst, scoped)", "GET", f"/api/customers?search={SFX}", t_analyst)
+    await same("customers: list, limit", "GET", f"/api/customers?search={SFX}&limit=1", t_admin)
+    await same("customers: list, limit=0", "GET", "/api/customers?limit=0", t_admin)
+    await same("customers: list, limit=abc", "GET", "/api/customers?limit=abc", t_admin)
+    await same("customers: list, wildcard search", "GET", f"/api/customers?search=PAR_%25{SFX}", t_admin)
+    await same("customers: list as portal user", "GET", "/api/customers", t_portal)
+    await same("customers: list without token", "GET", "/api/customers")
+    await same("customers: one", "GET", f"/api/customers/{CUST_A}", t_analyst)
+    await same("customers: one, case-insensitive code", "GET", f"/api/customers/{CUST_A.lower()}", t_admin)
+    await same("customers: other tenant", "GET", f"/api/customers/{CUST_B}", t_analyst)
+    await same("customers: unknown", "GET", f"/api/customers/nosuch{SFX}", t_admin)
+    await same("customers: meta", "GET", f"/api/customers/{CUST_A}/meta", t_analyst)
+    await same("customers: meta missing", "GET", f"/api/customers/{CUST_B}/meta", t_admin)
+    await same("customers: full", "GET", f"/api/customers/{CUST_A}/full", t_analyst)
+    await same("customers: full without meta", "GET", f"/api/customers/{CUST_B}/full", t_admin)
+    await same("customers: agents", "GET", f"/api/customers/{CUST_A}/agents", t_analyst)
+    await same("customers: agents, unknown customer", "GET", f"/api/customers/nosuch{SFX}/agents", t_admin)
+    await same("customers: wazuh health", "GET", f"/api/customers/{CUST_A}/agents/healthcheck/wazuh", t_analyst)
+    await same(
+        "customers: velociraptor health, 1 minute",
+        "GET",
+        f"/api/customers/{CUST_A}/agents/healthcheck/velociraptor?minutes=1",
+        t_analyst,
+    )
+    await same("customers: health, bad ints", "GET", f"/api/customers/{CUST_A}/agents/healthcheck/wazuh?minutes=x&days=1.5", t_admin)
+    await same("customers: health, other tenant", "GET", f"/api/customers/{CUST_B}/agents/healthcheck/wazuh?minutes=x", t_analyst)
+    await same("customers: health, unknown customer", "GET", f"/api/customers/nosuch{SFX}/agents/healthcheck/wazuh", t_admin)
+    await same("healthcheck: wazuh fleet (analyst)", "GET", "/api/healthcheck/wazuh", t_analyst)
+    await same("healthcheck: velociraptor fleet (analyst)", "GET", "/api/healthcheck/velociraptor?hours=1", t_analyst)
+    await same("healthcheck: wazuh fleet (admin)", "GET", "/api/healthcheck/wazuh?days=3650", t_admin)
+    await same("healthcheck: one agent", "GET", f"/api/healthcheck/velociraptor/pa{SFX}4", t_analyst)
+    await same("healthcheck: future check-in", "GET", f"/api/healthcheck/wazuh/pa{SFX}3", t_analyst)
+    await same("healthcheck: other tenant's agent", "GET", f"/api/healthcheck/wazuh/pb{SFX}1", t_analyst)
+    await same("healthcheck: unknown agent (scoped)", "GET", f"/api/healthcheck/wazuh/nope{SFX}", t_analyst)
+    await same("healthcheck: unknown agent (admin)", "GET", f"/api/healthcheck/wazuh/nope{SFX}", t_admin)
+    await same("healthcheck: bad window", "GET", "/api/healthcheck/wazuh?hours=abc", t_analyst)
+    await same("healthcheck: portal user", "GET", "/api/healthcheck/wazuh", t_portal)
+
+    audit = f"/api/audit?entity_id=par{SFX}"
+    await same("audit: list", "GET", audit, t_admin)
+    await same("audit: result filter", "GET", f"{audit}&result=failure", t_admin)
+    await same("audit: start_time with offset, paged", "GET", f"{audit}&start_time=2026-01-01T11:00:00%2B05:00&skip=1&limit=1", t_admin)
+    await same("audit: end_time as timestamp", "GET", f"{audit}&end_time=1767265200", t_admin)
+    await same("audit: date-only start", "GET", f"{audit}&start_time=2026-01-01", t_admin)
+    await same("audit: search", "GET", f"{audit}&search=ROW%201", t_admin)
+    await same("audit: customer filter", "GET", f"{audit}&customer_code={CUST_A}&actor_user_id=1&action=case.create", t_admin)
+    await same("audit: empty customer filter", "GET", f"{audit}&customer_codes=", t_admin)
+    await same("audit: bad datetime and limit", "GET", f"{audit}&start_time=abc&limit=0", t_admin)
+    await same("audit: bad datetimes", "GET", f"{audit}&start_time=2026-13-01&end_time=2026-01-02T25:00:00", t_admin)
+    await same("audit: bad user id and skip", "GET", f"{audit}&actor_user_id=x&skip=-1", t_admin)
+    await same("audit: analyst", "GET", audit, t_analyst)
+    await same("audit: no token", "GET", audit)
+    await same("audit: garbage token", "GET", audit, "garbage")
+    await same(
+        "audit: expired token",
+        "GET",
+        audit,
+        jwt.encode({"sub": ADMIN, "exp": 1}, os.environ["JWT_SECRET"], algorithm="HS256"),
+    )
+    await same("audit: 2fa temp token", "GET", audit, token(ADMIN, ["admin"], type="2fa_pending"))
+    await same("audit: unknown user", "GET", audit, token("nobody" + SFX, ["admin"]))
+    no_sub = jwt.encode(
+        {"exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1), "scopes": ["admin"]},
+        os.environ["JWT_SECRET"],
+        algorithm="HS256",
+    )
+    await same("audit: token without sub", "GET", audit, no_sub)
+    await same("audit: vocabularies", "GET", "/api/audit/actions", t_admin)
+    await same("audit: vocabularies (analyst)", "GET", "/api/audit/actions", t_analyst)
+    async with AsyncSession(async_engine) as s_:
+        audit_id = (await s_.execute(text("SELECT MIN(id) FROM audit_log WHERE entity_id = :e"), {"e": f"par{SFX}"})).scalar_one()
+    await same("audit: one entry", "GET", f"/api/audit/{audit_id}", t_admin)
+    await same("audit: unknown entry", "GET", "/api/audit/999999999", t_admin)
+    await same("audit: entry id parsing", "GET", "/api/audit/abc", t_admin)
+
+    for label, payload in (
+        ("outdated", {"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://example.com/r", "body": None}),
+        (
+            "up to date",
+            {"tag_name": "0.1.98.0", "name": "x", "html_url": "https://example.com/r", "published_at": "2026-10-01T00:00:00Z", "body": "n"},
+        ),
+        ("unparseable tag", {"tag_name": "latest", "name": "latest", "html_url": None}),
+        ("release without a name", {"tag_name": "v9.9.9", "name": None}),
+        ("not an object", ["v9.9.9"]),
+    ):
+        RELEASE[0] = payload
+        await same(f"version: {label}", "GET", "/api/version/check")
 
     # --- Deliberate differences ------------------------------------------------------
     print("\n=== differences by design ===")

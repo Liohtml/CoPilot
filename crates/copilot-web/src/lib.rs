@@ -5,7 +5,8 @@
 //!
 //! - [`error`]      — FastAPI/`exception_handlers.py` error envelopes
 //! - [`validate`]   — Pydantic-2-lax request validation and the 422 report
-//! - [`auth`]       — `require_any_scope` extractors and the current user
+//! - [`datetime`]   — Pydantic's `datetime` parsing (the same `speedate`)
+//! - [`auth`]       — `require_any_scope` / `get_current_user(scopes=…)` extractors
 //! - [`query`]      — query strings, `customer_codes_query`
 //! - [`context`]    — [`AppContext`], the shared dependencies
 //! - [`middleware`] — CORS, gzip, `log_entries` writes, security headers
@@ -29,13 +30,16 @@
 
 pub mod auth;
 pub mod context;
+pub mod datetime;
 pub mod error;
 pub mod middleware;
 pub mod query;
 pub mod respond;
 pub mod validate;
 
-pub use auth::{AdminOnly, AdminOrAnalyst, AnyPortalOrSoc, Authorized, CurrentUser, ScopeSet};
+pub use auth::{
+    AdminOnly, AdminOrAnalyst, AnyPortalOrSoc, Authorized, CurrentUser, ScopeSet, ScopedUser,
+};
 pub use context::{AppContext, AppDeps};
 pub use error::{ApiError, ApiResult};
 pub use query::QueryPairs;

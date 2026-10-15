@@ -411,8 +411,11 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-customer-portal",
+ "copilot-customers",
  "copilot-db",
  "copilot-gateway",
+ "copilot-healthchecks",
+ "copilot-platform",
  "copilot-talon",
  "copilot-web",
  "http",
@@ -494,6 +497,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-customers"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-healthchecks",
+ "copilot-web",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "copilot-db"
 version = "0.2.0"
 dependencies = [
@@ -524,6 +543,38 @@ dependencies = [
  "tower",
  "tracing",
  "url",
+ "wiremock",
+]
+
+[[package]]
+name = "copilot-healthchecks"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-core",
+ "copilot-db",
+ "copilot-web",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-platform"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-core",
+ "copilot-db",
+ "copilot-web",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
  "wiremock",
 ]
 
@@ -564,6 +615,8 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "speedate",
+ "strum",
  "thiserror",
  "tokio",
  "tower",
@@ -1337,6 +1390,31 @@ checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 dependencies = [
  "spin",
 ]
+
+[[package]]
+name = "lexical-parse-float"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52a9f232fbd6f550bc0137dcb5f99ab674071ac2d690ac69704593cb4abbea56"
+dependencies = [
+ "lexical-parse-integer",
+ "lexical-util",
+]
+
+[[package]]
+name = "lexical-parse-integer"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a7a039f8fb9c19c996cd7b2fcce303c1b2874fe1aca544edc85c4a5f8489b34"
+dependencies = [
+ "lexical-util",
+]
+
+[[package]]
+name = "lexical-util"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2604dd126bb14f13fb5d1bd6a66155079cb9fa655b37f875b3a742c705dbed17"
 
 [[package]]
 name = "libc"
@@ -2125,6 +2203,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "speedate"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aba069c070b5e213f2a094deb7e5ed50ecb092be36102a4f4042e8d2056d060e"
+dependencies = [
+ "lexical-parse-float",
+ "strum",
+ "strum_macros",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2359,6 +2448,27 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "strum"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
+dependencies = [
+ "strum_macros",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
 
 [[package]]
 name = "subtle"

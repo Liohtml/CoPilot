@@ -233,8 +233,97 @@ where
     }
 }
 
+/// `Security(AuthHandler().get_current_user, scopes=S::SCOPES)` — the other
+/// way a Python route is guarded. Unlike `require_any_scope` it needs
+/// **every** scope in `S`, and `get_current_user` reports token failures
+/// through its catch-all, so the texts differ:
+///
+/// | Condition | Status | Detail |
+/// |---|---|---|
+/// | no `Authorization: Bearer …` | 401 | `Not authenticated` |
+/// | expired / invalid / 2FA temp | 401 | `Could not decode token: 401: <reason>` |
+/// | no `sub` claim | 500 | — (Python's exception handler re-decodes the token and fails) |
+/// | no user row | 401 | `User not found` |
+/// | a scope of `S` missing | 403 | `Insufficient permissions. Required scope: <scope>` |
+#[derive(Debug)]
+pub struct ScopedUser<S: ScopeSet> {
+    /// The caller.
+    pub user: CurrentUser,
+    _scopes: PhantomData<S>,
+}
+
+impl<S: ScopeSet> std::ops::Deref for ScopedUser<S> {
+    type Target = CurrentUser;
+
+    fn deref(&self) -> &CurrentUser {
+        &self.user
+    }
+}
+
+/// Map `require_any_scope`'s texts to `get_current_user`'s.
+fn current_user_error(e: ApiError) -> ApiError {
+    match e {
+        ApiError::Http { status, detail } if status == http::StatusCode::UNAUTHORIZED => {
+            let text = detail.as_str().unwrap_or_default();
+            if text == "Not authenticated" || text == "User not found" {
+                ApiError::unauthorized(text)
+            } else {
+                ApiError::unauthorized(format!("Could not decode token: 401: {text}"))
+            }
+        }
+        other => other,
+    }
+}
+
+impl<S, St> FromRequestParts<St> for ScopedUser<S>
+where
+    S: ScopeSet,
+    AppContext: FromRef<St>,
+    St: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &St) -> Result<Self, Self::Rejection> {
+        let ctx = AppContext::from_ref(state);
+        let user = authenticate(parts, &ctx)
+            .await
+            .map_err(current_user_error)?;
+        if let Some(missing) = S::SCOPES.iter().find(|s| !user.has_any_scope(&[s])) {
+            return Err(ApiError::forbidden(format!(
+                "Insufficient permissions. Required scope: {missing}"
+            )));
+        }
+        parts.extensions.insert(user.clone());
+        Ok(Self {
+            user,
+            _scopes: PhantomData,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn get_current_user_wraps_token_failures() {
+        let text = |e: ApiError| current_user_error(e).to_string();
+        assert_eq!(
+            text(ApiError::unauthorized("Expired signature")),
+            "401: Could not decode token: 401: Expired signature"
+        );
+        assert_eq!(
+            text(ApiError::unauthorized("Invalid token")),
+            "401: Could not decode token: 401: Invalid token"
+        );
+        assert_eq!(
+            text(ApiError::unauthorized("Not authenticated")),
+            "401: Not authenticated"
+        );
+        assert_eq!(
+            text(ApiError::unauthorized("User not found")),
+            "401: User not found"
+        );
+    }
+
     use super::*;
 
     fn parts(auth: Option<&str>) -> Parts {
