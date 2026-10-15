@@ -25,7 +25,7 @@ file.
                        │ /api/auth/token*, /refresh, /2fa/*, /login,        │
                        │   /register, /users*, /reset-password*, /delete/*, │
                        │   /me/customers, /sso/*, /passkey/*,               │
-                       │   GET/DELETE /security/*  copilot-identity         │
+                       │   /security/*             copilot-identity         │
  Talon MCP tools  ───►│ /api/talon/*        copilot-talon ───────────────────► Talon :3100
                        │ /_copilot/health                                   │
                        │ anything else ──►   copilot-gateway (stream) ────────► Python backend
@@ -79,13 +79,14 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-db` | `app/db/db_session.py`, `universal_models.py` (`AiAnalyst*`, `CustomerPortalAi*`), `connectors` + cache, `audit_log`, `log_entries`, `alert_visibility_filters_for_user` | sqlx MySQL pool, cross-cutting tables, schema checks, alert visibility as SQL (`visibility.rs`) |
 | `copilot-auth` | `app/auth/utils.py`, `app/auth/services/totp.py` (crypto), `app/middleware/customer_access.py`, `app/incidents/middleware/tag_access.py`, PyJWT's RS256 path | JWT (HS256, incl. the 2FA temp token), RS256 identity-provider tokens and JWKS (`jws.rs`, `rsa.rs`), bcrypt, Fernet, pyotp-compatible TOTP, CPython's lenient base64 (`pybase64.rs`) and `json.loads` values (`pyvalue.rs`), `AccessScope` (tenant decisions), tag RBAC (`tags.rs`) |
 | `copilot-web` | `exception_handlers.py`, `require_any_scope`, Pydantic validation (incl. `EmailStr`), FastAPI/Starlette body reading | axum glue: error envelope, Pydantic-lax validator and 422 report, `EmailStr` (`email.rs`, email-validator), JSON and form bodies read before the dependencies (`body.rs`, `form.rs`, `pyjson.rs`), `urllib` quoting, Starlette redirects and cookies (`pyurl.rs`), auth extractors, middleware |
+| `copilot-jinja` | Jinja2 3.1.6 `SandboxedEnvironment(undefined=StrictUndefined)`, MarkupSafe 3.0, `app/notifications/services/rendering.py` | the template language operators write (today the temporary-password email): lexer, parser, a compiler with Jinja's scoping and constant folding, a VM with Python 3.11 value semantics, and the renderer's 64 KiB output cap; `jinja_vectors.json` (`scripts/gen-jinja-vectors.py`) pins 642 renders and errors |
 | `copilot-talon` | `app/connectors/talon/` | **the Talon contract** (`contract.rs`), client, `/api/talon/*` |
 | `copilot-ai-analyst` | `app/ai_analyst/`, palace drainer/sweeper jobs | `/api/ai_analyst/*` (25 routes), consolidation digest, CPython-exact `difflib` |
 | `copilot-customer-portal` | `app/customer_portal/` (`ai_reports`, `ai_requests`) | `/api/customer_portal/ai_reports/*` (6 routes); every other portal path is still proxied |
 | `copilot-customers` | `app/customers/` (reads) | `GET /api/customers/*` (7 routes); creating, changing and deleting customers provisions Graylog/Grafana/Wazuh and stays in Python |
 | `copilot-healthchecks` | `app/healthchecks/agents/` (database half) | `GET /api/healthcheck/*` (4 routes); the classification is shared with the customer routes. `POST /logs` (Wazuh indexer) stays in Python |
 | `copilot-platform` | `app/version/`, `app/audit/` (reads) | `GET /api/version/check` (PEP 440 compare; `COPILOT_VERSION_CHECK_URL` points it at a mirror), `GET /api/audit`, `/actions`, `/{id}` |
-| `copilot-identity` | `app/auth/routes/auth.py`, `routes/totp.py`, `routes/customer_users.py`, `routes/sso.py`, `routes/passkey.py`, `routes/security_admin.py`, `services/totp.py`, `services/customer_assignment.py`, `services/sso.py`, `services/passkey.py`, `services/security_admin.py` | login (`/token`, `/token/customer-portal`, the deprecated JSON `/login`), `/refresh`, the six `/2fa/*` routes, user management (`/register`, `/users`, `/users/{id}`, `/reset-password`, `/reset-password/me`, `/delete/{id}`, `/users/{id}/role/by-name`, `/users/{id}/customers`, `/me/customers`), SSO (`/sso/*`: settings, allowlist, Azure, Google, Cloudflare Access), passkeys (`/passkey/*`), the admin Security tab's reads and 2FA reset (`GET`/`DELETE /security/*`); the enrolment QR code, the 2FA brute-force counter. Previewing and sending the temporary-password email (the `POST /security/*` routes) stays in Python for now |
+| `copilot-identity` | `app/auth/routes/auth.py`, `routes/totp.py`, `routes/customer_users.py`, `routes/sso.py`, `routes/passkey.py`, `routes/security_admin.py`, `services/totp.py`, `services/customer_assignment.py`, `services/sso.py`, `services/passkey.py`, `services/security_admin.py`, `services/temp_password_email.py`; the branding merge of `app/customer_portal/services/branding.py` and the palette of `customer_report_branding.py` | login (`/token`, `/token/customer-portal`, the deprecated JSON `/login`), `/refresh`, the six `/2fa/*` routes, user management (`/register`, `/users`, `/users/{id}`, `/reset-password`, `/reset-password/me`, `/delete/{id}`, `/users/{id}/role/by-name`, `/users/{id}/customers`, `/me/customers`), SSO (`/sso/*`: settings, allowlist, Azure, Google, Cloudflare Access), passkeys (`/passkey/*`), the admin Security tab (`/security/*`: users, SMTP status, 2FA reset, the temporary-password email's templates, preview and send over SMTP); the enrolment QR code, the 2FA brute-force counter |
 | `copilot-webauthn` | `webauthn` (py_webauthn 2.8), `cbor2`, the origin helpers of `app/auth/services/passkey.py` | registration and assertion verification (attestation `none`, `packed`, `fido-u2f`; py_webauthn's default algorithms ES256, ES512, EdDSA, RS256/384/512, PS256/384/512), cbor2-exact CBOR, options JSON, the relying-party/origin rules |
 | `copilot-gateway` | — | legacy proxy and notification bridge; deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `palace drain|sweep` |
@@ -250,6 +251,21 @@ customer's never). Its query is SQLAlchemy's, column list included, so
 MySQL's filesort orders same-second ties for both backends alike. A forced
 2FA reset writes the same `user.update` audit row.
 
+**Temporary-password email.** Preview and send resolve the customer and the
+template as the picker does and render through `copilot-jinja` with the
+variables of `build_extra_context`; `branding` is built only when the source
+names it, from the portal's field-by-field merge and the report palette. Send
+keeps Python's order: render, rotate, mail, audit. A template error is a 400
+that leaves the password alone; a refused delivery is a 502 after the
+rotation, with no audit row. What a recipient reads is smtplib's message:
+the plaintext first and the HTML as its `multipart/alternative`, each text
+part's lines ended as `EmailMessage.set_content` ends them, and no blank lines
+after a single-part body (lettre ends a message with a CRLF of its own and
+the DATA terminator with another; the message goes out with `send_raw`
+without them). The parity harness runs an SMTP stand-in and compares both
+backends' mails decoded, the password masked and then checked against the
+stored hash.
+
 **Alert visibility.** One definition, as in Python:
 `copilot_db::visibility::AlertVisibility` (customer scoping *and* tag RBAC,
 `alert_visibility_filters_for_user`) for lists and counts, and
@@ -321,6 +337,10 @@ not provoked.
 | an identity provider answering with something that is no token response or JWKS | sometimes the parser's or `ValueError`'s text (Cloudflare: 401) | the generic message (Cloudflare: 500) | an upstream failure, not the user's |
 | SSO `state` timestamp | `datetime.utcnow().timestamp()`, read as local time | the Unix epoch | identical on a UTC host (the image) |
 | semantic CBOR tags (dates, decimals, …) inside a credential | converted by cbor2 | kept as tags | no authenticator sends them |
+| `POST /security/users/{id}/send-temp-password`, delivery refused | 502, the reason being `str()` of the smtplib exception (`{'a@b.example': (550, b'…')}`) | 502, the same sentence up to the colon, then lettre's text (`permanent error (550): …`) | the reason is the SMTP library's |
+| temporary-password email `branding`, a logo but no brand colour | the colour Pillow derives from the logo | the SOCFortress orange (`#fc862e`), with a warning in the log | Pillow's decoders and median-cut quantizer are not ported; a brand colour gives both the same palette |
+| a template that loops or recurses without end | runs until the worker gives up, or `RecursionError` at Python's frame limit | `RuntimeError` after 5,000,000 loop iterations and macro calls; `RecursionError` near, not exactly at, the same depth; a value over 64 MiB is a `MemoryError` before it is built | a template cannot hold a worker (`copilot-jinja`'s `tests/limits.rs`) |
+| a template Jinja compiles into invalid Python (`{{ x[1:2, 3] }}`) | `SyntaxError: invalid syntax (<template>, line N)`, N a line of the generated module | `SyntaxError: invalid syntax (<template>)` | there is no generated module (`tests/limits.rs`) |
 
 ---
 
@@ -359,7 +379,7 @@ Python backend today: ~200 k lines in 930 files.
 |---|---|---|
 | **0 — done** | foundation; `ai_analyst` (2.4 k), `connectors/talon` | the Talon integration surface |
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
-| **2 — in progress** | `auth` (5 k). **Done** (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab's reads and 2FA reset. **Next:** the temporary-password email (`POST /auth/security/*`: template rendering, SMTP) | the login slice moved as one so the 2FA counter lives in one process |
+| **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
 | 3 | `notifications` (7.2 k) — retires the bridge; `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust |
 | 4 | `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |

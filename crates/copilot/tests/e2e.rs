@@ -4419,3 +4419,324 @@ async fn smtp_settings_are_read_per_request() {
         .await;
     assert_eq!(body["configured"], false);
 }
+
+/// What [`smtp_stub`] received: `(recipients, DATA)`.
+type Mailbox = std::sync::Arc<std::sync::Mutex<Vec<(Vec<String>, String)>>>;
+
+/// A recording SMTP server: `250` to everything, `550` for a recipient
+/// containing "reject".
+async fn smtp_stub() -> (u16, Mailbox) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let mailbox: Mailbox = Default::default();
+    let inbox = mailbox.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            let inbox = inbox.clone();
+            tokio::spawn(async move {
+                let (read, mut write) = stream.into_split();
+                let mut lines = BufReader::new(read);
+                write.write_all(b"220 stub ESMTP\r\n").await.unwrap();
+                let mut rcpts = Vec::new();
+                loop {
+                    let mut line = String::new();
+                    if lines.read_line(&mut line).await.unwrap_or(0) == 0 {
+                        return;
+                    }
+                    let upper = line.to_ascii_uppercase();
+                    let reply: &[u8] = if upper.starts_with("EHLO") {
+                        b"250-stub\r\n250 8BITMIME\r\n"
+                    } else if upper.starts_with("RCPT") && line.contains("reject") {
+                        b"550 5.1.1 no such user\r\n"
+                    } else if upper.starts_with("RCPT") {
+                        rcpts.push(line.trim().to_string());
+                        b"250 OK\r\n"
+                    } else if upper.starts_with("DATA") {
+                        write.write_all(b"354 go\r\n").await.unwrap();
+                        let mut data = String::new();
+                        loop {
+                            let mut l = String::new();
+                            lines.read_line(&mut l).await.unwrap();
+                            if l == ".\r\n" {
+                                break;
+                            }
+                            data.push_str(&l);
+                        }
+                        inbox
+                            .lock()
+                            .unwrap()
+                            .push((std::mem::take(&mut rcpts), data));
+                        b"250 queued\r\n"
+                    } else if upper.starts_with("QUIT") {
+                        write.write_all(b"221 bye\r\n").await.unwrap();
+                        return;
+                    } else {
+                        b"250 OK\r\n"
+                    };
+                    write.write_all(reply).await.unwrap();
+                }
+            });
+        }
+    });
+    (port, mailbox)
+}
+
+#[tokio::test]
+async fn temp_password_email_preview_and_send() {
+    let (port, mailbox) = smtp_stub().await;
+    let h = harness_or_skip!(
+        None,
+        &format!(
+            "SMTP_HOST=127.0.0.1\nSMTP_PORT={port}\nSMTP_USE_TLS=false\nSMTP_FROM=copilot@e2e.test\n"
+        )
+    );
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&h.code("admin"), "admin");
+    let acme = h.code("acme");
+    let beta = h.code("beta");
+    let portal_id = h
+        .scalar_i64(&format!(
+            "SELECT id FROM `user` WHERE username = 'portal{s}'"
+        ))
+        .await;
+    let base = format!("/api/auth/security/users/{portal_id}");
+    // Shared templates from other tests would be resolved first; this test
+    // needs the "no template" case.
+    h.exec(
+        "DELETE FROM notification_template WHERE `trigger` = 'temp_password_issued' \
+         AND customer_code IS NULL",
+    )
+    .await;
+
+    // No template: the plaintext body, with the placeholder password.
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("{base}/temp-password-email/preview"),
+            Some(&admin),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200, "{body}");
+    assert_eq!(
+        body,
+        json!({
+            "subject": "CoPilot — temporary password",
+            "body": format!(
+                "Hello portal{s},\n\nAn administrator has issued a temporary password for your CoPilot \
+                 account.\n\nTemporary password: PREVIEW-Not-A-Real-Password\n\nFor your security, please \
+                 sign in with this password and change it immediately.\nIf you did not expect this \
+                 change, contact your security team.\n"
+            ),
+            "format": "text",
+            "error": null,
+            "success": true,
+            "message": "Rendered",
+        })
+    );
+
+    // The customer's HTML template, with its branding.
+    h.exec(&format!(
+        "INSERT INTO customer_portal_branding (customer_code, enabled, title, brand_color, updated_at) \
+         VALUES ('{acme}', 1, 'Acme <Portal>', '#2563eb', UTC_TIMESTAMP())"
+    ))
+    .await;
+    let good = h
+        .exec(&format!(
+            "INSERT INTO notification_template (name, `trigger`, format, subject_template, body_template, \
+             customer_code, is_default, created_at, updated_at) VALUES ('good{s}', 'temp_password_issued', \
+             'html', 'Hi {{{{ user_name }}}}\\n  at {{{{ customer_name }}}}', \
+             '<p>PW[{{{{ temp_password }}}}]</p><a href=\"{{{{ login_url }}}}\">{{{{ branding.title }}}}</a>\
+             <i>{{{{ branding.accent_strong }}}}</i>', '{acme}', 0, UTC_TIMESTAMP(), UTC_TIMESTAMP())"
+        ))
+        .await;
+    let broken = h
+        .exec(&format!(
+            "INSERT INTO notification_template (name, `trigger`, format, body_template, customer_code, \
+             is_default, created_at, updated_at) VALUES ('broken{s}', 'temp_password_issued', 'text', \
+             '{{{{ nope }}}}', '{acme}', 0, UTC_TIMESTAMP(), '2020-01-01 00:00:00')"
+        ))
+        .await;
+    let theirs = h
+        .exec(&format!(
+            "INSERT INTO notification_template (name, `trigger`, format, body_template, customer_code, \
+             is_default, created_at, updated_at) VALUES ('theirs{s}', 'temp_password_issued', 'text', \
+             'x', '{beta}', 0, UTC_TIMESTAMP(), UTC_TIMESTAMP())"
+        ))
+        .await;
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("{base}/temp-password-email/preview"),
+            Some(&admin),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200, "{body}");
+    assert_eq!(body["subject"], json!(format!("Hi portal{s} at acme corp")));
+    assert_eq!(body["format"], "html");
+    assert_eq!(
+        body["body"],
+        json!(
+            "<p>PW[PREVIEW-Not-A-Real-Password]</p><a href=\"https://copilot.example.com/login\">\
+             Acme &lt;Portal&gt;</a><i>#2563eb</i>"
+        )
+    );
+
+    // A template that fails shows its error; one that is another customer's is refused.
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("{base}/temp-password-email/preview"),
+            Some(&admin),
+            Some(json!({"template_id": broken, "customer_code": acme})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({
+                "subject": null,
+                "body": "",
+                "format": "text",
+                "error": "UndefinedError: 'nope' is undefined",
+                "success": false,
+                "message": "Template failed to render",
+            })
+        )
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("{base}/temp-password-email/preview"),
+            Some(&admin),
+            Some(json!({"template_id": theirs})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            400,
+            json!(format!(
+                "That template belongs to customer '{beta}', not '{acme}'."
+            ))
+        )
+    );
+    // The path and the body are validated together.
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/security/users/abc/temp-password-email/preview",
+            Some(&admin),
+            Some(json!({"template_id": "x"})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 422);
+    let fields: Vec<&str> = body["details"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["field"].as_str().unwrap())
+        .collect();
+    assert_eq!(fields, ["user_id", "template_id"], "{body}");
+
+    // Sending with the broken template changes nothing.
+    let password_before =
+        sqlx::query_scalar::<_, String>("SELECT password FROM `user` WHERE id = ?")
+            .bind(portal_id)
+            .fetch_one(h.db.pool())
+            .await
+            .unwrap();
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("{base}/send-temp-password"),
+            Some(&admin),
+            Some(json!({"template_id": broken})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            400,
+            json!(
+                "The email template could not be rendered, so nothing was sent and the password was left \
+                 unchanged: UndefinedError: 'nope' is undefined"
+            )
+        )
+    );
+    assert!(mailbox.lock().unwrap().is_empty());
+
+    // No body: the customer's template, emailed; the password works.
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("{base}/send-temp-password"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"success": true, "message": "A temporary password has been emailed to portal@example.com."})
+        )
+    );
+    let (rcpts, data) = mailbox.lock().unwrap().pop().unwrap();
+    assert_eq!(rcpts, ["RCPT TO:<portal@example.com>"]);
+    assert!(data.contains("multipart/alternative"), "{data}");
+    assert!(
+        data.contains(&format!("Subject: Hi portal{s} at acme corp")),
+        "{data}"
+    );
+    let start = data.find("PW[").unwrap_or_else(|| panic!("{data}")) + 3;
+    let password = &data[start..start + data[start..].find(']').unwrap()];
+    let hash = sqlx::query_scalar::<_, String>("SELECT password FROM `user` WHERE id = ?")
+        .bind(portal_id)
+        .fetch_one(h.db.pool())
+        .await
+        .unwrap();
+    assert_ne!(hash, password_before);
+    assert!(
+        copilot_auth::password::verify_password(password, &hash),
+        "{password}"
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let audited = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'user.update' AND entity_id = 'portal{s}' \
+             AND details = 'Temporary password issued and emailed by admin using template ''good{s}'''"
+        ))
+        .await;
+    assert_eq!(audited, 1);
+    let _ = good;
+
+    // A refused recipient: the password was already reset, and the answer says so.
+    h.exec(&format!(
+        "UPDATE `user` SET email = 'reject@example.com' WHERE id = {portal_id}"
+    ))
+    .await;
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("{base}/send-temp-password"),
+            Some(&admin),
+            Some(Value::Null),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 502, "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("The password was reset but the email could not be sent: "),
+        "{body}"
+    );
+}

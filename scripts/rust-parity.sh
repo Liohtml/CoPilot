@@ -31,6 +31,7 @@ env -i PATH="$PATH" HOME="$HOME" \
   WEBAUTHN_ORIGINS=http://localhost:5173 WEBAUTHN_RP_ID=localhost \
   COPILOT_SSO_IDP_URL="http://127.0.0.1:${IDP_STUB_PORT}" \
   SMTP_HOST=127.0.0.1 SMTP_PORT="$SMTP_STUB_PORT" SMTP_USE_TLS=false SMTP_FROM=copilot@parity.test \
+  COPILOT_URL=https://copilot.parity.test/ \
   COPILOT_VERSION_CHECK_URL="http://127.0.0.1:${RELEASE_STUB_PORT}/releases/latest" \
   RUST_LOG="${RUST_LOG:-warn}" ./target/debug/copilot --root /nonexistent serve &
 RS_PID=$!

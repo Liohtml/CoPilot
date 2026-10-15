@@ -69,6 +69,8 @@ http = "1"
 
 # --- text ---
 regex = "1"
+# `rustls-native-certs`: STARTTLS trusts the system store, like `ssl.create_default_context()`.
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "rustls-native-certs", "hostname"] }
 
 # --- crypto / ids ---
 subtle = "2"

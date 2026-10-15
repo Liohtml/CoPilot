@@ -18,7 +18,7 @@
 //! | `POST /api/auth/login` (deprecated, JSON) | `login` | none |
 //! | `/api/auth/sso/*` | `routes/sso.py` | see [`sso_routes`] |
 //! | `/api/auth/passkey/*` | `routes/passkey.py` | see [`passkey_routes`] |
-//! | `GET`/`DELETE /api/auth/security/*` | `routes/security_admin.py` | admin, see [`security_routes`] |
+//! | `/api/auth/security/*` | `routes/security_admin.py` | admin, see [`security_routes`] |
 //!
 //! Tokens are the ones Python issues (`copilot_auth::jwt`): a session token
 //! from either backend works on both. The 2FA secrets stay readable by both

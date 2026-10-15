@@ -24,6 +24,7 @@ pub mod agents;
 pub mod ai_analyst;
 pub mod alerts;
 pub mod audit;
+pub mod branding;
 pub mod connectors;
 pub mod customer_portal;
 pub mod customers;

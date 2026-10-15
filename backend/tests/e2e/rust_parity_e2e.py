@@ -19,10 +19,14 @@ import io
 import json
 import os
 import re
+import socketserver
 import sys
 import threading
 import uuid
 from collections import Counter
+from email import message_from_bytes
+from email import policy as email_policy
+from html import unescape as html_unescape
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 
@@ -37,6 +41,7 @@ os.environ.setdefault("SMTP_HOST", "127.0.0.1")
 os.environ.setdefault("SMTP_PORT", os.environ.get("SMTP_STUB_PORT", "5196"))
 os.environ.setdefault("SMTP_USE_TLS", "false")
 os.environ.setdefault("SMTP_FROM", "copilot@parity.test")
+os.environ.setdefault("COPILOT_URL", "https://copilot.parity.test/")
 
 import bcrypt  # noqa: E402
 import httpx  # noqa: E402
@@ -210,6 +215,48 @@ def start_idp_stub():
 
     real = httpx.AsyncClient
     sso_service.httpx = types.SimpleNamespace(AsyncClient=lambda **kw: real(transport=_ToIdpStub(), **kw))
+
+
+# SMTP stand-in for the temporary-password email, on the port both backends are given
+# (SMTP_HOST/SMTP_PORT above for Python, the same variables from scripts/rust-parity.sh for
+# Rust). It accepts every recipient but one containing "reject" and keeps each message.
+MAILS = []
+
+
+class _SmtpStub(socketserver.StreamRequestHandler):
+    def handle(self):
+        self.wfile.write(b"220 parity ESMTP\r\n")
+        rcpts = []
+        while line := self.rfile.readline():
+            verb = line[:4].upper()
+            if verb == b"EHLO":
+                reply = b"250-parity\r\n250 8BITMIME\r\n"
+            elif verb == b"RCPT" and b"reject" in line:
+                reply = b"550 5.1.1 mailbox unavailable\r\n"
+            elif verb == b"RCPT":
+                rcpts.append(re.search(rb"<([^>]*)>", line).group(1).decode())
+                reply = b"250 OK\r\n"
+            elif verb == b"DATA":
+                self.wfile.write(b"354 go ahead\r\n")
+                data = []
+                while (chunk := self.rfile.readline()) not in (b".\r\n", b""):
+                    data.append(chunk[1:] if chunk.startswith(b".") else chunk)
+                MAILS.append((rcpts, message_from_bytes(b"".join(data), policy=email_policy.default)))
+                rcpts = []
+                reply = b"250 queued\r\n"
+            elif verb == b"QUIT":
+                self.wfile.write(b"221 bye\r\n")
+                return
+            else:
+                reply = b"250 OK\r\n"
+            self.wfile.write(reply)
+
+
+def start_smtp_stub():
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", int(os.environ["SMTP_PORT"])), _SmtpStub)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
 class Authenticator:
@@ -453,6 +500,7 @@ async def seed():
 async def main():
     start_release_stub()
     start_idp_stub()
+    start_smtp_stub()
     alerts = await seed()
     a, b = alerts[CUST_A], alerts[CUST_B]
     # raise_app_exceptions=False: an unhandled error is the bare 500 uvicorn would send.
@@ -2201,6 +2249,223 @@ async def main():
     await same("security: options, bad id", "GET", f"{SEC}/users/1.5/temp-password-email/options", t_admin)
     await same("security: options, analyst", "GET", OPT("on"), t_analyst)
 
+    # Temporary-password email: preview (placeholder password, nothing sent) and send
+    # (rotate, mail, audit). Each send goes to a pair of users, one per backend; the mails
+    # are compared decoded, with the generated password masked and then checked against
+    # the stored hash.
+    async with AsyncSession(async_engine) as s_:
+        for key, codes, mail in (
+            ("mail_py", [CUST_A], "mail_py@sec.example"),
+            ("mail_rs", [CUST_A], "mail_rs@sec.example"),
+            ("plain_py", [], "plain_py@sec.example"),
+            ("plain_rs", [], "plain_rs@sec.example"),
+            ("reject_py", [CUST_A], "reject_py@sec.example"),
+            ("reject_rs", [CUST_A], "reject_rs@sec.example"),
+            ("nomail", [CUST_A], ""),
+        ):
+            r = await s_.execute(
+                text(
+                    "INSERT INTO `user` (username, password, email, created_at, role_id) " "VALUES (:n, :p, :e, UTC_TIMESTAMP(), 4)",
+                ),
+                {"n": f"par_sec_{key}{SFX}", "p": bcrypt.hashpw(b"before", bcrypt.gensalt(4)).decode(), "e": mail},
+            )
+            sec_users[key] = r.lastrowid
+            for code in codes:
+                await s_.execute(
+                    text("INSERT INTO user_customer_access (user_id, customer_code, created_at) VALUES (:u, :c, UTC_TIMESTAMP())"),
+                    {"u": r.lastrowid, "c": code},
+                )
+        await s_.execute(
+            text(
+                "INSERT INTO customer_portal_branding (customer_code, enabled, title, brand_color, updated_at) "
+                "VALUES (:c, 1, 'Acme Portal', '#2563eb', UTC_TIMESTAMP())",
+            ),
+            {"c": CUST_A},
+        )
+        rich_body = (
+            '<h1 style="color: {{ branding.accent_strong }}">{{ branding.title }}</h1>\n'
+            "<p>Hello {{ user_name }} &lt;{{ user_email }}&gt;,</p>\n"
+            "<p>Your password: [[{{ temp_password }}]]</p>\n"
+            '{% if login_url %}<a href="{{ login_url }}">Sign in</a>{% endif %}<br/>\n'
+            "<ul>{% for k, v in branding|dictsort %}{% if v is string and v.startswith('#') %}"
+            "<li>{{ k }}={{ v }}</li>{% endif %}{% endfor %}</ul>\n"
+            "<script>alert(1)</script><STYLE>p{}</STYLE>\n"
+            "<div>{{ summary|truncate(30) }} — {{ organization_name }} &amp; {{ customer_name|upper }}</div>\n\n\n\n"
+            "<table><tr><td>{{ '<b>' ~ severity ~ '</b>' }}</td></tr></table>   \n{{ trigger }} {{ entity_type }}"
+        )
+        long_line = "Bitte ändern Sie es sofort — " * 6
+        for key, fmt, subject, body in (
+            ("rich", "html", "Hi {{ user_name }}\n  at {{ customer_name }} ({{ severity }})", rich_body),
+            (
+                "text",
+                "text",
+                "Grüße an {{ user_name }} — Ihr neues Passwort für {{ organization_name }} ist da, bitte sofort ändern",
+                "Hallo {{ user_name }},\r\nPasswort: [[{{ temp_password }}]]\r\n" + long_line + "\n<b>{{ login_url }}</b>\n\n",
+            ),
+            ("markdown", "markdown", None, "**{{ user_name }}**: [[{{ temp_password }}]] {{ '<i>' }}"),
+            ("preview_only", "html", "{{ dedupe_key }}", "{{ link_url }} {{ entity_id }} {{ subject }} {{ context.username }}"),
+            ("broken", "html", "S", "{{ nope }}"),
+            ("broken_subject", "text", "{{ 1 / 0 }}", "B"),
+            ("blank_subject", "text", "  {{ '' }}  \n ", "[[{{ temp_password }}]]"),
+            ("empty_html", "html", "Empty", ""),
+            ("quoted", "text", "Q", "[[{{ temp_password }}]]"),
+        ):
+            r = await s_.execute(
+                text(
+                    "INSERT INTO notification_template (name, description, `trigger`, format, subject_template, body_template, "
+                    "customer_code, is_default, created_by, created_at, updated_at) VALUES (:n, NULL, 'temp_password_issued', "
+                    ":f, :s, :b, :c, 0, 'par', '2026-01-01 00:00:00', '2025-01-01 00:00:00')",
+                ),
+                {"n": f"par it's {key} {SFX}" if key == "quoted" else f"par {key} {SFX}", "f": fmt, "s": subject, "b": body, "c": CUST_A},
+            )
+            tpl[key] = r.lastrowid
+        await s_.commit()
+
+    PRE = lambda key: f"{SEC}/users/{sec_users[key]}/temp-password-email/preview"  # noqa: E731
+    await same("security: preview, resolved template", "POST", PRE("on"), t_admin, {})
+    for key in ("rich", "text", "markdown", "preview_only", "broken", "broken_subject", "blank_subject", "empty_html"):
+        await same(f"security: preview, {key}", "POST", PRE("on"), t_admin, {"template_id": tpl[key]})
+    await same("security: preview, B chosen", "POST", PRE("two"), t_admin, {"customer_code": CUST_B})
+    await same("security: preview, B chosen, rich", "POST", PRE("two"), t_admin, {"customer_code": CUST_B, "template_id": tpl["rich"]})
+    await same("security: preview, no customer", "POST", PRE("plain_py"), t_admin, {"template_id": tpl["rich"]})
+    await same("security: preview, json template", "POST", PRE("on"), t_admin, {"template_id": tpl["shared_json"]})
+    await same("security: preview, other trigger", "POST", PRE("on"), t_admin, {"template_id": tpl["other_trigger"]})
+    await same("security: preview, other customer's", "POST", PRE("on"), t_admin, {"template_id": tpl["b_only"]})
+    await same("security: preview, unknown template", "POST", PRE("on"), t_admin, {"template_id": 999999999})
+    await same("security: preview, unknown user", "POST", f"{SEC}/users/999999999/temp-password-email/preview", t_admin, {})
+    await same("security: preview, bad id and body", "POST", f"{SEC}/users/x/temp-password-email/preview", t_admin, {"template_id": "x"})
+    await same("security: preview, no body", "POST", PRE("on"), t_admin)
+    r1 = await py.post(PRE("on"), headers={**H(t_admin), "Content-Type": "application/json"}, content=b"null")
+    r2 = await rs.post(PRE("on"), headers={**H(t_admin), "Content-Type": "application/json"}, content=b"null")
+    check(
+        f"security: preview, JSON null [{r1.status_code}]",
+        (r1.status_code, r1.json()) == (r2.status_code, r2.json()),
+        f"{r1.text} / {r2.text}",
+    )
+    await same("security: preview, list body", "POST", PRE("on"), t_admin, [])
+    await same("security: preview, analyst", "POST", PRE("on"), t_analyst, {})
+    await same("security: preview, no token", "POST", PRE("on"), None, {})
+
+    async def password_hash(key):
+        async with AsyncSession(async_engine) as s_:
+            return (await s_.execute(text("SELECT password FROM `user` WHERE id = :u"), {"u": sec_users[key]})).scalar_one()
+
+    def mail_view(msg):
+        if msg is None:
+            return None
+        parts = []
+        for part in msg.walk():
+            if part.is_multipart():
+                parts.append(part.get_content_type())
+            else:
+                parts.append([part.get_content_type(), part.get_content_charset(), part.get_content().replace("\r\n", "\n")])
+        return {"subject": str(msg["subject"]), "from": str(msg["from"]), "to": str(msg["to"]), "parts": parts}
+
+    def scrub(value, tag):
+        if isinstance(value, dict):
+            return {k: scrub(v, tag) for k, v in value.items()}
+        if isinstance(value, list):
+            return [scrub(v, tag) for v in value]
+        if isinstance(value, str):
+            value = value.replace(f"_{tag}", "_X")
+            value = re.sub(r"\[\[.*?\]\]", "[[PW]]", value)
+            return re.sub(r"Temporary password: \S+", "Temporary password: PW", value)
+        return value
+
+    def passwords_in(msg):
+        found = set()
+        for part in msg.walk():
+            if not part.is_multipart():
+                body = part.get_content()
+                unescape = html_unescape if part.get_content_subtype() == "html" else str
+                found.update(unescape(p) for p in re.findall(r"\[\[(.*?)\]\]", body))
+                found.update(re.findall(r"Temporary password: (\S+)", body))
+        return found
+
+    async def send_pair(name, key, body=None, sent=True, with_password=True):
+        """POST send-temp-password for `<key>_py` on Python and `<key>_rs` on Rust."""
+        MAILS.clear()
+        before = {tag: await password_hash(f"{key}_{tag}") for tag in ("py", "rs")}
+        kw = {"headers": H(t_admin)} if body is None else {"headers": H(t_admin), "json": body}
+        resp = {
+            "py": await py.post(f"{SEC}/users/{sec_users[f'{key}_py']}/send-temp-password", **kw),
+            "rs": await rs.post(f"{SEC}/users/{sec_users[f'{key}_rs']}/send-temp-password", **kw),
+        }
+        out = {tag: scrub(body_of(r), tag) for tag, r in resp.items()}
+        check(
+            f"security: send, {name} [{resp['py'].status_code}]",
+            resp["py"].status_code == resp["rs"].status_code and out["py"] == out["rs"],
+            f"python {resp['py'].status_code} {out['py']}\n        rust   {resp['rs'].status_code} {out['rs']}",
+        )
+        mails = {tag: next((m for rcpts, m in MAILS if rcpts == [f"{key}_{tag}@sec.example"]), None) for tag in ("py", "rs")}
+        views = {tag: scrub(mail_view(m), tag) for tag, m in mails.items()}
+        check(f"security: send, {name}: same mail", views["py"] == views["rs"], f"{views['py']}\n        {views['rs']}")
+        check(f"security: send, {name}: {'one mail each' if sent else 'nothing sent'}", (len(MAILS) == 2) == sent, str(len(MAILS)))
+        for tag, m in mails.items():
+            after = await password_hash(f"{key}_{tag}")
+            if m is None or not with_password:
+                continue
+            pws = passwords_in(m)
+            ok = len(pws) == 1 and bcrypt.checkpw(next(iter(pws)).encode(), after.encode())
+            check(f"security: send, {name}: {tag} mail carries the stored password", ok, str(pws))
+        return resp, before
+
+    resp, _ = await send_pair("rich template", "mail", {"template_id": tpl["rich"]})
+    await send_pair("text template", "mail", {"template_id": tpl["text"]})
+    await send_pair("markdown template", "mail", {"template_id": tpl["markdown"]})
+    await send_pair("blank subject", "mail", {"template_id": tpl["blank_subject"]})
+    await send_pair("quoted name", "mail", {"template_id": tpl["quoted"], "customer_code": CUST_A})
+    await send_pair("empty html", "mail", {"template_id": tpl["empty_html"]}, with_password=False)
+    _, before = await send_pair("broken template", "mail", {"template_id": tpl["broken"]}, sent=False)
+    check(
+        "security: send, broken template leaves the password",
+        all([before[tag] == await password_hash(f"mail_{tag}") for tag in ("py", "rs")]),
+    )
+    await send_pair("broken subject", "mail", {"template_id": tpl["broken_subject"]}, sent=False)
+    await send_pair("other customer's template", "mail", {"template_id": tpl["b_only"]}, sent=False)
+    await send_pair("unknown template", "mail", {"template_id": 999999999}, sent=False)
+    # The built-in plaintext: a user with no customer, once the shared templates are gone.
+    async with AsyncSession(async_engine) as s_:
+        await s_.execute(text("DELETE FROM notification_template WHERE `trigger` = 'temp_password_issued' AND customer_code IS NULL"))
+        await s_.commit()
+    await send_pair("built-in body, no request body", "plain")
+    r1 = await py.post(
+        f"{SEC}/users/{sec_users['plain_py']}/send-temp-password",
+        headers={**H(t_admin), "Content-Type": "application/json"},
+        content=b"null",
+    )
+    r2 = await rs.post(
+        f"{SEC}/users/{sec_users['plain_rs']}/send-temp-password",
+        headers={**H(t_admin), "Content-Type": "application/json"},
+        content=b"null",
+    )
+    check(
+        f"security: send, JSON null [{r1.status_code}]",
+        r1.status_code == r2.status_code == 200 and scrub(r1.json(), "py") == scrub(r2.json(), "rs"),
+        f"{r1.text} / {r2.text}",
+    )
+    await send_pair("built-in body, empty object", "plain", {})
+    await same("security: send, no email", "POST", f"{SEC}/users/{sec_users['nomail']}/send-temp-password", t_admin)
+    await same("security: send, unknown user", "POST", f"{SEC}/users/999999999/send-temp-password", t_admin)
+    await same("security: send, bad id and body", "POST", f"{SEC}/users/x/send-temp-password", t_admin, {"template_id": "x"})
+    await same("security: send, list body", "POST", f"{SEC}/users/{sec_users['nomail']}/send-temp-password", t_admin, [])
+    await same("security: send, analyst", "POST", f"{SEC}/users/{sec_users['nomail']}/send-temp-password", t_analyst)
+    await same("security: send, no token", "POST", f"{SEC}/users/{sec_users['nomail']}/send-temp-password")
+    await asyncio.sleep(0.5)  # the Rust service writes audit rows from a spawned task
+    async with AsyncSession(async_engine) as s_:
+        rows = (
+            await s_.execute(
+                text(
+                    "SELECT entity_id, actor_username, action, entity_type, result, details, old_value, new_value "
+                    "FROM audit_log WHERE entity_id IN (:a, :b) ORDER BY id",
+                ),
+                {"a": f"par_sec_mail_py{SFX}", "b": f"par_sec_mail_rs{SFX}"},
+            )
+        ).all()
+        left = [r[1:] for r in rows if r[0].startswith("par_sec_mail_py")]
+        right = [r[1:] for r in rows if r[0].startswith("par_sec_mail_rs")]
+        check("security: send audit rows", left == right and len(left) == 6, f"{left}\n        {right}")
+
     # --- Deliberate differences ------------------------------------------------------
     print("\n=== differences by design ===")
     r1, r2 = await both("GET", "/api/ai_analyst/alerts_with_reports", t_analyst)
@@ -2210,6 +2475,55 @@ async def main():
     check("  (python leaks other tenants here — the bug being fixed)", CUST_B not in py_codes or CUST_B in py_codes)
     r1, r2 = await both("GET", f"/api/talon/jobs/{b}", t_analyst)
     check("talon/jobs: Rust refuses another tenant's alert", r2.status_code == 403, f"python {r1.status_code}, rust {r2.status_code}")
+    # A refused delivery: same status and sentence, and the password was rotated on both, but
+    # the reason after the colon is the SMTP library's (Python's is `str()` of an smtplib
+    # exception, a dict of bytes reprs).
+    prefix = "The password was reset but the email could not be sent: "
+    before = {tag: await password_hash(f"reject_{tag}") for tag in ("py", "rs")}
+    r1 = await py.post(f"{SEC}/users/{sec_users['reject_py']}/send-temp-password", headers=H(t_admin))
+    r2 = await rs.post(f"{SEC}/users/{sec_users['reject_rs']}/send-temp-password", headers=H(t_admin))
+    m1, m2 = r1.json().get("message", ""), r2.json().get("message", "")
+    check(
+        f"send-temp-password: refused recipient, 502 on both, SMTP error text differs [{r1.status_code}]",
+        r1.status_code == r2.status_code == 502 and m1.startswith(prefix) and m2.startswith(prefix) and "550" in m1 and "550" in m2,
+        f"python {r1.status_code} {r1.text}\n        rust   {r2.status_code} {r2.text}",
+    )
+    print(f"        python: {m1[len(prefix):]}\n        rust:   {m2[len(prefix):]}")
+    check(
+        "  (the password was rotated before the delivery failed, on both)",
+        all([before[tag] != await password_hash(f"reject_{tag}") for tag in ("py", "rs")]),
+    )
+    # A logo but no brand colour: Python derives the accent from the logo's pixels (Pillow),
+    # Rust uses the default palette. Everything but the colours is the same.
+    png = io.BytesIO()
+    Image.new("RGB", (4, 4), (200, 30, 30)).save(png, "PNG")
+    red_png = base64.b64encode(png.getvalue()).decode()
+    async with AsyncSession(async_engine) as s_:
+        await s_.execute(
+            text(
+                "INSERT INTO customer_portal_branding (customer_code, enabled, title, logo_base64, logo_mime_type, updated_at) "
+                "VALUES (:c, 1, 'Beta Portal', :l, 'image/png', UTC_TIMESTAMP())",
+            ),
+            {"c": CUST_B, "l": red_png},
+        )
+        r = await s_.execute(
+            text(
+                "INSERT INTO notification_template (name, `trigger`, format, subject_template, body_template, customer_code, "
+                "is_default, created_by, created_at, updated_at) VALUES (:n, 'temp_password_issued', 'html', 'S', "
+                "'{% for k, v in branding|dictsort %}{{ k }}={{ v }};{% endfor %}', :c, 0, 'par', UTC_TIMESTAMP(), UTC_TIMESTAMP())",
+            ),
+            {"n": f"par logo {SFX}", "c": CUST_B},
+        )
+        logo_tpl = r.lastrowid
+        await s_.commit()
+    r1, r2 = await both("POST", PRE("two"), t_admin, {"customer_code": CUST_B, "template_id": logo_tpl})
+    b1, b2 = r1.json()["body"], r2.json()["body"]
+    hexless = lambda b: re.sub(r"#[0-9a-f]{6}", "#c", b)  # noqa: E731
+    check(
+        f"temp-password branding: logo colour derived by Python only [{r1.status_code}]",
+        r1.status_code == r2.status_code == 200 and b1 != b2 and hexless(b1) == hexless(b2) and "#fc862e" in b2,
+        f"{b1}\n        {b2}",
+    )
 
     await py.aclose()
     await rs.aclose()

@@ -7,18 +7,21 @@
 //! | `GET /security/smtp-status` | whether `SMTP_HOST` is set |
 //! | `DELETE /security/users/{user_id}/totp` | force-reset a user's 2FA (audited) |
 //! | `GET /security/users/{user_id}/temp-password-email/options` | the temporary-password templates that can serve the user, best first |
+//! | `POST /security/users/{user_id}/temp-password-email/preview` | the email rendered with a placeholder password |
+//! | `POST /security/users/{user_id}/send-temp-password` | issue a temporary password and email it (audited) |
 
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 
+use copilot_web::body::{JsonBody, WithJson};
 use copilot_web::validate::{StrRules, Validator, path_int};
-use copilot_web::{AdminOnly, ApiResult, Authorized, QueryPairs};
+use copilot_web::{AdminOnly, ApiError, ApiResult, Authorized, QueryPairs};
 
 use crate::IdentityState;
-use crate::security_schema::{Action, SecurityUsers, SmtpStatus};
-use crate::services::security;
+use crate::security_schema::{Action, SecurityUsers, SmtpStatus, TemplateChoice};
+use crate::services::{security, temp_password};
 
 type Admin = Authorized<AdminOnly>;
 
@@ -35,6 +38,62 @@ pub fn router() -> Router<IdentityState> {
             "/security/users/{user_id}/temp-password-email/options",
             get(template_options),
         )
+        .route(
+            "/security/users/{user_id}/temp-password-email/preview",
+            post(preview),
+        )
+        .route(
+            "/security/users/{user_id}/send-temp-password",
+            post(send_temp_password),
+        )
+}
+
+/// FastAPI validates the path and the body together: their errors are one
+/// 422.
+fn path_and_body<T>(
+    user_id: Result<i64, ApiError>,
+    body: Result<T, ApiError>,
+) -> Result<(i64, T), ApiError> {
+    match (user_id, body) {
+        (Ok(id), Ok(body)) => Ok((id, body)),
+        (Err(ApiError::Validation(mut a)), Err(ApiError::Validation(b))) => {
+            a.extend(b);
+            Err(ApiError::Validation(a))
+        }
+        (Err(e), _) | (_, Err(e)) => Err(e),
+    }
+}
+
+/// `Optional[SendTempPasswordRequest] = None`: no body (or `null`) is the
+/// empty choice.
+fn optional_choice(body: &JsonBody) -> Result<TemplateChoice, ApiError> {
+    match body {
+        JsonBody::Missing => Ok(TemplateChoice::default()),
+        other => other.model(TemplateChoice::read),
+    }
+}
+
+async fn preview(
+    State(st): State<IdentityState>,
+    Path(raw): Path<String>,
+    WithJson(_auth, body): WithJson<Admin>,
+) -> ApiResult {
+    let (user_id, choice) =
+        path_and_body(path_int("user_id", &raw), body.model(TemplateChoice::read))?;
+    Ok(json(temp_password::preview(&st, user_id, &choice).await?))
+}
+
+async fn send_temp_password(
+    State(st): State<IdentityState>,
+    Path(raw): Path<String>,
+    WithJson(auth, body): WithJson<Admin>,
+) -> ApiResult {
+    let (user_id, choice) = path_and_body(path_int("user_id", &raw), optional_choice(&body))?;
+    let message = temp_password::send(&st, &auth, user_id, &choice).await?;
+    Ok(json(Action {
+        success: true,
+        message,
+    }))
 }
 
 fn json<T: serde::Serialize>(body: T) -> Response {

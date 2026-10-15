@@ -8,7 +8,7 @@
 //!
 //! | Body | FastAPI | Here |
 //! |---|---|---|
-//! | empty | body `None` → `Field required` at `("body",)` | [`JsonBody::Missing`] |
+//! | empty, or JSON `null` | body `None` → `Field required` at `("body",)` | [`JsonBody::Missing`] |
 //! | `Content-Type` JSON (`application/json`, `*/*+json`), malformed | 422 `json_invalid` at `("body", pos)`, before auth | the extractor's rejection |
 //! | JSON content type, not UTF-8 | 400 `{"detail": "There was an error parsing the body"}` | the extractor's rejection |
 //! | any other or no `Content-Type` | raw bytes → `model_attributes_type` | [`JsonBody::NotJson`] |
@@ -79,8 +79,12 @@ impl JsonBody {
             return Err(invalid(pos));
         }
         // CPython accepts what serde_json cannot hold (NaN, lone surrogates).
+        // `null` decodes to `None`, which FastAPI cannot tell from no body.
         serde_json::from_str(text)
-            .map(Self::Value)
+            .map(|value| match value {
+                Value::Null => Self::Missing,
+                value => Self::Value(value),
+            })
             .map_err(|_| invalid(0))
     }
 
@@ -261,6 +265,7 @@ mod tests {
     fn read_follows_fastapi() {
         let ct = Some("application/json");
         assert_eq!(JsonBody::read(ct, b"").unwrap(), JsonBody::Missing);
+        assert_eq!(JsonBody::read(ct, b" null ").unwrap(), JsonBody::Missing);
         assert_eq!(JsonBody::read(None, b"{}").unwrap(), JsonBody::NotJson);
         assert_eq!(
             JsonBody::read(Some("text/plain"), b"{}").unwrap(),
