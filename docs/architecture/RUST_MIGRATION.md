@@ -89,7 +89,8 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-identity` | `app/auth/routes/auth.py`, `routes/totp.py`, `routes/customer_users.py`, `routes/sso.py`, `routes/passkey.py`, `routes/security_admin.py`, `services/totp.py`, `services/customer_assignment.py`, `services/sso.py`, `services/passkey.py`, `services/security_admin.py`, `services/temp_password_email.py`; the branding merge of `app/customer_portal/services/branding.py` and the palette of `customer_report_branding.py` | login (`/token`, `/token/customer-portal`, the deprecated JSON `/login`), `/refresh`, the six `/2fa/*` routes, user management (`/register`, `/users`, `/users/{id}`, `/reset-password`, `/reset-password/me`, `/delete/{id}`, `/users/{id}/role/by-name`, `/users/{id}/customers`, `/me/customers`), SSO (`/sso/*`: settings, allowlist, Azure, Google, Cloudflare Access), passkeys (`/passkey/*`), the admin Security tab (`/security/*`: users, SMTP status, 2FA reset, the temporary-password email's templates, preview and send over SMTP); the enrolment QR code, the 2FA brute-force counter |
 | `copilot-webauthn` | `webauthn` (py_webauthn 2.8), `cbor2`, the origin helpers of `app/auth/services/passkey.py` | registration and assertion verification (attestation `none`, `packed`, `fido-u2f`; py_webauthn's default algorithms ES256, ES512, EdDSA, RS256/384/512, PS256/384/512), cbor2-exact CBOR, options JSON, the relying-party/origin rules |
 | `copilot-gateway` | — | legacy proxy and notification bridge; deleted when the migration ends |
-| `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `palace drain|sweep` |
+| `copilot-scheduler` | `app/schedulers/` (`scheduler.py`, `routes/scheduler.py`, `utils/universal.py:record_job_success`), `app/audit/services/retention.py` | the job runner (APScheduler's interval semantics on tokio: fixed grid, coalesce, one instance, 1 s misfire grace), the hand-over rule and run lock, `/api/scheduler/*` (reads from APScheduler's `apscheduler_jobs` store through a read-only pickle decoder pinned by `apscheduler_vectors.json`, `scripts/gen-apscheduler-vectors.py`; run/start/pause), `prune_audit_log`; the palace jobs register from `copilot-ai-analyst`; `copilot jobs` and `doctor` list each job's owner |
+| `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
 
 Each module keeps CoPilot's `routes / services / schema` split.
 
@@ -290,11 +291,34 @@ builds the exact `NotificationEvent` the Python builders build
 accepts only the AI-analyst triggers, checks the alert's customer, and
 re-derives the dedupe key and link (`app/notifications/services/bridge.py`).
 
-**Scheduled jobs.** A job moves to Rust only by explicit hand-over: the Rust
-loop runs it when `COPILOT_RS_PALACE_JOBS=true` **and** the job's
-`scheduled_job_metadata` row is disabled (Scheduler UI), and stamps
-`last_success` so the UI stays truthful. Status flips are guarded on the
-previous status, so a lesson is never ingested or expired twice.
+**Scheduled jobs.** A job moves to Rust only by explicit hand-over, and never
+runs in both schedulers. Rust runs a job when the operator opted in
+(`COPILOT_RS_JOBS`: job ids or `all`; `COPILOT_RS_PALACE_JOBS=true` names the
+two palace jobs) **and** the job's deciding `scheduled_job_metadata` row (the
+lowest id) exists and is **disabled**; APScheduler runs it only while that row
+is enabled or absent. The Python half (`app/schedulers/handover.py`) is a guard
+on the job function itself, so it holds whichever `apscheduler_jobs` entry
+fires it — a disabled row alone never took a job out of APScheduler's store,
+and `initialize_job_metadata` used to re-enable every row at startup (it no
+longer does for these jobs). Both sides take the MySQL named lock
+`copilot_job:<SHA1(database/job)>` for the whole run and re-read the row under
+it: a scheduled tick that finds the lock held or the row not its own is
+skipped (Python returns `JOB_SKIPPED`, which the listener does not stamp), a
+manual run waits ten seconds and then answers 500 "already running" on either
+side; a run that dies drops the lock with its connection. Hand over with
+*Pause* in the Scheduler UI — through the Rust service, which forwards it to
+APScheduler and then disables the row; hand back with *Start* (the row is
+enabled first, and restored if Python refuses). Pausing a job Rust is not
+opted in for simply pauses it. Rust stamps `last_success` on the deciding row
+after each successful run of its own (a manual run only where the Python
+function stamps it, i.e. the palace jobs). Its runner follows APScheduler's
+interval semantics, with one change: the first run continues from the job's
+`last_success` (one interval after it, or a minute from now when overdue)
+instead of one interval after the process started, so a daily job on a host
+restarted daily still runs. Ported: `prune_audit_log`,
+`invoke_palace_lesson_drainer`, `invoke_palace_lesson_sweeper` (status flips
+guarded on the previous status, so a lesson is never ingested or expired
+twice). Run a single Rust instance with the opt-in.
 
 **Connector cache.** The Python backend invalidates its connector cache after
 each write but cannot reach the Rust process, so while a legacy backend is
@@ -320,6 +344,9 @@ not provoked.
 | TLS to Talon | `verify=False` | verified; `TALON_VERIFY_TLS=false` opts out | the request carries Talon's API key |
 | `triggered_by` of an investigation a person starts (analyst, replay, portal request) | not sent: Talon records the job as `webhook` | `manual` (Talon registers it so, Liohtml/talahon#4) | the job says who started it |
 | `GET /talon/jobs/{alert_id}/verdict` | — | Talon's structured verdict for the newest of the alert's jobs, tenancy-checked like `/jobs/{alert_id}` | Rust-only addition |
+| `POST /scheduler/pause/{id}`, `/start/{id}` of a job Rust can run | pauses/resumes APScheduler's job only; `scheduled_job_metadata.enabled` keeps its value (the Scheduler UI shows a paused job enabled again after a reload) | forwarded to Python, then `enabled` set to 0/1 | the flag is the hand-over switch; the UI's `enabled` becomes truthful |
+| `GET /scheduler/next_run/{id}` of a job Rust runs | APScheduler's copy, paused: the `ValidationError` 400 | Rust's next run | the job runs there |
+| a manual run of a job Rust runs that fails | 500 with `str()` of the Python exception | 500 with the Rust error's text | the driver's words (not provoked) |
 | palace search hits | numeric `id` → 400 | stringified | robustness |
 | "latest" row on a same-second tie (`alerts_with_reports/{alert_id}`, portal recent reports) | whichever row MySQL's plan reaches first — varies with the data | the newest id, the rule the portal's `MAX(id)` already uses | deterministic |
 | agent healthcheck clock | `datetime.now()`: the process's local time (UTC in the image) | UTC | the `*_last_seen` columns hold UTC; equal in the shipped image |
@@ -380,7 +407,7 @@ Python backend today: ~200 k lines in 930 files.
 | **0 — done** | foundation; `ai_analyst` (2.4 k), `connectors/talon` | the Talon integration surface |
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
-| 3 | `notifications` (7.2 k) — retires the bridge; `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust |
+| 3 | `notifications` (7.2 k) — retires the bridge; `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management` |
 | 4 | `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 
