@@ -12,6 +12,10 @@
 //!                      │ /register, /reset-password*, /me/customers,          │
 //!                      │ /sso/*, /passkey/*, /security/*                      │
 //!                      │                    → copilot-identity                │
+//!                      │ /api/notifications/*, notification routes, Shuffle   │
+//!                      │ integrations, dispatch log, channel catalog          │
+//!                      │                    → copilot-notifications ───────────► webhook, Teams,
+//!                      │ (every module emits in-process: DispatchingSink)     │   Resend, Shuffle
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -31,13 +35,14 @@ use serde_json::json;
 
 use copilot_auth::{Fernet, JwtCodec};
 use copilot_core::config::CopilotConfig;
-use copilot_core::notify::{NoopNotificationSink, SharedNotificationSink};
+use copilot_core::notify::SharedNotificationSink;
 use copilot_db::Db;
 use copilot_db::audit::DbAuditSink;
 use copilot_db::connectors::ConnectorCache;
 use copilot_db::schema::{self, TableRequirement};
-use copilot_gateway::{LegacyNotificationSink, LegacyProxy};
+use copilot_gateway::LegacyProxy;
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
+use copilot_notifications::{Dispatcher, DispatchingSink, NotificationsState};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
 use copilot_talon::{TalonConnector, TalonState};
@@ -68,6 +73,12 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/sso",
     "/api/auth/passkey",
     "/api/auth/security",
+    "/api/notifications",
+    "/api/notification_channels",
+    "/api/internal_notification_routes",
+    "/api/customers/{customer_code}/notification_routes",
+    "/api/customers/{customer_code}/notification_dispatch_log",
+    "/api/customers/{customer_code}/shuffle_integrations",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -87,6 +98,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::passkeys::REQUIREMENTS);
     all.extend_from_slice(copilot_db::security::REQUIREMENTS);
     all.extend_from_slice(copilot_db::branding::REQUIREMENTS);
+    all.extend_from_slice(copilot_notifications::db::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -122,6 +134,8 @@ pub struct App {
     pub version: VersionChecker,
     /// Login and 2FA state (the TOTP key, the brute-force counter).
     pub identity: IdentityState,
+    /// Notification dispatch (routes and the in-process sink).
+    pub dispatcher: Dispatcher,
     /// Legacy backend, if configured.
     pub legacy: Option<LegacyProxy>,
 }
@@ -141,10 +155,13 @@ impl App {
             cfg.connector_cache_ttl
         };
         let connectors = ConnectorCache::new(db.clone(), ttl);
-        let notifications: SharedNotificationSink = match &legacy {
-            Some(proxy) => Arc::new(LegacyNotificationSink::new(proxy.clone())),
-            None => Arc::new(NoopNotificationSink),
-        };
+        // Notifications are dispatched in-process, whatever else is ported.
+        let dispatcher = Dispatcher::new(db.clone(), connectors.clone(), cfg.notifications.clone())
+            .context("building the notification clients")?;
+        let notifications: SharedNotificationSink = Arc::new(DispatchingSink::new(
+            dispatcher.clone(),
+            JwtCodec::new(&cfg.jwt_secret),
+        ));
         // Verified unless explicitly disabled: the request carries Talon's
         // API key (Python used verify=False).
         let verify_tls = std::env::var("TALON_VERIFY_TLS")
@@ -204,6 +221,7 @@ impl App {
             talon,
             version,
             identity,
+            dispatcher,
             legacy,
         })
     }
@@ -241,6 +259,13 @@ impl App {
             )
             .nest("/api/audit", copilot_platform::audit_router(platform))
             .nest("/api/auth", copilot_identity::router(self.identity.clone()))
+            // Full paths: the module spans `/api/customers/{code}/…`,
+            // `/api/notifications`, `/api/notification_channels` and
+            // `/api/internal_notification_routes`.
+            .merge(copilot_notifications::router(NotificationsState {
+                ctx: self.ctx.clone(),
+                dispatcher: self.dispatcher.clone(),
+            }))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

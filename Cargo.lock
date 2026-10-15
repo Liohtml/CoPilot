@@ -462,6 +462,7 @@ dependencies = [
  "copilot-gateway",
  "copilot-healthchecks",
  "copilot-identity",
+ "copilot-notifications",
  "copilot-platform",
  "copilot-talon",
  "copilot-web",
