@@ -6,10 +6,11 @@
 //!
 //! Timeouts match the Python helpers: GET connect 5 s / read 30 s, POST 120 s
 //! unless the caller says otherwise, the `/message` stream with no read
-//! timeout at all (an answer can take minutes). TLS verification is **off by
-//! default**, as in Python (`verify=False`) — Talon runs on the private
-//! network next to CoPilot, usually over plain HTTP; `TALON_VERIFY_TLS=true`
-//! turns it on.
+//! timeout at all (an answer can take minutes). TLS certificates are
+//! **verified by default** — unlike Python (`verify=False`), because the
+//! request carries Talon's API key. Talon usually runs on the private network
+//! next to CoPilot over plain HTTP, where this does not matter; for a
+//! self-signed HTTPS endpoint set `TALON_VERIFY_TLS=false`.
 
 use std::time::Duration;
 
@@ -107,6 +108,16 @@ impl TalonConnector {
             .header("x-api-key", &ep.api_key)
     }
 
+    /// GET, JSON response body; `None` when Talon answers 404 (an unknown
+    /// id), every other non-2xx is an error.
+    pub async fn get_opt(&self, endpoint: &str) -> Result<Option<Value>, TalonError> {
+        let ep = self.endpoint().await?;
+        let req = self
+            .request(&ep, reqwest::Method::GET, endpoint)
+            .timeout(Duration::from_secs(35));
+        send_json_opt(req, "GET", endpoint).await
+    }
+
     /// `send_get_request`: GET, JSON response body.
     pub async fn get(&self, endpoint: &str, query: &[(&str, String)]) -> Result<Value, TalonError> {
         let ep = self.endpoint().await?;
@@ -167,11 +178,34 @@ async fn send_json(
     method: &'static str,
     endpoint: &str,
 ) -> Result<Value, TalonError> {
+    send_json_with(req, method, endpoint, false)
+        .await?
+        .ok_or_else(|| request_error(method, endpoint, "404 Not Found".into()))
+}
+
+async fn send_json_opt(
+    req: reqwest::RequestBuilder,
+    method: &'static str,
+    endpoint: &str,
+) -> Result<Option<Value>, TalonError> {
+    send_json_with(req, method, endpoint, true).await
+}
+
+/// Send and decode; with `not_found_is_none` a 404 is `Ok(None)`.
+async fn send_json_with(
+    req: reqwest::RequestBuilder,
+    method: &'static str,
+    endpoint: &str,
+    not_found_is_none: bool,
+) -> Result<Option<Value>, TalonError> {
     let resp = req
         .send()
         .await
         .map_err(|e| request_error(method, endpoint, e.to_string()))?;
     let status = resp.status();
+    if not_found_is_none && status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
     let bytes = resp
         .bytes()
         .await
@@ -183,12 +217,68 @@ async fn send_json(
         return Err(request_error(method, endpoint, reason));
     }
     serde_json::from_slice::<Value>(&bytes)
+        .map(Some)
         .map_err(|e| request_error(method, endpoint, format!("invalid JSON response: {e}")))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn talon_mock(status: u16, body: Value) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/investigations/copilot-inv-42-1"))
+            .and(header("x-api-key", "k"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    fn get(server: &MockServer) -> reqwest::RequestBuilder {
+        reqwest::Client::new()
+            .get(format!("{}/investigations/copilot-inv-42-1", server.uri()))
+            .header("x-api-key", "k")
+    }
+
+    #[tokio::test]
+    async fn get_opt_maps_404_to_none_and_keeps_other_errors() {
+        let ok = talon_mock(200, serde_json::json!({"id": "copilot-inv-42-1"})).await;
+        let v = send_json_opt(get(&ok), "GET", "/investigations/x")
+            .await
+            .unwrap();
+        assert_eq!(v.unwrap()["id"], "copilot-inv-42-1");
+
+        let missing =
+            talon_mock(404, serde_json::json!({"error": "investigation not found"})).await;
+        assert!(
+            send_json_opt(get(&missing), "GET", "/investigations/x")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        // Without the opt-in a 404 stays an error with Talon's reason.
+        let e = send_json(get(&missing), "GET", "/investigations/x")
+            .await
+            .unwrap_err();
+        assert!(
+            e.to_string()
+                .contains("404 Not Found: investigation not found"),
+            "{e}"
+        );
+
+        let broken = talon_mock(500, serde_json::json!({"error": "boom"})).await;
+        let e = send_json_opt(get(&broken), "GET", "/investigations/x")
+            .await
+            .unwrap_err();
+        assert!(
+            e.to_string().contains("500 Internal Server Error: boom"),
+            "{e}"
+        );
+    }
 
     #[test]
     fn error_messages_match_python_helpers() {

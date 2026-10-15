@@ -7,7 +7,7 @@
 //!   channel (`talon-http`), typed and pinned by tests
 //! - [`client`]   — credentials from the `connectors` row, timeouts, error text
 //! - [`services`] — investigate, replay, chat, session, status, templates,
-//!   palace calls, the database-only job view
+//!   palace calls, the database-only job view and Talon's structured verdict
 //! - [`routes`]   — `/api/talon/*`
 //!
 //! The other direction — Talon writing results back — goes through
