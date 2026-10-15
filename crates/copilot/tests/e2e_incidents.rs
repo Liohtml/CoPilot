@@ -1375,3 +1375,150 @@ async fn velo_sigma_exclusions_crud_tenancy_and_fall_through() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Reports: the CSV exports and the customer-report list are Rust
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn csv_exports_and_report_list_split_with_python() {
+    use tower::ServiceExt;
+    const R: &str = "/api/incidents/report";
+    const CR: &str = "/api/incidents/customer_reports";
+    let legacy = MockServer::start().await;
+    let h = harness_or_skip!(Some(&legacy));
+    let s = &h.suffix.clone();
+    let seeded = seed(&h).await;
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let admin = h.token(&format!("admin{s}"), "admin");
+
+    // The per-customer export: Python's headers and CSV dialect.
+    h.exec(&format!(
+        "UPDATE incident_management_case SET case_description = 'one, \"two\"\nthree' WHERE id = {}",
+        seeded.case_acme
+    ))
+    .await;
+    let req = http::Request::builder()
+        .method("POST")
+        .uri(format!("{R}/generate-report-csv/acme{s}"))
+        .header("authorization", format!("Bearer {analyst}"))
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = h.router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    assert_eq!(resp.headers()["content-type"], "text/csv; charset=utf-8");
+    let disposition = resp.headers()["content-disposition"]
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        disposition.starts_with(&format!("attachment; filename=cases_export_acme{s}_")),
+        "{disposition}"
+    );
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    let csv = String::from_utf8(bytes.to_vec()).unwrap();
+    let mut lines = csv.split('\n');
+    assert_eq!(
+        lines.next().unwrap(),
+        "Case ID,Case Name,Case Description,Case Creation Time,Case Status,Case Closed Time,\
+         Case Assigned To,Case Customer Code,Alert ID,Alert Name,Alert Description,Alert Status,\
+         Alert Creation Time,Alert Time Closed,Alert Source,Alert Assigned To,Assets,Tags,\
+         Comments,Customer Code"
+    );
+    assert!(csv.contains(&format!(
+        "{},Case acme{s},\"one, \"\"two\"\"\nthree\",2026-03-04 09:00:00,OPEN,,,acme{s},{},",
+        seeded.case_acme, seeded.tagged
+    )));
+    assert!(csv.ends_with(&format!(",t{s},look,acme{s}\n")), "{csv}");
+
+    // The whole-deployment export is the caller's customers' only.
+    let (st, all) = h
+        .call(
+            "POST",
+            &format!("{R}/generate-report-csv"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    let all = all.as_str().unwrap();
+    assert!(all.contains(&format!(",acme{s}\n")) && !all.contains(&format!("beta{s}")));
+    let (st, out) = h
+        .call(
+            "POST",
+            &format!("{R}/generate-report-csv/beta{s}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), &out["message"]),
+        (403, &json!(format!("Access denied to customer beta{s}")))
+    );
+
+    // Customer reports: the list and the switch here, the rest in Python.
+    let report = h
+        .exec(&format!(
+            "INSERT INTO incident_management_customer_reports (report_name, customer_code, \
+             bucket_name, object_key, file_name, file_size, file_hash, generated_at, generated_by, \
+             generated_by_role, date_from, date_to, filters_json, total_alerts, total_cases, \
+             open_cases, closed_cases, status, visible_to_customer) VALUES ('R {s}', 'acme{s}', \
+             'b', 'k', 'r.pdf', 1, 'h', '2026-03-05 10:00:00', 1, 'admin', '2026-02-01 00:00:00', \
+             '2026-02-28 00:00:00', '{{\"a\": 1}}', 0, 0, 0, 0, 'completed', 0)"
+        ))
+        .await;
+    let (st, listed) = h
+        .call(
+            "GET",
+            &format!("{CR}?customer_codes=acme{s}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200, "{listed}");
+    assert_eq!(listed["total_count"], json!(1));
+    assert_eq!(listed["reports"][0]["filters_applied"], json!({"a": 1}));
+    assert_eq!(
+        listed["reports"][0]["download_url"],
+        json!(format!(
+            "/api/v1/incidents/customer_reports/{report}/download"
+        ))
+    );
+    let (st, out) = h
+        .call(
+            "PATCH",
+            &format!("{CR}/{report}/visibility"),
+            Some(&analyst),
+            Some(json!({"visible": true})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            200,
+            json!({"success": true, "message": "Report is now visible to the customer.",
+                   "report_id": report, "visible_to_customer": true})
+        )
+    );
+    for (m, p) in [
+        ("POST", format!("{R}/generate-report-docx")),
+        ("POST", format!("{R}/generate-report-pdf")),
+        ("POST", format!("{CR}/generate/background")),
+        ("GET", format!("{CR}/{report}/download")),
+        ("DELETE", format!("{CR}/{report}")),
+    ] {
+        Mock::given(method(m))
+            .and(path(p.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+            .mount(&legacy)
+            .await;
+        let (st, out) = h.call(m, &p, Some(&admin), Some(json!({}))).await;
+        assert_eq!(
+            (st.as_u16(), out),
+            (200, json!({"from": "python"})),
+            "{m} {p}"
+        );
+    }
+}

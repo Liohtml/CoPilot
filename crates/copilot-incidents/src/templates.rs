@@ -131,8 +131,7 @@ fn py_repr(value: &Value) -> String {
         Value::Number(n) => match (n.as_i64(), n.as_u64(), n.as_f64()) {
             (Some(i), _, _) => i.to_string(),
             (None, Some(u), _) => u.to_string(),
-            (None, None, Some(f)) if f.fract() == 0.0 && f.abs() < 1e16 => format!("{f:.1}"),
-            (None, None, Some(f)) => f.to_string(),
+            (None, None, Some(f)) => copilot_auth::pyvalue::float_repr(f),
             _ => n.to_string(),
         },
         Value::String(s) => crate::views::py_str_repr(s),
@@ -380,6 +379,10 @@ mod tests {
         assert_eq!(py_str(&json!(2.0)), "2.0");
         assert_eq!(py_str(&json!(true)), "True");
         assert_eq!(py_str(&json!(["a", 1])), "['a', 1]");
+        // Nested strings are never cut, floats are Python's repr.
+        let long = "x".repeat(60);
+        assert_eq!(py_str(&json!([long])), format!("['{long}']"));
+        assert_eq!(py_str(&json!([1e16, 0.1])), "[1e+16, 0.1]");
         assert_eq!(
             es_quote("wazuh-alerts-4.x-2026.01.01"),
             "wazuh-alerts-4.x-2026.01.01"

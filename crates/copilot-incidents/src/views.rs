@@ -18,41 +18,29 @@ use crate::schema::{
 };
 use crate::store::{self, AlertChildren, AlertRow, CaseRow, Include, IocRow};
 
-/// Python's `repr()` of a `str`, as Pydantic shows `input_value` (cut to
-/// 24 + `...` + 23 characters past 50).
+/// Python's `repr()` of a `str` (an enum's `ValueError`, an f-string's
+/// `{x!r}`).
 pub fn py_str_repr(s: &str) -> String {
-    let quote = if s.contains('\'') && !s.contains('"') {
-        '"'
-    } else {
-        '\''
-    };
-    let mut out = String::new();
-    out.push(quote);
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c == quote => {
-                out.push('\\');
-                out.push(c);
-            }
-            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
-                out.push_str(&format!("\\x{:02x}", c as u32));
-            }
-            c => out.push(c),
-        }
+    copilot_auth::pyvalue::str_repr(s)
+}
+
+/// Pydantic's `input_value=`: the `repr()`, cut to its first 25 and last 24
+/// UTF-8 bytes around `...` past 50 (the head floored, the tail's start
+/// raised to a character boundary).
+pub fn pydantic_input_value(repr: String) -> String {
+    let len = repr.len();
+    if len <= 50 {
+        return repr;
     }
-    out.push(quote);
-    let chars: Vec<char> = out.chars().collect();
-    if chars.len() > 50 {
-        let head: String = chars[..25].iter().collect();
-        let tail: String = chars[chars.len() - 24..].iter().collect();
-        format!("{head}...{tail}")
-    } else {
-        out
+    let mut head = 25;
+    while !repr.is_char_boundary(head) {
+        head -= 1;
     }
+    let mut tail = len - 24;
+    while !repr.is_char_boundary(tail) {
+        tail += 1;
+    }
+    format!("{}...{}", &repr[..head], &repr[tail..])
 }
 
 /// `IoCBase(**ioc.__dict__)`.
@@ -62,7 +50,7 @@ pub fn ioc_out(row: &IocRow) -> Result<IocOut, ApiError> {
             "1 validation error for IoCBase\ntype\n  Input should be 'IP', 'DOMAIN', 'HASH' or \
              'URL' [type=enum, input_value={}, input_type=str]\n    For further information \
              visit https://errors.pydantic.dev/2.13/v/enum",
-            py_str_repr(&row.kind)
+            pydantic_input_value(py_str_repr(&row.kind))
         )));
     }
     Ok(IocOut {
@@ -200,14 +188,33 @@ pub async fn case_full(db: &Db, id: i64) -> Result<CaseOut, ApiError> {
 mod tests {
     use super::*;
 
+    trait PipeRepr {
+        fn pipe_repr(&self) -> String;
+    }
+    impl PipeRepr for String {
+        fn pipe_repr(&self) -> String {
+            py_str_repr(self)
+        }
+    }
+
     #[test]
     fn repr_like_python() {
         assert_eq!(py_str_repr("ip"), "'ip'");
         assert_eq!(py_str_repr("it's"), "\"it's\"");
         assert_eq!(py_str_repr("a\"b"), "'a\"b'");
+        assert_eq!(py_str_repr(&"x".repeat(60)).len(), 62);
         assert_eq!(
-            py_str_repr(&"x".repeat(100)),
+            pydantic_input_value(py_str_repr(&"x".repeat(100))),
             format!("'{}...{}'", "x".repeat(24), "x".repeat(23))
+        );
+        // Values captured from Pydantic 2.13.
+        assert_eq!(
+            pydantic_input_value(py_str_repr(&"é".repeat(60))),
+            format!("'{}...{}'", "é".repeat(12), "é".repeat(11))
+        );
+        assert_eq!(
+            pydantic_input_value(format!("{}{}", "a".repeat(30), "é".repeat(30)).pipe_repr()),
+            format!("'{}...{}'", "a".repeat(24), "é".repeat(11))
         );
     }
 

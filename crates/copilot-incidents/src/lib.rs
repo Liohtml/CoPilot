@@ -43,7 +43,7 @@ pub mod verdict_stats;
 pub mod views;
 pub mod writes;
 
-pub use routes::{alerts, case_templates, db_operations, tag_access};
+pub use routes::{alerts, case_templates, customer_reports, db_operations, report, tag_access};
 
 use copilot_db::schema::TableRequirement;
 
@@ -229,6 +229,32 @@ pub const REQUIREMENTS: &[TableRequirement] = &[
             "enabled",
             "source_alert_id",
             "source_case_id",
+        ],
+    },
+    TableRequirement {
+        table: "incident_management_customer_reports",
+        columns: &[
+            "id",
+            "report_name",
+            "customer_code",
+            "bucket_name",
+            "object_key",
+            "file_name",
+            "file_size",
+            "file_hash",
+            "generated_at",
+            "generated_by",
+            "generated_by_role",
+            "date_from",
+            "date_to",
+            "filters_json",
+            "total_alerts",
+            "total_cases",
+            "open_cases",
+            "closed_cases",
+            "visible_to_customer",
+            "status",
+            "error_message",
         ],
     },
     TableRequirement {

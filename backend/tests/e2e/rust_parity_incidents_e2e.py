@@ -599,6 +599,7 @@ ID_KINDS = {
     "user_id": "user",
     "source_alert_id": "alert",
     "source_case_id": "case",
+    "report_id": "report",
 }
 LIST_ID_KEYS = {"updated_alert_ids", "not_updated_alert_ids", "deleted_alert_ids", "not_deleted_alert_ids", "missing", "alert_ids"}
 TIME_KEYS = {"time_closed", "verdict_at", "created_at", "updated_at", "timestamp", "case_closed_time", "completed_at"}
@@ -1339,6 +1340,7 @@ async def writes(py, rs, tok, ids, body_of):
 
     await tasks_templates_tags(pair, call, label, label_str, lid, L, ID, tok, ids, body_of)
     await exclusions(pair, call, label, lid, L, ID, tok, ids, same_rows)
+    await reports(pair, call, label, lid, L, ID, tok, ids, same_rows)
 
 
 async def tasks_templates_tags(pair, call, label, label_str, lid, L, ID, tok, ids, body_of):
@@ -1776,6 +1778,178 @@ async def exclusions(pair, call, label, lid, L, ID, tok, ids, same_rows):
     )
     r2 = await call("r", "PATCH", f"{X}/{lid('r', 'x1')}", ana, {"customer_code": CUST_B})
     check("DIFF_BY_DESIGN move an exclusion rule to another tenant (analyst): Rust 403", r2.status_code == 403, r2.text[:200])
+
+
+async def reports(pair, call, label, lid, L, ID, tok, ids, same_rows):
+    """`/api/incidents/report` (CSV exports) and `/api/incidents/customer_reports` (list, visibility)."""
+    adm, ana, portal, nobody = tok["admin"], tok["analyst"], tok["portal"], tok["nobody"]
+    R = "/api/incidents/report"
+    CR = "/api/incidents/customer_reports"
+
+    async def csv_pair(name, path, t):
+        rp, rr = await call("p", "POST", path, t), await call("r", "POST", path, t)
+
+        def shape(r):
+            disposition = re.sub(r"_\d{8}_\d{6}\.csv$", "_<now>.csv", r.headers.get("content-disposition", ""))
+            return r.status_code, r.headers.get("content-type"), disposition, r.text
+
+        a, b = shape(rp), shape(rr)
+        check(f"{name} [{rp.status_code}]", a == b, f"python {str(a)[:700]}\n        rust   {str(b)[:700]}")
+        return rp, rr
+
+    async with AsyncSession(async_engine) as s_:
+        csv_case = (
+            await s_.execute(
+                text(
+                    "INSERT INTO incident_management_case (case_name, case_description, case_creation_time, case_status, customer_code, "
+                    "escalated) VALUES (:n, :d, '2026-02-10 08:00:00', 'OPEN', :c, 0)",
+                ),
+                {"n": f'Case, "quoted" {SFX}', "d": 'line one\nline "two", end\r', "c": CUST_A},
+            )
+        ).lastrowid
+        for alert_key in ("a2", "a1"):
+            await s_.execute(
+                text("INSERT INTO incident_management_casealertlink (case_id, alert_id) VALUES (:c, :a)"),
+                {"c": csv_case, "a": ids[alert_key]},
+            )
+        await s_.execute(
+            text(
+                "INSERT INTO incident_management_comment (alert_id, comment, user_name, created_at) VALUES (:a, 'semi;colon, comma', "
+                "'x', '2026-02-10 08:30:00')",
+            ),
+            {"a": ids["a2"]},
+        )
+        await s_.commit()
+
+    print("\n=== incidents reports: CSV exports ===")
+    await csv_pair("csv: no token", f"{R}/generate-report-csv/{CUST_A}", None)
+    await csv_pair("csv: portal scope", f"{R}/generate-report-csv/{CUST_A}", portal)
+    await csv_pair("csv: another tenant (analyst)", f"{R}/generate-report-csv/{CUST_B}", ana)
+    await csv_pair("csv: another tenant before a bad query (analyst)", f"{R}/generate-report-csv/{CUST_B}?year=x", ana)
+    await csv_pair("csv: query bounds", f"{R}/generate-report-csv/{CUST_A}?year=1999&month=13", adm)
+    await csv_pair("csv: year without month", f"{R}/generate-report-csv/{CUST_A}?year=2026", adm)
+    await csv_pair("csv: month without year (all)", f"{R}/generate-report-csv?month=2", adm)
+    await csv_pair("csv: unknown customer", f"{R}/generate-report-csv/nope{SFX}", adm)
+    await csv_pair("csv: customer", f"{R}/generate-report-csv/{CUST_A}", ana)
+    await csv_pair("csv: customer, other case", f"{R}/generate-report-csv/{CUST_A.lower()}", adm)
+    await csv_pair("csv: customer, one month", f"{R}/generate-report-csv/{CUST_A}?year=2026&month=2", ana)
+    await csv_pair("csv: customer, empty month", f"{R}/generate-report-csv/{CUST_A}?year=2030&month=1", ana)
+    await csv_pair("csv: everything (admin)", f"{R}/generate-report-csv", adm)
+    await csv_pair("csv: everything, one month (admin)", f"{R}/generate-report-csv?year=2026&month=3", adm)
+    # DIFF_BY_DESIGN: the whole-deployment export is the caller's customers' only.
+    rp, rr = await call("p", "POST", f"{R}/generate-report-csv?year=2026&month=3", ana), await call(
+        "r",
+        "POST",
+        f"{R}/generate-report-csv?year=2026&month=3",
+        ana,
+    )
+    py_codes = {line.rsplit(",", 1)[-1] for line in rp.text.splitlines()[1:]}
+    rs_codes = {line.rsplit(",", 1)[-1] for line in rr.text.splitlines()[1:]}
+    check(
+        "DIFF_BY_DESIGN all-cases CSV export (analyst): Python exports every tenant, Rust the caller's customers",
+        rr.status_code == 200 and CUST_B in py_codes and rs_codes == {CUST_A},
+        f"{sorted(py_codes)[:10]} / {sorted(rs_codes)[:10]}",
+    )
+    rr = await call("r", "POST", f"{R}/generate-report-csv", nobody)
+    check(
+        "DIFF_BY_DESIGN all-cases CSV export (unassigned analyst): Rust the header only",
+        rr.status_code == 200 and rr.text.count("\n") == 1,
+        rr.text[:200],
+    )
+
+    print("\n=== incidents reports: customer reports ===")
+    users = {}
+    async with AsyncSession(async_engine) as s_:
+        for name in (ADMIN, ANALYST, PORTAL):
+            users[name] = (await s_.execute(text("SELECT id FROM `user` WHERE username = :n"), {"n": name})).scalar_one()
+        rows_ = (
+            # name, customer, generated_by, role, status, visible, filters, generated_at
+            ("tie-1", CUST_A, users[ADMIN], "admin", "completed", 0, '{"z": 1, "a": [true, null], "s": "x"}', "2026-03-05 10:00:00"),
+            ("tie-2", CUST_A, users[ANALYST], "analyst", "processing", 1, None, "2026-03-05 10:00:00"),
+            ("tie-3", CUST_A, users[PORTAL], "customer_user", "failed", 0, "not json", "2026-03-05 10:00:00"),
+            ("old", CUST_A, 999999999, None, "completed", 0, "", "2026-03-01 10:00:00"),
+            ("b", CUST_B, users[ADMIN], "admin", "completed", 1, "{}", "2026-03-06 10:00:00"),
+            ("twin-p", CUST_A, users[ADMIN], "admin", "completed", 0, "{}", "2026-03-04 10:00:00"),
+            ("twin-r", CUST_A, users[ADMIN], "admin", "completed", 0, "{}", "2026-03-04 10:00:00"),
+        )
+        report_ids = {}
+        for name, cust, by, role, status, visible, filters, at in rows_:
+            report_ids[name] = (
+                await s_.execute(
+                    text(
+                        "INSERT INTO incident_management_customer_reports (report_name, customer_code, bucket_name, object_key, file_name, "
+                        "file_size, file_hash, generated_at, generated_by, generated_by_role, date_from, date_to, filters_json, "
+                        "total_alerts, total_cases, open_cases, closed_cases, status, error_message, visible_to_customer) VALUES "
+                        "(:n, :c, 'incident-management-reports', :k, :f, 12, 'h', :at, :by, :role, '2026-02-01 00:00:00', "
+                        "'2026-02-28 23:59:59', :filters, 3, 2, 1, 1, :status, :err, :v)",
+                    ),
+                    {
+                        "n": f"{name} {SFX}",
+                        "c": cust,
+                        "k": f"{cust}/{name}.pdf",
+                        "f": f"{name}.pdf",
+                        "at": at,
+                        "by": by,
+                        "role": role,
+                        "filters": filters,
+                        "status": status,
+                        "err": "boom" if status == "failed" else None,
+                        "v": visible,
+                    },
+                )
+            ).lastrowid
+        await s_.commit()
+    label("rep", report_ids["twin-p"], report_ids["twin-r"], "report")
+    q_mine = f"customer_codes={CUST_A}&customer_codes={CUST_B}"
+    for who in ("admin", "analyst", "portal", "nobody", "responder"):
+        await pair(f"reports: list ({who})", "GET", f"{CR}?{q_mine}", tok[who], exact=True)
+    await pair("reports: list, one customer (analyst)", "GET", f"{CR}?customer_code={CUST_A}&{q_mine}", ana, exact=True)
+    await pair("reports: list, another tenant's code (analyst)", "GET", f"{CR}?customer_code={CUST_B}&{q_mine}", ana, exact=True)
+    await pair("reports: list, subset (admin)", "GET", f"{CR}?customer_codes={CUST_B}", adm, exact=True)
+    await pair("reports: list, empty code (admin)", "GET", f"{CR}?customer_codes=", adm, exact=True)
+    await pair("reports: list, no token", "GET", CR, None, exact=True)
+    await pair("reports: list (portal, unfiltered)", "GET", CR, portal, exact=True)
+    vis = lambda key: f"{CR}/{report_ids[key]}/visibility"  # noqa: E731
+    await pair("visibility: malformed JSON, no token", "PATCH", vis("tie-1"), None, raw=b'{"visible": ', exact=True)
+    await pair("visibility: portal", "PATCH", vis("tie-1"), portal, {"visible": True}, exact=True)
+    await pair("visibility: path and body errors", "PATCH", f"{CR}/x/visibility", ana, {"visible": "maybe"}, exact=True)
+    await pair("visibility: missing", "PATCH", f"{CR}/999999999/visibility", ana, {"visible": True}, exact=True)
+    await pair("visibility: another tenant (analyst)", "PATCH", vis("b"), ana, {"visible": False}, exact=True)
+    await pair("visibility: customer-generated", "PATCH", vis("tie-3"), ana, {"visible": False}, exact=True)
+    await pair(
+        "visibility: show",
+        "PATCH",
+        lambda s: f"{CR}/{lid(s, 'rep')}/visibility",
+        ana,
+        {"visible": "true"},
+    )
+
+    async def visible_of(side):
+        return await rows("SELECT visible_to_customer FROM incident_management_customer_reports WHERE id = :i", i=lid(side, "rep"))
+
+    await same_rows("visibility: stored", visible_of)
+    await pair("visibility: show again", "PATCH", lambda s: f"{CR}/{lid(s, 'rep')}/visibility", ana, {"visible": 1})
+    await pair("visibility: hide", "PATCH", lambda s: f"{CR}/{lid(s, 'rep')}/visibility", adm, {"visible": False})
+    await same_rows("visibility: stored after hide", visible_of)
+    async with AsyncSession(async_engine) as s_:
+        bad = (
+            await s_.execute(
+                text(
+                    "INSERT INTO incident_management_customer_reports (report_name, customer_code, bucket_name, object_key, file_name, "
+                    "file_size, file_hash, generated_at, generated_by, date_from, date_to, filters_json, total_alerts, total_cases, "
+                    "open_cases, closed_cases, status, visible_to_customer) VALUES (:n, :c, 'b', 'k', 'f', 0, 'h', '2026-03-07 00:00:00', 1, "
+                    "'2026-02-01 00:00:00', '2026-02-02 00:00:00', :f, 0, 0, 0, 0, 'completed', 0)",
+                ),
+                {"n": f"bad {SFX}", "c": CUST_A, "f": '["a list", ' + '"' + "x" * 60 + '"]'},
+            )
+        ).lastrowid
+        await s_.commit()
+    try:
+        await pair("reports: a stored non-dict filter (400)", "GET", f"{CR}?customer_codes={CUST_A}", adm, exact=True)
+    finally:
+        async with AsyncSession(async_engine) as s_:
+            await s_.execute(text("DELETE FROM incident_management_customer_reports WHERE id = :i"), {"i": bad})
+            await s_.commit()
 
 
 if __name__ == "__main__":

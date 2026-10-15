@@ -89,6 +89,12 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // draft and dry-run stay in Python.
     "/api/incidents/alerts/create/velo-sigma/exclusion",
     "/api/incidents/alerts/velo-sigma/exclusion",
+    // The CSV case exports; the DOCX and PDF reports stay in Python.
+    "POST /api/incidents/report/generate-report-csv",
+    // The report list and the visibility switch (GET "", PATCH /{id}/visibility);
+    // generation, download and delete stay in Python.
+    "GET /api/incidents/customer_reports",
+    "PATCH /api/incidents/customer_reports",
     "GET /api/scheduler",
     "POST /api/scheduler/jobs/run",
     "POST /api/scheduler/start",
@@ -317,6 +323,14 @@ impl App {
             .nest(
                 "/api/incidents/alerts",
                 copilot_incidents::alerts(self.ctx.clone()),
+            )
+            .nest(
+                "/api/incidents/report",
+                copilot_incidents::report(self.ctx.clone()),
+            )
+            .nest(
+                "/api/incidents/customer_reports",
+                copilot_incidents::customer_reports(self.ctx.clone()),
             )
             .nest(
                 "/api/scheduler",
