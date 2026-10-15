@@ -25,6 +25,7 @@ copilot-customers = { path = "crates/copilot-customers" }
 copilot-healthchecks = { path = "crates/copilot-healthchecks" }
 copilot-platform = { path = "crates/copilot-platform" }
 copilot-gateway = { path = "crates/copilot-gateway" }
+copilot-identity = { path = "crates/copilot-identity" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }
@@ -77,6 +78,17 @@ rand = "0.8"
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = { version = "1", features = ["derive"] }
 bcrypt = "0.17"
+# Fernet (`cryptography.fernet`) for the stored TOTP secrets: AES-128-CBC.
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+# TOTP is HMAC-SHA1 (RFC 6238, pyotp's default).
+sha1 = "0.10"
+# pyotp compares codes after NFKC normalisation.
+unicode-normalization = "0.1"
+# The 2FA enrolment QR code, rendered to PNG without an image stack.
+qrcode = { version = "0.14", default-features = false }
+miniz_oxide = "0.9"
+crc32fast = "1"
 
 # --- cli ---
 clap = { version = "4", features = ["derive", "env"] }
@@ -85,6 +97,7 @@ clap = { version = "4", features = ["derive", "env"] }
 tempfile = "3"
 wiremock = "0.6"
 pretty_assertions = "1"
+rqrr = { version = "0.9", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

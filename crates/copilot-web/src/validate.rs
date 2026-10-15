@@ -341,7 +341,8 @@ impl Validator {
         }
     }
 
-    fn missing(&mut self, at: Loc) {
+    /// A required value that is absent (`missing`).
+    pub fn missing(&mut self, at: Loc) {
         self.push("missing", at, "Field required");
     }
 

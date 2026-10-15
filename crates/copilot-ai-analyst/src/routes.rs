@@ -17,15 +17,16 @@
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::routing::{get, patch, post};
-use bytes::Bytes;
 use serde_json::json;
 
 use copilot_db::ai_analyst::{self as db, Owned};
 use copilot_db::alerts;
 use copilot_talon::TalonState;
 use copilot_web::respond::envelope;
-use copilot_web::validate::{IntRules, StrRules, Validator, parse_body_model, path_int_dep};
-use copilot_web::{AdminOrAnalyst, ApiError, ApiResult, AppContext, Authorized, QueryPairs, ok};
+use copilot_web::validate::{IntRules, StrRules, Validator, path_int_dep};
+use copilot_web::{
+    AdminOrAnalyst, ApiError, ApiResult, AppContext, Authorized, QueryPairs, WithJson, ok,
+};
 
 use crate::schema::{
     AlertWithReportResponse, CreateJobRequest, IocResponse, JobResponse, PalaceLessonResponse,
@@ -126,8 +127,11 @@ fn list<T, U: From<T>>(rows: Vec<T>) -> Vec<U> {
 // Jobs
 // ---------------------------------------------------------------------------
 
-async fn create_job(auth: Auth, State(st): State<TalonState>, body: Bytes) -> ApiResult {
-    let req = parse_body_model(&body, CreateJobRequest::read)?;
+async fn create_job(
+    State(st): State<TalonState>,
+    WithJson(auth, body): WithJson<Auth>,
+) -> ApiResult {
+    let req = body.model(CreateJobRequest::read)?;
     tracing::info!(alert_id = req.alert_id, job_id = %req.id, "creating AI analyst job");
     verify_customer(&auth, &st.ctx, &req.customer_code).await?;
     let (message, job) = services::create_job(&st.ctx, &auth, &req).await?;
@@ -135,13 +139,12 @@ async fn create_job(auth: Auth, State(st): State<TalonState>, body: Bytes) -> Ap
 }
 
 async fn update_job(
-    auth: Auth,
     State(st): State<TalonState>,
     Path(job_id): Path<String>,
-    body: Bytes,
+    WithJson(auth, body): WithJson<Auth>,
 ) -> ApiResult {
     verify_job(&auth, &st.ctx, &job_id).await?;
-    let req = parse_body_model(&body, UpdateJobRequest::read)?;
+    let req = body.model(UpdateJobRequest::read)?;
     tracing::info!(job_id = %job_id, status = %req.status, "updating AI analyst job");
     let job = services::update_job(&st.ctx, &job_id, &req).await?;
     Ok(ok("Job updated", json!({ "job": JobResponse::from(job) })))
@@ -184,8 +187,11 @@ async fn jobs_by_customer(
 // Reports
 // ---------------------------------------------------------------------------
 
-async fn submit_report(auth: Auth, State(st): State<TalonState>, body: Bytes) -> ApiResult {
-    let req = parse_body_model(&body, SubmitReportRequest::read)?;
+async fn submit_report(
+    State(st): State<TalonState>,
+    WithJson(auth, body): WithJson<Auth>,
+) -> ApiResult {
+    let req = body.model(SubmitReportRequest::read)?;
     tracing::info!(job_id = %req.job_id, "submitting AI analyst report");
     verify_customer(&auth, &st.ctx, &req.customer_code).await?;
     let report = services::submit_report(&st.ctx, &auth, &req).await?;
@@ -222,8 +228,11 @@ async fn alert_with_report_by_report(
 // IOCs
 // ---------------------------------------------------------------------------
 
-async fn submit_iocs(auth: Auth, State(st): State<TalonState>, body: Bytes) -> ApiResult {
-    let req = parse_body_model(&body, SubmitIocsRequest::read)?;
+async fn submit_iocs(
+    State(st): State<TalonState>,
+    WithJson(auth, body): WithJson<Auth>,
+) -> ApiResult {
+    let req = body.model(SubmitIocsRequest::read)?;
     tracing::info!(
         report_id = req.report_id,
         count = req.iocs.len(),
@@ -343,13 +352,12 @@ async fn alert_analysis(
 // ---------------------------------------------------------------------------
 
 async fn submit_review(
-    auth: Auth,
     State(st): State<TalonState>,
     Path(raw): Path<String>,
-    body: Bytes,
+    WithJson(auth, body): WithJson<Auth>,
 ) -> ApiResult {
     let report_id = verify_owned(&auth, &st.ctx, Owned::Report, "report_id", &raw).await?;
-    let req = parse_body_model(&body, SubmitReviewRequest::read)?;
+    let req = body.model(SubmitReviewRequest::read)?;
     tracing::info!(user_id = auth.id, report_id, "submitting review");
     let (message, review) = services::submit_review(&st.ctx, &auth, report_id, &req).await?;
     Ok(ok(
@@ -375,13 +383,12 @@ async fn my_review(auth: Auth, State(st): State<TalonState>, Path(raw): Path<Str
 }
 
 async fn replay(
-    auth: Auth,
     State(st): State<TalonState>,
     Path(raw): Path<String>,
-    body: Bytes,
+    WithJson(auth, body): WithJson<Auth>,
 ) -> ApiResult {
     let report_id = verify_owned(&auth, &st.ctx, Owned::Report, "report_id", &raw).await?;
-    let req = parse_body_model(&body, ReplayRequest::read)?;
+    let req = body.model(ReplayRequest::read)?;
     let report = db::get_report(&st.ctx.db, report_id)
         .await?
         .ok_or_else(|| ApiError::not_found(format!("Report {report_id} not found")))?;
@@ -462,8 +469,11 @@ async fn review_stats(
 // Palace
 // ---------------------------------------------------------------------------
 
-async fn queue_palace_lesson(auth: Auth, State(st): State<TalonState>, body: Bytes) -> ApiResult {
-    let req = parse_body_model(&body, QueuePalaceLessonRequest::read)?;
+async fn queue_palace_lesson(
+    State(st): State<TalonState>,
+    WithJson(auth, body): WithJson<Auth>,
+) -> ApiResult {
+    let req = body.model(QueuePalaceLessonRequest::read)?;
     tracing::info!(customer = %req.customer_code, "queuing palace lesson");
     verify_customer(&auth, &st.ctx, &req.customer_code).await?;
     let lesson = services::queue_palace_lesson(&st.ctx, &req).await?;

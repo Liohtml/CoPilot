@@ -24,8 +24,8 @@ use futures::StreamExt;
 use serde_json::{Value, json};
 
 use copilot_db::alerts;
-use copilot_web::validate::{IntRules, StrRules, Validator, parse_json_body, path_int};
-use copilot_web::{AdminOrAnalyst, ApiResult, AppContext, Authorized, ok};
+use copilot_web::validate::{IntRules, StrRules, path_int};
+use copilot_web::{AdminOrAnalyst, ApiResult, AppContext, Authorized, WithJson, ok};
 
 use crate::client::TalonConnector;
 use crate::services;
@@ -64,21 +64,15 @@ fn sse_error_frame(message: &str) -> Bytes {
 }
 
 async fn send_message(
-    auth: Authorized<AdminOrAnalyst>,
     State(st): State<TalonState>,
-    body: Bytes,
+    WithJson(auth, body): WithJson<Authorized<AdminOrAnalyst>>,
 ) -> ApiResult {
-    let value = parse_json_body(&body)?;
-    let mut v = Validator::new();
-    let root = vec![copilot_web::validate::LocPart::Key("body".into())];
-    let (message, sender) = match v.object(&value, &root) {
-        Some(obj) => (
-            v.req_str(obj, &root, "message", StrRules::any()),
-            v.str_or(obj, &root, "sender", StrRules::any(), "copilot"),
-        ),
-        None => (String::new(), String::new()),
-    };
-    v.finish()?;
+    let (message, sender) = body.model(|v, obj, root| {
+        (
+            v.req_str(obj, root, "message", StrRules::any()),
+            v.str_or(obj, root, "sender", StrRules::any(), "copilot"),
+        )
+    })?;
     tracing::info!(user_id = auth.id, "sending message to Talon");
     let payload = services::message_payload(&message, &sender, &auth);
     let stream: futures::stream::BoxStream<'static, Result<Bytes, Infallible>> =
@@ -129,23 +123,15 @@ async fn send_message(
 }
 
 async fn trigger_investigation(
-    auth: Authorized<AdminOrAnalyst>,
     State(st): State<TalonState>,
-    body: Bytes,
+    WithJson(auth, body): WithJson<Authorized<AdminOrAnalyst>>,
 ) -> ApiResult {
-    let value = parse_json_body(&body)?;
-    let mut v = Validator::new();
-    let root = vec![copilot_web::validate::LocPart::Key("body".into())];
-    let (alert_id, customer_code) = match v.object(&value, &root) {
-        Some(obj) => {
-            let alert_id = v.req_int(obj, &root, "alert_id", IntRules::default());
-            let code = v.req_str(obj, &root, "customer_code", StrRules::max(64));
-            v.str_or(obj, &root, "sender", StrRules::any(), "copilot");
-            (alert_id, code)
-        }
-        None => (0, String::new()),
-    };
-    v.finish()?;
+    let (alert_id, customer_code) = body.model(|v, obj, root| {
+        let alert_id = v.req_int(obj, root, "alert_id", IntRules::default());
+        let code = v.req_str(obj, root, "customer_code", StrRules::max(64));
+        v.str_or(obj, root, "sender", StrRules::any(), "copilot");
+        (alert_id, code)
+    })?;
     tracing::info!(alert_id, "triggering Talon investigation");
     let data =
         services::investigate_alert_for_user(&st.ctx, &st.talon, &auth, alert_id, &customer_code)

@@ -81,6 +81,49 @@ impl Harness {
         (status, value)
     }
 
+    /// A request with an arbitrary body and content type.
+    async fn call_raw(
+        &self,
+        method: &str,
+        uri: &str,
+        token: Option<&str>,
+        content_type: Option<&str>,
+        body: impl Into<Body>,
+    ) -> (StatusCode, Value) {
+        let mut b = Request::builder().method(method).uri(uri);
+        if let Some(t) = token {
+            b = b.header("authorization", format!("Bearer {t}"));
+        }
+        if let Some(ct) = content_type {
+            b = b.header("content-type", ct);
+        }
+        let resp = self
+            .router
+            .clone()
+            .oneshot(b.body(body.into()).unwrap())
+            .await
+            .unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 16 << 20)
+            .await
+            .unwrap();
+        let value = serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()));
+        (status, value)
+    }
+
+    /// `POST` an urlencoded login form.
+    async fn login(&self, path: &str, username: &str, password: &str) -> (StatusCode, Value) {
+        self.call_raw(
+            "POST",
+            path,
+            None,
+            Some("application/x-www-form-urlencoded"),
+            format!("username={username}&password={password}"),
+        )
+        .await
+    }
+
     /// Run a statement; returns its `LAST_INSERT_ID()`.
     async fn exec(&self, sql: &str) -> i64 {
         let res = sqlx::query(sql).execute(self.db.pool()).await.unwrap();
@@ -1972,6 +2015,567 @@ async fn audit_reads_and_version_check() {
     );
     let (st, _) = h.call("GET", "/api/audit/abc", Some(&admin), None).await;
     assert_eq!(st, 422);
+}
+
+/// The current TOTP code of the secret stored for `username`.
+async fn totp_now(h: &Harness, username: &str, offset: i64) -> String {
+    let enc: String = sqlx::query_scalar(
+        "SELECT t.secret_enc FROM user_totp t JOIN `user` u ON u.id = t.user_id WHERE u.username = ?",
+    )
+    .bind(username)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    // Python's key derivation: no TOTP_ENCRYPTION_KEY in this harness.
+    let fernet = copilot_auth::Fernet::derived_from_jwt_secret(&Secret::new(SECRET));
+    let secret = String::from_utf8(fernet.decrypt(&enc).unwrap()).unwrap();
+    let totp = copilot_auth::totp::Totp::new(&secret).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    totp.code(copilot_auth::totp::counter_at(now).saturating_add_signed(offset))
+}
+
+#[tokio::test]
+async fn login_refresh_and_two_factor_flow() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let s = h.suffix.clone();
+    let hash = copilot_auth::password::hash_password("Pa55word!").unwrap();
+    h.exec(&format!(
+        "UPDATE `user` SET password = '{hash}' WHERE username IN ('admin{s}', 'analyst{s}', 'portal{s}')"
+    ))
+    .await;
+    let (admin, analyst, portal) = (
+        format!("admin{s}"),
+        format!("analyst{s}"),
+        format!("portal{s}"),
+    );
+    let audits = |action: &str, details: &str, user: &str| {
+        format!(
+            "SELECT COUNT(*) FROM audit_log WHERE action = '{action}' AND details = '{details}' \
+             AND actor_username = '{user}'"
+        )
+    };
+
+    // --- password login, urlencoded ------------------------------------
+    let (st, body) = h.login("/api/auth/token", &admin, "Pa55word!").await;
+    assert_eq!(st, 200, "{body}");
+    let keys: Vec<&str> = body
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(keys, ["access_token", "token_type"]);
+    assert_eq!(body["token_type"], "bearer");
+    let claims = h
+        .jwt
+        .decode_claims(body["access_token"].as_str().unwrap())
+        .unwrap();
+    let claim_keys: Vec<&str> = claims.keys().map(String::as_str).collect();
+    assert_eq!(claim_keys, ["exp", "iat", "sub", "scopes"]);
+    assert_eq!(claims["scopes"], json!(["admin"]));
+    assert_eq!(
+        claims["exp"].as_i64().unwrap() - claims["iat"].as_i64().unwrap(),
+        1440 * 60
+    );
+    assert_eq!(
+        wait_count(&h, &audits("auth.login", "Main portal login", &admin), 1).await,
+        1
+    );
+    let stamped = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM `user` WHERE username = '{admin}' AND last_login_at IS NOT NULL"
+        ))
+        .await;
+    assert_eq!(stamped, 1);
+
+    // --- the same login as multipart (what the frontend's FormData sends)
+    let multipart = format!(
+        "--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\n{analyst}\r\n\
+         --XyZ\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nPa55word!\r\n--XyZ--\r\n"
+    );
+    let (st, body) = h
+        .call_raw(
+            "POST",
+            "/api/auth/token",
+            None,
+            Some("multipart/form-data; boundary=XyZ"),
+            multipart,
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    let claims = h
+        .jwt
+        .decode_claims(body["access_token"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(claims["scopes"], json!(["analyst"]));
+
+    // --- refusals ---------------------------------------------------------
+    let (st, body) = h.login("/api/auth/token", &admin, "wrong").await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            401,
+            json!({"success": false, "message": "Incorrect username or password"})
+        )
+    );
+    assert_eq!(
+        wait_count(
+            &h,
+            &audits(
+                "auth.login_failed",
+                "Invalid username or password (main portal)",
+                &admin
+            ),
+            1
+        )
+        .await,
+        1
+    );
+    let (st, _) = h.login("/api/auth/token", &format!("nobody{s}"), "x").await;
+    assert_eq!(st, 401);
+    let (st, body) = h.login("/api/auth/token", &portal, "Pa55word!").await;
+    assert_eq!(st, 403);
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .contains("Customer Portal only")
+    );
+    let (st, body) = h
+        .login("/api/auth/token/customer-portal", &admin, "Pa55word!")
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].as_str()),
+        (
+            403,
+            Some("This account does not have access to the Customer Portal.")
+        )
+    );
+    let (st, body) = h
+        .call_raw(
+            "POST",
+            "/api/auth/token",
+            None,
+            Some("application/x-www-form-urlencoded"),
+            "username=&grant_type=x",
+        )
+        .await;
+    assert_eq!(st, 422);
+    let fields: Vec<&str> = body["details"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["field"].as_str().unwrap())
+        .collect();
+    assert_eq!(fields, ["grant_type", "username", "password"]);
+    let (st, body) = h
+        .call_raw(
+            "POST",
+            "/api/auth/token",
+            None,
+            Some("multipart/form-data"),
+            "x",
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (400, json!({"detail": "Missing boundary in multipart."}))
+    );
+
+    // --- customer portal login carries the customer codes ----------------
+    let (st, body) = h
+        .login("/api/auth/token/customer-portal", &portal, "Pa55word!")
+        .await;
+    assert_eq!(st, 200, "{body}");
+    let portal_token = body["access_token"].as_str().unwrap().to_string();
+    let claims = h.jwt.decode_claims(&portal_token).unwrap();
+    assert_eq!(claims["customer_codes"], json!([format!("acme{s}")]));
+    let with_code = format!(
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'auth.login' AND actor_username = '{portal}' \
+         AND customer_code = 'acme{s}' AND details = 'Customer portal login'"
+    );
+    assert_eq!(wait_count(&h, &with_code, 1).await, 1);
+
+    // --- refresh ------------------------------------------------------------
+    let (st, body) = h
+        .call("GET", "/api/auth/refresh", Some(&portal_token), None)
+        .await;
+    assert_eq!(st, 200);
+    let claims = h
+        .jwt
+        .decode_claims(body["access_token"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(claims["customer_codes"], json!([format!("acme{s}")]));
+    assert_eq!(claims["scopes"], json!(["customer_user"]));
+    let (st, body) = h.call("GET", "/api/auth/refresh", None, None).await;
+    assert_eq!(
+        (st.as_u16(), body["message"].as_str()),
+        (401, Some("Not authenticated"))
+    );
+
+    // --- 2FA enrolment ----------------------------------------------------
+    let token = h.token(&admin, "admin");
+    let (st, body) = h
+        .call("GET", "/api/auth/2fa/status", Some(&token), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"enabled": false, "message": "2FA status retrieved", "success": true})
+        )
+    );
+    // Malformed JSON is reported before the missing token, like FastAPI.
+    let (st, body) = h
+        .call_raw(
+            "POST",
+            "/api/auth/2fa/verify-setup",
+            None,
+            Some("application/json"),
+            "{bad",
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["details"][0]["field"].as_str()),
+        (422, Some("1"))
+    );
+    let (st, _) = h
+        .call("POST", "/api/auth/2fa/verify-setup", None, Some(json!({})))
+        .await;
+    assert_eq!(st, 401);
+
+    let (st, setup) = h
+        .call("POST", "/api/auth/2fa/setup", Some(&token), None)
+        .await;
+    assert_eq!(st, 200, "{setup}");
+    let secret = setup["secret"].as_str().unwrap();
+    assert_eq!(
+        setup["otpauth_url"],
+        format!("otpauth://totp/CoPilot:{admin}?secret={secret}&issuer=CoPilot")
+    );
+    assert!(
+        setup["qr_data_uri"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,")
+    );
+    let codes: Vec<String> = setup["backup_codes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(codes.len(), 8);
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/verify-setup",
+            Some(&token),
+            Some(json!({"code": "abcdef"})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].as_str()),
+        (
+            400,
+            Some("Invalid verification code. Check your authenticator app and device clock.")
+        )
+    );
+    let code = totp_now(&h, &admin, 0).await;
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/verify-setup",
+            Some(&token),
+            Some(json!({"code": code})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"message": "Two-factor authentication is now enabled.", "success": true})
+        )
+    );
+    let (st, body) = h
+        .call("POST", "/api/auth/2fa/setup", Some(&token), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].as_str()),
+        (
+            400,
+            Some("2FA is already enabled. Disable it first to reconfigure.")
+        )
+    );
+
+    // --- 2FA login ----------------------------------------------------------
+    let (st, body) = h.login("/api/auth/token", &admin, "Pa55word!").await;
+    assert_eq!(st, 200);
+    assert_eq!(body["requires_2fa"], true);
+    let temp = body["access_token"].as_str().unwrap().to_string();
+    let (st, body) = h
+        .call("GET", "/api/auth/2fa/status", Some(&temp), None)
+        .await;
+    assert_eq!(st, 401);
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("Two-factor authentication required")
+    );
+    let validate = |factor: Value| {
+        let mut b = json!({"temp_token": temp});
+        b.as_object_mut()
+            .unwrap()
+            .extend(factor.as_object().unwrap().clone());
+        b
+    };
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/validate",
+            None,
+            Some(validate(json!({"code": ""}))),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].as_str()),
+        (400, Some("Provide a TOTP code or backup code."))
+    );
+    // A code whose time step was already used is a replay (set the guard
+    // ahead rather than racing the 30 s boundary).
+    let admin_totp = format!(
+        "UPDATE user_totp SET last_used_at = {{}} WHERE user_id = \
+         (SELECT id FROM `user` WHERE username = '{admin}')"
+    );
+    let counter_now = || {
+        copilot_auth::totp::counter_at(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        )
+    };
+    h.exec(&admin_totp.replace("{}", &(counter_now() + 5).to_string()))
+        .await;
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/validate",
+            None,
+            Some(validate(json!({"code": totp_now(&h, &admin, 0).await}))),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].as_str()),
+        (
+            401,
+            Some("This code has already been used. Wait for a new code.")
+        )
+    );
+    let backup = format!("  {} ", codes[0].to_lowercase());
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/validate",
+            None,
+            Some(validate(json!({"backup_code": backup}))),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        h.jwt
+            .decode_claims(body["access_token"].as_str().unwrap())
+            .unwrap()["sub"],
+        admin
+    );
+    assert_eq!(
+        wait_count(
+            &h,
+            &audits("auth.login", "Main portal login (2FA)", &admin),
+            1
+        )
+        .await,
+        1
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/validate",
+            None,
+            Some(validate(json!({"backup_code": codes[0]}))),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].as_str()),
+        (401, Some("Invalid backup code."))
+    );
+    // A later time step logs in and becomes the new guard.
+    h.exec(&admin_totp.replace("{}", &(counter_now() - 2).to_string()))
+        .await;
+    let before = counter_now();
+    let code = totp_now(&h, &admin, 0).await;
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/validate",
+            None,
+            Some(validate(json!({"code": code}))),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let guard = h
+        .scalar_i64(&format!(
+            "SELECT last_used_at FROM user_totp WHERE user_id = (SELECT id FROM `user` WHERE username = '{admin}')"
+        ))
+        .await;
+    assert!(
+        (before..=counter_now()).contains(&(guard as u64)),
+        "{guard}"
+    );
+
+    // --- backup codes, disable --------------------------------------------
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/backup-codes/regenerate",
+            Some(&token),
+            Some(json!({"code": "abcdef"})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].as_str()),
+        (400, Some("Invalid authentication code."))
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/backup-codes/regenerate",
+            Some(&token),
+            Some(json!({"code": totp_now(&h, &admin, 0).await})),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    let fresh = body["backup_codes"][0].as_str().unwrap().to_string();
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/validate",
+            None,
+            Some(validate(json!({"backup_code": codes[1]}))),
+        )
+        .await;
+    assert_eq!(st, 401);
+    let (st, body) = h
+        .call(
+            "DELETE",
+            "/api/auth/2fa/disable",
+            Some(&token),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].as_str()),
+        (400, Some("Provide a TOTP code or backup code."))
+    );
+    let (st, body) = h
+        .call(
+            "DELETE",
+            "/api/auth/2fa/disable",
+            Some(&token),
+            Some(json!({"backup_code": fresh})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"message": "Two-factor authentication has been disabled.", "success": true})
+        )
+    );
+    let (_, body) = h
+        .call("GET", "/api/auth/2fa/status", Some(&token), None)
+        .await;
+    assert_eq!(body["enabled"], false);
+
+    // --- a portal user's 2FA login, then the brute-force lockout ----------
+    let ptoken = h.token(&portal, "customer_user");
+    let (st, setup) = h
+        .call("POST", "/api/auth/2fa/setup", Some(&ptoken), None)
+        .await;
+    assert_eq!(st, 200);
+    let code = totp_now(&h, &portal, 0).await;
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/verify-setup",
+            Some(&ptoken),
+            Some(json!({"code": code})),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (_, body) = h
+        .login("/api/auth/token/customer-portal", &portal, "Pa55word!")
+        .await;
+    let ptemp = body["access_token"].as_str().unwrap().to_string();
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/validate",
+            None,
+            Some(json!({"temp_token": ptemp, "backup_code": setup["backup_codes"][3]})),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let claims = h
+        .jwt
+        .decode_claims(body["access_token"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(claims["customer_codes"], json!([format!("acme{s}")]));
+    for _ in 0..5 {
+        let (st, _) = h
+            .call(
+                "POST",
+                "/api/auth/2fa/validate",
+                None,
+                Some(json!({"temp_token": ptemp, "code": "abcdef"})),
+            )
+            .await;
+        assert_eq!(st, 401);
+    }
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/2fa/validate",
+            None,
+            Some(json!({"temp_token": ptemp, "code": totp_now(&h, &portal, 1).await})),
+        )
+        .await;
+    assert_eq!(st, 401);
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("Too many failed 2FA attempts. Try again in "),
+        "{body}"
+    );
+    assert_eq!(
+        wait_count(
+            &h,
+            &audits(
+                "auth.login_failed",
+                "Failed second-factor (2FA) verification",
+                &portal
+            ),
+            6
+        )
+        .await,
+        6
+    );
 }
 
 #[tokio::test]

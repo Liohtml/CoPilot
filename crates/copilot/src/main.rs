@@ -73,10 +73,15 @@ fn main() -> anyhow::Result<()> {
         None => std::env::current_dir().context("current directory")?,
     };
     let env = EnvFile::load(&root);
-    let mut secrets: Vec<String> = ["JWT_SECRET", "MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD"]
-        .iter()
-        .filter_map(|k| env.get(k))
-        .collect();
+    let mut secrets: Vec<String> = [
+        "JWT_SECRET",
+        "MYSQL_PASSWORD",
+        "MYSQL_ROOT_PASSWORD",
+        "TOTP_ENCRYPTION_KEY",
+    ]
+    .iter()
+    .filter_map(|k| env.get(k))
+    .collect();
     secrets.extend(env.get("COPILOT_DATABASE_URL"));
     logging::init(
         env.get("COPILOT_LOG_FORMAT")

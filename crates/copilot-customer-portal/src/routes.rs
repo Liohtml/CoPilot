@@ -17,17 +17,16 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use bytes::Bytes;
 
 use copilot_core::audit::AuditRecord;
 use copilot_core::time::now_utc_micros;
 use copilot_db::alerts;
 use copilot_db::customer_portal::{self as db, SettingsUpdate};
 use copilot_talon::TalonState;
-use copilot_web::validate::{IntRules, Validator, parse_body_model, path_int};
+use copilot_web::validate::{IntRules, Validator, path_int};
 use copilot_web::{
     AdminOnly, AdminOrAnalyst, AnyPortalOrSoc, ApiError, ApiResult, AppContext, Authorized,
-    QueryPairs,
+    QueryPairs, WithJson,
 };
 
 use crate::reports;
@@ -100,12 +99,11 @@ async fn get_settings(
 }
 
 async fn put_settings(
-    auth: Authorized<AdminOnly>,
     State(ctx): State<AppContext>,
     Path(customer_code): Path<String>,
-    body: Bytes,
+    WithJson(auth, body): WithJson<Authorized<AdminOnly>>,
 ) -> ApiResult {
-    let req = parse_body_model(&body, UpdateSettingsRequest::read)?;
+    let req = body.model(UpdateSettingsRequest::read)?;
     if !alerts::customer_exists(&ctx.db, &customer_code).await? {
         return Err(ApiError::not_found(format!(
             "Customer {customer_code} not found"

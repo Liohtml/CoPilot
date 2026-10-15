@@ -15,6 +15,12 @@ sha2 = { workspace = true }
 base64 = { workspace = true }
 zeroize = { workspace = true }
 bcrypt = { workspace = true }
+aes = { workspace = true }
+cbc = { workspace = true }
+sha1 = { workspace = true }
+rand = { workspace = true }
+subtle = { workspace = true }
+unicode-normalization = { workspace = true }
 
 [lints]
 workspace = true

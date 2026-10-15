@@ -30,6 +30,7 @@ pub mod customers;
 pub mod pool;
 pub mod scheduler;
 pub mod schema;
+pub mod totp;
 pub mod users;
 pub mod visibility;
 

@@ -57,6 +57,14 @@ impl ScopeSet for AnyPortalOrSoc {
     const SCOPES: &'static [&'static str] = &["admin", "analyst", "customer_user"];
 }
 
+/// No scope at all — `Depends(get_current_user)` (any signed-in user), for
+/// [`ScopedUser`].
+#[derive(Debug)]
+pub struct AnyUser;
+impl ScopeSet for AnyUser {
+    const SCOPES: &'static [&'static str] = &[];
+}
+
 /// The authenticated caller.
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
@@ -172,6 +180,19 @@ pub fn source_ip(parts: &Parts) -> Option<String> {
             .get::<ConnectInfo<SocketAddr>>()
             .map(|ci| ci.0.ip().to_string())
     })
+}
+
+/// The caller's address for audit events (`_client_ip`), on routes without
+/// a signed-in user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClientIp(pub Option<String>);
+
+impl<St: Send + Sync> FromRequestParts<St> for ClientIp {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &St) -> Result<Self, Self::Rejection> {
+        Ok(Self(source_ip(parts)))
+    }
 }
 
 /// Token → user, without any scope requirement.

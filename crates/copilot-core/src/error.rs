@@ -4,7 +4,7 @@
 
 use thiserror::Error;
 
-/// `Result` with the shared [`Error`].
+/// `Result` with the shared [`Error`](enum@Error).
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Errors shared across the workspace.

@@ -5,6 +5,7 @@
 //! | `HTTPException(status, detail)` | `status` | `{"success": false, "message": detail}` |
 //! | `RequestValidationError` | 422 | `{"message": first, "details": [{field, error_type, message}]}` |
 //! | `ValueError` | 400 | `{"success": false, "message": str(e)}` |
+//! | Starlette `HTTPException` (body read failures) | `status` | `{"detail": detail}` |
 //! | unmatched route | 404 | `{"detail": "Not Found"}` |
 //! | wrong method | 405 | `{"detail": "Method Not Allowed"}` |
 //! | anything else | 500 | `Internal Server Error` (plain text) |
@@ -42,6 +43,15 @@ pub enum ApiError {
     },
     /// `RequestValidationError` (422).
     Validation(Vec<ValidationItem>),
+    /// A Starlette `HTTPException`, which the backend's handler does not
+    /// catch: FastAPI's default `{"detail": …}`, no `log_entries` row (an
+    /// unreadable body).
+    Detail {
+        /// Response status.
+        status: StatusCode,
+        /// `detail`.
+        detail: String,
+    },
     /// Starlette's routing 404 (`{"detail": "Not Found"}`).
     RouteNotFound,
     /// Starlette's routing 405.
@@ -59,6 +69,14 @@ impl ApiError {
         Self::Http {
             status,
             detail: Value::String(detail.into()),
+        }
+    }
+
+    /// A Starlette `HTTPException` (`{"detail": …}`).
+    pub fn detail(status: StatusCode, detail: impl Into<String>) -> Self {
+        Self::Detail {
+            status,
+            detail: detail.into(),
         }
     }
 
@@ -98,6 +116,7 @@ impl ApiError {
         match self {
             ApiError::Http { status, .. } => *status,
             ApiError::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            ApiError::Detail { status, .. } => *status,
             ApiError::RouteNotFound => StatusCode::NOT_FOUND,
             ApiError::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
             ApiError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -116,6 +135,7 @@ impl std::fmt::Display for ApiError {
                 let first = items.first().and_then(|i| i.message.as_deref());
                 write!(f, "422: {}", first.unwrap_or("Validation Error"))
             }
+            ApiError::Detail { status, detail } => write!(f, "{}: {detail}", status.as_u16()),
             ApiError::RouteNotFound => f.write_str("404: Not Found"),
             ApiError::MethodNotAllowed => f.write_str("405: Method Not Allowed"),
             ApiError::Internal(cause) => write!(f, "500: {cause}"),
@@ -167,6 +187,9 @@ impl IntoResponse for ApiError {
                 let mut resp = (StatusCode::UNPROCESSABLE_ENTITY, Json(body)).into_response();
                 resp.extensions_mut().insert(LoggedError { message });
                 resp
+            }
+            ApiError::Detail { status, detail } => {
+                (status, Json(json!({ "detail": detail }))).into_response()
             }
             ApiError::RouteNotFound => {
                 (StatusCode::NOT_FOUND, Json(json!({"detail": "Not Found"}))).into_response()

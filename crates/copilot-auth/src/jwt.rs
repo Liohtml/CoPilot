@@ -8,9 +8,14 @@
 //! object. Registered claims are then validated so the outcome matches PyJWT
 //! exactly:
 //! leeway 0, no required claims (a token without `exp` never expires), the
-//! order `iat` → `nbf` → `exp`, `exp <= now` is expired, a non-integer time
-//! claim or a non-string `sub` is invalid, and a token carrying `aud` is
-//! invalid because the backend never configures an audience.
+//! order `iat` → `nbf` → `exp` → `aud` → `sub` → `jti`, `exp <= now` is
+//! expired, a non-integer time claim or a non-string `sub` is invalid, and a
+//! token carrying `aud` is invalid because the backend never configures an
+//! audience.
+//!
+//! The 2FA step uses a second, short-lived token (`type: 2fa_pending`, 5
+//! minutes) that [`JwtCodec::decode_session`] refuses and only
+//! [`JwtCodec::decode_two_factor`] accepts (`routes/totp.py`).
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -46,6 +51,27 @@ pub enum TokenError {
     MissingSubject,
 }
 
+/// Why `/auth/2fa/validate` refused its temp token (`_decode_temp_token`);
+/// the `Display` strings are Python's.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum TwoFactorTokenError {
+    /// `exp` passed.
+    #[error("2FA verification token has expired. Please log in again.")]
+    Expired,
+    /// Not a token we signed, or bad claims.
+    #[error("Invalid 2FA verification token.")]
+    Invalid,
+    /// A token, but not a 2FA temp token.
+    #[error("Invalid token type")]
+    WrongType,
+    /// No (or an empty) `sub`.
+    #[error("No username in token")]
+    NoSubject,
+}
+
+/// How long the 2FA temp token lives (`timedelta(minutes=5)`).
+pub const TWO_FACTOR_TTL_SECS: i64 = 300;
+
 /// The claims CoPilot reads from a session token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionClaims {
@@ -76,6 +102,13 @@ impl std::fmt::Debug for JwtCodec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("JwtCodec").finish_non_exhaustive()
     }
+}
+
+fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
 }
 
 fn now_secs_f64() -> f64 {
@@ -175,12 +208,22 @@ impl JwtCodec {
         ttl: Duration,
         extra: Option<Map<String, Value>>,
     ) -> Result<String, TokenError> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        let secs = i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX);
+        self.issue_session(username, role, secs, extra)
+    }
+
+    /// [`Self::encode_session`] with a signed lifetime in seconds
+    /// (`ACCESS_TOKEN_EXPIRE_MINUTES` may be anything `int()` reads).
+    pub fn issue_session(
+        &self,
+        username: &str,
+        role: &str,
+        ttl_secs: i64,
+        extra: Option<Map<String, Value>>,
+    ) -> Result<String, TokenError> {
+        let now = now_secs();
         let mut claims = Map::new();
-        claims.insert("exp".into(), Value::from(now.saturating_add(ttl.as_secs())));
+        claims.insert("exp".into(), Value::from(now.saturating_add(ttl_secs)));
         claims.insert("iat".into(), Value::from(now));
         claims.insert("sub".into(), Value::from(username));
         claims.insert("scopes".into(), Value::from(scopes_for_role_name(role)));
@@ -188,6 +231,36 @@ impl JwtCodec {
             claims.extend(extra);
         }
         self.encode_claims(&claims)
+    }
+
+    /// The 2FA temp token `/auth/token` returns while the second factor is
+    /// outstanding (`_create_temp_token`).
+    pub fn encode_two_factor(&self, username: &str) -> Result<String, TokenError> {
+        let now = now_secs();
+        let mut claims = Map::new();
+        claims.insert("sub".into(), Value::from(username));
+        claims.insert(
+            "exp".into(),
+            Value::from(now.saturating_add(TWO_FACTOR_TTL_SECS)),
+        );
+        claims.insert("iat".into(), Value::from(now));
+        claims.insert("type".into(), Value::from("2fa_pending"));
+        self.encode_claims(&claims)
+    }
+
+    /// `_decode_temp_token`: the username a 2FA temp token was issued to.
+    pub fn decode_two_factor(&self, token: &str) -> Result<String, TwoFactorTokenError> {
+        let claims = self.decode_claims(token).map_err(|e| match e {
+            TokenError::Expired => TwoFactorTokenError::Expired,
+            _ => TwoFactorTokenError::Invalid,
+        })?;
+        if claims.get("type").and_then(Value::as_str) != Some("2fa_pending") {
+            return Err(TwoFactorTokenError::WrongType);
+        }
+        match claims.get("sub").and_then(Value::as_str) {
+            Some(sub) if !sub.is_empty() => Ok(sub.to_string()),
+            _ => Err(TwoFactorTokenError::NoSubject),
+        }
     }
 
     /// Sign arbitrary claims with HS256 (`{"alg":"HS256","typ":"JWT"}`).
@@ -223,6 +296,9 @@ fn validate_registered_claims(claims: &Map<String, Value>, now: f64) -> Result<(
         }
     }
     if claims.contains_key("aud") {
+        return Err(TokenError::Invalid);
+    }
+    if claims.get("sub").is_some_and(|sub| !sub.is_string()) {
         return Err(TokenError::Invalid);
     }
     if claims.get("jti").is_some_and(|jti| !jti.is_string()) {
@@ -365,6 +441,54 @@ mod tests {
         assert_eq!(c.decode_session(&list_payload), Err(TokenError::Invalid));
         assert_eq!(c.decode_session("a.b"), Err(TokenError::Invalid));
         assert_eq!(c.decode_session("a.b.c.d"), Err(TokenError::Invalid));
+    }
+
+    #[test]
+    fn two_factor_temp_token() {
+        let c = codec();
+        let temp = c.encode_two_factor("alice").unwrap();
+        assert_eq!(c.decode_two_factor(&temp).unwrap(), "alice");
+        assert_eq!(c.decode_session(&temp), Err(TokenError::TwoFactorPending));
+        let raw = c.decode_claims(&temp).unwrap();
+        let keys: Vec<&str> = raw.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["sub", "exp", "iat", "type"]);
+        assert_eq!(
+            raw["exp"].as_i64().unwrap() - raw["iat"].as_i64().unwrap(),
+            300
+        );
+        let session = c
+            .encode_session("alice", "admin", Duration::from_secs(60), None)
+            .unwrap();
+        assert_eq!(
+            c.decode_two_factor(&session),
+            Err(TwoFactorTokenError::WrongType)
+        );
+        let expired = sign(json!({"sub": "a", "exp": now() - 1, "type": "2fa_pending"}));
+        assert_eq!(
+            c.decode_two_factor(&expired),
+            Err(TwoFactorTokenError::Expired)
+        );
+        let no_sub = sign(json!({"exp": now() + 60, "type": "2fa_pending"}));
+        assert_eq!(
+            c.decode_two_factor(&no_sub),
+            Err(TwoFactorTokenError::NoSubject)
+        );
+        let empty_sub = sign(json!({"sub": "", "type": "2fa_pending"}));
+        assert_eq!(
+            c.decode_two_factor(&empty_sub),
+            Err(TwoFactorTokenError::NoSubject)
+        );
+        let int_sub = sign(json!({"sub": 5, "type": "2fa_pending"}));
+        assert_eq!(
+            c.decode_two_factor(&int_sub),
+            Err(TwoFactorTokenError::Invalid)
+        );
+        assert_eq!(
+            c.decode_two_factor("garbage"),
+            Err(TwoFactorTokenError::Invalid)
+        );
+        let negative = c.issue_session("a", "admin", -60, None).unwrap();
+        assert_eq!(c.decode_session(&negative), Err(TokenError::Expired));
     }
 
     #[test]

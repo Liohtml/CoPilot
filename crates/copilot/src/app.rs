@@ -8,6 +8,8 @@
 //!                      │ GET /api/customers/*   → copilot-customers           │
 //!                      │ GET /api/healthcheck/* → copilot-healthchecks        │
 //!                      │ /api/version/*, /api/audit/* → copilot-platform      │
+//!                      │ /api/auth/token*, /refresh, /2fa/*                   │
+//!                      │                    → copilot-identity                │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -25,7 +27,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::json;
 
-use copilot_auth::JwtCodec;
+use copilot_auth::{Fernet, JwtCodec};
 use copilot_core::config::CopilotConfig;
 use copilot_core::notify::{NoopNotificationSink, SharedNotificationSink};
 use copilot_db::Db;
@@ -33,6 +35,7 @@ use copilot_db::audit::DbAuditSink;
 use copilot_db::connectors::ConnectorCache;
 use copilot_db::schema::{self, TableRequirement};
 use copilot_gateway::{LegacyNotificationSink, LegacyProxy};
+use copilot_identity::{IdentityState, TwoFactorLimiter};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
 use copilot_talon::{TalonConnector, TalonState};
@@ -50,6 +53,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/healthcheck",
     "/api/version",
     "/api/audit",
+    "/api/auth/token",
+    "GET /api/auth/refresh",
+    "/api/auth/2fa",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -63,6 +69,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::customer_portal::REQUIREMENTS);
     all.extend_from_slice(copilot_db::customers::REQUIREMENTS);
     all.extend_from_slice(copilot_db::agents::REQUIREMENTS);
+    all.extend_from_slice(copilot_db::totp::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -96,6 +103,8 @@ pub struct App {
     pub talon: TalonConnector,
     /// GitHub release lookup for `/api/version/check`.
     pub version: VersionChecker,
+    /// Login and 2FA state (the TOTP key, the brute-force counter).
+    pub identity: IdentityState,
     /// Legacy backend, if configured.
     pub legacy: Option<LegacyProxy>,
 }
@@ -126,6 +135,17 @@ impl App {
             .context("building the Talon client")?;
         let version = VersionChecker::new(cfg.version_check_url.clone())
             .context("building the release-check client")?;
+        let fernet = Fernet::for_totp(cfg.totp_encryption_key.as_ref(), &cfg.jwt_secret).map_err(
+            |e| {
+                anyhow::anyhow!(
+                    "TOTP_ENCRYPTION_KEY is malformed. Expected a 32-byte url-safe base64 key \
+                     (typically 44 characters ending with '='). Generate a valid one with:\n  \
+                     python -c \"from cryptography.fernet import Fernet; \
+                     print(Fernet.generate_key().decode())\"\nThen paste the value into your \
+                     .env without surrounding quotes or trailing whitespace. (underlying error: {e})"
+                )
+            },
+        )?;
         let ctx = AppContext::new(AppDeps {
             db: db.clone(),
             jwt: JwtCodec::new(&cfg.jwt_secret),
@@ -136,10 +156,17 @@ impl App {
             http: reqwest::Client::new(),
             log_handled_errors: true,
         });
+        let identity = IdentityState {
+            ctx: ctx.clone(),
+            fernet: Arc::new(fernet),
+            limiter: Arc::new(TwoFactorLimiter::default()),
+            token_ttl_minutes: cfg.access_token_expire_minutes,
+        };
         Ok(Self {
             ctx,
             talon,
             version,
+            identity,
             legacy,
         })
     }
@@ -176,6 +203,9 @@ impl App {
                 copilot_platform::version_router(platform.clone()),
             )
             .nest("/api/audit", copilot_platform::audit_router(platform))
+            // Only the token and 2FA routes are ported; the rest of `/auth`
+            // (users, SSO, passkeys, …) falls through to the legacy proxy.
+            .nest("/api/auth", copilot_identity::router(self.identity.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

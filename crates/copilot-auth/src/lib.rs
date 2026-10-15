@@ -14,15 +14,20 @@
 //! Module map:
 //! - [`jwt`]      — encode/decode session tokens
 //! - [`password`] — bcrypt with the 72-byte cut
+//! - [`fernet`]   — `cryptography.fernet`, for the stored TOTP secrets
+//! - [`totp`]     — pyotp-compatible TOTP, enrolment URI, backup codes
 //! - [`access`]   — `AccessScope`: who may see which customer
 //! - [`tags`]     — tag RBAC: which tagged alerts a user may see
 
 #![warn(missing_docs)]
 
 pub mod access;
+pub mod fernet;
 pub mod jwt;
 pub mod password;
 pub mod tags;
+pub mod totp;
 
 pub use access::{AccessDenied, AccessScope};
-pub use jwt::{JwtCodec, SessionClaims, TokenError};
+pub use fernet::{Fernet, FernetKeyError};
+pub use jwt::{JwtCodec, SessionClaims, TokenError, TwoFactorTokenError};

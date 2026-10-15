@@ -6,7 +6,7 @@
 //!
 //! Module map:
 //! - [`config`] — process-wide configuration from env / `.env`
-//! - [`env`]    — `.env` reader that never pollutes `std::env` (vendored from Talon)
+//! - [`env`](mod@env)    — `.env` reader that never pollutes `std::env` (vendored from Talon)
 //! - [`roles`]  — `RoleEnum`, role extension and token scopes
 //! - [`audit`]  — `audit_log` records and the sink abstraction
 //! - [`notify`] — notification events and the sink the legacy bridge implements

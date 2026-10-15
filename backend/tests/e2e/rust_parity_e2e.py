@@ -13,12 +13,16 @@ Deliberate differences are asserted as such (DIFF_BY_DESIGN), not skipped silent
 """
 
 import asyncio
+import base64
 import datetime
+import io
 import json
 import os
+import re
 import sys
 import threading
 import uuid
+from collections import Counter
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 
@@ -28,8 +32,10 @@ os.environ.setdefault("MYSQL_PASSWORD", "e2epass")
 os.environ.setdefault("MYSQL_ROOT_PASSWORD", "e2eroot")
 os.environ.setdefault("JWT_SECRET", "e2e-test-secret-not-the-default")
 
+import bcrypt  # noqa: E402
 import httpx  # noqa: E402
 import jwt  # noqa: E402
+import pyotp  # noqa: E402
 from fastapi import APIRouter  # noqa: E402
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -138,6 +144,8 @@ def mask(value):
 def build_python_app():
     from app.ai_analyst.routes.ai_analyst import ai_analyst_router
     from app.audit.routes.audit import audit_router
+    from app.auth.routes.auth import auth_router
+    from app.auth.routes.totp import totp_router
     from app.connectors.talon.routes.talon import talon_router
     from app.customer_portal.routes.ai_reports import customer_portal_ai_reports_router
     from app.customers.routes.customers import customers_router
@@ -155,6 +163,8 @@ def build_python_app():
     api.include_router(healtcheck_agents_router, prefix="/healthcheck")
     api.include_router(version_router, prefix="/version")
     api.include_router(audit_router, prefix="/audit")
+    api.include_router(auth_router, prefix="/auth")
+    api.include_router(totp_router, prefix="/auth")
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -778,6 +788,399 @@ async def main():
     ):
         RELEASE[0] = payload
         await same(f"version: {label}", "GET", "/api/version/check")
+
+    # --- Phase 2: login, refresh, 2FA --------------------------------------------------
+    print("\n=== auth: login / refresh / 2fa ===")
+    from PIL import Image
+
+    from app.auth.services.totp import _decrypt_secret
+    from app.auth.services.totp import _encrypt_secret
+
+    form_ct = "application/x-www-form-urlencoded"
+    pw_hash = bcrypt.hashpw(b"Pa55word!", bcrypt.gensalt(4)).decode()
+    tfa = {"py": f"par_tfa_py{SFX}", "rs": f"par_tfa_rs{SFX}"}  # 2FA enabled
+    tfn = {"py": f"par_tfn_py{SFX}", "rs": f"par_tfn_rs{SFX}"}  # enrolment started, not verified
+    tf0 = {"py": f"par_tf0_py{SFX}", "rs": f"par_tf0_rs{SFX}"}  # no 2FA row
+    secret = pyotp.random_base32()
+    backup_plain = ["ALPHA00001", "BRAVO00002", "CHARL00003"]
+    backup_rows = json.dumps([{"hash": bcrypt.hashpw(c.encode(), bcrypt.gensalt(4)).decode(), "used": False} for c in backup_plain])
+    async with AsyncSession(async_engine) as s_:
+        await s_.execute(
+            text("UPDATE `user` SET password = :h WHERE username IN (:a, :b, :c)"),
+            {"h": pw_hash, "a": ADMIN, "b": ANALYST, "c": PORTAL},
+        )
+        for name in [*tfa.values(), *tfn.values(), *tf0.values()]:
+            await s_.execute(
+                text(
+                    "INSERT INTO `user` (username, password, email, created_at, role_id) "
+                    "VALUES (:n, :h, 'p@example.com', UTC_TIMESTAMP(), 2)",
+                ),
+                {"n": name, "h": pw_hash},
+            )
+            await s_.execute(
+                text(
+                    "INSERT INTO user_customer_access (user_id, customer_code, created_at) "
+                    "SELECT id, :c, UTC_TIMESTAMP() FROM `user` WHERE username = :n",
+                ),
+                {"c": CUST_A, "n": name},
+            )
+        for names, enabled in ((tfa, 1), (tfn, 0)):
+            for name in names.values():
+                await s_.execute(
+                    text(
+                        "INSERT INTO user_totp (user_id, secret_enc, enabled, backup_codes, last_used_at, created_at) "
+                        "SELECT id, :s, :e, :b, NULL, UTC_TIMESTAMP() FROM `user` WHERE username = :n",
+                    ),
+                    {"s": _encrypt_secret(secret), "e": enabled, "b": backup_rows, "n": name},
+                )
+        await s_.commit()
+
+    def claims_of(tok_):
+        c = jwt.decode(tok_, os.environ["JWT_SECRET"], algorithms=["HS256"], options={"verify_exp": False})
+        return {"keys": list(c), "life": c.get("exp", 0) - c.get("iat", 0), **{k: v for k, v in c.items() if k not in ("exp", "iat")}}
+
+    py_users = {tfa["py"]: "<user>", tfn["py"]: "<user>", tf0["py"]: "<user>"}
+    rs_users = {tfa["rs"]: "<user>", tfn["rs"]: "<user>", tf0["rs"]: "<user>"}
+
+    def norm(value, names):
+        if isinstance(value, dict):
+            return {k: norm(v, names) for k, v in value.items()}
+        if isinstance(value, list):
+            return [norm(v, names) for v in value]
+        if isinstance(value, str):
+            for n, ph in names.items():
+                value = value.replace(n, ph)
+            return re.sub(r"Try again in \d+ seconds", "Try again in N seconds", value)
+        return value
+
+    def token_shape(r, names=None):
+        b = body_of(r)
+        if isinstance(b, dict) and isinstance(b.get("access_token"), str):
+            b = {**b, "access_token": claims_of(b["access_token"])}
+        return norm(b, names or {})
+
+    async def send(client, method, path, tok, body, content, content_type):
+        headers = H(tok)
+        if content_type:
+            headers["Content-Type"] = content_type
+        if body is not None:
+            return await client.request(method, path, headers=headers, json=body)
+        return await client.request(method, path, headers=headers, content=content)
+
+    async def same_raw(name, method, path, tok=None, content=None, content_type=None, shape=body_of):
+        r1 = await send(py, method, path, tok, None, content, content_type)
+        r2 = await send(rs, method, path, tok, None, content, content_type)
+        b1, b2 = shape(r1), shape(r2)
+        ok = r1.status_code == r2.status_code and b1 == b2
+        check(
+            f"{name} [{r1.status_code}]",
+            ok,
+            f"python {r1.status_code} {json.dumps(b1)[:600]}\n        rust   {r2.status_code} {json.dumps(b2)[:600]}",
+        )
+        return r1, r2
+
+    async def pair(name, method, path, toks=None, bodies=None, contents=None, content_type=None, shape=token_shape):
+        """The same request for each backend's own user (`toks`/`bodies`/`contents`: {"py": …, "rs": …})."""
+        toks, bodies, contents = toks or {}, bodies or {}, contents or {}
+        r1 = await send(py, method, path, toks.get("py"), bodies.get("py"), contents.get("py"), content_type)
+        r2 = await send(rs, method, path, toks.get("rs"), bodies.get("rs"), contents.get("rs"), content_type)
+        b1, b2 = shape(r1, py_users), shape(r2, rs_users)
+        ok = r1.status_code == r2.status_code and b1 == b2
+        check(
+            f"{name} [{r1.status_code}]",
+            ok,
+            f"python {r1.status_code} {json.dumps(b1)[:600]}\n        rust   {r2.status_code} {json.dumps(b2)[:600]}",
+        )
+        return r1, r2
+
+    def login_form(username, password="Pa55word!"):
+        return f"username={username}&password={password}"
+
+    shape = lambda r: token_shape(r)  # noqa: E731
+    await same_raw("login: admin, urlencoded", "POST", "/api/auth/token", None, login_form(ADMIN), form_ct, shape)
+    multipart = (
+        f'--XyZ\r\nContent-Disposition: form-data; name="username"\r\n\r\n{ANALYST}\r\n'
+        '--XyZ\r\nContent-Disposition: form-data; name="password"\r\n\r\nPa55word!\r\n--XyZ--\r\n'
+    )
+    await same_raw("login: analyst, multipart", "POST", "/api/auth/token", None, multipart, "multipart/form-data; boundary=XyZ", shape)
+    await same_raw("login: wrong password", "POST", "/api/auth/token", None, login_form(ADMIN, "nope"), form_ct)
+    await same_raw("login: unknown user", "POST", "/api/auth/token", None, login_form(f"ghost{SFX}"), form_ct)
+    await same_raw("login: portal user at the main portal", "POST", "/api/auth/token", None, login_form(PORTAL), form_ct)
+    await same_raw("login: admin at the customer portal", "POST", "/api/auth/token/customer-portal", None, login_form(ADMIN), form_ct)
+    await same_raw(
+        "login: portal user at the customer portal",
+        "POST",
+        "/api/auth/token/customer-portal",
+        None,
+        login_form(PORTAL),
+        form_ct,
+        shape,
+    )
+    await same_raw(
+        "login: wrong password (customer portal)",
+        "POST",
+        "/api/auth/token/customer-portal",
+        None,
+        login_form(PORTAL, "x"),
+        form_ct,
+    )
+    await same_raw("login: empty form", "POST", "/api/auth/token", None, "", form_ct)
+    await same_raw("login: empty values, bad grant_type", "POST", "/api/auth/token", None, "username=&password=&grant_type=client", form_ct)
+    await same_raw(
+        "login: grant_type password",
+        "POST",
+        "/api/auth/token",
+        None,
+        login_form(ADMIN) + "&grant_type=password",
+        form_ct,
+        shape,
+    )
+    await same_raw(
+        "login: last value wins",
+        "POST",
+        "/api/auth/token",
+        None,
+        f"username=x&username={ADMIN}&password=Pa55word!",
+        form_ct,
+        shape,
+    )
+    await same_raw(
+        "login: percent-encoded password",
+        "POST",
+        "/api/auth/token",
+        None,
+        f"username={ADMIN}&password=Pa55word%21",
+        form_ct,
+        shape,
+    )
+    await same_raw("login: no content type", "POST", "/api/auth/token", None, login_form(ADMIN))
+    await same_raw(
+        "login: JSON body",
+        "POST",
+        "/api/auth/token",
+        None,
+        json.dumps({"username": ADMIN, "password": "Pa55word!"}),
+        "application/json",
+    )
+    await same_raw("login: multipart without boundary", "POST", "/api/auth/token", None, multipart, "multipart/form-data")
+    await same_raw("login: malformed multipart", "POST", "/api/auth/token", None, "garbage", "multipart/form-data; boundary=XyZ")
+    await same_raw(
+        "login: multipart part without a name",
+        "POST",
+        "/api/auth/token",
+        None,
+        "--XyZ\r\nContent-Disposition: form-data\r\n\r\nx\r\n--XyZ--\r\n",
+        "multipart/form-data; boundary=XyZ",
+    )
+    await same_raw(
+        "login: multipart file as username",
+        "POST",
+        "/api/auth/token",
+        None,
+        '--XyZ\r\nContent-Disposition: form-data; name="username"; filename="u.txt"\r\n\r\nx\r\n'
+        '--XyZ\r\nContent-Disposition: form-data; name="password"\r\n\r\ny\r\n--XyZ--\r\n',
+        "multipart/form-data; boundary=XyZ",
+    )
+    await same_raw("login: GET", "GET", "/api/auth/token")
+    await asyncio.sleep(0.5)  # the Rust service writes audit rows from a spawned task
+    async with AsyncSession(async_engine) as s_:
+        rows = (
+            await s_.execute(
+                text(
+                    "SELECT actor_user_id, actor_username, customer_code, action, entity_type, entity_id, result, source_ip, "
+                    "details FROM audit_log WHERE action LIKE 'auth.%' AND actor_username IN (:a, :b, :c, :g)",
+                ),
+                {"a": ADMIN, "b": ANALYST, "c": PORTAL, "g": f"ghost{SFX}"},
+            )
+        ).all()
+    pairs = Counter(tuple(r) for r in rows)
+    check(f"login: audit events come in identical pairs ({len(rows)} rows)", rows and all(n % 2 == 0 for n in pairs.values()), str(pairs))
+
+    t_portal_cp = (await py.post("/api/auth/token/customer-portal", content=login_form(PORTAL), headers={"Content-Type": form_ct})).json()[
+        "access_token"
+    ]
+    await same_raw("refresh: portal user keeps customer_codes", "GET", "/api/auth/refresh", t_portal_cp, shape=shape)
+    await same_raw("refresh: admin", "GET", "/api/auth/refresh", t_admin, shape=shape)
+    await same_raw("refresh: responder scopes", "GET", "/api/auth/refresh", token(ANALYST, ["analyst"]), shape=shape)
+    await same_raw("refresh: no token", "GET", "/api/auth/refresh")
+    await same_raw("refresh: garbage token", "GET", "/api/auth/refresh", "garbage")
+    await same_raw("refresh: 2fa temp token", "GET", "/api/auth/refresh", token(ADMIN, ["admin"], type="2fa_pending"))
+    await same_raw("refresh: unknown user", "GET", "/api/auth/refresh", token("nobody" + SFX, ["admin"]))
+    await same_raw("refresh: token without sub", "GET", "/api/auth/refresh", no_sub)
+    await same_raw("refresh: POST", "POST", "/api/auth/refresh", t_admin)
+
+    # 2FA: each backend gets its own, identically prepared user.
+    V = "/api/auth/2fa/validate"
+    tk = {k: token(v, ["analyst"]) for k, v in tfa.items()}
+    await pair("2fa: status (enabled)", "GET", "/api/auth/2fa/status", tk)
+    await pair("2fa: setup while enabled", "POST", "/api/auth/2fa/setup", tk)
+    await pair("2fa: verify-setup while enabled", "POST", "/api/auth/2fa/verify-setup", tk, {k: {"code": "123456"} for k in tk})
+    await same_raw("2fa: status as portal user", "GET", "/api/auth/2fa/status", t_portal)
+    await same_raw("2fa: status without token", "GET", "/api/auth/2fa/status")
+    await same_raw("2fa: malformed JSON before the token check", "POST", "/api/auth/2fa/verify-setup", None, "{bad", "application/json")
+    await same_raw("2fa: JSON without token", "POST", "/api/auth/2fa/verify-setup", None, "{}", "application/json")
+    await same_raw("2fa: not JSON", "POST", "/api/auth/2fa/verify-setup", t_analyst, '{"code": "1"}', "text/plain")
+    await same_raw("2fa: body missing", "POST", "/api/auth/2fa/verify-setup", t_analyst)
+    await same_raw("2fa: body not UTF-8", "POST", "/api/auth/2fa/verify-setup", t_analyst, b'{"code": "\xff"}', "application/json")
+    await same_raw("2fa: code not a string", "POST", "/api/auth/2fa/verify-setup", t_analyst, '{"code": 123456}', "application/json")
+
+    r1, r2 = await pair(
+        "2fa: login asks for the second factor",
+        "POST",
+        "/api/auth/token",
+        contents={k: login_form(v) for k, v in tfa.items()},
+        content_type=form_ct,
+    )
+    temp = {"py": r1.json()["access_token"], "rs": r2.json()["access_token"]}
+
+    def vb(**factor):
+        return {k: {"temp_token": temp[k], **factor} for k in temp}
+
+    async def guard(names, counter):
+        async with AsyncSession(async_engine) as s_:
+            await s_.execute(
+                text("UPDATE user_totp t JOIN `user` u ON u.id = t.user_id SET t.last_used_at = :c WHERE u.username IN (:a, :b)"),
+                {"c": counter, "a": names["py"], "b": names["rs"]},
+            )
+            await s_.commit()
+
+    counter = int(datetime.datetime.now().timestamp()) // 30
+    # Temp tokens are interchangeable: each backend finishes the other's login.
+    r1 = await rs.post(V, json={"temp_token": temp["py"], "backup_code": "CHARL00003"})
+    r2 = await py.post(V, json={"temp_token": temp["rs"], "backup_code": "CHARL00003"})
+    check("2fa: Python's temp token completes at Rust and vice versa", r1.status_code == r2.status_code == 200, f"{r1.text} {r2.text}")
+    await pair("2fa: validate without a factor", "POST", V, bodies=vb(code="", backup_code=""))
+    await pair("2fa: validate, wrong code", "POST", V, bodies=vb(code="abcdef"))
+    await guard(tfa, counter - 2)
+    await pair("2fa: validate, current code", "POST", V, bodies=vb(code=pyotp.TOTP(secret).now()))
+    await guard(tfa, counter + 5)
+    await pair("2fa: validate, a used time step", "POST", V, bodies=vb(code=pyotp.TOTP(secret).now()))
+    await pair("2fa: validate, backup code in lower case with spaces", "POST", V, bodies=vb(backup_code=" alpha00001 "))
+    await pair("2fa: validate, spent backup code", "POST", V, bodies=vb(backup_code="ALPHA00001"))
+    await pair("2fa: validate, backup code over 72 bytes", "POST", V, bodies=vb(backup_code="X" * 80))
+    await pair("2fa: validate, both factors (the code decides)", "POST", V, bodies=vb(code="abcdef", backup_code="BRAVO00002"))
+    await pair("2fa: regenerate, wrong code", "POST", "/api/auth/2fa/backup-codes/regenerate", tk, {k: {"code": "abcdef"} for k in tk})
+    # A success clears the count, so lock out with five failures in a row: three so far.
+    for n in (4, 5):
+        await pair(f"2fa: validate, wrong code (failure {n} in a row)", "POST", V, bodies=vb(code="abcdef"))
+    r1, r2 = await pair("2fa: locked out after five failures", "POST", V, bodies=vb(code=pyotp.TOTP(secret).now()))
+    check(
+        "2fa: the lockout names the remaining time",
+        all(r.json()["message"].startswith("Too many failed 2FA attempts. Try again in ") for r in (r1, r2)),
+        f"{r1.text} {r2.text}",
+    )
+    await pair("2fa: disable while locked out", "DELETE", "/api/auth/2fa/disable", tk, {k: {"backup_code": "BRAVO00002"} for k in tk})
+    await pair("2fa: setup is not rate limited", "POST", "/api/auth/2fa/setup", tk)
+
+    await same_raw("2fa: validate, garbage temp token", "POST", V, None, json.dumps({"temp_token": "x", "code": "1"}), "application/json")
+    expired = jwt.encode({"sub": tfa["py"], "exp": 1, "type": "2fa_pending"}, os.environ["JWT_SECRET"], algorithm="HS256")
+    await same_raw(
+        "2fa: validate, expired temp token",
+        "POST",
+        V,
+        None,
+        json.dumps({"temp_token": expired, "code": "1"}),
+        "application/json",
+    )
+    await same_raw(
+        "2fa: validate, session token as temp token",
+        "POST",
+        V,
+        None,
+        json.dumps({"temp_token": t_admin, "code": "1"}),
+        "application/json",
+    )
+    for label, claims in (
+        ("without sub", {"type": "2fa_pending"}),
+        ("with an empty sub", {"sub": "", "type": "2fa_pending"}),
+        ("with a numeric sub", {"sub": 5, "type": "2fa_pending"}),
+        ("for an unknown user", {"sub": f"ghost{SFX}", "type": "2fa_pending"}),
+    ):
+        odd = jwt.encode(claims, os.environ["JWT_SECRET"], algorithm="HS256")
+        await same_raw(
+            f"2fa: validate, temp token {label}",
+            "POST",
+            V,
+            None,
+            json.dumps({"temp_token": odd, "code": "1"}),
+            "application/json",
+        )
+    await same_raw("2fa: validate, missing temp_token", "POST", V, None, json.dumps({"code": "1"}), "application/json")
+    await same_raw("2fa: validate, malformed JSON", "POST", V, None, '{"temp_token": ', "application/json")
+    await same_raw("2fa: validate, whitespace body", "POST", V, None, "   ", "application/json")
+    await same_raw("2fa: validate, not an object", "POST", V, None, "[]", "application/json")
+    await same_raw("2fa: validate, no content type", "POST", V, None, json.dumps({"temp_token": "x"}))
+
+    tkn = {k: token(v, ["analyst"]) for k, v in tfn.items()}
+    await pair("2fa: status (not verified yet)", "GET", "/api/auth/2fa/status", tkn)
+    await pair("2fa: verify-setup, wrong code", "POST", "/api/auth/2fa/verify-setup", tkn, {k: {"code": "000000x"} for k in tkn})
+    await pair(
+        "2fa: verify-setup, current code",
+        "POST",
+        "/api/auth/2fa/verify-setup",
+        tkn,
+        {k: {"code": pyotp.TOTP(secret).now()} for k in tkn},
+    )
+    await pair("2fa: status after verification", "GET", "/api/auth/2fa/status", tkn)
+    await pair(
+        "2fa: regenerate backup codes",
+        "POST",
+        "/api/auth/2fa/backup-codes/regenerate",
+        tkn,
+        {k: {"code": pyotp.TOTP(secret).now()} for k in tkn},
+        shape=lambda r, n: {**r.json(), "backup_codes": [bool(re.fullmatch(r"[A-Z0-9]{10}", c)) for c in r.json()["backup_codes"]]},
+    )
+    await pair("2fa: disable without a factor", "DELETE", "/api/auth/2fa/disable", tkn, {k: {"code": None} for k in tkn})
+    await pair("2fa: disable, wrong code", "DELETE", "/api/auth/2fa/disable", tkn, {k: {"code": "abcdef"} for k in tkn})
+    await guard(tfn, counter - 2)
+    await pair("2fa: disable, current code", "DELETE", "/api/auth/2fa/disable", tkn, {k: {"code": pyotp.TOTP(secret).now()} for k in tkn})
+    await pair("2fa: status after disabling", "GET", "/api/auth/2fa/status", tkn)
+
+    tk0 = {k: token(v, ["analyst"]) for k, v in tf0.items()}
+    await pair("2fa: verify-setup before setup", "POST", "/api/auth/2fa/verify-setup", tk0, {k: {"code": "123456"} for k in tk0})
+    await pair("2fa: regenerate without 2FA", "POST", "/api/auth/2fa/backup-codes/regenerate", tk0, {k: {"code": "123456"} for k in tk0})
+    await pair("2fa: disable without 2FA", "DELETE", "/api/auth/2fa/disable", tk0, {k: {"code": "123456"} for k in tk0})
+
+    def setup_shape(r, names):
+        b = r.json()
+        if r.status_code != 200:
+            return norm(b, names)
+        png = Image.open(io.BytesIO(base64.b64decode(b["qr_data_uri"].split(",", 1)[1])))
+        png.load()
+        return {
+            "keys": list(b),
+            "secret": bool(re.fullmatch(r"[A-Z2-7]{32}", b["secret"])),
+            "otpauth_url": norm(b["otpauth_url"].replace(b["secret"], "<secret>"), names),
+            "qr": [png.format, png.size],
+            "backup_codes": [bool(re.fullmatch(r"[A-Z0-9]{10}", c)) for c in b["backup_codes"]],
+            "message": b["message"],
+        }
+
+    r1, r2 = await pair("2fa: setup", "POST", "/api/auth/2fa/setup", tk0, shape=setup_shape)
+    if r1.status_code == r2.status_code == 200:
+        async with AsyncSession(async_engine) as s_:
+            stored = dict(
+                (
+                    await s_.execute(
+                        text(
+                            "SELECT u.username, t.secret_enc FROM user_totp t JOIN `user` u ON u.id = t.user_id "
+                            "WHERE u.username IN (:a, :b)",
+                        ),
+                        {"a": tf0["py"], "b": tf0["rs"]},
+                    )
+                ).all(),
+            )
+        check(
+            "2fa: both backends store secrets the other can read",
+            _decrypt_secret(stored[tf0["rs"]]) == r2.json()["secret"] and _decrypt_secret(stored[tf0["py"]]) == r1.json()["secret"],
+        )
+        await pair(
+            "2fa: verify-setup of a fresh enrolment",
+            "POST",
+            "/api/auth/2fa/verify-setup",
+            tk0,
+            {"py": {"code": pyotp.TOTP(r1.json()["secret"]).now()}, "rs": {"code": pyotp.TOTP(r2.json()["secret"]).now()}},
+        )
 
     # --- Deliberate differences ------------------------------------------------------
     print("\n=== differences by design ===")

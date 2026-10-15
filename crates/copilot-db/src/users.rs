@@ -60,3 +60,43 @@ pub async fn assigned_customer_codes(db: &Db, user_id: i32) -> Result<Vec<String
     .await?;
     Ok(codes)
 }
+
+/// `find_user` for a login: the first matching row and its password hash.
+pub async fn find_credentials(
+    db: &Db,
+    username: &str,
+) -> Result<Option<(UserRow, String)>, DbError> {
+    #[derive(FromRow)]
+    struct Row {
+        #[sqlx(flatten)]
+        user: UserRow,
+        password: String,
+    }
+    let row = sqlx::query_as::<_, Row>(
+        "SELECT id, username, email, role_id, created_at, last_login_at, password \
+         FROM `user` WHERE username = ? ORDER BY id LIMIT 1",
+    )
+    .bind(username)
+    .fetch_optional(db.pool())
+    .await?;
+    Ok(row.map(|r| (r.user, r.password)))
+}
+
+/// `role.name` for a role id (`get_role`).
+pub async fn role_name(db: &Db, role_id: i32) -> Result<Option<String>, DbError> {
+    let name = sqlx::query_scalar::<_, String>("SELECT name FROM role WHERE id = ?")
+        .bind(role_id)
+        .fetch_optional(db.pool())
+        .await?;
+    Ok(name)
+}
+
+/// `update_last_login`: stamp the last successful login (naive UTC).
+pub async fn touch_last_login(db: &Db, user_id: i32) -> Result<(), DbError> {
+    sqlx::query("UPDATE `user` SET last_login_at = ? WHERE id = ?")
+        .bind(copilot_core::time::now_utc_naive())
+        .bind(user_id)
+        .execute(db.pool())
+        .await?;
+    Ok(())
+}

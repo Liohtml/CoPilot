@@ -22,6 +22,7 @@ copilot-customers = { workspace = true }
 copilot-healthchecks = { workspace = true }
 copilot-platform = { workspace = true }
 copilot-gateway = { workspace = true }
+copilot-identity = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

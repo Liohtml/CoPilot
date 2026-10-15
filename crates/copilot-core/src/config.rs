@@ -7,7 +7,7 @@
 //! | `COPILOT_BIND` | `0.0.0.0` | listen address (`SERVER_IP` is honoured as a fallback) |
 //! | `COPILOT_PORT` | `5000` | listen port — the port the frontends already call |
 //! | `COPILOT_LEGACY_URL` | *(unset)* | Python backend that serves every route not yet ported; unset = those routes 404 |
-//! | `MYSQL_URL` | `copilot-mysql` | MySQL host[:port] |
+//! | `MYSQL_URL` | `copilot-mysql` | MySQL `host[:port]` |
 //! | `MYSQL_USER` | `copilot` | MySQL user |
 //! | `MYSQL_PASSWORD` | — | MySQL password (secret) |
 //! | `MYSQL_DATABASE` | `copilot` | schema name (Python hard-codes `copilot`) |
@@ -16,7 +16,8 @@
 //! | `DB_POOL_TIMEOUT` | `30` | seconds to wait for a connection |
 //! | `DB_POOL_RECYCLE` | `1800` | max connection lifetime, seconds |
 //! | `JWT_SECRET` | — | HS256 key shared with the Python backend (secret, required) |
-//! | `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | lifetime of tokens this service issues |
+//! | `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | lifetime of tokens this service issues (read like Python's `int()`; anything else refuses to start) |
+//! | `TOTP_ENCRYPTION_KEY` | *(unset)* | Fernet key of the stored 2FA secrets (secret); unset = derived from `JWT_SECRET` |
 //! | `COPILOT_URL` | *(unset)* | public base URL, for notification deep links |
 //! | `DEFAULT_ALERT_SEVERITY` | `High` | notification severity fallback |
 //! | `CONNECTOR_CACHE_TTL_SECONDS` | `600` | `connectors` row cache; `0` disables |
@@ -106,8 +107,11 @@ pub struct CopilotConfig {
     pub database: DatabaseConfig,
     /// HS256 key shared with the Python backend.
     pub jwt_secret: Secret,
-    /// Lifetime of issued tokens.
-    pub access_token_ttl: Duration,
+    /// Lifetime of issued tokens, in minutes (may be zero or negative, as in
+    /// Python — such tokens are born expired).
+    pub access_token_expire_minutes: i64,
+    /// `TOTP_ENCRYPTION_KEY`, when set.
+    pub totp_encryption_key: Option<Secret>,
     /// Notification builder defaults.
     pub notifications: NotificationDefaults,
     /// Connector-row cache TTL (`0` = disabled).
@@ -188,6 +192,13 @@ impl CopilotConfig {
 
         let max_body = env.get_u64("COPILOT_MAX_BODY_BYTES", 256 * 1024 * 1024, 1024);
 
+        let ttl_raw = env.get_or("ACCESS_TOKEN_EXPIRE_MINUTES", "1440");
+        let access_token_expire_minutes = python_int(&ttl_raw).ok_or_else(|| {
+            Error::Config(format!(
+                "ACCESS_TOKEN_EXPIRE_MINUTES {ttl_raw:?} is not an integer"
+            ))
+        })?;
+
         Ok(Self {
             project_root: project_root.to_path_buf(),
             bind,
@@ -195,9 +206,11 @@ impl CopilotConfig {
             legacy_url,
             database,
             jwt_secret,
-            access_token_ttl: Duration::from_secs(
-                env.get_u64("ACCESS_TOKEN_EXPIRE_MINUTES", 1440, 1) * 60,
-            ),
+            access_token_expire_minutes,
+            totp_encryption_key: env
+                .get("TOTP_ENCRYPTION_KEY")
+                .filter(|k| !k.is_empty())
+                .map(Secret::new),
             notifications: NotificationDefaults {
                 copilot_url: env.get("COPILOT_URL"),
                 default_severity,
@@ -218,6 +231,28 @@ impl CopilotConfig {
                 .filter(|v| !v.is_empty()),
         })
     }
+}
+
+/// Python's `int(text)` for base-10 ASCII input: surrounding whitespace, a
+/// sign, and single underscores between digits are allowed.
+pub fn python_int(text: &str) -> Option<i64> {
+    let t = text.trim();
+    let (negative, digits) = match t.as_bytes().first() {
+        Some(b'-') => (true, &t[1..]),
+        Some(b'+') => (false, &t[1..]),
+        _ => (false, t),
+    };
+    let bytes = digits.as_bytes();
+    if bytes.is_empty()
+        || bytes[0] == b'_'
+        || bytes[bytes.len() - 1] == b'_'
+        || digits.contains("__")
+        || !bytes.iter().all(|b| b.is_ascii_digit() || *b == b'_')
+    {
+        return None;
+    }
+    let value: i64 = digits.replace('_', "").parse().ok()?;
+    Some(if negative { -value } else { value })
 }
 
 /// `_load_jwt_secret`: refuse an unset or known-compromised secret. The
@@ -257,7 +292,8 @@ mod tests {
         assert_eq!(cfg.database.user, "copilot");
         assert_eq!(cfg.database.database, "copilot");
         assert_eq!(cfg.database.max_connections, 40);
-        assert_eq!(cfg.access_token_ttl, Duration::from_secs(1440 * 60));
+        assert_eq!(cfg.access_token_expire_minutes, 1440);
+        assert!(cfg.totp_encryption_key.is_none());
         assert_eq!(cfg.connector_cache_ttl, Duration::from_secs(600));
         assert!(cfg.legacy_url.is_none());
         assert!(!cfg.palace_jobs);
@@ -293,6 +329,24 @@ mod tests {
         );
         assert!(load("JWT_SECRET=x\nMYSQL_PASSWORD=p\nCOPILOT_LEGACY_URL=ftp://x\n").is_err());
         assert!(load("JWT_SECRET=x\nMYSQL_PASSWORD=p\nCOPILOT_PORT=0\n").is_err());
+    }
+
+    #[test]
+    fn token_lifetime_reads_like_python_int() {
+        let ttl = |v: &str| {
+            load(&format!(
+                "JWT_SECRET=x\nMYSQL_PASSWORD=p\nACCESS_TOKEN_EXPIRE_MINUTES={v}\n"
+            ))
+            .map(|c| c.access_token_expire_minutes)
+        };
+        assert_eq!(ttl("60").unwrap(), 60);
+        assert_eq!(ttl(" 1_440 ").unwrap(), 1440);
+        assert_eq!(ttl("-5").unwrap(), -5);
+        assert_eq!(ttl("+0").unwrap(), 0);
+        assert!(ttl("1.5").is_err());
+        assert!(ttl("1__0").is_err());
+        assert!(ttl("_1").is_err());
+        assert!(ttl("ten").is_err());
     }
 
     #[test]
