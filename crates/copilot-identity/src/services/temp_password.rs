@@ -20,6 +20,7 @@ use copilot_db::customers;
 use copilot_db::security::TemplateRow;
 use copilot_db::users::{self, UserRow};
 use copilot_jinja::{Event, Input};
+use copilot_notifications::temp_password as temp_password_vars;
 use copilot_web::form::py_strip;
 use copilot_web::{ApiError, CurrentUser};
 
@@ -31,27 +32,10 @@ use crate::services::security::{
     smtp_config, user_or_404,
 };
 
-/// Rendered in every preview instead of a real password.
-pub const PREVIEW_PASSWORD: &str = "PREVIEW-Not-A-Real-Password";
-
-/// The subject without a template, or when one renders blank.
-pub const DEFAULT_SUBJECT: &str = "CoPilot — temporary password";
+pub use copilot_notifications::temp_password::{DEFAULT_SUBJECT, PREVIEW_PASSWORD, login_url};
 
 /// `TEMP_PASSWORD_LENGTH`.
 const TEMP_PASSWORD_LENGTH: usize = 16;
-
-const SUMMARY: &str = "An administrator has issued a temporary password for your CoPilot account. \
-                       Sign in with it and change it immediately.";
-
-/// `login_url()`: `COPILOT_URL` + `/login`, or "" without one.
-pub fn login_url(copilot_url: Option<&str>) -> String {
-    let base = py_strip(copilot_url.unwrap_or_default()).trim_end_matches('/');
-    if base.is_empty() {
-        String::new()
-    } else {
-        format!("{base}/login")
-    }
-}
 
 /// `build_temp_password_email`: the plaintext body when no template applies.
 pub fn plaintext_body(username: &str, temp_password: &str) -> String {
@@ -238,34 +222,21 @@ pub async fn render_email(
             html: None,
         });
     };
-    let login = login_url(st.ctx.notification_defaults.copilot_url.as_deref());
-    let event = Event {
-        customer_code: to.customer_code.map(str::to_string),
-        trigger: TEMPLATE_TRIGGER.into(),
-        severity: "Informational".into(),
-        subject: DEFAULT_SUBJECT.into(),
-        summary: SUMMARY.into(),
-        entity_type: "user".into(),
-        entity_id: i64::from(to.user.id),
-        dedupe_key: format!("user:{}:{TEMPLATE_TRIGGER}", to.user.id),
-        link_url: (!login.is_empty()).then(|| login.clone()),
-        assignee_username: None,
-        actor_username: None,
-        context: vec![("username".into(), to.user.username.as_str().into())],
-    };
-    let organization = to
-        .customer_name
-        .filter(|n| !n.is_empty())
-        .or(to.customer_code)
-        .unwrap_or_default();
-    let mut extra: Vec<(String, Input)> = vec![
-        ("user_name".into(), to.user.username.as_str().into()),
-        ("user_email".into(), to.user.email.as_str().into()),
-        ("temp_password".into(), to.temp_password.into()),
-        ("login_url".into(), login.into()),
-        ("customer_name".into(), organization.into()),
-        ("organization_name".into(), organization.into()),
-    ];
+    let copilot_url = st.ctx.notification_defaults.copilot_url.as_deref();
+    let event = temp_password_vars::event(
+        &to.user.username,
+        to.customer_code,
+        i64::from(to.user.id),
+        copilot_url,
+    );
+    let mut extra: Vec<(String, Input)> = temp_password_vars::extra_context(
+        &to.user.username,
+        &to.user.email,
+        to.temp_password,
+        copilot_url,
+        to.customer_code,
+        to.customer_name,
+    );
     let subject_source = template.subject_template.as_deref().unwrap_or_default();
     if template.body_template.contains("branding") || subject_source.contains("branding") {
         extra.push((

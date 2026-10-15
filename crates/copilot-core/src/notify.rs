@@ -2,11 +2,14 @@
 //! (`NotificationEvent`) and the AI-analyst builders in
 //! `app/notifications/services/event_builders.py`.
 //!
-//! The notification module itself (routes, channel providers, the dispatch
-//! log) is still served by the Python backend. Rust code emits through a
-//! [`NotificationSink`]; during the migration the sink forwards the *exact*
-//! envelope to the legacy service (`copilot-gateway`), so rendered messages,
-//! dedupe keys and webhook payloads stay byte-for-byte what they were.
+//! Rust code emits through a [`NotificationSink`]. The binary's sink is
+//! `copilot_notifications::DispatchingSink`, which dispatches in-process
+//! exactly as `app/notifications/services/emit.py` does (and keeps the
+//! former bridge's checks for the two AI-analyst triggers), so rendered
+//! messages, dedupe keys and webhook payloads are what the Python pipeline
+//! produced. A ported module builds the same envelope its Python builder
+//! built; this crate holds the shared shape, `copilot-notifications` the
+//! pipeline.
 
 use std::sync::{Arc, Mutex};
 
@@ -261,18 +264,199 @@ pub fn ai_report_reviewed_event(
     }
 }
 
+/// Inputs of [`alert_created_event`].
+#[derive(Debug, Clone, Default)]
+pub struct AlertCreatedInput<'a> {
+    /// Alert id.
+    pub alert_id: i64,
+    /// Alert's tenant.
+    pub customer_code: &'a str,
+    /// The alert's title, when known.
+    pub alert_title: Option<&'a str>,
+    /// The alert's stored severity.
+    pub severity: Option<&'a str>,
+    /// The source rule's level (Wazuh).
+    pub rule_level: Option<i64>,
+    /// The alert's asset, when known.
+    pub asset_name: Option<&'a str>,
+    /// A link the caller already has (else the CoPilot alert page).
+    pub link_url: Option<&'a str>,
+}
+
+/// `alert_created_event`: a genuinely new alert landed (a recurrence never
+/// reaches the emit point).
+pub fn alert_created_event(
+    d: &NotificationDefaults,
+    input: &AlertCreatedInput<'_>,
+) -> NotificationEvent {
+    let trigger = NotificationTrigger::AlertCreated;
+    let title = input
+        .alert_title
+        .filter(|t| !t.is_empty())
+        .map_or_else(|| format!("Alert #{}", input.alert_id), str::to_string);
+    let mut context = serde_json::Map::new();
+    context.insert(
+        "alert_name".into(),
+        serde_json::Value::String(title.clone()),
+    );
+    context.insert(
+        "rule_level".into(),
+        input
+            .rule_level
+            .map_or(serde_json::Value::Null, serde_json::Value::from),
+    );
+    context.insert("asset_name".into(), opt(input.asset_name));
+    NotificationEvent {
+        customer_code: Some(input.customer_code.to_string()),
+        trigger,
+        severity: NotificationSeverity::coerce(input.severity, d.default_severity),
+        subject: title,
+        summary: format!("A new alert was created for {}.", input.customer_code),
+        entity_type: "alert".into(),
+        entity_id: input.alert_id,
+        dedupe_key: dedupe_key(input.alert_id, trigger),
+        link_url: input
+            .link_url
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .or_else(|| d.link(&format!("/alerts/{}", input.alert_id))),
+        assignee_username: None,
+        actor_username: None,
+        context,
+    }
+}
+
+/// Who an assignment concerns (the three assignment builders).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Assignment<'a> {
+    /// The item's title.
+    pub title: Option<&'a str>,
+    /// The new assignee (`None`: unassigned).
+    pub assignee: Option<&'a str>,
+    /// Who made the change.
+    pub actor: Option<&'a str>,
+    /// The item's tenant.
+    pub customer_code: Option<&'a str>,
+}
+
+/// `_assignment_event`: the dedupe key carries the assignee, so A → B → A
+/// notifies A again while a no-op write does not; no link.
+fn assignment_event(
+    trigger: NotificationTrigger,
+    severity: NotificationSeverity,
+    entity_type: &str,
+    entity_id: i64,
+    a: &Assignment<'_>,
+    summary: String,
+    extra: Option<(&str, serde_json::Value)>,
+) -> NotificationEvent {
+    let mut context = serde_json::Map::new();
+    context.insert("title".into(), opt(a.title));
+    if let Some((k, v)) = extra {
+        context.insert(k.into(), v);
+    }
+    NotificationEvent {
+        customer_code: a.customer_code.map(str::to_string),
+        trigger,
+        severity,
+        subject: a
+            .title
+            .filter(|t| !t.is_empty())
+            .map_or_else(|| format!("{entity_type} #{entity_id}"), str::to_string),
+        summary,
+        entity_type: entity_type.into(),
+        entity_id,
+        dedupe_key: format!(
+            "{entity_type}:{entity_id}:{}:{}",
+            trigger.as_str(),
+            a.assignee.filter(|x| !x.is_empty()).unwrap_or("unassigned")
+        ),
+        link_url: None,
+        assignee_username: a.assignee.map(str::to_string),
+        actor_username: a.actor.map(str::to_string),
+        context,
+    }
+}
+
+fn assigned_to(what: &str, id: i64, assignee: Option<&str>) -> String {
+    match assignee.filter(|x| !x.is_empty()) {
+        Some(who) => format!("{what} #{id} was assigned to {who}."),
+        None => format!("{what} #{id} was unassigned."),
+    }
+}
+
+/// `alert_assigned_event`: the alert's own severity when given (an empty one
+/// is the assignment default, Informational; an unknown one the deployment
+/// default).
+pub fn alert_assigned_event(
+    d: &NotificationDefaults,
+    alert_id: i64,
+    a: &Assignment<'_>,
+    severity: Option<&str>,
+) -> NotificationEvent {
+    let severity = match severity.filter(|s| !s.is_empty()) {
+        Some(s) => NotificationSeverity::coerce(Some(s), d.default_severity),
+        None => NotificationSeverity::Informational,
+    };
+    assignment_event(
+        NotificationTrigger::AlertAssigned,
+        severity,
+        "alert",
+        alert_id,
+        a,
+        assigned_to("Alert", alert_id, a.assignee),
+        None,
+    )
+}
+
+/// `case_assigned_event`.
+pub fn case_assigned_event(case_id: i64, a: &Assignment<'_>) -> NotificationEvent {
+    assignment_event(
+        NotificationTrigger::CaseAssigned,
+        NotificationSeverity::Informational,
+        "case",
+        case_id,
+        a,
+        assigned_to("Case", case_id, a.assignee),
+        None,
+    )
+}
+
+/// `case_task_assigned_event` (`str(None)` where the task has no title, as
+/// the f-string prints it).
+pub fn case_task_assigned_event(
+    task_id: i64,
+    case_id: i64,
+    a: &Assignment<'_>,
+) -> NotificationEvent {
+    let title = a.title.unwrap_or("None");
+    let summary = match a.assignee.filter(|x| !x.is_empty()) {
+        Some(who) => format!("Task '{title}' on case #{case_id} was assigned to {who}."),
+        None => format!("Task '{title}' was unassigned."),
+    };
+    assignment_event(
+        NotificationTrigger::CaseTaskAssigned,
+        NotificationSeverity::Informational,
+        "case_task",
+        task_id,
+        a,
+        summary,
+        Some(("case_id", serde_json::Value::from(case_id))),
+    )
+}
+
 /// Where notification events go. `emit` must return immediately: a failure
 /// to notify never fails the operation that triggered it (`emit.py`).
 pub trait NotificationSink: Send + Sync {
-    /// Schedule `event` for dispatch. `bearer` is the caller's token, used by
-    /// the legacy bridge to authenticate the hand-off.
+    /// Schedule `event` for dispatch. `bearer` is the caller's token when a
+    /// request caused the event (`None` for CoPilot acting on its own).
     fn emit(&self, event: NotificationEvent, bearer: Option<String>);
 }
 
 /// Shared handle type.
 pub type SharedNotificationSink = Arc<dyn NotificationSink>;
 
-/// Drops every event (notifications disabled / no legacy backend).
+/// Drops every event (tests, tools without a database).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopNotificationSink;
 
@@ -372,6 +556,75 @@ mod tests {
         assert_eq!(e.link_url, None);
         assert_eq!(e.actor_username.as_deref(), Some("alice"));
         assert_eq!(e.context["report_id"], 3);
+    }
+
+    #[test]
+    fn incident_builders_match_python() {
+        let d = defaults();
+        let e = alert_created_event(
+            &d,
+            &AlertCreatedInput {
+                alert_id: 5,
+                customer_code: "acme",
+                alert_title: Some(""),
+                severity: Some("Critical"),
+                rule_level: Some(12),
+                ..Default::default()
+            },
+        );
+        assert_eq!(e.subject, "Alert #5");
+        assert_eq!(e.summary, "A new alert was created for acme.");
+        assert_eq!(e.dedupe_key, "alert:5:alert_created");
+        assert_eq!(
+            e.link_url.as_deref(),
+            Some("https://copilot.example.com/alerts/5")
+        );
+        assert_eq!(
+            serde_json::Value::Object(e.context),
+            serde_json::json!({"alert_name": "Alert #5", "rule_level": 12, "asset_name": null})
+        );
+        let a = Assignment {
+            title: Some("Mimikatz"),
+            assignee: Some("bob"),
+            actor: Some("alice"),
+            customer_code: Some("acme"),
+        };
+        let e = alert_assigned_event(&d, 5, &a, Some(""));
+        assert_eq!(e.severity, NotificationSeverity::Informational);
+        assert_eq!(e.dedupe_key, "alert:5:alert_assigned:bob");
+        assert_eq!(e.summary, "Alert #5 was assigned to bob.");
+        assert_eq!(e.link_url, None);
+        assert_eq!(
+            alert_assigned_event(&d, 5, &a, Some("bogus")).severity,
+            NotificationSeverity::High
+        );
+        let unassigned = Assignment {
+            assignee: None,
+            title: None,
+            ..a
+        };
+        let e = case_assigned_event(9, &unassigned);
+        assert_eq!(
+            (
+                e.subject.as_str(),
+                e.summary.as_str(),
+                e.dedupe_key.as_str()
+            ),
+            (
+                "case #9",
+                "Case #9 was unassigned.",
+                "case:9:case_assigned:unassigned"
+            )
+        );
+        let e = case_task_assigned_event(3, 9, &unassigned);
+        assert_eq!(e.summary, "Task 'None' was unassigned.");
+        assert_eq!(
+            serde_json::Value::Object(e.context),
+            serde_json::json!({"title": null, "case_id": 9})
+        );
+        let e = case_task_assigned_event(3, 9, &a);
+        assert_eq!(e.summary, "Task 'Mimikatz' on case #9 was assigned to bob.");
+        assert_eq!(e.dedupe_key, "case_task:3:case_task_assigned:bob");
     }
 
     #[test]

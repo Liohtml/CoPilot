@@ -1,5 +1,6 @@
-//! The `branding` variable of the temporary-password email
-//! (`notifications/services/templates.build_branding_context`): the
+//! The `branding` template variable
+//! (`notifications/services/templates.build_branding_context`), for named
+//! notification templates and the temporary-password email: the
 //! customer's portal branding (`customer_portal/services/branding.py`,
 //! resolved field by field) turned into the report palette
 //! (`incidents/services/customer_report_branding.py`).
