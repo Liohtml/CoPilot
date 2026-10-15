@@ -3,6 +3,8 @@
 //! ```text
 //!                      ┌─────────────── copilot (Rust, :5000) ───────────────┐
 //! frontend / portal ──►│ /api/ai_analyst/*  → copilot-ai-analyst             │
+//!                      │ /api/customer_portal/ai_reports/*                    │
+//!                      │                    → copilot-customer-portal         │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -33,7 +35,11 @@ use copilot_web::middleware::{compression, cors, log_handled_errors, security_he
 use copilot_web::{ApiError, AppContext, AppDeps};
 
 /// Route prefixes this build answers itself. Everything else is proxied.
-pub const PORTED_PREFIXES: &[&str] = &["/api/ai_analyst", "/api/talon"];
+pub const PORTED_PREFIXES: &[&str] = &[
+    "/api/ai_analyst",
+    "/api/talon",
+    "/api/customer_portal/ai_reports",
+];
 
 /// While the Python backend can still write `connectors`, its cache
 /// invalidations cannot reach this process; cap how stale a row may get.
@@ -43,6 +49,7 @@ pub const CONNECTOR_TTL_WITH_LEGACY: Duration = Duration::from_secs(60);
 pub fn schema_requirements() -> Vec<TableRequirement> {
     let mut all = schema::CORE_REQUIREMENTS.to_vec();
     all.extend_from_slice(copilot_db::ai_analyst::REQUIREMENTS);
+    all.extend_from_slice(copilot_db::customer_portal::REQUIREMENTS);
     all.push(TableRequirement {
         table: "scheduled_job_metadata",
         columns: &["job_id", "last_success", "time_interval", "enabled"],
@@ -105,7 +112,13 @@ impl App {
         };
         let ported = Router::new()
             .nest("/api/ai_analyst", copilot_ai_analyst::router(state.clone()))
-            .nest("/api/talon", copilot_talon::router(state))
+            .nest("/api/talon", copilot_talon::router(state.clone()))
+            // Only `/ai_reports/*` is ported; other portal paths are not
+            // routes here and fall through to the legacy proxy.
+            .nest(
+                "/api/customer_portal",
+                copilot_customer_portal::router(state),
+            )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

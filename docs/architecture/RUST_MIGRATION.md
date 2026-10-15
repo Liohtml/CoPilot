@@ -17,6 +17,8 @@ file.
 ```text
                        ┌────────────── copilot (Rust, :5000) ──────────────┐
  frontend / portal ───►│ /api/ai_analyst/*   copilot-ai-analyst            │
+                       │ /api/customer_portal/ai_reports/*                  │
+                       │                     copilot-customer-portal        │
  Talon MCP tools  ───►│ /api/talon/*        copilot-talon ───────────────────► Talon :3100
                        │ /_copilot/health                                   │
                        │ anything else ──►   copilot-gateway (stream) ────────► Python backend
@@ -41,7 +43,7 @@ file.
   order, with the same error envelopes and 422 texts. This is not a goal on
   paper: `backend/tests/e2e/rust_parity_e2e.py` sends identical requests to
   both implementations on one database and compares the answers
-  (70 checks, all equal; see §5).
+  (120 checks, all equal; see §5).
 
 Enable it:
 
@@ -65,11 +67,12 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | Crate | Python counterpart | Role |
 |---|---|---|
 | `copilot-core` | `settings.py`, `app/auth/models/users.py` (roles), `app/time_utils.py`, notification events | contract: config, `.env` reader (vendored from `talon-core`), roles/scopes, audit records, notification events, time helpers |
-| `copilot-db` | `app/db/db_session.py`, `universal_models.py` (`AiAnalyst*`), `connectors` + cache, `audit_log`, `log_entries` | sqlx MySQL pool, cross-cutting tables, schema checks |
-| `copilot-auth` | `app/auth/utils.py`, `app/middleware/customer_access.py` | JWT (HS256), bcrypt, `AccessScope` (tenant decisions) |
+| `copilot-db` | `app/db/db_session.py`, `universal_models.py` (`AiAnalyst*`, `CustomerPortalAi*`), `connectors` + cache, `audit_log`, `log_entries`, `alert_visibility_filters_for_user` | sqlx MySQL pool, cross-cutting tables, schema checks, alert visibility as SQL (`visibility.rs`) |
+| `copilot-auth` | `app/auth/utils.py`, `app/middleware/customer_access.py`, `app/incidents/middleware/tag_access.py` | JWT (HS256), bcrypt, `AccessScope` (tenant decisions), tag RBAC (`tags.rs`) |
 | `copilot-web` | `exception_handlers.py`, `require_any_scope`, Pydantic validation | axum glue: error envelope, Pydantic-lax validator and 422 report, auth extractors, middleware |
 | `copilot-talon` | `app/connectors/talon/` | **the Talon contract** (`contract.rs`), client, `/api/talon/*` |
 | `copilot-ai-analyst` | `app/ai_analyst/`, palace drainer/sweeper jobs | `/api/ai_analyst/*` (25 routes), consolidation digest, CPython-exact `difflib` |
+| `copilot-customer-portal` | `app/customer_portal/` (`ai_reports`, `ai_requests`) | `/api/customer_portal/ai_reports/*` (6 routes); every other portal path is still proxied |
 | `copilot-gateway` | — | legacy proxy and notification bridge; deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `palace drain|sweep` |
 
@@ -105,9 +108,20 @@ follows the user's live `role_id` and `user_customer_access`, fail-closed
 scoped callers).
 
 **Database.** No schema change. Timestamps are written as MySQL stores
-Python's `datetime.utcnow()` (rounded to the second), lists break
-same-second ties the way MySQL does for the Python queries, so a row reads
-back identically whichever service wrote it.
+Python's `datetime.utcnow()` (rounded to the second), so a row reads back
+identically whichever service wrote it. Same-second ties are broken
+explicitly: lists by ascending id (what MySQL returns for the Python queries),
+"latest" lookups (`LIMIT 1`, the portal's recent reports) by the newest id —
+Python leaves the latter to MySQL's plan (§4).
+
+**Alert visibility.** One definition, as in Python:
+`copilot_db::visibility::AlertVisibility` (customer scoping *and* tag RBAC,
+`alert_visibility_filters_for_user`) for lists and counts, and
+`can_user_access_alert` for a single alert. The two tag rules differ where
+Python's do — `default_tag` with no tag configured allows one untagged alert
+but keeps untagged alerts out of lists — and `copilot_auth::tags` pins the
+table. Admins, the scheduler and portal users bypass tag RBAC; a responder
+gets the analyst role's tags.
 
 **Talon.** `crates/copilot-talon/src/contract.rs` types every request and
 response of Talon's HTTP channel (`talon-http`): `/investigate`,
@@ -150,6 +164,7 @@ Each is covered by a test and listed in the parity harness.
 | `POST …/replay` template | Python's regex only; Talon then 400s → 500 | Talon's rule (no `..`, not hidden), same 422 text | fail early |
 | `/talon/*` upstream failure text | `requests` exception text | status plus Talon's `{"error"}` text | actionable |
 | palace search hits | numeric `id` → 400 | stringified | robustness |
+| "latest" row on a same-second tie (`alerts_with_reports/{alert_id}`, portal recent reports) | whichever row MySQL's plan reaches first — varies with the data | the newest id, the rule the portal's `MAX(id)` already uses | deterministic |
 
 ---
 
@@ -160,7 +175,7 @@ Each is covered by a test and listed in the parity harness.
 | unit | every crate | nothing |
 | contract | `copilot-talon/src/contract.rs`, `copilot-core/src/notify.rs`, `backend/tests/test_notification_rust_bridge.py` | nothing |
 | end-to-end | `crates/copilot/tests/e2e.rs` — the production router against MySQL at the Alembic head, Talon and Python replaced by recorders | MySQL |
-| parity | `backend/tests/e2e/rust_parity_e2e.py` via `scripts/rust-parity.sh` — real FastAPI routers vs. the running Rust binary, one database | MySQL + Python venv |
+| parity | `backend/tests/e2e/rust_parity_e2e.py` via `scripts/rust-parity.sh` — real FastAPI routers vs. the running Rust binary, one database; Talon is a local stub both backends call | MySQL + Python venv |
 
 ```bash
 # disposable MySQL on 13306, schema from the fixture (or `alembic upgrade head`)
@@ -186,7 +201,7 @@ Python backend today: ~200 k lines in 930 files.
 | Phase | Modules (Python lines) | Notes |
 |---|---|---|
 | **0 — done** | foundation; `ai_analyst` (2.4 k), `connectors/talon` | the Talon integration surface |
-| 1 | `customer_portal` AI reports + requests, `customers` (1.1 k, reads), `version`, `audit` reads, `status`/`healthchecks` | read-mostly; AI tables are ported already |
+| **1 — in progress** | **done:** `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC). **Next:** `customers` (1.1 k, reads), `version`, `audit` reads, `status`/`healthchecks` | read-mostly |
 | 2 | `auth` (5 k): `/auth/token`, 2FA (TOTP, Fernet key compatible), refresh, users, SSO, passkeys | the Rust service starts issuing tokens |
 | 3 | `notifications` (7.2 k) — retires the bridge; `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust |
 | 4 | `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time | largest surface; each is independent |

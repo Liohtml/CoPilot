@@ -10,8 +10,8 @@
 //! ```
 //!
 //! Every test seeds its own customers and users (random suffix), so reruns
-//! never collide; the `Talon` connector row is global, so only
-//! `talon_and_ai_analyst_flow` touches it.
+//! never collide. Two things are global — the `Talon` connector row and the
+//! tag-access settings — which is why the suite runs single-threaded.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -893,6 +893,598 @@ async fn unported_routes_are_proxied_to_the_python_backend() {
         .await;
     assert_eq!(st, 401);
     assert_eq!(legacy.received_requests().await.unwrap().len(), before);
+}
+
+/// Poll until `sql` (a `COUNT(*)`) reaches `want`: audit rows are written by
+/// a spawned task.
+async fn wait_count(h: &Harness, sql: &str, want: i64) -> i64 {
+    let mut n = 0;
+    for _ in 0..40 {
+        n = h.scalar_i64(sql).await;
+        if n >= want {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    n
+}
+
+impl Harness {
+    async fn talon_connector(&self, talon: &MockServer) {
+        self.exec("DELETE FROM connectors WHERE connector_name = 'Talon'")
+            .await;
+        self.exec(&format!(
+            "INSERT INTO connectors (connector_name, connector_type, connector_url, connector_last_updated, \
+             connector_api_key, connector_configured, connector_verified, connector_accepts_host_only, \
+             connector_accepts_api_key, connector_accepts_username_password, connector_accepts_file, \
+             connector_accepts_extra_data, connector_enabled) VALUES \
+             ('Talon', '3', '{}', UTC_TIMESTAMP(), 'talon-key', 1, 1, 0, 1, 0, 0, 0, 1)",
+            talon.uri()
+        ))
+        .await;
+    }
+
+    async fn alert(&self, customer: &str, name: &str) -> i64 {
+        self.exec(&format!(
+            "INSERT INTO incident_management_alert (alert_name, alert_description, status, \
+             alert_creation_time, customer_code, source, escalated) VALUES \
+             ('{name}', 'd', 'OPEN', UTC_TIMESTAMP(), '{customer}', 'wazuh', 0)"
+        ))
+        .await
+    }
+
+    /// A job (`ago` minutes old) with one report; returns the report id.
+    async fn analysis(
+        &self,
+        alert: i64,
+        customer: &str,
+        n: u32,
+        status: &str,
+        ago: u32,
+        severity: &str,
+    ) -> i64 {
+        let job = format!("copilot-inv-{alert}-{n}{}", self.suffix);
+        self.exec(&format!(
+            "INSERT INTO ai_analyst_job (id, alert_id, customer_code, status, alert_type, triggered_by, \
+             template_used, created_at, error_message) VALUES ('{job}', {alert}, '{customer}', '{status}', \
+             'sigma', 'scheduled', 'internal-template', UTC_TIMESTAMP() - INTERVAL {ago} MINUTE, 'agent trace')"
+        ))
+        .await;
+        self.exec(&format!(
+            "INSERT INTO ai_analyst_report (job_id, alert_id, customer_code, severity_assessment, summary, \
+             report_markdown, recommended_actions, created_at) VALUES ('{job}', {alert}, '{customer}', \
+             '{severity}', 'summary {n}', '# report {n}', 'isolate', UTC_TIMESTAMP() - INTERVAL {ago} MINUTE)"
+        ))
+        .await
+    }
+}
+
+#[tokio::test]
+async fn customer_portal_ai_reports_flow() {
+    let talon = MockServer::start().await;
+    let legacy = MockServer::start().await;
+    let h = harness_or_skip!(Some(&legacy));
+    let (acme_alert, beta_alert) = h.seed().await;
+    let s = h.suffix.clone();
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+    let admin_id = h
+        .scalar_i64(&format!(
+            "SELECT id FROM `user` WHERE username = 'admin{s}'"
+        ))
+        .await;
+    h.talon_connector(&talon).await;
+    let settings_url = |c: &str| format!("/api/customer_portal/ai_reports/settings/{c}");
+    let msg = |b: &Value| b["message"].as_str().unwrap_or_default().to_string();
+
+    // --- Operator switch: read ---------------------------------------------------
+    let (st, body) = h
+        .call("GET", &settings_url(&acme), Some(&analyst), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"settings": {"customer_code": acme, "enabled": false, "allow_customer_requests": false,
+               "daily_request_limit": null, "requests_last_24h": 0, "updated_at": null, "updated_by": null},
+               "success": true, "message": "Customer AI report settings retrieved successfully"})
+    );
+    let (st, body) = h
+        .call("GET", &settings_url(&beta), Some(&analyst), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (403, format!("Access denied to customer {beta}"))
+    );
+    let (st, body) = h
+        .call("GET", &settings_url(&acme), Some(&portal), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            403,
+            "Insufficient permissions. Required one of: admin, analyst".into()
+        )
+    );
+
+    // --- Operator switch: write (admin only, body before existence) ----------------
+    let on = json!({"enabled": true});
+    let (st, body) = h
+        .call(
+            "PUT",
+            &settings_url(&acme),
+            Some(&analyst),
+            Some(on.clone()),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            403,
+            "Insufficient permissions. Required one of: admin".into()
+        )
+    );
+    let (st, body) = h
+        .call(
+            "PUT",
+            &settings_url("nosuch"),
+            Some(&admin),
+            Some(json!({"daily_request_limit": 0})),
+        )
+        .await;
+    assert_eq!(st, 422, "{body}");
+    assert_eq!(body["details"].as_array().unwrap().len(), 2, "{body}");
+    let (st, body) = h
+        .call(
+            "PUT",
+            &settings_url("nosuch"),
+            Some(&admin),
+            Some(on.clone()),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (404, "Customer nosuch not found".into())
+    );
+    let (st, body) = h
+        .call("PUT", &settings_url(&acme), Some(&admin), Some(on.clone()))
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body["message"],
+        "Customer AI report settings saved successfully"
+    );
+    assert_eq!(body["settings"]["enabled"], true);
+    assert_eq!(body["settings"]["allow_customer_requests"], false);
+    assert_eq!(body["settings"]["updated_by"], admin_id);
+    assert!(
+        body["settings"]["updated_at"].as_str().unwrap().len() == 19,
+        "{body}"
+    );
+    let audit_sql = format!(
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'ai_report.settings_update' AND entity_id = '{acme}'"
+    );
+    assert_eq!(wait_count(&h, &audit_sql, 1).await, 1);
+    let (st, _) = h
+        .call("PUT", &settings_url(&acme), Some(&admin), Some(on.clone()))
+        .await;
+    assert_eq!(st, 200);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        h.scalar_i64(&audit_sql).await,
+        1,
+        "an unchanged save is not audited"
+    );
+
+    // --- Availability --------------------------------------------------------------
+    let avail = "/api/customer_portal/ai_reports/availability";
+    let (_, body) = h.call("GET", avail, Some(&portal), None).await;
+    assert_eq!(
+        body,
+        json!({"customer_code": null, "enabled": true, "success": true, "message": "AI reports are enabled"})
+    );
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("{avail}?customer_code={beta}"),
+            Some(&portal),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (403, format!("Access denied to customer {beta}"))
+    );
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("{avail}?customer_code={beta}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        body,
+        json!({"customer_code": beta, "enabled": false, "success": true, "message": "AI reports are not enabled"})
+    );
+
+    // --- Findings: two jobs on acme's alert (latest wins), one on beta's -------------
+    h.analysis(acme_alert, &acme, 1, "completed", 120, "Low")
+        .await;
+    let report = h
+        .analysis(acme_alert, &acme, 2, "completed", 60, "High")
+        .await;
+    h.exec(&format!(
+        "INSERT INTO ai_analyst_ioc (report_id, alert_id, customer_code, ioc_value, ioc_type, vt_verdict, \
+         vt_score, created_at) VALUES ({report}, {acme_alert}, '{acme}', '1.2.3.4', 'ip', 'malicious', '5/90', \
+         UTC_TIMESTAMP())"
+    ))
+    .await;
+    h.analysis(beta_alert, &beta, 1, "completed", 30, "Medium")
+        .await;
+
+    let alert_url = |id: i64| format!("/api/customer_portal/ai_reports/alert/{id}");
+    let (st, body) = h
+        .call("GET", &alert_url(acme_alert), Some(&portal), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    let keys: Vec<_> = body.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(
+        keys,
+        [
+            "alert_id",
+            "enabled",
+            "can_request",
+            "has_analysis",
+            "investigation",
+            "report",
+            "iocs",
+            "success",
+            "message"
+        ]
+    );
+    assert_eq!(body["has_analysis"], true);
+    assert_eq!(body["can_request"], false);
+    assert_eq!(body["report"]["id"], report);
+    assert_eq!(body["report"]["severity_assessment"], "High");
+    assert_eq!(body["iocs"][0]["ioc_value"], "1.2.3.4");
+    assert_eq!(body["investigation"]["triggered_by"], "scheduled");
+    let raw = body.to_string();
+    for leak in ["copilot-inv", "internal-template", "agent trace", "job_id"] {
+        assert!(!raw.contains(leak), "{leak} reached the portal: {raw}");
+    }
+    let (st, body) = h
+        .call("GET", &alert_url(beta_alert), Some(&portal), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            403,
+            format!("Access denied to alert {beta_alert} - insufficient customer permissions")
+        )
+    );
+    let (st, body) = h
+        .call("GET", &alert_url(999_999_999), Some(&portal), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (404, "Alert 999999999 not found".into())
+    );
+    let (st, _) = h
+        .call(
+            "GET",
+            "/api/customer_portal/ai_reports/alert/abc",
+            Some(&portal),
+            None,
+        )
+        .await;
+    assert_eq!(st, 422);
+    // An admin reading beta (switch off) learns that, and nothing else.
+    let (_, body) = h
+        .call("GET", &alert_url(beta_alert), Some(&admin), None)
+        .await;
+    assert_eq!(body["enabled"], false);
+    assert_eq!(body["report"], Value::Null);
+    assert_eq!(
+        body["message"],
+        "AI analyst findings are not enabled for this customer"
+    );
+
+    // --- Insights: latest report per alert, switch and visibility applied -----------
+    let insights = "/api/customer_portal/ai_reports/insights";
+    let (_, body) = h.call("GET", insights, Some(&portal), None).await;
+    assert_eq!(body["total_reports"], 1, "{body}");
+    assert_eq!(body["severity_counts"], json!({"High": 1}));
+    assert_eq!(body["recent"][0]["alert_id"], acme_alert);
+    assert_eq!(body["recent"][0]["alert_name"], "Mimikatz acme");
+    assert_eq!(body["message"], "1 alerts with an AI report found");
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("{insights}?customer_codes={beta}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(body["total_reports"], 0, "beta's switch is off: {body}");
+    let (st, _) = h
+        .call("GET", &format!("{insights}?limit=26"), Some(&portal), None)
+        .await;
+    assert_eq!(st, 422);
+
+    // --- Requests ------------------------------------------------------------------
+    let investigate = |id: i64| format!("/api/customer_portal/ai_reports/alert/{id}/investigate");
+    let (st, body) = h
+        .call("POST", &investigate(acme_alert), Some(&portal), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            403,
+            "Requesting an AI analysis is not enabled for this customer".into()
+        )
+    );
+    let refused_sql = format!(
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'ai_analysis.request' AND result = 'failure' \
+         AND entity_id = '{acme_alert}'"
+    );
+    assert_eq!(wait_count(&h, &refused_sql, 1).await, 1);
+
+    let (st, body) = h
+        .call(
+            "PUT",
+            &settings_url(&acme),
+            Some(&admin),
+            Some(
+                json!({"enabled": true, "allow_customer_requests": true, "daily_request_limit": 2}),
+            ),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["settings"]["daily_request_limit"], 2);
+
+    let alert2 = h.alert(&acme, "second").await;
+    let alert3 = h.alert(&acme, "third").await;
+    let alert4 = h.alert(&acme, "fourth").await;
+    let alert5 = h.alert(&acme, "fifth").await;
+    for (id, status) in [(acme_alert, 202), (alert2, 500), (alert3, 202)] {
+        Mock::given(method("POST"))
+            .and(path("/investigate"))
+            .and(header("x-api-key", "talon-key"))
+            .and(body_json(
+                json!({"alert_id": id, "customer_code": acme, "sender": "customer-portal"}),
+            ))
+            .respond_with(
+                ResponseTemplate::new(status)
+                    .set_body_json(json!({"job_id": "x", "status": "queued"})),
+            )
+            .expect(1)
+            .mount(&talon)
+            .await;
+    }
+
+    let (st, body) = h
+        .call("POST", &investigate(acme_alert), Some(&portal), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body["message"],
+        "AI analysis requested: it will appear here once the AI analyst has finished"
+    );
+    let stored: String = sqlx::query_scalar(&format!(
+        "SELECT DATE_FORMAT(requested_at, '%Y-%m-%dT%H:%i:%s') FROM customer_portal_ai_request \
+         WHERE alert_id = {acme_alert}"
+    ))
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(body["requested_at"], stored);
+    let (who, text): (String, String) = sqlx::query_as(&format!(
+        "SELECT user_name, comment FROM incident_management_comment WHERE alert_id = {acme_alert}"
+    ))
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        (who.as_str(), text.as_str()),
+        (
+            format!("portal{s}").as_str(),
+            "AI analysis requested from the Customer Portal."
+        )
+    );
+
+    // A double click: the request itself starts the cooldown.
+    let (st, body) = h
+        .call("POST", &investigate(acme_alert), Some(&portal), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            429,
+            "This alert was analysed recently. You can request a new analysis in 30 minutes."
+                .into()
+        )
+    );
+
+    // Talon refuses: 502, nothing spent, Talon's text never reaches the customer.
+    let (st, body) = h
+        .call("POST", &investigate(alert2), Some(&portal), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            502,
+            "The AI analyst could not start the analysis. Please try again later.".into()
+        )
+    );
+    assert_eq!(
+        h.scalar_i64(&format!(
+            "SELECT COUNT(*) FROM customer_portal_ai_request WHERE alert_id = {alert2}"
+        ))
+        .await,
+        0
+    );
+
+    let (st, body) = h
+        .call("POST", &investigate(alert3), Some(&portal), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    let (st, body) = h
+        .call("POST", &investigate(alert4), Some(&portal), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            429,
+            "Your organization has reached its daily limit of AI analyses. Please try again later."
+                .into()
+        )
+    );
+    h.exec(&format!(
+        "INSERT INTO ai_analyst_job (id, alert_id, customer_code, status, triggered_by, created_at) \
+         VALUES ('copilot-inv-{alert5}-r{s}', {alert5}, '{acme}', 'running', 'manual', UTC_TIMESTAMP())"
+    ))
+    .await;
+    let (st, body) = h
+        .call("POST", &investigate(alert5), Some(&portal), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            409,
+            "An AI analysis of this alert is already in progress".into()
+        )
+    );
+    // The analyst cannot ask for another tenant's alert either.
+    let (st, _) = h
+        .call("POST", &investigate(beta_alert), Some(&analyst), None)
+        .await;
+    assert_eq!(st, 403);
+
+    let (_, body) = h
+        .call("GET", &settings_url(&acme), Some(&admin), None)
+        .await;
+    assert_eq!(body["settings"]["requests_last_24h"], 2);
+    let ok_sql = format!(
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'ai_analysis.request' AND result = 'success' \
+         AND customer_code = '{acme}'"
+    );
+    assert_eq!(wait_count(&h, &ok_sql, 2).await, 2);
+    let failed_talon = format!(
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'ai_analysis.request' AND entity_id = '{alert2}' \
+         AND details = 'The AI analyst could not start the analysis'"
+    );
+    assert_eq!(wait_count(&h, &failed_talon, 1).await, 1);
+
+    // --- Unported portal paths and methods still reach Python -----------------------
+    Mock::given(method("GET"))
+        .and(path("/api/customer_portal/overview"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+        .expect(1)
+        .mount(&legacy)
+        .await;
+    let (st, body) = h
+        .call("GET", "/api/customer_portal/overview", Some(&portal), None)
+        .await;
+    assert_eq!((st.as_u16(), body), (200, json!({"from": "python"})));
+    Mock::given(method("DELETE"))
+        .and(path(settings_url(&acme)))
+        .respond_with(
+            ResponseTemplate::new(405).set_body_json(json!({"detail": "Method Not Allowed"})),
+        )
+        .expect(1)
+        .mount(&legacy)
+        .await;
+    let (st, _) = h
+        .call("DELETE", &settings_url(&acme), Some(&admin), None)
+        .await;
+    assert_eq!(st, 405);
+}
+
+#[tokio::test]
+async fn customer_portal_ai_reports_follow_tag_rbac() {
+    let h = harness_or_skip!(None);
+    if h.scalar_i64("SELECT COUNT(*) FROM incident_management_tag_access_settings")
+        .await
+        > 0
+    {
+        eprintln!("tag access settings already configured in this database; skipping");
+        return;
+    }
+    let (acme_alert, _) = h.seed().await;
+    let s = h.suffix.clone();
+    let acme = h.code("acme");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+    h.exec(&format!(
+        "INSERT INTO customer_portal_ai_report_settings (customer_code, enabled, allow_customer_requests, \
+         updated_at) VALUES ('{acme}', 1, 0, UTC_TIMESTAMP())"
+    ))
+    .await;
+    h.analysis(acme_alert, &acme, 1, "completed", 10, "High")
+        .await;
+    let tag = h
+        .exec(&format!(
+            "INSERT INTO incident_management_alerttag (tag) VALUES ('e2e{s}')"
+        ))
+        .await;
+    h.exec(&format!(
+        "INSERT INTO incident_management_alert_to_tag (alert_id, tag_id) VALUES ({acme_alert}, {tag})"
+    ))
+    .await;
+    let settings = h
+        .exec(
+            "INSERT INTO incident_management_tag_access_settings (enabled, untagged_alert_behavior, \
+             updated_at) VALUES (1, 'admin_only', UTC_TIMESTAMP())",
+        )
+        .await;
+
+    // Collect first, clean up, then assert: tag RBAC is global state.
+    let alert_url = format!("/api/customer_portal/ai_reports/alert/{acme_alert}");
+    let insights = "/api/customer_portal/ai_reports/insights";
+    let denied = h.call("GET", &alert_url, Some(&analyst), None).await;
+    let analyst_insights = h.call("GET", insights, Some(&analyst), None).await;
+    let portal_insights = h.call("GET", insights, Some(&portal), None).await;
+    h.exec(&format!(
+        "INSERT INTO user_tag_access (user_id, tag_id, created_at) \
+         SELECT id, {tag}, UTC_TIMESTAMP() FROM `user` WHERE username = 'analyst{s}'"
+    ))
+    .await;
+    let granted = h.call("GET", &alert_url, Some(&analyst), None).await;
+    let granted_insights = h.call("GET", insights, Some(&analyst), None).await;
+    h.exec(&format!(
+        "DELETE FROM incident_management_tag_access_settings WHERE id = {settings}"
+    ))
+    .await;
+    h.exec(&format!("DELETE FROM user_tag_access WHERE tag_id = {tag}"))
+        .await;
+    h.exec(&format!(
+        "DELETE FROM incident_management_alert_to_tag WHERE tag_id = {tag}"
+    ))
+    .await;
+    h.exec(&format!(
+        "DELETE FROM incident_management_alerttag WHERE id = {tag}"
+    ))
+    .await;
+
+    assert_eq!(denied.0, 403);
+    assert_eq!(
+        denied.1["message"],
+        format!("Access denied to alert {acme_alert} - insufficient tag permissions")
+    );
+    assert_eq!(
+        analyst_insights.1["total_reports"], 0,
+        "{}",
+        analyst_insights.1
+    );
+    assert_eq!(
+        portal_insights.1["total_reports"], 1,
+        "portal users bypass tag RBAC"
+    );
+    assert_eq!(granted.0, 200, "{}", granted.1);
+    assert_eq!(granted.1["has_analysis"], true);
+    assert_eq!(granted_insights.1["total_reports"], 1);
 }
 
 #[tokio::test]

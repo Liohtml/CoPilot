@@ -15,12 +15,14 @@
 //! - [`jwt`]      — encode/decode session tokens
 //! - [`password`] — bcrypt with the 72-byte cut
 //! - [`access`]   — `AccessScope`: who may see which customer
+//! - [`tags`]     — tag RBAC: which tagged alerts a user may see
 
 #![warn(missing_docs)]
 
 pub mod access;
 pub mod jwt;
 pub mod password;
+pub mod tags;
 
 pub use access::{AccessDenied, AccessScope};
 pub use jwt::{JwtCodec, SessionClaims, TokenError};

@@ -73,3 +73,26 @@ pub async fn customer_exists(db: &Db, customer_code: &str) -> Result<bool, DbErr
             .await?;
     Ok(found.is_some())
 }
+
+/// `create_comment` (the incidents *service*, not the route): a plain
+/// timeline entry. Deliberately no SLA side effects — those are recorded by
+/// the incidents routes, and a portal request must neither acknowledge an
+/// SLA nor hand a waiting alert back.
+pub async fn insert_alert_comment(
+    db: &Db,
+    alert_id: i64,
+    comment: &str,
+    user_name: &str,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "INSERT INTO incident_management_comment (alert_id, comment, user_name, created_at) \
+         VALUES (?, ?, ?, ?)",
+    )
+    .bind(alert_id)
+    .bind(comment)
+    .bind(user_name)
+    .bind(copilot_core::time::now_utc_naive())
+    .execute(db.pool())
+    .await?;
+    Ok(())
+}

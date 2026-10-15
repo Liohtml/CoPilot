@@ -24,10 +24,12 @@ pub mod ai_analyst;
 pub mod alerts;
 pub mod audit;
 pub mod connectors;
+pub mod customer_portal;
 pub mod pool;
 pub mod scheduler;
 pub mod schema;
 pub mod users;
+pub mod visibility;
 
 pub use pool::Db;
 

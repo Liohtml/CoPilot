@@ -410,6 +410,7 @@ dependencies = [
  "copilot-ai-analyst",
  "copilot-auth",
  "copilot-core",
+ "copilot-customer-portal",
  "copilot-db",
  "copilot-gateway",
  "copilot-talon",
@@ -474,10 +475,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-customer-portal"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "chrono",
+ "copilot-ai-analyst",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-talon",
+ "copilot-web",
+ "http",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "copilot-db"
 version = "0.2.0"
 dependencies = [
  "chrono",
+ "copilot-auth",
  "copilot-core",
  "serde",
  "serde_json",

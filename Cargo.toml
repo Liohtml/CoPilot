@@ -20,6 +20,7 @@ copilot-auth = { path = "crates/copilot-auth" }
 copilot-web = { path = "crates/copilot-web" }
 copilot-talon = { path = "crates/copilot-talon" }
 copilot-ai-analyst = { path = "crates/copilot-ai-analyst" }
+copilot-customer-portal = { path = "crates/copilot-customer-portal" }
 copilot-gateway = { path = "crates/copilot-gateway" }
 
 # --- async runtime ---
