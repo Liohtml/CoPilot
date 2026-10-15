@@ -3033,3 +3033,1175 @@ async fn startup_schema_check_passes_on_the_alembic_head() {
         vec!["ai_analyst_job.no_such_column".to_string()]
     );
 }
+
+// ---------------------------------------------------------------------------
+// SSO and passkeys
+// ---------------------------------------------------------------------------
+
+/// The RSA test key of `scripts/gen-webauthn-vectors.py` (2048 bits).
+const RSA_N: &str = "cb67661bceb57ab5148dde4ad0c060e489d998fbf783918fb1594d083945743d5b34100d655e567d007e21ae0d8177b567218a46ef0612f1ec26fdb537828aae0eccb3a34800ad38797bc3badfcd1ffb867a06a04e8528a0408992d45a99e5b4a61b1399e376f6f44646b08ecb234dd440ba6e91e5ffea04e008b5d89d8b7a7fffaf918fb553c1658cbae8c33c891ceed00aef0dedaf66b2c96aff3c569f2185bca1446f27f02f9db2df414f1b5938c4bffa7018c68c500d894aef044d72452986057fd483a50616e55b9528fae73508e06e255d1c0ddf1dbcf298cf155fa1b3242620afada2bdbbd8c1afaca69a329b8b67921ab4d97f98bcd240967afabd71";
+const RSA_D: &str = "287e4a36a8fd3a1388a701a5154fe73a383348a088d2f98c88bb0579e8a4ea1238f0f16d294c119dcb1651302c6224e9c941451d0002ce8cb8fdbe2e70819d882f4c134b234f772cb20ab099a86a56bea533efd3c42e003b7efda46c8028f930f08c9d675a805983a1e5faca42a8a19aead3f2a53b0baa9413e1c809fabb44c491aa58c05b99d6f687ece86fd225244b47b6c8464359389be27e8c7fea29cf011b122f19e043524309bc290c37ec50ed74245bb020f35f0d04f8649e499a158e1b88b6ec98170cf6ef5f083b2bfd1a3b800645bd0bdebeb45f20346f6e1664f5d96a1c2a077cb01393cac123fd7c6575b7c53c9ddcf2cf7ade09d24344c1fa1";
+
+fn b64u(data: &[u8]) -> String {
+    copilot_auth::pybase64::bytes_to_base64url(data)
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+/// An RS256 JWT signed with the test key (RSASSA-PKCS1-v1_5 by hand).
+fn rs256(kid: &str, claims: Value) -> String {
+    use sha2::Digest;
+    let header = json!({"alg": "RS256", "typ": "JWT", "kid": kid});
+    let input = format!(
+        "{}.{}",
+        b64u(&serde_json::to_vec(&header).unwrap()),
+        b64u(&serde_json::to_vec(&claims).unwrap())
+    );
+    let n = num_bigint_dig::BigUint::parse_bytes(RSA_N.as_bytes(), 16).unwrap();
+    let d = num_bigint_dig::BigUint::parse_bytes(RSA_D.as_bytes(), 16).unwrap();
+    let mut t = vec![
+        0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
+        0x05, 0x00, 0x04, 0x20,
+    ];
+    t.extend(sha2::Sha256::digest(input.as_bytes()));
+    let mut em = vec![0x00, 0x01];
+    em.extend(vec![0xff; 256 - t.len() - 3]);
+    em.push(0x00);
+    em.extend(t);
+    let s = num_bigint_dig::BigUint::from_bytes_be(&em)
+        .modpow(&d, &n)
+        .to_bytes_be();
+    let mut sig = vec![0u8; 256 - s.len()];
+    sig.extend(s);
+    format!("{input}.{}", b64u(&sig))
+}
+
+fn jwks(kid: &str) -> Value {
+    let n = num_bigint_dig::BigUint::parse_bytes(RSA_N.as_bytes(), 16).unwrap();
+    json!({"keys": [{"kty": "RSA", "kid": kid, "use": "sig", "n": b64u(&n.to_bytes_be()), "e": "AQAB"}]})
+}
+
+impl Harness {
+    /// A request with extra headers; returns the response headers too.
+    async fn send(
+        &self,
+        method: &str,
+        uri: &str,
+        headers: &[(&str, &str)],
+        token: Option<&str>,
+        body: Option<Value>,
+    ) -> (StatusCode, http::HeaderMap, Value) {
+        let mut b = Request::builder().method(method).uri(uri);
+        for (k, v) in headers {
+            b = b.header(*k, *v);
+        }
+        if let Some(t) = token {
+            b = b.header("authorization", format!("Bearer {t}"));
+        }
+        let req = match body {
+            Some(v) => b
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&v).unwrap()))
+                .unwrap(),
+            None => b.body(Body::empty()).unwrap(),
+        };
+        let resp = self.router.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let bytes = axum::body::to_bytes(resp.into_body(), 16 << 20)
+            .await
+            .unwrap();
+        let value = serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()));
+        (status, headers, value)
+    }
+
+    /// `GET` that must redirect; the `Location`.
+    async fn location(&self, uri: &str) -> String {
+        let (st, headers, _) = self.send("GET", uri, &[], None, None).await;
+        assert_eq!(st.as_u16(), 307, "{uri}");
+        headers[http::header::LOCATION]
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
+
+    async fn new_user(&self, name: &str, email: &str, role: i32) -> i64 {
+        self.exec(&format!(
+            "INSERT INTO `user` (username, password, email, created_at, role_id) \
+             VALUES ('{name}', 'x', '{email}', UTC_TIMESTAMP(), {role})"
+        ))
+        .await
+    }
+
+    async fn enable_totp(&self, user_id: i64) {
+        self.exec(&format!(
+            "INSERT INTO user_totp (user_id, secret_enc, enabled, backup_codes, created_at) \
+             VALUES ({user_id}, 'x', 1, '[]', UTC_TIMESTAMP())"
+        ))
+        .await;
+    }
+}
+
+/// The stub IdP answering one Azure code exchange with `id_token`.
+async fn serve_azure(idp: &MockServer, tenant: &str, id_token: String) {
+    idp.reset().await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/login.microsoftonline.com/{tenant}/discovery/v2.0/keys"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(jwks("k1")))
+        .mount(idp)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id_token": id_token})))
+        .mount(idp)
+        .await;
+}
+
+/// The `state` query parameter of a provider redirect.
+fn state_of(location: &str) -> String {
+    let query = location.split_once('?').unwrap().1;
+    let raw = query
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("state="))
+        .unwrap();
+    raw.replace("%3A", ":")
+}
+
+#[tokio::test]
+async fn sso_settings_allowlist_and_logins() {
+    let idp = MockServer::start().await;
+    let h = harness_or_skip!(None, &format!("COPILOT_SSO_IDP_URL={}\n", idp.uri()));
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&h.code("admin"), "admin");
+    let analyst = h.token(&h.code("analyst"), "analyst");
+    h.exec("DELETE FROM sso_config").await;
+
+    // Status and settings before anything is configured.
+    let (st, body) = h.call("GET", "/api/auth/sso/status", None, None).await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"sso_enabled": false, "azure_enabled": false, "google_enabled": false,
+                   "cf_enabled": false, "azure_authorization_url": null,
+                   "google_authorization_url": null})
+        )
+    );
+    let (st, body) = h
+        .call("GET", "/api/auth/sso/settings", Some(&admin), None)
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    assert_eq!(body["message"], "No SSO configuration found");
+    assert_eq!(body["azure_client_secret_set"], false);
+    let (st, body) = h
+        .call("GET", "/api/auth/sso/settings", Some(&analyst), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            403,
+            json!("Insufficient permissions. Required one of: admin")
+        )
+    );
+    let (st, _, body) = h
+        .send("GET", "/api/auth/sso/azure/login", &[], None, None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (400, json!("Azure SSO is not enabled"))
+    );
+
+    // Configure all three providers.
+    let tenant = format!("tenant{s}");
+    let team = format!("team{s}.cloudflareaccess.com");
+    let settings = json!({
+        "sso_enabled": true,
+        "azure_enabled": true, "azure_tenant_id": tenant, "azure_client_id": "az-client",
+        "azure_client_secret": "az-secret", "azure_redirect_uri": "https://soc.example/api/auth/sso/azure/callback",
+        "google_enabled": "yes", "google_client_id": "g-client", "google_client_secret": "g-secret",
+        "google_redirect_uri": "https://soc.example/api/auth/sso/google/callback",
+        "cf_enabled": 1, "cf_team_domain": team, "cf_audience": "cf-aud",
+    });
+    let (st, body) = h
+        .call(
+            "PUT",
+            "/api/auth/sso/settings",
+            Some(&admin),
+            Some(settings.clone()),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200, "{body}");
+    assert_eq!(body["message"], "SSO configuration updated successfully");
+    assert_eq!(body["google_enabled"], true);
+    assert_eq!(body["azure_client_secret_set"], true);
+    assert!(body.get("azure_client_secret").is_none());
+    // An empty secret keeps the stored one.
+    let mut keep = settings.clone();
+    keep["azure_client_secret"] = json!("");
+    let (st, body) = h
+        .call("PUT", "/api/auth/sso/settings", Some(&admin), Some(keep))
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["azure_client_secret_set"].clone()),
+        (200, json!(true))
+    );
+    let stored: String =
+        sqlx::query_scalar("SELECT azure_client_secret FROM sso_config WHERE id = 1")
+            .fetch_one(h.db.pool())
+            .await
+            .unwrap();
+    assert_eq!(stored, "az-secret");
+    let (st, _) = h
+        .call(
+            "PUT",
+            "/api/auth/sso/settings",
+            Some(&admin),
+            Some(json!({"sso_enabled": "maybe"})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 422);
+    let (_, body) = h.call("GET", "/api/auth/sso/status", None, None).await;
+    assert_eq!(body["google_enabled"], true);
+
+    // Allowlist.
+    let new_mail = format!("New.SSO{s}@Example.COM");
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/sso/allowed-emails",
+            Some(&admin),
+            Some(json!({"email": new_mail, "role_id": "2"})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 201, "{body}");
+    assert_eq!(
+        body["message"],
+        format!("Email New.SSO{s}@example.com added to SSO allowlist")
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/sso/allowed-emails",
+            Some(&admin),
+            Some(json!({"email": format!("new.sso{s}@example.com")})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            400,
+            json!(format!(
+                "Email new.sso{s}@example.com is already in the allowlist"
+            ))
+        )
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/sso/allowed-emails",
+            Some(&admin),
+            Some(json!({"email": "x@example.com", "role_id": 3})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            422,
+            json!("role_id: SSO users must be admins, analysts or responders")
+        )
+    );
+    // A second address with the same local part, for the username collision.
+    let twin = format!("new.sso{s}@other.example.com");
+    h.call(
+        "POST",
+        "/api/auth/sso/allowed-emails",
+        Some(&admin),
+        Some(json!({"email": twin, "role_id": 5})),
+    )
+    .await;
+    let (st, body) = h
+        .call("GET", "/api/auth/sso/allowed-emails", Some(&admin), None)
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    let listed: Vec<&Value> = body["emails"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["email"].as_str().unwrap().contains(&format!("sso{s}")))
+        .collect();
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0]["role_id"], 2);
+    assert!(listed[0]["created_at"].as_str().unwrap().contains('T'));
+    let (st, body) = h
+        .call(
+            "DELETE",
+            "/api/auth/sso/allowed-emails/999999999",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (404, json!("Email entry not found"))
+    );
+
+    // Azure: the redirect, then the callback through the stub IdP.
+    let location = h.location("/api/auth/sso/azure/login").await;
+    assert!(
+        location.starts_with(&format!(
+            "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize?client_id=az-client&response_type=code&redirect_uri=https%3A%2F%2Fsoc.example%2Fapi%2Fauth%2Fsso%2Fazure%2Fcallback&response_mode=query&scope=openid+profile+email&state="
+        )),
+        "{location}"
+    );
+    assert!(location.ends_with("&prompt=select_account"));
+    let state = state_of(&location);
+    let issuer = format!("https://login.microsoftonline.com/{tenant}/v2.0");
+    let id_token = |email: &str, extra: Value| {
+        let mut claims = json!({"iss": issuer, "aud": "az-client", "exp": now_secs() + 300,
+                                "iat": now_secs() - 5, "sub": "abc", "email": email});
+        for (k, v) in extra.as_object().unwrap() {
+            claims[k] = v.clone();
+        }
+        rs256("k1", claims)
+    };
+    let token_path = format!("/login.microsoftonline.com/{tenant}/oauth2/v2.0/token");
+    let azure_login = |code: &'static str, id_token: String| {
+        let (idp, tenant) = (&idp, tenant.clone());
+        async move {
+            serve_azure(idp, &tenant, id_token).await;
+            code
+        }
+    };
+    let first_mail = format!("new.sso{s}@example.com");
+    let code = azure_login("code-1", id_token(&first_mail, json!({}))).await;
+    let loc = h
+        .location(&format!(
+            "/api/auth/sso/azure/callback?code={code}&state={state}"
+        ))
+        .await;
+    let token = loc.strip_prefix("/sso-callback#token=").expect(&loc);
+    let claims = h.jwt.decode_session(token).unwrap();
+    assert_eq!(claims.subject, format!("new.sso{s}"));
+    assert_eq!(claims.scopes, vec!["analyst"]);
+    let form = idp.received_requests().await.unwrap();
+    let posted = form.iter().find(|r| r.method.as_str() == "POST").unwrap();
+    let posted = String::from_utf8_lossy(&posted.body).into_owned();
+    assert!(
+        posted.contains("client_secret=az-secret") && posted.contains("code=code-1"),
+        "{posted}"
+    );
+    // The second address gets the next free username and its own role.
+    let code = azure_login("code-2", id_token(&twin, json!({}))).await;
+    let loc = h
+        .location(&format!(
+            "/api/auth/sso/azure/callback?code={code}&state={state}"
+        ))
+        .await;
+    let claims = h
+        .jwt
+        .decode_session(loc.strip_prefix("/sso-callback#token=").unwrap())
+        .unwrap();
+    assert_eq!(claims.subject, format!("new.sso{s}1"));
+    assert_eq!(claims.scopes, vec!["responder", "analyst"]);
+    // Existing users sign in without an allowlist entry; 2FA is honoured.
+    let existing = h
+        .new_user(&format!("sso2fa{s}"), &format!("sso2fa{s}@example.com"), 2)
+        .await;
+    h.enable_totp(existing).await;
+    let code = azure_login(
+        "code-3",
+        id_token(&format!("SSO2FA{s}@example.com"), json!({})),
+    )
+    .await;
+    let loc = h
+        .location(&format!(
+            "/api/auth/sso/azure/callback?code={code}&state={state}"
+        ))
+        .await;
+    let (temp, flag) = loc
+        .strip_prefix("/sso-callback#token=")
+        .unwrap()
+        .split_once('&')
+        .unwrap();
+    assert_eq!(flag, "requires_2fa=true");
+    assert_eq!(h.jwt.decode_two_factor(temp).unwrap(), format!("sso2fa{s}"));
+
+    // Refusals.
+    let err = |detail: &str| format!("/login?error_message={detail}");
+    assert_eq!(
+        h.location("/api/auth/sso/azure/callback?error=access_denied")
+            .await,
+        err("Azure%20auth%20error%3A%20access_denied")
+    );
+    assert_eq!(
+        h.location("/api/auth/sso/azure/callback?code=x").await,
+        err("Missing%20code%20or%20state%20parameter")
+    );
+    assert_eq!(
+        h.location("/api/auth/sso/azure/callback?code=x&state=a%3Ab%3Ac")
+            .await,
+        err("Invalid%20or%20expired%20OAuth2%20state%20parameter")
+    );
+    let code = azure_login(
+        "c",
+        id_token(&format!("stranger{s}@example.com"), json!({})),
+    )
+    .await;
+    assert_eq!(
+        h.location(&format!(
+            "/api/auth/sso/azure/callback?code={code}&state={state}"
+        ))
+        .await,
+        err(&format!(
+            "Email%20stranger{s}%40example.com%20is%20not%20authorized%20for%20SSO%20access.%20Contact%20your%20administrator."
+        ))
+    );
+    let code = azure_login("c", id_token(&first_mail, json!({"email_verified": false}))).await;
+    assert_eq!(
+        h.location(&format!(
+            "/api/auth/sso/azure/callback?code={code}&state={state}"
+        ))
+        .await,
+        err("Azure%20account%20email%20is%20not%20verified")
+    );
+    let code = azure_login("c", id_token(&first_mail, json!({"exp": now_secs() - 10}))).await;
+    assert_eq!(
+        h.location(&format!(
+            "/api/auth/sso/azure/callback?code={code}&state={state}"
+        ))
+        .await,
+        err("Azure%20authentication%20failed")
+    );
+    let code = azure_login("c", id_token(&first_mail, json!({"aud": "someone-else"}))).await;
+    assert_eq!(
+        h.location(&format!(
+            "/api/auth/sso/azure/callback?code={code}&state={state}"
+        ))
+        .await,
+        err("Azure%20authentication%20failed")
+    );
+    let unknown_kid = {
+        let mut claims = json!({"iss": issuer, "aud": "az-client", "exp": now_secs() + 300, "email": first_mail});
+        claims["sub"] = json!("abc");
+        rs256("other-kid", claims)
+    };
+    let code = azure_login("c", unknown_kid).await;
+    assert_eq!(
+        h.location(&format!(
+            "/api/auth/sso/azure/callback?code={code}&state={state}"
+        ))
+        .await,
+        err("Unable%20to%20find%20matching%20signing%20key%20in%20Azure%20JWKS")
+    );
+    let refetched = idp
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == "GET")
+        .count();
+    // The cached set (from the logins above) missed: one refetch, then the error.
+    assert_eq!(refetched, 1, "a kid miss refetches the JWKS once");
+    idp.reset().await;
+    Mock::given(method("POST"))
+        .and(path(token_path.clone()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"access_token": "x"})))
+        .mount(&idp)
+        .await;
+    assert_eq!(
+        h.location(&format!(
+            "/api/auth/sso/azure/callback?code=c&state={state}"
+        ))
+        .await,
+        err("No%20id_token%20in%20Azure%20response")
+    );
+
+    // Google.
+    let location = h.location("/api/auth/sso/google/login").await;
+    assert!(location.starts_with(
+        "https://accounts.google.com/o/oauth2/v2/auth?client_id=g-client&response_type=code&redirect_uri=https%3A%2F%2Fsoc.example%2Fapi%2Fauth%2Fsso%2Fgoogle%2Fcallback&scope=openid+email&state="
+    ));
+    assert!(location.ends_with("&access_type=online&prompt=select_account"));
+    let state = state_of(&location);
+    idp.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/www.googleapis.com/oauth2/v3/certs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(jwks("g1")))
+        .mount(&idp)
+        .await;
+    let google_token = |verified: bool| {
+        rs256(
+            "g1",
+            json!({"iss": "https://accounts.google.com", "aud": "g-client",
+                   "exp": now_secs() + 300, "email": first_mail, "email_verified": verified}),
+        )
+    };
+    Mock::given(method("POST"))
+        .and(path("/oauth2.googleapis.com/token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"id_token": google_token(true)})),
+        )
+        .mount(&idp)
+        .await;
+    let loc = h
+        .location(&format!(
+            "/api/auth/sso/google/callback?code=g&state={state}"
+        ))
+        .await;
+    let claims = h
+        .jwt
+        .decode_session(loc.strip_prefix("/sso-callback#token=").unwrap())
+        .unwrap();
+    assert_eq!(claims.subject, format!("new.sso{s}"));
+
+    // Cloudflare Access.
+    let cf_user = format!("cf{s}@example.com");
+    h.new_user(&format!("cf{s}"), &cf_user, 2).await;
+    idp.reset().await;
+    Mock::given(method("GET"))
+        .and(path(format!("/{team}/cdn-cgi/access/certs")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(jwks("cf1")))
+        .mount(&idp)
+        .await;
+    let cf_token = |email: &str| {
+        rs256(
+            "cf1",
+            json!({"iss": format!("https://{team}"), "aud": ["cf-aud"],
+                   "exp": now_secs() + 300, "email": email}),
+        )
+    };
+    let verify = "/api/auth/sso/cloudflare/verify";
+    let (st, _, body) = h
+        .send(
+            "POST",
+            verify,
+            &[("cf-access-jwt-assertion", &cf_token(&cf_user))],
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200, "{body}");
+    assert_eq!(
+        body["message"],
+        "Cloudflare Access authentication successful"
+    );
+    assert!(body.get("requires_2fa").is_none());
+    assert_eq!(
+        h.jwt
+            .decode_session(body["access_token"].as_str().unwrap())
+            .unwrap()
+            .subject,
+        format!("cf{s}")
+    );
+    let cookie = format!("a=1; CF_Authorization={}", cf_token(&cf_user));
+    let (st, _, _) = h
+        .send("POST", verify, &[("cookie", &cookie)], None, None)
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    let (st, _, body) = h.send("POST", verify, &[], None, None).await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            401,
+            json!("No Cloudflare Access JWT found in request headers or cookies")
+        )
+    );
+    let (st, _, body) = h
+        .send(
+            "POST",
+            verify,
+            &[(
+                "cf-access-jwt-assertion",
+                &cf_token(&format!("nobody{s}@example.com")),
+            )],
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(st.as_u16(), 403);
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .contains("is not authorized for SSO access")
+    );
+    let (st, _, body) = h
+        .send(
+            "POST",
+            verify,
+            &[("cf-access-jwt-assertion", "not.a.jwt")],
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (500, json!("Cloudflare authentication failed"))
+    );
+    h.exec("UPDATE sso_config SET cf_team_domain = 'evil.example.com' WHERE id = 1")
+        .await;
+    let (st, _, body) = h
+        .send(
+            "POST",
+            verify,
+            &[("cf-access-jwt-assertion", "x")],
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            401,
+            json!(
+                "Invalid Cloudflare team domain 'evil.example.com'. Must match *.cloudflareaccess.com"
+            )
+        )
+    );
+    h.exec("UPDATE sso_config SET cf_enabled = 0 WHERE id = 1")
+        .await;
+    let (st, _, body) = h.send("POST", verify, &[], None, None).await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (400, json!("Cloudflare Access SSO is not enabled"))
+    );
+    h.exec("DELETE FROM sso_config").await;
+}
+
+/// A software authenticator: one P-256 credential.
+struct Authenticator {
+    key: p256::ecdsa::SigningKey,
+    id: Vec<u8>,
+}
+
+const RP_ORIGIN: &str = "http://localhost:5173";
+
+impl Authenticator {
+    fn new(seed: u8, id: &[u8]) -> Self {
+        Self {
+            key: p256::ecdsa::SigningKey::from_slice(&[seed; 32]).unwrap(),
+            id: id.to_vec(),
+        }
+    }
+
+    fn cose(&self) -> Vec<u8> {
+        use copilot_webauthn::cbor::{Cbor, encode};
+        let point = self.key.verifying_key().to_encoded_point(false);
+        encode(&Cbor::Map(vec![
+            (Cbor::int(1), Cbor::int(2)),
+            (Cbor::int(3), Cbor::int(-7)),
+            (Cbor::int(-1), Cbor::int(1)),
+            (Cbor::int(-2), Cbor::Bytes(point.x().unwrap().to_vec())),
+            (Cbor::int(-3), Cbor::Bytes(point.y().unwrap().to_vec())),
+        ]))
+        .unwrap()
+    }
+
+    fn client_data(kind: &str, challenge: &str) -> Vec<u8> {
+        serde_json::to_vec(&json!({"type": kind, "challenge": challenge, "origin": RP_ORIGIN}))
+            .unwrap()
+    }
+
+    fn rp_hash() -> Vec<u8> {
+        use sha2::Digest;
+        sha2::Sha256::digest(b"localhost").to_vec()
+    }
+
+    /// `navigator.credentials.create()`'s JSON for `options`.
+    fn create(&self, options: &Value) -> Value {
+        use copilot_webauthn::cbor::{Cbor, encode};
+        let mut auth_data = Self::rp_hash();
+        auth_data.push(0x45);
+        auth_data.extend(0u32.to_be_bytes());
+        auth_data.extend([0u8; 16]);
+        auth_data.extend((self.id.len() as u16).to_be_bytes());
+        auth_data.extend(&self.id);
+        auth_data.extend(self.cose());
+        let att = encode(&Cbor::Map(vec![
+            (Cbor::Text("fmt".into()), Cbor::Text("none".into())),
+            (Cbor::Text("attStmt".into()), Cbor::Map(vec![])),
+            (Cbor::Text("authData".into()), Cbor::Bytes(auth_data)),
+        ]))
+        .unwrap();
+        let cdj = Self::client_data("webauthn.create", options["challenge"].as_str().unwrap());
+        json!({
+            "id": b64u(&self.id), "rawId": b64u(&self.id), "type": "public-key",
+            "response": {"clientDataJSON": b64u(&cdj), "attestationObject": b64u(&att),
+                         "transports": ["internal"]},
+            "clientExtensionResults": {}, "authenticatorAttachment": "platform",
+        })
+    }
+
+    /// `navigator.credentials.get()`'s JSON for `options`.
+    fn get(&self, options: &Value, sign_count: u32) -> Value {
+        use p256::ecdsa::signature::Signer;
+        use sha2::Digest;
+        let mut auth_data = Self::rp_hash();
+        auth_data.push(0x05);
+        auth_data.extend(sign_count.to_be_bytes());
+        let cdj = Self::client_data("webauthn.get", options["challenge"].as_str().unwrap());
+        let mut signed = auth_data.clone();
+        signed.extend(sha2::Sha256::digest(&cdj));
+        let sig: p256::ecdsa::Signature = self.key.sign(&signed);
+        json!({
+            "id": b64u(&self.id), "rawId": b64u(&self.id), "type": "public-key",
+            "response": {"clientDataJSON": b64u(&cdj), "authenticatorData": b64u(&auth_data),
+                         "signature": b64u(sig.to_der().as_bytes()), "userHandle": null},
+            "clientExtensionResults": {},
+        })
+    }
+}
+
+#[tokio::test]
+async fn passkey_registration_and_login() {
+    let h = harness_or_skip!(
+        None,
+        &format!("WEBAUTHN_ORIGINS={RP_ORIGIN}\nWEBAUTHN_RP_ID=localhost\n")
+    );
+    h.seed().await;
+    let s = h.suffix.clone();
+    let analyst_name = h.code("analyst");
+    let analyst = h.token(&analyst_name, "analyst");
+    let portal = h.token(&h.code("portal"), "customer_user");
+    let origin = [("origin", RP_ORIGIN)];
+
+    let (st, body) = h.call("GET", "/api/auth/passkey/status", None, None).await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"enabled": true, "count": 0, "message": "Passkey status retrieved", "success": true})
+        )
+    );
+    let (st, body) = h
+        .call("GET", "/api/auth/passkey/me/status", Some(&analyst), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["enabled"].clone(), body["count"].clone()),
+        (200, json!(false), json!(0))
+    );
+    let (st, body) = h
+        .call("GET", "/api/auth/passkey/me", Some(&portal), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            403,
+            json!("Insufficient permissions. Required one of: admin, analyst")
+        )
+    );
+
+    // Registration.
+    let (st, _, options) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/register/options",
+            &origin,
+            Some(&analyst),
+            Some(json!({"device_name": "  YubiKey  "})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200, "{options}");
+    let analyst_id = h
+        .scalar_i64(&format!(
+            "SELECT id FROM `user` WHERE username = '{analyst_name}'"
+        ))
+        .await;
+    assert_eq!(
+        options["rp"],
+        json!({"name": "SOCFortress CoPilot", "id": "localhost"})
+    );
+    assert_eq!(
+        options["user"]["id"],
+        b64u(analyst_id.to_string().as_bytes())
+    );
+    assert_eq!(options["user"]["name"], analyst_name);
+    assert_eq!(options["excludeCredentials"], json!([]));
+    assert_eq!(options["attestation"], "none");
+    assert_eq!(options["deviceName"], "YubiKey");
+    let keys: Vec<&String> = options.as_object().unwrap().keys().collect();
+    assert_eq!(
+        keys,
+        [
+            "rp",
+            "user",
+            "challenge",
+            "pubKeyCredParams",
+            "timeout",
+            "excludeCredentials",
+            "authenticatorSelection",
+            "attestation",
+            "challengeToken",
+            "deviceName"
+        ]
+    );
+    let device = Authenticator::new(7, format!("cred-{s}").as_bytes());
+    let credential = device.create(&options);
+    let verify = |token: &Value, credential: &Value| json!({"challenge_token": token, "credential": credential, "device_name": " YubiKey "});
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/register/verify",
+            &origin,
+            Some(&analyst),
+            Some(verify(&options["challengeToken"], &credential)),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"message": "Passkey registered successfully.", "success": true})
+        )
+    );
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/register/verify",
+            &origin,
+            Some(&analyst),
+            Some(verify(&options["challengeToken"], &credential)),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (400, json!("Challenge not found or already used."))
+    );
+    let (st, body) = h
+        .call("GET", "/api/auth/passkey/me", Some(&analyst), None)
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    let item = &body["passkeys"][0];
+    assert_eq!(item["device_name"], "YubiKey");
+    assert_eq!(item["transports"], json!(["internal"]));
+    assert_eq!(item["last_used_at"], Value::Null);
+    let passkey_id = item["id"].as_i64().unwrap();
+    // The same credential again is refused, after its challenge is spent.
+    let (_, _, options) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/register/options",
+            &origin,
+            Some(&analyst),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(options["excludeCredentials"][0]["id"], b64u(&device.id));
+    assert_eq!(
+        options["excludeCredentials"][0]["transports"],
+        json!(["internal"])
+    );
+    assert_eq!(options["deviceName"], "Passkey");
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/register/verify",
+            &origin,
+            Some(&analyst),
+            Some(verify(&options["challengeToken"], &device.create(&options))),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (400, json!("This passkey is already registered."))
+    );
+
+    // Login.
+    let (st, _, options) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/options",
+            &origin,
+            None,
+            Some(json!({"username": format!(" {analyst_name} ")})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200, "{options}");
+    assert_eq!(options["rpId"], "localhost");
+    assert_eq!(options["allowCredentials"][0]["id"], b64u(&device.id));
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/verify",
+            &origin,
+            None,
+            Some(json!({"challenge_token": options["challengeToken"], "credential": device.get(&options, 1)})),
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200, "{body}");
+    assert_eq!(body["token_type"], "bearer");
+    assert_eq!(body["requires_2fa"], false);
+    let claims = h
+        .jwt
+        .decode_session(body["access_token"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(claims.subject, analyst_name);
+    // A replayed counter is refused (username-less login this time).
+    let (_, _, options) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/options",
+            &origin,
+            None,
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(options["allowCredentials"], json!([]));
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/verify",
+            &origin,
+            None,
+            Some(json!({"challenge_token": options["challengeToken"], "credential": device.get(&options, 1)})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            401,
+            json!("Response sign count of 1 was not greater than current count of 1")
+        )
+    );
+    let (st, body) = h
+        .call("GET", "/api/auth/passkey/me", Some(&analyst), None)
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    assert!(body["passkeys"][0]["last_used_at"].is_string());
+
+    // Unknown passkey, 127.0.0.1, unknown user.
+    let stranger = Authenticator::new(9, b"stranger");
+    let (_, _, options) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/options",
+            &origin,
+            None,
+            Some(json!({})),
+        )
+        .await;
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/verify",
+            &origin,
+            None,
+            Some(json!({"challenge_token": options["challengeToken"], "credential": stranger.get(&options, 1)})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (401, json!("Unknown passkey."))
+    );
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/options",
+            &[("origin", "http://127.0.0.1:5173")],
+            None,
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            400,
+            json!(
+                "Passkeys do not work on 127.0.0.1. Open http://localhost:5173 in your browser instead."
+            )
+        )
+    );
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/options",
+            &origin,
+            None,
+            Some(json!({"username": format!("ghost{s}")})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (400, json!("User not found."))
+    );
+
+    // Challenges: wrong flow, another user's, expired.
+    let (_, _, login_options) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/options",
+            &origin,
+            None,
+            Some(json!({})),
+        )
+        .await;
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/register/verify",
+            &origin,
+            Some(&analyst),
+            Some(verify(&login_options["challengeToken"], &credential)),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (400, json!("Invalid challenge flow."))
+    );
+    let admin = h.token(&h.code("admin"), "admin");
+    let (_, _, admin_options) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/register/options",
+            &origin,
+            Some(&admin),
+            Some(json!({})),
+        )
+        .await;
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/register/verify",
+            &origin,
+            Some(&analyst),
+            Some(verify(&admin_options["challengeToken"], &credential)),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            400,
+            json!("Challenge does not match the authenticated user.")
+        )
+    );
+    let expired = format!("expired-{s}");
+    h.exec(&format!(
+        "INSERT INTO webauthn_challenge (token, challenge, user_id, flow, expires_at, created_at) \
+         VALUES ('{expired}', 'AA', NULL, 'login', UTC_TIMESTAMP() - INTERVAL 1 MINUTE, UTC_TIMESTAMP())"
+    ))
+    .await;
+    let (st, _, body) = h
+        .send(
+            "POST",
+            "/api/auth/passkey/login/verify",
+            &origin,
+            None,
+            Some(json!({"challenge_token": expired, "credential": device.get(&options, 5)})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (401, json!("Challenge has expired. Please try again."))
+    );
+    let left = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM webauthn_challenge WHERE token = '{expired}'"
+        ))
+        .await;
+    assert_eq!(left, 0, "an expired challenge is deleted");
+
+    // A portal user's passkey cannot sign in to the main portal; 2FA users
+    // get the temp token.
+    let portal_id = h
+        .scalar_i64(&format!(
+            "SELECT id FROM `user` WHERE username = '{}'",
+            h.code("portal")
+        ))
+        .await;
+    let portal_device = Authenticator::new(11, format!("portal-{s}").as_bytes());
+    let twofa_id = h
+        .new_user(&format!("pk2fa{s}"), &format!("pk2fa{s}@example.com"), 2)
+        .await;
+    h.enable_totp(twofa_id).await;
+    let twofa_device = Authenticator::new(13, format!("twofa-{s}").as_bytes());
+    for (user_id, dev) in [(portal_id, &portal_device), (twofa_id, &twofa_device)] {
+        h.exec(&format!(
+            "INSERT INTO user_passkey (user_id, credential_id, public_key, sign_count, transports, \
+             device_name, created_at) VALUES ({user_id}, '{}', '{}', 0, '[]', 'Passkey', UTC_TIMESTAMP())",
+            b64u(&dev.id),
+            b64u(&dev.cose())
+        ))
+        .await;
+    }
+    let login = async |dev: &Authenticator| {
+        let (_, _, options) = h
+            .send(
+                "POST",
+                "/api/auth/passkey/login/options",
+                &origin,
+                None,
+                Some(json!({})),
+            )
+            .await;
+        h.send(
+            "POST",
+            "/api/auth/passkey/login/verify",
+            &origin,
+            None,
+            Some(json!({"challenge_token": options["challengeToken"], "credential": dev.get(&options, 0)})),
+        )
+        .await
+    };
+    let (st, _, body) = login(&portal_device).await;
+    assert_eq!(st.as_u16(), 403);
+    assert_eq!(
+        body["message"],
+        "This account is registered for the Customer Portal only. Please log in at the Customer Portal to access your account."
+    );
+    let (st, _, body) = login(&twofa_device).await;
+    assert_eq!(
+        (st.as_u16(), body["requires_2fa"].clone()),
+        (200, json!(true))
+    );
+    assert_eq!(
+        h.jwt
+            .decode_two_factor(body["access_token"].as_str().unwrap())
+            .unwrap(),
+        format!("pk2fa{s}")
+    );
+
+    // Deletion: someone else's passkey is "not found", a bad id is a 422.
+    let (st, body) = h
+        .call(
+            "DELETE",
+            &format!("/api/auth/passkey/{passkey_id}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (404, json!("Passkey not found."))
+    );
+    let (st, _) = h
+        .call("DELETE", "/api/auth/passkey/me", Some(&analyst), None)
+        .await;
+    assert_eq!(st.as_u16(), 422);
+    let (st, body) = h
+        .call(
+            "DELETE",
+            &format!("/api/auth/passkey/{passkey_id}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (200, json!({"message": "Passkey removed.", "success": true}))
+    );
+    let (_, body) = h
+        .call("GET", "/api/auth/passkey/me/status", Some(&analyst), None)
+        .await;
+    assert_eq!(body["count"], 0);
+}

@@ -16,6 +16,10 @@
 //! - [`password`] — bcrypt with the 72-byte cut
 //! - [`fernet`]   — `cryptography.fernet`, for the stored TOTP secrets
 //! - [`totp`]     — pyotp-compatible TOTP, enrolment URI, backup codes
+//! - [`jws`]      — RS256 ID tokens and JWKS keys (SSO), PyJWT's rules
+//! - [`rsa`]      — RSA PKCS#1 v1.5 / PSS verification as OpenSSL does it
+//! - [`pybase64`] — CPython's lenient base64 (py_webauthn, PyJWT)
+//! - [`pyvalue`]  — `json.loads(bytes)` into Python values, `str()`/`repr()`
 //! - [`access`]   — `AccessScope`: who may see which customer
 //! - [`tags`]     — tag RBAC: which tagged alerts a user may see
 
@@ -23,8 +27,12 @@
 
 pub mod access;
 pub mod fernet;
+pub mod jws;
 pub mod jwt;
 pub mod password;
+pub mod pybase64;
+pub mod pyvalue;
+pub mod rsa;
 pub mod tags;
 pub mod totp;
 

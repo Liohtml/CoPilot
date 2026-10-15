@@ -24,7 +24,8 @@ file.
                        │ /api/version/*, /api/audit/* copilot-platform      │
                        │ /api/auth/token*, /refresh, /2fa/*, /login,        │
                        │   /register, /users*, /reset-password*, /delete/*, │
-                       │   /me/customers     copilot-identity               │
+                       │   /me/customers, /sso/*, /passkey/*                │
+                       │                     copilot-identity               │
  Talon MCP tools  ───►│ /api/talon/*        copilot-talon ───────────────────► Talon :3100
                        │ /_copilot/health                                   │
                        │ anything else ──►   copilot-gateway (stream) ────────► Python backend
@@ -43,14 +44,15 @@ file.
   service never creates or alters a table, and refuses to start when a column
   it needs is missing (`copilot_db::schema`, `copilot doctor`).
 - **Same tokens.** Since phase 2 the Rust service issues them too (login,
-  refresh, 2FA). A token from either backend is accepted by the other (HS256
-  over the raw `JWT_SECRET`, PyJWT's claims and rules — `copilot_auth::jwt`),
-  and so are the 2FA temp token and the stored TOTP secrets.
+  refresh, 2FA, SSO, passkeys). A token from either backend is accepted by
+  the other (HS256 over the raw `JWT_SECRET`, PyJWT's claims and rules —
+  `copilot_auth::jwt`), and so are the 2FA temp token, the stored TOTP
+  secrets, an SSO `state` and a passkey challenge token.
 - **Same wire format.** Ported routes return the same JSON, in the same field
   order, with the same error envelopes and 422 texts. This is not a goal on
   paper: `backend/tests/e2e/rust_parity_e2e.py` sends identical requests to
   both implementations on one database and compares the answers
-  (346 checks, all equal; see §5).
+  (452 checks, all equal; see §5).
 
 Enable it:
 
@@ -75,15 +77,16 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 |---|---|---|
 | `copilot-core` | `settings.py`, `app/auth/models/users.py` (roles), `app/time_utils.py`, notification events | contract: config, `.env` reader (vendored from `talon-core`), roles/scopes, audit records, notification events, time helpers |
 | `copilot-db` | `app/db/db_session.py`, `universal_models.py` (`AiAnalyst*`, `CustomerPortalAi*`), `connectors` + cache, `audit_log`, `log_entries`, `alert_visibility_filters_for_user` | sqlx MySQL pool, cross-cutting tables, schema checks, alert visibility as SQL (`visibility.rs`) |
-| `copilot-auth` | `app/auth/utils.py`, `app/auth/services/totp.py` (crypto), `app/middleware/customer_access.py`, `app/incidents/middleware/tag_access.py` | JWT (HS256, incl. the 2FA temp token), bcrypt, Fernet, pyotp-compatible TOTP, `AccessScope` (tenant decisions), tag RBAC (`tags.rs`) |
-| `copilot-web` | `exception_handlers.py`, `require_any_scope`, Pydantic validation (incl. `EmailStr`), FastAPI/Starlette body reading | axum glue: error envelope, Pydantic-lax validator and 422 report, `EmailStr` (`email.rs`, email-validator), JSON and form bodies read before the dependencies (`body.rs`, `form.rs`, `pyjson.rs`), auth extractors, middleware |
+| `copilot-auth` | `app/auth/utils.py`, `app/auth/services/totp.py` (crypto), `app/middleware/customer_access.py`, `app/incidents/middleware/tag_access.py`, PyJWT's RS256 path | JWT (HS256, incl. the 2FA temp token), RS256 identity-provider tokens and JWKS (`jws.rs`, `rsa.rs`), bcrypt, Fernet, pyotp-compatible TOTP, CPython's lenient base64 (`pybase64.rs`) and `json.loads` values (`pyvalue.rs`), `AccessScope` (tenant decisions), tag RBAC (`tags.rs`) |
+| `copilot-web` | `exception_handlers.py`, `require_any_scope`, Pydantic validation (incl. `EmailStr`), FastAPI/Starlette body reading | axum glue: error envelope, Pydantic-lax validator and 422 report, `EmailStr` (`email.rs`, email-validator), JSON and form bodies read before the dependencies (`body.rs`, `form.rs`, `pyjson.rs`), `urllib` quoting, Starlette redirects and cookies (`pyurl.rs`), auth extractors, middleware |
 | `copilot-talon` | `app/connectors/talon/` | **the Talon contract** (`contract.rs`), client, `/api/talon/*` |
 | `copilot-ai-analyst` | `app/ai_analyst/`, palace drainer/sweeper jobs | `/api/ai_analyst/*` (25 routes), consolidation digest, CPython-exact `difflib` |
 | `copilot-customer-portal` | `app/customer_portal/` (`ai_reports`, `ai_requests`) | `/api/customer_portal/ai_reports/*` (6 routes); every other portal path is still proxied |
 | `copilot-customers` | `app/customers/` (reads) | `GET /api/customers/*` (7 routes); creating, changing and deleting customers provisions Graylog/Grafana/Wazuh and stays in Python |
 | `copilot-healthchecks` | `app/healthchecks/agents/` (database half) | `GET /api/healthcheck/*` (4 routes); the classification is shared with the customer routes. `POST /logs` (Wazuh indexer) stays in Python |
 | `copilot-platform` | `app/version/`, `app/audit/` (reads) | `GET /api/version/check` (PEP 440 compare; `COPILOT_VERSION_CHECK_URL` points it at a mirror), `GET /api/audit`, `/actions`, `/{id}` |
-| `copilot-identity` | `app/auth/routes/auth.py`, `routes/totp.py`, `routes/customer_users.py`, `services/totp.py`, `services/customer_assignment.py` | login (`/token`, `/token/customer-portal`, the deprecated JSON `/login`), `/refresh`, the six `/2fa/*` routes, user management (`/register`, `/users`, `/users/{id}`, `/reset-password`, `/reset-password/me`, `/delete/{id}`, `/users/{id}/role/by-name`, `/users/{id}/customers`, `/me/customers`); the enrolment QR code, the 2FA brute-force counter. SSO, passkeys and security admin stay in Python for now |
+| `copilot-identity` | `app/auth/routes/auth.py`, `routes/totp.py`, `routes/customer_users.py`, `routes/sso.py`, `routes/passkey.py`, `services/totp.py`, `services/customer_assignment.py`, `services/sso.py`, `services/passkey.py` | login (`/token`, `/token/customer-portal`, the deprecated JSON `/login`), `/refresh`, the six `/2fa/*` routes, user management (`/register`, `/users`, `/users/{id}`, `/reset-password`, `/reset-password/me`, `/delete/{id}`, `/users/{id}/role/by-name`, `/users/{id}/customers`, `/me/customers`), SSO (`/sso/*`: settings, allowlist, Azure, Google, Cloudflare Access), passkeys (`/passkey/*`); the enrolment QR code, the 2FA brute-force counter. Security admin stays in Python for now |
+| `copilot-webauthn` | `webauthn` (py_webauthn 2.8), `cbor2`, the origin helpers of `app/auth/services/passkey.py` | registration and assertion verification (attestation `none`, `packed`, `fido-u2f`; py_webauthn's default algorithms ES256, ES512, EdDSA, RS256/384/512, PS256/384/512), cbor2-exact CBOR, options JSON, the relying-party/origin rules |
 | `copilot-gateway` | — | legacy proxy and notification bridge; deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `palace drain|sweep` |
 
@@ -189,6 +192,52 @@ user whom another row still references (tag access, SMTP settings) fails
 whole with `Error deleting user`. Audit events carry the same before/after
 values; an absent one is stored as JSON `null`, as SQLAlchemy stores it.
 
+**SSO.** `sso_config` (one row) and `sso_allowed_email` are read and written
+as Python does: a blank client secret on `PUT /sso/settings` keeps the stored
+one, secrets are never returned, and the allowlist admits the SOC roles only
+(admin, analyst, responder). The OAuth `state` is `<nonce>:<ts>:<hmac>`,
+HMAC-SHA256 under `SSO_STATE_SECRET` (else `JWT_SECRET`), valid for ten
+minutes and kept nowhere, so a login started on one backend completes on the
+other. Azure and Google callbacks exchange the code and verify the ID token
+with PyJWT's RS256 rules (`copilot_auth::jws`: its segment splitting, lenient
+base64, header checks, `iat`/`nbf`/`exp`/`iss`/`aud` semantics and every
+message) against the provider's JWKS, cached for an hour; an unknown `kid`
+refetches once for Azure and Google, never for Cloudflare. Cloudflare Access
+reads the `Cf-Access-Jwt-Assertion` header or the `CF_Authorization` cookie
+the way Starlette parses cookies. A `ValueError` text reaches the user (in
+the `/login?error_message=…` redirect, or Cloudflare's 401); anything else is
+a generic message. A user is found by email (lowest id) or, when the address
+is allowlisted, created with the allowlist's role, no customers and the email's
+local part as username (`alice1`, `alice2`, … on a collision). The token
+carries no `customer_codes`, a user with 2FA gets the temp token, and, as in
+Python, neither an audit row nor `last_login_at` is written. Redirects are
+Starlette's: 307, `Location` quoted with its safe set (`copilot_web::pyurl`).
+`COPILOT_SSO_IDP_URL` sends every provider call to one test server; it exists
+for the parity harness and is never set in production.
+
+**Passkeys.** `user_passkey` and `webauthn_challenge` as Python uses them:
+a challenge row (64 random bytes, five minutes, one flow, one user or none)
+is addressed by a UUID token that either backend can redeem, and is consumed
+under a row lock; an expired challenge is deleted, one presented by another
+user is kept. `copilot-webauthn` verifies registrations and assertions as
+py_webauthn 2.8 does — CBOR read and re-encoded the way cbor2 does (py_webauthn
+re-encodes the COSE key, and the re-encoded length decides where the
+authenticator data continues), CPython's base64url decoding, client data,
+RP ID hash, flags, attestation `none` / `packed` / `fido-u2f`, the signature
+check of every default algorithm, the sign counter — and maps its exceptions
+as CoPilot's routes do: a rejected credential is the route's 400 (register)
+or 401 (login) with py_webauthn's own sentence, anything py_webauthn would
+raise outside its error classes is a 500. The relying party comes from
+`WEBAUTHN_ORIGINS` (else `WEBAUTHN_ORIGIN`; an empty value counts as set),
+`WEBAUTHN_RP_ID` and `WEBAUTHN_RP_NAME`, with the request's `Origin` resolved
+by Python's rules (`urlsplit` included: its hostname, port and errors).
+Options are the JSON `options_to_json` produces, in its key order. A portal
+user's passkey login is a 403; a user with 2FA gets the temp token. Vectors
+from py_webauthn, cbor2, cryptography and CoPilot's own helpers
+(`scripts/gen-webauthn-vectors.py`) pin ~230 registrations and assertions,
+the CBOR round trips, the base64 decoder, the origin resolution and the
+options byte for byte.
+
 **Alert visibility.** One definition, as in Python:
 `copilot_db::visibility::AlertVisibility` (customer scoping *and* tag RBAC,
 `alert_visibility_filters_for_user`) for lists and counts, and
@@ -227,7 +276,9 @@ configured the Rust TTL is capped at 60 s.
 
 ## 4. Differences by design
 
-Each is covered by a test and listed in the parity harness.
+Each is covered by a test — the parity harness or, for the passkey
+verifier, the WebAuthn vectors — unless the row says otherwise; races are
+not provoked.
 
 | Where | Python | Rust | Why |
 |---|---|---|---|
@@ -250,6 +301,14 @@ Each is covered by a test and listed in the parity harness.
 | token bytes for a non-ASCII username | PyJWT escapes it (`\u00e4`) in the payload | raw UTF-8 | both are valid JSON and decode to the same claims |
 | `user.created_at` of a registered user | the process start time (the model's default is evaluated at import) | the time of registration | Python bug; the column is not in any response |
 | why an internationalized email domain is refused | the `idna` package's wording | a shorter sentence with the same opening | valid addresses normalize identically; ASCII addresses match word for word |
+| passkey attestation `tpm`, `android-key`, `android-safetynet`, `apple` | verified against the vendors' roots | 400 `Unsupported attestation type "…"` | CoPilot asks for attestation `none`, so browsers send `none` (or `packed` self-attestation); both are verified |
+| a malformed attestation certificate | 400 with cryptography's ASN.1 text | 400 with x509-cert's text | same status; only the parser's sentence differs |
+| an EC attestation certificate on a curve other than P-256/384/521 | verified | 500 | no authenticator uses one (not covered by the vectors) |
+| one passkey challenge redeemed twice at once | read, check, delete: both requests can pass | consumed under a row lock | replay race |
+| passkey login with a non-zero number as the credential id | looked up as given, so MySQL compares the column as a number | 500 | malformed client; credential ids are base64url strings |
+| an identity provider answering with something that is no token response or JWKS | sometimes the parser's or `ValueError`'s text (Cloudflare: 401) | the generic message (Cloudflare: 500) | an upstream failure, not the user's |
+| SSO `state` timestamp | `datetime.utcnow().timestamp()`, read as local time | the Unix epoch | identical on a UTC host (the image) |
+| semantic CBOR tags (dates, decimals, …) inside a credential | converted by cbor2 | kept as tags | no authenticator sends them |
 
 ---
 
@@ -258,9 +317,10 @@ Each is covered by a test and listed in the parity harness.
 | Layer | Where | Needs |
 |---|---|---|
 | unit | every crate | nothing |
+| vectors | `crates/*/src/*_vectors.json`, recorded from the Python implementations (CPython difflib; and through `scripts/gen-*-vectors.py`: pydantic datetimes, PEP 440, Starlette forms and CPython JSON, email-validator, Fernet/TOTP, py_webauthn/cbor2) | nothing; Python to regenerate |
 | contract | `copilot-talon/src/contract.rs`, `copilot-core/src/notify.rs`, `backend/tests/test_notification_rust_bridge.py` | nothing |
 | end-to-end | `crates/copilot/tests/e2e.rs` — the production router against MySQL at the Alembic head, Talon and Python replaced by recorders | MySQL |
-| parity | `backend/tests/e2e/rust_parity_e2e.py` via `scripts/rust-parity.sh` — real FastAPI routers vs. the running Rust binary, one database; Talon and GitHub's release API are local stubs both backends call; an unhandled Python error compares as the bare 500 uvicorn sends | MySQL + Python venv |
+| parity | `backend/tests/e2e/rust_parity_e2e.py` via `scripts/rust-parity.sh` — real FastAPI routers vs. the running Rust binary, one database; Talon, GitHub's release API and an identity provider (token endpoint, JWKS, signing key) are local stubs both backends call, and a software authenticator registers and logs in on both; an unhandled Python error compares as the bare 500 uvicorn sends | MySQL + Python venv |
 
 ```bash
 # disposable MySQL on 13306, schema from the fixture (or `alembic upgrade head`)
@@ -287,7 +347,7 @@ Python backend today: ~200 k lines in 930 files.
 |---|---|---|
 | **0 — done** | foundation; `ai_analyst` (2.4 k), `connectors/talon` | the Talon integration surface |
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
-| **2 — in progress** | `auth` (5 k). **Done** (`copilot-identity`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login). **Next:** SSO, passkeys, security admin | the login slice moved as one so the 2FA counter lives in one process |
+| **2 — in progress** | `auth` (5 k). **Done** (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys. **Next:** security admin (`/auth/security/*`) | the login slice moved as one so the 2FA counter lives in one process |
 | 3 | `notifications` (7.2 k) — retires the bridge; `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust |
 | 4 | `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |

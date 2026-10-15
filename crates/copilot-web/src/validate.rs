@@ -561,6 +561,42 @@ impl Validator {
         }
     }
 
+    /// Boolean field with a default when absent (`bool = False`; an explicit
+    /// `null` is `bool_type`).
+    pub fn bool_or(
+        &mut self,
+        obj: &Map<String, Value>,
+        at: &Loc,
+        name: &str,
+        default: bool,
+    ) -> bool {
+        match obj.get(name) {
+            None => default,
+            Some(v) => self.check_bool(&child(at, name), v).unwrap_or(default),
+        }
+    }
+
+    /// A `dict` field (`dict_type` for anything but an object).
+    pub fn req_dict<'a>(
+        &mut self,
+        obj: &'a Map<String, Value>,
+        at: &Loc,
+        name: &str,
+    ) -> Option<&'a Value> {
+        let l = child(at, name);
+        match obj.get(name) {
+            None => {
+                self.missing(l);
+                None
+            }
+            Some(v @ Value::Object(_)) => Some(v),
+            Some(_) => {
+                self.push("dict_type", l, "Input should be a valid dictionary");
+                None
+            }
+        }
+    }
+
     /// Optional boolean field.
     pub fn opt_bool(&mut self, obj: &Map<String, Value>, at: &Loc, name: &str) -> Option<bool> {
         match obj.get(name) {

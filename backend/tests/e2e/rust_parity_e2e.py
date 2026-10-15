@@ -31,6 +31,8 @@ os.environ.setdefault("MYSQL_USER", "copilot")
 os.environ.setdefault("MYSQL_PASSWORD", "e2epass")
 os.environ.setdefault("MYSQL_ROOT_PASSWORD", "e2eroot")
 os.environ.setdefault("JWT_SECRET", "e2e-test-secret-not-the-default")
+os.environ.setdefault("WEBAUTHN_ORIGINS", "http://localhost:5173")
+os.environ.setdefault("WEBAUTHN_RP_ID", "localhost")
 
 import bcrypt  # noqa: E402
 import httpx  # noqa: E402
@@ -122,6 +124,148 @@ def start_talon_stub():
     return f"http://127.0.0.1:{server.server_address[1]}"
 
 
+# Identity-provider stand-in for SSO: token endpoints answer IDP_TOKENS[code], the JWKS
+# endpoints the key below. Both backends reach it — Python through `_ToIdpStub`, Rust
+# through COPILOT_SSO_IDP_URL — with the provider's host as the first path segment.
+IDP_STUB_PORT = int(os.environ.get("IDP_STUB_PORT", "5197"))
+IDP_TOKENS = {}
+IDP_REQUESTS = []
+
+
+def _idp_key():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+IDP_KEY = _idp_key()
+
+
+def idp_jwks(kid):
+    numbers = IDP_KEY.public_key().public_numbers()
+    raw = lambda n: base64.urlsafe_b64encode(n.to_bytes((n.bit_length() + 7) // 8, "big")).rstrip(b"=").decode()  # noqa: E731
+    return {"keys": [{"kty": "RSA", "kid": kid, "use": "sig", "n": raw(numbers.n), "e": raw(numbers.e)}]}
+
+
+def idp_token(kid, claims):
+    return jwt.encode(claims, IDP_KEY, algorithm="RS256", headers={"kid": kid})
+
+
+class _IdpStub(BaseHTTPRequestHandler):
+    def _send(self, status, body):
+        payload = json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_GET(self):  # noqa: N802 - http.server API
+        IDP_REQUESTS.append(("GET", self.path))
+        if self.path.endswith("/discovery/v2.0/keys"):
+            return self._send(200, idp_jwks("az1"))
+        if self.path == "/www.googleapis.com/oauth2/v3/certs":
+            return self._send(200, idp_jwks("g1"))
+        if self.path.endswith("/cdn-cgi/access/certs"):
+            return self._send(200, idp_jwks("cf1"))
+        return self._send(404, {"error": "not found"})
+
+    def do_POST(self):  # noqa: N802 - http.server API
+        from urllib.parse import parse_qs
+
+        form = parse_qs(self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode())
+        IDP_REQUESTS.append(("POST", self.path))
+        code = form.get("code", [""])[0]
+        if code not in IDP_TOKENS:
+            return self._send(400, {"error": "invalid_grant"})
+        return self._send(200, IDP_TOKENS[code])
+
+    def log_message(self, *args):
+        pass
+
+
+class _ToIdpStub(httpx.AsyncBaseTransport):
+    """What COPILOT_SSO_IDP_URL does for the Rust service, for Python's httpx clients."""
+
+    def __init__(self):
+        self.inner = httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request):
+        url = str(request.url)
+        if url.startswith("https://"):
+            request.url = httpx.URL(f"http://127.0.0.1:{IDP_STUB_PORT}/" + url[len("https://") :])
+        return await self.inner.handle_async_request(request)
+
+
+def start_idp_stub():
+    server = ThreadingHTTPServer(("127.0.0.1", IDP_STUB_PORT), _IdpStub)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    import types
+
+    import app.auth.services.sso as sso_service
+
+    real = httpx.AsyncClient
+    sso_service.httpx = types.SimpleNamespace(AsyncClient=lambda **kw: real(transport=_ToIdpStub(), **kw))
+
+
+class Authenticator:
+    """A software passkey (P-256, attestation none) for the parity runs."""
+
+    def __init__(self, cred_id: bytes):
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        self.key = ec.generate_private_key(ec.SECP256R1())
+        self.id = cred_id
+
+    @staticmethod
+    def b64(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+    def cose(self) -> bytes:
+        import cbor2
+
+        n = self.key.public_key().public_numbers()
+        return cbor2.dumps({1: 2, 3: -7, -1: 1, -2: n.x.to_bytes(32, "big"), -3: n.y.to_bytes(32, "big")})
+
+    @staticmethod
+    def client_data(kind, challenge, origin="http://localhost:5173") -> bytes:
+        return json.dumps({"type": kind, "challenge": challenge, "origin": origin}).encode()
+
+    def create(self, options, rp_id="localhost", flags=0x45) -> dict:
+        import hashlib
+
+        import cbor2
+
+        auth_data = hashlib.sha256(rp_id.encode()).digest() + bytes([flags]) + (0).to_bytes(4, "big")
+        auth_data += bytes(16) + len(self.id).to_bytes(2, "big") + self.id + self.cose()
+        att = cbor2.dumps({"fmt": "none", "attStmt": {}, "authData": auth_data})
+        cdj = self.client_data("webauthn.create", options["challenge"])
+        return {
+            "id": self.b64(self.id),
+            "rawId": self.b64(self.id),
+            "type": "public-key",
+            "response": {"clientDataJSON": self.b64(cdj), "attestationObject": self.b64(att), "transports": ["usb", "nfc"]},
+            "clientExtensionResults": {},
+        }
+
+    def get(self, options, sign_count) -> dict:
+        import hashlib
+
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        auth_data = hashlib.sha256(b"localhost").digest() + bytes([0x05]) + sign_count.to_bytes(4, "big")
+        cdj = self.client_data("webauthn.get", options["challenge"])
+        sig = self.key.sign(auth_data + hashlib.sha256(cdj).digest(), ec.ECDSA(hashes.SHA256()))
+        return {
+            "id": self.b64(self.id),
+            "rawId": self.b64(self.id),
+            "type": "public-key",
+            "response": {"clientDataJSON": self.b64(cdj), "authenticatorData": self.b64(auth_data), "signature": self.b64(sig)},
+            "clientExtensionResults": {},
+        }
+
+
 def check(name, passed, detail=""):
     results.append((name, passed))
     print(f"  {'PASS' if passed else 'FAIL'}  {name}" + (f"\n        {detail}" if detail and not passed else ""))
@@ -146,6 +290,8 @@ def build_python_app():
     from app.audit.routes.audit import audit_router
     from app.auth.routes.auth import auth_router
     from app.auth.routes.customer_users import customer_users_router
+    from app.auth.routes.passkey import passkey_router
+    from app.auth.routes.sso import sso_router
     from app.auth.routes.totp import totp_router
     from app.connectors.talon.routes.talon import talon_router
     from app.customer_portal.routes.ai_reports import customer_portal_ai_reports_router
@@ -167,6 +313,8 @@ def build_python_app():
     api.include_router(auth_router, prefix="/auth")
     api.include_router(customer_users_router, prefix="/auth")
     api.include_router(totp_router, prefix="/auth")
+    api.include_router(sso_router, prefix="/auth")
+    api.include_router(passkey_router, prefix="/auth")
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -298,6 +446,7 @@ async def seed():
 
 async def main():
     start_release_stub()
+    start_idp_stub()
     alerts = await seed()
     a, b = alerts[CUST_A], alerts[CUST_B]
     # raise_app_exceptions=False: an unhandled error is the bare 500 uvicorn would send.
@@ -1437,6 +1586,486 @@ async def main():
         ).all()
     events = {k: [norm([str(x) for x in r[1:]], py_users if k == "py" else rs_users) for r in rows if r[0] == reg[k]] for k in reg}
     check(f"user audit events match ({len(events['py'])} each)", events["py"] and events["py"] == events["rs"], json.dumps(events)[:1200])
+
+    # --- Phase 2: SSO ------------------------------------------------------------------
+    print("\n=== auth: sso ===")
+    async with AsyncSession(async_engine) as s_:
+        await s_.execute(text("DELETE FROM sso_config"))
+        await s_.commit()
+    SSO = "/api/auth/sso"
+    await same("sso: status, nothing configured", "GET", f"{SSO}/status")
+    await same("sso: settings, nothing configured", "GET", f"{SSO}/settings", t_admin)
+    await same("sso: settings as analyst", "GET", f"{SSO}/settings", t_analyst)
+    await same("sso: settings without token", "GET", f"{SSO}/settings")
+    await same("sso: azure login, nothing configured", "GET", f"{SSO}/azure/login")
+    await same("sso: google callback, nothing configured", "GET", f"{SSO}/google/callback?code=c&state=s")
+    await same("sso: cloudflare, nothing configured", "POST", f"{SSO}/cloudflare/verify")
+    tenant, team = f"tenant{SFX}", f"team{SFX}.cloudflareaccess.com"
+    sso_settings = {
+        "sso_enabled": True,
+        "azure_enabled": True,
+        "azure_tenant_id": tenant,
+        "azure_client_id": "az-client",
+        "azure_client_secret": "az-secret",
+        "azure_redirect_uri": "https://soc.example/api/auth/sso/azure/callback",
+        "google_enabled": "on",
+        "google_client_id": "g-client",
+        "google_client_secret": "g-secret",
+        "google_redirect_uri": "https://soc.example/api/auth/sso/google/callback",
+        "cf_enabled": 1,
+        "cf_team_domain": team,
+        "cf_audience": "cf-aud",
+    }
+    await same("sso: put settings", "PUT", f"{SSO}/settings", t_admin, sso_settings)
+    await same("sso: put settings, empty secret keeps it", "PUT", f"{SSO}/settings", t_admin, {**sso_settings, "azure_client_secret": ""})
+    await same("sso: put settings, bool null", "PUT", f"{SSO}/settings", t_admin, {"sso_enabled": None})
+    await same("sso: put settings, bool word", "PUT", f"{SSO}/settings", t_admin, {"cf_enabled": "maybe"})
+    await same("sso: put settings, number as tenant", "PUT", f"{SSO}/settings", t_admin, {"azure_tenant_id": 5, "sso_enabled": 2})
+    await same("sso: put settings as analyst", "PUT", f"{SSO}/settings", t_analyst, sso_settings)
+    await same_raw("sso: put settings, malformed JSON", "PUT", f"{SSO}/settings", None, "{", "application/json")
+    await same_raw("sso: put settings, no body", "PUT", f"{SSO}/settings", t_admin)
+    await same("sso: put settings back", "PUT", f"{SSO}/settings", t_admin, sso_settings)
+    await same("sso: settings", "GET", f"{SSO}/settings", t_admin)
+    await same("sso: status", "GET", f"{SSO}/status")
+
+    AE = f"{SSO}/allowed-emails"
+    allow = {"py": f"SSO_py{SFX}@Example.com", "rs": f"SSO_rs{SFX}@Example.com"}
+    sso_names = {"py": {f"sso_py{SFX}": "<user>", f"SSO_py{SFX}": "<USER>"}, "rs": {f"sso_rs{SFX}": "<user>", f"SSO_rs{SFX}": "<USER>"}}
+
+    async def pair_sso(name, method, path, bodies=None, headers=None, shape=None):
+        bodies, headers = bodies or {}, headers or {}
+        kw = lambda k: {"headers": headers.get(k, {}), **({"json": bodies[k]} if k in bodies else {})}  # noqa: E731
+        r1 = await py.request(method, path, **kw("py"))
+        r2 = await rs.request(method, path, **kw("rs"))
+        b1, b2 = (shape or body_of)(r1), (shape or body_of)(r2)
+        b1, b2 = norm(b1, sso_names["py"]), norm(b2, sso_names["rs"])
+        check(
+            f"{name} [{r1.status_code}]",
+            r1.status_code == r2.status_code and b1 == b2,
+            f"python {r1.status_code} {json.dumps(b1)[:600]}\n        rust   {r2.status_code} {json.dumps(b2)[:600]}",
+        )
+        return r1, r2
+
+    admin_h = {"Authorization": f"Bearer {t_admin}"}
+    no_id = (
+        lambda r: {k: ("<id>" if k == "id" else v) for k, v in body_of(r).items()} if isinstance(body_of(r), dict) else body_of(r)
+    )  # noqa: E731
+    await pair_sso(
+        "sso: allow an address",
+        "POST",
+        AE,
+        bodies={k: {"email": allow[k], "role_id": "2"} for k in allow},
+        headers={"py": admin_h, "rs": admin_h},
+        shape=no_id,
+    )
+    await same("sso: allow an address twice", "POST", AE, t_admin, {"email": f"sso_py{SFX}@example.com"})
+    await same("sso: allow a scheduler", "POST", AE, t_admin, {"email": "x@example.com", "role_id": 3})
+    await same("sso: allow a bad address", "POST", AE, t_admin, {"email": "nope", "role_id": "abc"})
+    await same("sso: allow, reserved domain", "POST", AE, t_admin, {"email": "a@b.local"})
+    await same("sso: allow as analyst", "POST", AE, t_analyst, {"email": "x@example.com"})
+    await same("sso: allowlist", "GET", AE, t_admin)
+    await same("sso: remove unknown", "DELETE", f"{AE}/999999999", t_admin)
+    await same("sso: remove, id parsing", "DELETE", f"{AE}/abc", t_admin)
+    await same("sso: remove as analyst", "DELETE", f"{AE}/1", t_analyst)
+    async with AsyncSession(async_engine) as s_:
+        r = await s_.execute(
+            text("INSERT INTO sso_allowed_email (email, role_id, created_at) VALUES (:e, 2, UTC_TIMESTAMP())"),
+            {"e": f"gone{SFX}@x.example"},
+        )
+        r2_ = await s_.execute(
+            text("INSERT INTO sso_allowed_email (email, role_id, created_at) VALUES (:e, 2, UTC_TIMESTAMP())"),
+            {"e": f"gone2{SFX}@x.example"},
+        )
+        await s_.commit()
+    r1 = await py.delete(f"{AE}/{r.lastrowid}", headers=admin_h)
+    r2 = await rs.delete(f"{AE}/{r2_.lastrowid}", headers=admin_h)
+    check(
+        f"sso: remove an address [{r1.status_code}]",
+        r1.status_code == r2.status_code == 200 and r1.json() == r2.json(),
+        f"{r1.text} / {r2.text}",
+    )
+
+    def location(r):
+        return r.headers.get("location", "")
+
+    def mask_redirect(r):
+        loc = re.sub(r"(state=)[^&]+", r"\1<state>", location(r))
+        loc = re.sub(r"(nonce=)[^&]+", r"\1<nonce>", loc)
+        return {"status": r.status_code, "location": loc, "body": r.text}
+
+    def redirect_shape(r):
+        loc = location(r)
+        if "#token=" in loc:
+            tok_ = loc.split("#token=", 1)[1].split("&", 1)
+            claims_ = claims_of(tok_[0])
+            return {"status": r.status_code, "token": claims_, "rest": tok_[1:]}
+        return {"status": r.status_code, "location": loc, "body": r.text}
+
+    for provider in ("azure", "google"):
+        r1, r2 = await both("GET", f"{SSO}/{provider}/login")
+        b1, b2 = mask_redirect(r1), mask_redirect(r2)
+        check(f"sso: {provider} login redirect [{r1.status_code}]", b1 == b2, f"{b1}\n        {b2}")
+    r1, _ = await both("GET", f"{SSO}/azure/login")
+    state = re.search(r"state=([^&]+)", location(r1)).group(1).replace("%3A", ":")
+    issuer = f"https://login.microsoftonline.com/{tenant}/v2.0"
+    now_ = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+
+    def az_claims(email, **extra):
+        return {"iss": issuer, "aud": "az-client", "exp": now_ + 300, "iat": now_ - 5, "sub": "abc", "email": email, **extra}
+
+    async def callback(name, provider, codes, shape=redirect_shape, extra_query=""):
+        r1 = await py.get(f"{SSO}/{provider}/callback?code={codes['py']}&state={state}{extra_query}")
+        r2 = await rs.get(f"{SSO}/{provider}/callback?code={codes['rs']}&state={state}{extra_query}")
+        # One code for both backends signs the same user in on both.
+        names = sso_names if codes["py"] != codes["rs"] else {"py": sso_names["py"], "rs": sso_names["py"]}
+        b1, b2 = norm(shape(r1), names["py"]), norm(shape(r2), names["rs"])
+        check(
+            f"{name} [{r1.status_code}]",
+            r1.status_code == r2.status_code and b1 == b2,
+            f"python {json.dumps(b1)[:600]}\n        rust   {json.dumps(b2)[:600]}",
+        )
+
+    def issue(code_, kid, claims):
+        IDP_TOKENS[code_] = {"id_token": idp_token(kid, claims)}
+        return code_
+
+    await callback(
+        "sso: azure callback provisions a user (state from Python, used by both)",
+        "azure",
+        {k: issue(f"az-new-{k}", "az1", az_claims(allow[k].lower())) for k in allow},
+    )
+    await callback(
+        "sso: azure callback, existing user",
+        "azure",
+        {k: issue(f"az-again-{k}", "az1", az_claims(allow[k].upper())) for k in allow},
+    )
+    async with AsyncSession(async_engine) as s_:
+        for k in tfa:
+            await s_.execute(text("UPDATE `user` SET email = :e WHERE username = :n"), {"e": f"{tfa[k]}@example.com", "n": tfa[k]})
+        await s_.commit()
+    sso_names["py"][tfa["py"]] = "<2fa>"
+    sso_names["rs"][tfa["rs"]] = "<2fa>"
+    await callback(
+        "sso: azure callback, 2FA user",
+        "azure",
+        {k: issue(f"az-2fa-{k}", "az1", az_claims(f"{tfa[k]}@example.com")) for k in tfa},
+    )
+    same_codes = lambda c: {"py": c, "rs": c}  # noqa: E731
+    issue("az-stranger", "az1", az_claims(f"stranger{SFX}@example.com"))
+    await callback("sso: azure callback, address not allowed", "azure", same_codes("az-stranger"))
+    issue("az-unverified", "az1", az_claims(allow["py"].lower(), email_verified=False))
+    await callback("sso: azure callback, unverified address", "azure", same_codes("az-unverified"))
+    issue("az-upn", "az1", {**az_claims(""), "email": None, "preferred_username": allow["py"]})
+    await callback("sso: azure callback, preferred_username", "azure", {"py": "az-upn", "rs": "az-upn"})
+    issue("az-noemail", "az1", {**az_claims(""), "email": ""})
+    await callback("sso: azure callback, no email claim", "azure", same_codes("az-noemail"))
+    issue("az-expired", "az1", az_claims(allow["py"], exp=now_ - 10))
+    await callback("sso: azure callback, expired ID token", "azure", same_codes("az-expired"))
+    issue("az-aud", "az1", az_claims(allow["py"], aud=["x", "az-client"]))
+    await callback("sso: azure callback, audience list", "azure", same_codes("az-aud"))
+    issue("az-wrong-aud", "az1", az_claims(allow["py"], aud="someone"))
+    await callback("sso: azure callback, wrong audience", "azure", same_codes("az-wrong-aud"))
+    issue("az-iss", "az1", az_claims(allow["py"], iss="https://evil.example/v2.0"))
+    await callback("sso: azure callback, wrong issuer", "azure", same_codes("az-iss"))
+    issue("az-kid", "unknown-kid", az_claims(allow["py"]))
+    await callback("sso: azure callback, unknown signing key", "azure", same_codes("az-kid"))
+    IDP_TOKENS["az-no-id-token"] = {"access_token": "x"}
+    await callback("sso: azure callback, no id_token", "azure", same_codes("az-no-id-token"))
+    await callback("sso: azure callback, refused code", "azure", same_codes("unknown-code"))
+    IDP_TOKENS["az-hs256"] = {"id_token": jwt.encode(az_claims(allow["py"]), "x", algorithm="HS256", headers={"kid": "az1"})}
+    await callback("sso: azure callback, HS256 token", "azure", same_codes("az-hs256"))
+    await same("sso: azure callback, provider error", "GET", f"{SSO}/azure/callback?error=access_denied&code=c")
+    await same("sso: azure callback, no state", "GET", f"{SSO}/azure/callback?code=c")
+    await same("sso: azure callback, empty code", "GET", f"{SSO}/azure/callback?code=&state=s")
+    await same("sso: azure callback, forged state", "GET", f"{SSO}/azure/callback?code=c&state=a:1:b")
+    await same("sso: azure callback, unicode in error", "GET", f"{SSO}/azure/callback?error=%C3%A4%20%2F%20%23")
+
+    def g_claims(email, **extra):
+        return {
+            "iss": "https://accounts.google.com",
+            "aud": "g-client",
+            "exp": now_ + 300,
+            "email": email,
+            **extra,
+        }
+
+    r1, _ = await both("GET", f"{SSO}/google/login")
+    state = re.search(r"state=([^&]+)", location(r1)).group(1).replace("%3A", ":")
+    await callback(
+        "sso: google callback, existing user",
+        "google",
+        {k: issue(f"g-ok-{k}", "g1", g_claims(allow[k], email_verified=True)) for k in allow},
+    )
+    issue("g-unverified", "g1", g_claims(allow["py"]))
+    await callback("sso: google callback, email_verified missing", "google", same_codes("g-unverified"))
+    issue("g-kid", "nope", g_claims(allow["py"], email_verified=True))
+    await callback("sso: google callback, unknown signing key", "google", same_codes("g-kid"))
+
+    CF = f"{SSO}/cloudflare/verify"
+
+    def cf_claims(email, **extra):
+        return {
+            "iss": f"https://{team}",
+            "aud": ["cf-aud"],
+            "exp": now_ + 300,
+            "email": email,
+            **extra,
+        }
+
+    cf_tok = {k: idp_token("cf1", cf_claims(allow[k])) for k in allow}
+    shape_tok = (
+        lambda r: {**body_of(r), "access_token": claims_of(body_of(r)["access_token"])} if r.status_code == 200 else body_of(r)
+    )  # noqa: E731
+    await pair_sso(
+        "sso: cloudflare, header",
+        "POST",
+        CF,
+        headers={k: {"Cf-Access-Jwt-Assertion": cf_tok[k]} for k in allow},
+        shape=shape_tok,
+    )
+    await pair_sso(
+        "sso: cloudflare, cookie",
+        "POST",
+        CF,
+        headers={k: {"Cookie": f"x=1; CF_Authorization={cf_tok[k]}"} for k in allow},
+        shape=shape_tok,
+    )
+    await pair_sso(
+        "sso: cloudflare, 2FA user",
+        "POST",
+        CF,
+        headers={k: {"Cf-Access-Jwt-Assertion": idp_token("cf1", cf_claims(f"{tfa[k]}@example.com"))} for k in tfa},
+        shape=shape_tok,
+    )
+    stranger = idp_token("cf1", cf_claims(f"stranger{SFX}@example.com"))
+    for name, headers_ in (
+        ("no token", {}),
+        ("empty header, no cookie", {"Cf-Access-Jwt-Assertion": ""}),
+        ("address not allowed", {"Cf-Access-Jwt-Assertion": stranger}),
+        ("not a JWT", {"Cf-Access-Jwt-Assertion": "not.a.jwt"}),
+        ("wrong audience", {"Cf-Access-Jwt-Assertion": idp_token("cf1", cf_claims(allow["py"], aud="other"))}),
+        ("unknown signing key", {"Cf-Access-Jwt-Assertion": idp_token("other", cf_claims(allow["py"]))}),
+        ("no email", {"Cf-Access-Jwt-Assertion": idp_token("cf1", cf_claims(""))}),
+    ):
+        await pair_sso(f"sso: cloudflare, {name}", "POST", CF, headers={"py": headers_, "rs": headers_})
+    async with AsyncSession(async_engine) as s_:
+        await s_.execute(text("UPDATE sso_config SET cf_team_domain = 'evil.example.com', azure_enabled = 0 WHERE id = 1"))
+        await s_.commit()
+    await same("sso: cloudflare, invalid team domain", "POST", CF)
+    await pair_sso(
+        "sso: cloudflare, invalid team domain with a token",
+        "POST",
+        CF,
+        headers={"py": {"Cf-Access-Jwt-Assertion": "x"}, "rs": {"Cf-Access-Jwt-Assertion": "x"}},
+    )
+    await same("sso: azure login, provider disabled", "GET", f"{SSO}/azure/login")
+    await same("sso: azure callback, provider disabled", "GET", f"{SSO}/azure/callback?code=c&state={state}")
+    async with AsyncSession(async_engine) as s_:
+        await s_.execute(text("DELETE FROM sso_config"))
+        await s_.commit()
+
+    # --- Phase 2: passkeys -------------------------------------------------------------
+    print("\n=== auth: passkeys ===")
+    PK = "/api/auth/passkey"
+    origin_h = {"Origin": "http://localhost:5173"}
+    an_h = {**origin_h, "Authorization": f"Bearer {t_analyst}"}
+
+    def mask_options(r):
+        b = body_of(r)
+        if isinstance(b, dict) and "challenge" in b:
+            b = {**b, "challenge": "<c>", "challengeToken": "<t>"}
+        return b
+
+    async def same_pk(name, method, path, headers, body=None, shape=body_of):
+        kw = {"headers": headers, **({"json": body} if body is not None else {})}
+        r1 = await py.request(method, path, **kw)
+        r2 = await rs.request(method, path, **kw)
+        b1, b2 = shape(r1), shape(r2)
+        check(
+            f"{name} [{r1.status_code}]",
+            r1.status_code == r2.status_code and b1 == b2,
+            f"python {r1.status_code} {json.dumps(b1)[:600]}\n        rust   {r2.status_code} {json.dumps(b2)[:600]}",
+        )
+        return r1, r2
+
+    await same("passkey: status", "GET", f"{PK}/status")
+    await same("passkey: mine, none yet", "GET", f"{PK}/me", t_analyst)
+    await same("passkey: my status, none yet", "GET", f"{PK}/me/status", t_analyst)
+    await same("passkey: mine as portal user", "GET", f"{PK}/me", t_portal)
+    await same("passkey: mine without token", "GET", f"{PK}/me")
+    await same_pk("passkey: register options", "POST", f"{PK}/register/options", an_h, {"device_name": "  Key  "}, mask_options)
+    await same_pk(
+        "passkey: register options, no origin",
+        "POST",
+        f"{PK}/register/options",
+        {"Authorization": f"Bearer {t_analyst}"},
+        {},
+        mask_options,
+    )
+    await same_pk("passkey: register options, 127.0.0.1", "POST", f"{PK}/register/options", {**an_h, "Origin": "http://127.0.0.1:5173"}, {})
+    await same_pk("passkey: register options, bad port", "POST", f"{PK}/register/options", {**an_h, "Origin": "http://localhost:x"}, {})
+    await same_pk("passkey: register options, device_name null", "POST", f"{PK}/register/options", an_h, {"device_name": None})
+    await same_pk(
+        "passkey: register options as portal user",
+        "POST",
+        f"{PK}/register/options",
+        {**origin_h, "Authorization": f"Bearer {t_portal}"},
+        {},
+    )
+
+    devices = {k: Authenticator(f"par-{k}-{SFX}".encode()) for k in ("py", "rs")}
+
+    async def per_backend(name, step, shape=body_of):
+        """`step(k, client)` → response, once per backend with that backend's own state."""
+        r1, r2 = await step("py", py), await step("rs", rs)
+        b1, b2 = shape(r1), shape(r2)
+        check(
+            f"{name} [{r1.status_code}]",
+            r1.status_code == r2.status_code and b1 == b2,
+            f"python {r1.status_code} {json.dumps(b1)[:600]}\n        rust   {r2.status_code} {json.dumps(b2)[:600]}",
+        )
+        return r1, r2
+
+    async def options(client, path, body, headers=None):
+        return (await client.post(f"{PK}/{path}/options", headers=headers or an_h, json=body)).json()
+
+    async def register(k, client, device=None, mutate=None, token_=None):
+        opts = await options(client, "register", {})
+        cred = (device or devices[k]).create(opts)
+        if mutate:
+            cred = mutate(cred)
+        return await client.post(
+            f"{PK}/register/verify",
+            headers=an_h,
+            json={"challenge_token": token_ or opts["challengeToken"], "credential": cred, "device_name": " Par "},
+        )
+
+    await per_backend("passkey: register", lambda k, c: register(k, c))
+    await per_backend("passkey: register the same credential again", lambda k, c: register(k, c))
+    await per_backend("passkey: register, unknown challenge", lambda k, c: register(k, c, token_="no-such-token"))
+    await per_backend(
+        "passkey: register, missing credential id (500)",
+        lambda k, c: register(k, c, mutate=lambda x: {kk: v for kk, v in x.items() if kk != "id"}),
+    )
+    await per_backend("passkey: register, id mismatch", lambda k, c: register(k, c, mutate=lambda x: {**x, "id": "AAAA"}))
+    other_rp = {k: Authenticator(f"rp-{k}-{SFX}".encode()) for k in ("py", "rs")}
+
+    async def wrong_rp(k, client):
+        opts = await options(client, "register", {})
+        cred = other_rp[k].create(opts, rp_id="evil.example")
+        return await client.post(
+            f"{PK}/register/verify",
+            headers=an_h,
+            json={"challenge_token": opts["challengeToken"], "credential": cred},
+        )
+
+    await per_backend("passkey: register, wrong RP ID", wrong_rp)
+
+    async def login_flow(k, client, flow="login", count=1, username=None, device=None):
+        opts = await options(client, "login", {"username": username} if username else {}, headers=origin_h)
+        return await client.post(
+            f"{PK}/login/verify",
+            headers=origin_h,
+            json={"challenge_token": opts["challengeToken"], "credential": (device or devices[k]).get(opts, count)},
+        )
+
+    def login_shape(r):
+        b = body_of(r)
+        return {**b, "access_token": claims_of(b["access_token"])} if r.status_code == 200 else b
+
+    await per_backend("passkey: login", lambda k, c: login_flow(k, c, username=ANALYST), login_shape)
+    await per_backend("passkey: login, replayed counter", lambda k, c: login_flow(k, c), login_shape)
+    await per_backend("passkey: login, higher counter", lambda k, c: login_flow(k, c, count=7), login_shape)
+    await same_pk("passkey: login options, unknown user", "POST", f"{PK}/login/options", origin_h, {"username": f"ghost{SFX}"})
+    await same_pk("passkey: login options, user without passkeys", "POST", f"{PK}/login/options", origin_h, {"username": ADMIN})
+    await same_pk("passkey: login options, username-less", "POST", f"{PK}/login/options", origin_h, {"username": "   "}, mask_options)
+    await same_pk("passkey: login options, no body", "POST", f"{PK}/login/options", origin_h)
+    stranger_dev = Authenticator(b"stranger")
+    await per_backend("passkey: login, unknown passkey", lambda k, c: login_flow(k, c, device=stranger_dev), login_shape)
+
+    async def missing_id(k, client):
+        opts = await options(client, "login", {}, headers=origin_h)
+        return await client.post(
+            f"{PK}/login/verify",
+            headers=origin_h,
+            json={"challenge_token": opts["challengeToken"], "credential": {"rawId": "x"}},
+        )
+
+    await per_backend("passkey: login, missing credential id", missing_id)
+
+    async def flow_mixup(k, client):
+        opts = await options(client, "register", {})
+        return await client.post(
+            f"{PK}/login/verify",
+            headers=origin_h,
+            json={"challenge_token": opts["challengeToken"], "credential": devices[k].get(opts, 9)},
+        )
+
+    await per_backend("passkey: login with a registration challenge", flow_mixup)
+    async with AsyncSession(async_engine) as s_:
+        for k in ("py", "rs"):
+            await s_.execute(
+                text(
+                    "INSERT INTO webauthn_challenge (token, challenge, user_id, flow, expires_at, created_at) "
+                    "VALUES (:t, 'AA', NULL, 'login', UTC_TIMESTAMP() - INTERVAL 1 MINUTE, UTC_TIMESTAMP())",
+                ),
+                {"t": f"expired-{k}-{SFX}"},
+            )
+        await s_.commit()
+    await per_backend(
+        "passkey: login, expired challenge",
+        lambda k, c: c.post(
+            f"{PK}/login/verify",
+            headers=origin_h,
+            json={"challenge_token": f"expired-{k}-{SFX}", "credential": devices[k].get({"challenge": "AA"}, 20)},
+        ),
+    )
+    portal_dev = {k: Authenticator(f"portal-{k}-{SFX}".encode()) for k in ("py", "rs")}
+    tfa_dev = {k: Authenticator(f"tfa-{k}-{SFX}".encode()) for k in ("py", "rs")}
+    async with AsyncSession(async_engine) as s_:
+        for k in ("py", "rs"):
+            for user_, dev in ((PORTAL, portal_dev[k]), (tfa[k], tfa_dev[k])):
+                await s_.execute(
+                    text(
+                        "INSERT INTO user_passkey (user_id, credential_id, public_key, sign_count, transports, device_name, created_at) "
+                        "SELECT id, :c, :p, 0, '[]', 'Passkey', UTC_TIMESTAMP() FROM `user` WHERE username = :u",
+                    ),
+                    {"c": dev.b64(dev.id), "p": dev.b64(dev.cose()), "u": user_},
+                )
+        await s_.commit()
+    await per_backend("passkey: login, portal user", lambda k, c: login_flow(k, c, count=0, device=portal_dev[k]), login_shape)
+    pk_names = {"py": {tfa["py"]: "<2fa>"}, "rs": {tfa["rs"]: "<2fa>"}}
+
+    async def tfa_login(k, client):
+        return await login_flow(k, client, count=0, device=tfa_dev[k])
+
+    r1, r2 = await tfa_login("py", py), await tfa_login("rs", rs)
+    b1, b2 = norm(login_shape(r1), pk_names["py"]), norm(login_shape(r2), pk_names["rs"])
+    check(f"passkey: login, 2FA user [{r1.status_code}]", r1.status_code == r2.status_code and b1 == b2, f"{b1}\n        {b2}")
+    await same("passkey: mine", "GET", f"{PK}/me", t_analyst)
+    await same("passkey: my status", "GET", f"{PK}/me/status", t_analyst)
+    await same("passkey: delete unknown", "DELETE", f"{PK}/999999999", t_analyst)
+    await same("passkey: delete, id parsing", "DELETE", f"{PK}/abc", t_analyst)
+    await same("passkey: delete /me", "DELETE", f"{PK}/me", t_analyst)
+    await same("passkey: delete /status without token", "DELETE", f"{PK}/status")
+    async with AsyncSession(async_engine) as s_:
+        pk_ids = {
+            k: (
+                await s_.execute(text("SELECT id FROM user_passkey WHERE credential_id = :c"), {"c": devices[k].b64(devices[k].id)})
+            ).scalar_one()
+            for k in ("py", "rs")
+        }
+        portal_pk = (
+            await s_.execute(text("SELECT id FROM user_passkey WHERE credential_id = :c"), {"c": portal_dev["py"].b64(portal_dev["py"].id)})
+        ).scalar_one()
+    await same("passkey: delete someone else's", "DELETE", f"{PK}/{portal_pk}", t_analyst)
+    r1 = await py.delete(f"{PK}/{pk_ids['py']}", headers=H(t_analyst))
+    r2 = await rs.delete(f"{PK}/{pk_ids['rs']}", headers=H(t_analyst))
+    check(
+        f"passkey: delete [{r1.status_code}]",
+        r1.status_code == r2.status_code == 200 and r1.json() == r2.json(),
+        f"{r1.text} / {r2.text}",
+    )
 
     # --- Deliberate differences ------------------------------------------------------
     print("\n=== differences by design ===")

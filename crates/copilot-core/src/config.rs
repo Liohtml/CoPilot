@@ -125,6 +125,27 @@ pub struct CopilotConfig {
     /// Where `GET /api/version/check` looks up the latest release
     /// (`COPILOT_VERSION_CHECK_URL`; `None` = GitHub). For tests and mirrors.
     pub version_check_url: Option<String>,
+    /// `SSO_STATE_SECRET`: signs the OAuth2 `state` (else `JWT_SECRET`).
+    pub sso_state_secret: Option<Secret>,
+    /// `COPILOT_SSO_IDP_URL` — tests only: every server-side request to an
+    /// identity provider (token endpoint, JWKS, Cloudflare certs) goes to this
+    /// base URL instead, path kept. The browser redirects are unchanged.
+    pub sso_idp_url: Option<String>,
+    /// The `WEBAUTHN_*` settings, as set (an empty value counts as set).
+    pub webauthn: WebAuthnEnv,
+}
+
+/// Raw `WEBAUTHN_*` values, read like `os.environ.get` (`None` = unset).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WebAuthnEnv {
+    /// `WEBAUTHN_ORIGINS` (comma-separated).
+    pub origins: Option<String>,
+    /// `WEBAUTHN_ORIGIN`, used when `WEBAUTHN_ORIGINS` is unset.
+    pub origin: Option<String>,
+    /// `WEBAUTHN_RP_ID`.
+    pub rp_id: Option<String>,
+    /// `WEBAUTHN_RP_NAME`.
+    pub rp_name: Option<String>,
 }
 
 impl CopilotConfig {
@@ -229,6 +250,17 @@ impl CopilotConfig {
                 .get("COPILOT_VERSION_CHECK_URL")
                 .map(|v| v.trim().to_string())
                 .filter(|v| !v.is_empty()),
+            sso_state_secret: env.get("SSO_STATE_SECRET").map(Secret::new),
+            sso_idp_url: env
+                .get("COPILOT_SSO_IDP_URL")
+                .map(|v| v.trim().trim_end_matches('/').to_string())
+                .filter(|v| !v.is_empty()),
+            webauthn: WebAuthnEnv {
+                origins: env.get_raw("WEBAUTHN_ORIGINS"),
+                origin: env.get_raw("WEBAUTHN_ORIGIN"),
+                rp_id: env.get_raw("WEBAUTHN_RP_ID"),
+                rp_name: env.get_raw("WEBAUTHN_RP_NAME"),
+            },
         })
     }
 }

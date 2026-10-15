@@ -21,6 +21,8 @@ sha1 = { workspace = true }
 rand = { workspace = true }
 subtle = { workspace = true }
 unicode-normalization = { workspace = true }
+icu_properties = { workspace = true }
+num-bigint-dig = { workspace = true }
 
 [lints]
 workspace = true

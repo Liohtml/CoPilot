@@ -26,6 +26,7 @@ copilot-healthchecks = { path = "crates/copilot-healthchecks" }
 copilot-platform = { path = "crates/copilot-platform" }
 copilot-gateway = { path = "crates/copilot-gateway" }
 copilot-identity = { path = "crates/copilot-identity" }
+copilot-webauthn = { path = "crates/copilot-webauthn" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }
@@ -93,6 +94,17 @@ idna = "1"
 qrcode = { version = "0.14", default-features = false }
 miniz_oxide = "0.9"
 crc32fast = "1"
+# Passkeys (py_webauthn) and SSO ID tokens (PyJWT RS256): the public-key
+# operations, without OpenSSL. `num-bigint-dig` is the bignum `rsa` already
+# brings in; RSA verification is done on it directly (`copilot_auth::rsa`).
+num-bigint-dig = "0.8"
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+p384 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+p521 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+x509-cert = { version = "0.2", default-features = false, features = ["std"] }
+ecdsa = { version = "0.16", default-features = false, features = ["der", "verifying"] }
+pkcs1 = { version = "0.7", default-features = false }
 
 # --- cli ---
 clap = { version = "4", features = ["derive", "env"] }

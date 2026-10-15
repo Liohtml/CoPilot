@@ -11,6 +11,7 @@
 //! - [`form`]       — Starlette's form parsing (urlencoded, multipart)
 //! - [`email`]      — pydantic's `EmailStr` (email-validator)
 //! - [`pyjson`]     — where CPython's `json.loads` reports a malformed body
+//! - [`pyurl`]      — `urllib.parse.quote`/`urlencode`, redirect `Location`s, Starlette cookies
 //! - [`query`]      — query strings, `customer_codes_query`
 //! - [`context`]    — [`AppContext`], the shared dependencies
 //! - [`middleware`] — CORS, gzip, `log_entries` writes, security headers
@@ -41,6 +42,7 @@ pub mod error;
 pub mod form;
 pub mod middleware;
 pub mod pyjson;
+pub mod pyurl;
 pub mod query;
 pub mod respond;
 pub mod validate;

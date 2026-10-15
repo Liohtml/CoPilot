@@ -9,8 +9,8 @@
 //!                      │ GET /api/healthcheck/* → copilot-healthchecks        │
 //!                      │ /api/version/*, /api/audit/* → copilot-platform      │
 //!                      │ /api/auth/token*, /refresh, /2fa/*, users, /login,   │
-//!                      │ /register, /reset-password*, /me/customers           │
-//!                      │                    → copilot-identity                │
+//!                      │ /register, /reset-password*, /me/customers,          │
+//!                      │ /sso/*, /passkey/*  → copilot-identity               │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -36,12 +36,13 @@ use copilot_db::audit::DbAuditSink;
 use copilot_db::connectors::ConnectorCache;
 use copilot_db::schema::{self, TableRequirement};
 use copilot_gateway::{LegacyNotificationSink, LegacyProxy};
-use copilot_identity::{IdentityState, TwoFactorLimiter};
+use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
 use copilot_talon::{TalonConnector, TalonState};
 use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
 use copilot_web::{ApiError, AppContext, AppDeps};
+use copilot_webauthn::RelyingParty;
 
 /// Route prefixes this build answers itself. Everything else is proxied.
 /// A method prefix (`GET /api/customers`) means only that method is ported;
@@ -63,6 +64,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/reset-password",
     "DELETE /api/auth/delete",
     "GET /api/auth/me/customers",
+    "/api/auth/sso",
+    "/api/auth/passkey",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -78,6 +81,8 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::agents::REQUIREMENTS);
     all.extend_from_slice(copilot_db::totp::REQUIREMENTS);
     all.extend_from_slice(copilot_db::users::REQUIREMENTS);
+    all.extend_from_slice(copilot_db::sso::REQUIREMENTS);
+    all.extend_from_slice(copilot_db::passkeys::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -171,11 +176,23 @@ impl App {
             http: reqwest::Client::new(),
             log_handled_errors: true,
         });
+        let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
+        let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
+            .context("building the SSO client")?;
+        let webauthn = &cfg.webauthn;
+        let relying_party = RelyingParty::from_env(
+            webauthn.origins.as_deref(),
+            webauthn.origin.as_deref(),
+            webauthn.rp_id.as_deref(),
+            webauthn.rp_name.as_deref(),
+        );
         let identity = IdentityState {
             ctx: ctx.clone(),
             fernet: Arc::new(fernet),
             limiter: Arc::new(TwoFactorLimiter::default()),
             token_ttl_minutes: cfg.access_token_expire_minutes,
+            relying_party: Arc::new(relying_party),
+            sso: Arc::new(sso),
         };
         Ok(Self {
             ctx,

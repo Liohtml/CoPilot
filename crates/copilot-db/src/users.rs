@@ -95,6 +95,28 @@ pub async fn find_credentials(
     Ok(row.map(|r| (r.user, r.password)))
 }
 
+/// `find_user_by_email(email)`: the first user with that address (compared
+/// in SQL, under the column's collation).
+pub async fn find_by_email(db: &Db, email: &str) -> Result<Option<UserRow>, DbError> {
+    let row = sqlx::query_as::<_, UserRow>(
+        "SELECT id, username, email, role_id, created_at, last_login_at \
+         FROM `user` WHERE email = ? ORDER BY id LIMIT 1",
+    )
+    .bind(email)
+    .fetch_optional(db.pool())
+    .await?;
+    Ok(row)
+}
+
+/// Whether a username is taken (compared in SQL).
+pub async fn username_taken(db: &Db, username: &str) -> Result<bool, DbError> {
+    let id: Option<i32> = sqlx::query_scalar("SELECT id FROM `user` WHERE username = ? LIMIT 1")
+        .bind(username)
+        .fetch_optional(db.pool())
+        .await?;
+    Ok(id.is_some())
+}
+
 /// `role.name` for a role id (`get_role`).
 pub async fn role_name(db: &Db, role_id: i32) -> Result<Option<String>, DbError> {
     let name = sqlx::query_scalar::<_, String>("SELECT name FROM role WHERE id = ?")

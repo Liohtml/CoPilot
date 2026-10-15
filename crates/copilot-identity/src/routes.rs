@@ -26,7 +26,7 @@ use crate::users_schema::{
     UsersResponse,
 };
 
-/// The router mounted at `/api/auth` (the other `/auth` routes stay in
+/// The router mounted at `/api/auth` (the security-admin routes stay in
 /// Python for now).
 pub fn router(state: IdentityState) -> Router {
     Router::new()
@@ -52,6 +52,8 @@ pub fn router(state: IdentityState) -> Router {
             post(assign_customers).get(user_customers),
         )
         .route("/me/customers", get(my_customers))
+        .merge(crate::sso_routes::router())
+        .merge(crate::passkey_routes::router())
         .with_state(state)
 }
 

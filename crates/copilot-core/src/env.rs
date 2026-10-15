@@ -8,7 +8,7 @@
 //! backend loads the same repo-root `.env` (`python-dotenv`), so both services
 //! resolve identical values during the migration.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Parsed `.env` file plus a view of the real process environment.
@@ -16,6 +16,8 @@ use std::path::{Path, PathBuf};
 pub struct EnvFile {
     path: Option<PathBuf>,
     values: HashMap<String, String>,
+    /// Keys the file sets to an empty value (`KEY=`).
+    empty: HashSet<String>,
     /// `false` in tests: only the literal content is visible, so a variable
     /// set in the developer's shell cannot change a test's outcome.
     use_process_env: bool,
@@ -26,6 +28,7 @@ impl Default for EnvFile {
         Self {
             path: None,
             values: HashMap::new(),
+            empty: HashSet::new(),
             use_process_env: true,
         }
     }
@@ -39,6 +42,7 @@ impl EnvFile {
             Ok(content) => Self {
                 path: Some(path),
                 values: parse_env(&content),
+                empty: empty_keys(&content),
                 use_process_env: true,
             },
             Err(_) => Self::default(),
@@ -50,6 +54,7 @@ impl EnvFile {
         Self {
             path: None,
             values: parse_env(content),
+            empty: empty_keys(content),
             use_process_env: true,
         }
     }
@@ -60,6 +65,7 @@ impl EnvFile {
         Self {
             path: None,
             values: parse_env(content),
+            empty: empty_keys(content),
             use_process_env: false,
         }
     }
@@ -82,6 +88,20 @@ impl EnvFile {
             None
         };
         from_process.or_else(|| self.values.get(key).cloned())
+    }
+
+    /// Like Python's `os.environ.get(key)`: an empty value is still a value
+    /// (`KEY=` disables a setting rather than falling back to another one).
+    pub fn get_raw(&self, key: &str) -> Option<String> {
+        if self.use_process_env {
+            if let Ok(v) = std::env::var(key) {
+                return Some(v);
+            }
+        }
+        self.values
+            .get(key)
+            .cloned()
+            .or_else(|| self.empty.contains(key).then(String::new))
     }
 
     /// [`get`](Self::get) with a default.
@@ -110,6 +130,20 @@ impl EnvFile {
             _ => default,
         }
     }
+}
+
+/// Keys `parse_env` drops because their value is empty.
+fn empty_keys(content: &str) -> HashSet<String> {
+    let all: HashSet<String> = content
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| l.strip_prefix("export ").unwrap_or(l))
+        .filter_map(|l| l.split_once('=').map(|(k, _)| k.trim().to_string()))
+        .filter(|k| !k.is_empty())
+        .collect();
+    let set = parse_env(content);
+    all.into_iter().filter(|k| !set.contains_key(k)).collect()
 }
 
 /// Parse `KEY=VALUE` lines. Supports comments, blank lines, `export KEY=...`
@@ -160,6 +194,10 @@ mod tests {
         assert_eq!(env.file_value("B"), Some("two words"));
         assert_eq!(env.file_value("C"), Some("x"));
         assert_eq!(env.file_value("EMPTY"), None);
+        assert_eq!(env.get("EMPTY"), None);
+        assert_eq!(env.get_raw("EMPTY").as_deref(), Some(""));
+        assert_eq!(env.get_raw("A").as_deref(), Some("1"));
+        assert_eq!(env.get_raw("MISSING"), None);
         assert_eq!(env.file_value("D"), Some("spaced"));
         assert_eq!(env.file_value("E"), Some("v"));
     }

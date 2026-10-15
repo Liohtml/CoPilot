@@ -1,0 +1,25 @@
+[package]
+name = "copilot-webauthn"
+description = "WebAuthn passkey verification and options, ported from py_webauthn as CoPilot uses it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-auth = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+num-bigint-dig = { workspace = true }
+p256 = { workspace = true }
+p384 = { workspace = true }
+p521 = { workspace = true }
+ed25519-dalek = { workspace = true }
+x509-cert = { workspace = true }
+ecdsa = { workspace = true }
+pkcs1 = { workspace = true }
+unicode-normalization = { workspace = true }
+
+[lints]
+workspace = true

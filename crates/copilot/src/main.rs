@@ -78,6 +78,7 @@ fn main() -> anyhow::Result<()> {
         "MYSQL_PASSWORD",
         "MYSQL_ROOT_PASSWORD",
         "TOTP_ENCRYPTION_KEY",
+        "SSO_STATE_SECRET",
     ]
     .iter()
     .filter_map(|k| env.get(k))
