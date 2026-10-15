@@ -54,6 +54,7 @@ pub fn router(state: IdentityState) -> Router {
         .route("/me/customers", get(my_customers))
         .merge(crate::sso_routes::router())
         .merge(crate::passkey_routes::router())
+        .merge(crate::security_routes::router())
         .with_state(state)
 }
 

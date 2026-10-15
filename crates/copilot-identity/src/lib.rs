@@ -18,6 +18,7 @@
 //! | `POST /api/auth/login` (deprecated, JSON) | `login` | none |
 //! | `/api/auth/sso/*` | `routes/sso.py` | see [`sso_routes`] |
 //! | `/api/auth/passkey/*` | `routes/passkey.py` | see [`passkey_routes`] |
+//! | `GET`/`DELETE /api/auth/security/*` | `routes/security_admin.py` | admin, see [`security_routes`] |
 //!
 //! Tokens are the ones Python issues (`copilot_auth::jwt`): a session token
 //! from either backend works on both. The 2FA secrets stay readable by both
@@ -31,9 +32,10 @@
 //! start on one backend and finish on the other.
 //!
 //! Module map: [`schema`] (login and 2FA shapes), [`users_schema`] (user
-//! management shapes), [`sso_schema`], [`passkey_schema`], [`services`]
-//! (login, 2FA, users, SSO, passkeys), [`routes`], [`sso_routes`],
-//! [`passkey_routes`], [`qr`] (the enrolment QR code), [`limiter`].
+//! management shapes), [`sso_schema`], [`passkey_schema`],
+//! [`security_schema`], [`services`] (login, 2FA, users, SSO, passkeys, the
+//! admin Security tab), [`routes`], [`sso_routes`], [`passkey_routes`],
+//! [`security_routes`], [`qr`] (the enrolment QR code), [`limiter`].
 
 #![warn(missing_docs)]
 
@@ -43,6 +45,8 @@ pub mod passkey_schema;
 pub mod qr;
 pub mod routes;
 pub mod schema;
+pub mod security_routes;
+pub mod security_schema;
 pub mod services;
 pub mod sso_routes;
 pub mod sso_schema;
@@ -53,6 +57,7 @@ use std::sync::Arc;
 use axum::extract::FromRef;
 
 use copilot_auth::Fernet;
+use copilot_core::config::SmtpEnv;
 use copilot_web::AppContext;
 use copilot_webauthn::RelyingParty;
 
@@ -75,6 +80,8 @@ pub struct IdentityState {
     pub relying_party: Arc<RelyingParty>,
     /// SSO state signing, identity-provider client and key caches.
     pub sso: Arc<SsoClient>,
+    /// The `SMTP_*` settings (the temporary-password email).
+    pub smtp: Arc<SmtpEnv>,
 }
 
 impl FromRef<IdentityState> for AppContext {

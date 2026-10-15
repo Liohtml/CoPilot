@@ -24,6 +24,7 @@
 //! | `COPILOT_RS_PALACE_JOBS` | `false` | run the palace-lesson drainer/sweeper here instead of in APScheduler |
 //! | `COPILOT_MAX_BODY_BYTES` | `268435456` | request body cap (nginx's `client_max_body_size 256m`) |
 //! | `COPILOT_LOG_FORMAT` | `text` | `json` for structured logs |
+//! | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` | *(unset)*, `587`, …, `true` | the temporary-password email; read as set, and parsed per request like Python (a bad `SMTP_PORT` is that request's 400) |
 
 use std::fmt;
 use std::net::IpAddr;
@@ -133,6 +134,8 @@ pub struct CopilotConfig {
     pub sso_idp_url: Option<String>,
     /// The `WEBAUTHN_*` settings, as set (an empty value counts as set).
     pub webauthn: WebAuthnEnv,
+    /// The `SMTP_*` settings, as set.
+    pub smtp: SmtpEnv,
 }
 
 /// Raw `WEBAUTHN_*` values, read like `os.environ.get` (`None` = unset).
@@ -146,6 +149,26 @@ pub struct WebAuthnEnv {
     pub rp_id: Option<String>,
     /// `WEBAUTHN_RP_NAME`.
     pub rp_name: Option<String>,
+}
+
+/// Raw `SMTP_*` values, read like `os.getenv` (`None` = unset; an empty
+/// value is still a value). `security_admin._smtp_config` interprets them on
+/// every call, so a malformed `SMTP_PORT` is a request's error, not a
+/// startup failure.
+#[derive(Clone, Debug, Default)]
+pub struct SmtpEnv {
+    /// `SMTP_HOST`; unset or empty = SMTP not configured.
+    pub host: Option<String>,
+    /// `SMTP_PORT` (default `587`).
+    pub port: Option<String>,
+    /// `SMTP_USERNAME`.
+    pub username: Option<String>,
+    /// `SMTP_PASSWORD`.
+    pub password: Option<Secret>,
+    /// `SMTP_FROM`.
+    pub from: Option<String>,
+    /// `SMTP_USE_TLS` (default `true`).
+    pub use_tls: Option<String>,
 }
 
 impl CopilotConfig {
@@ -260,6 +283,14 @@ impl CopilotConfig {
                 origin: env.get_raw("WEBAUTHN_ORIGIN"),
                 rp_id: env.get_raw("WEBAUTHN_RP_ID"),
                 rp_name: env.get_raw("WEBAUTHN_RP_NAME"),
+            },
+            smtp: SmtpEnv {
+                host: env.get_raw("SMTP_HOST"),
+                port: env.get_raw("SMTP_PORT"),
+                username: env.get_raw("SMTP_USERNAME"),
+                password: env.get_raw("SMTP_PASSWORD").map(Secret::new),
+                from: env.get_raw("SMTP_FROM"),
+                use_tls: env.get_raw("SMTP_USE_TLS"),
             },
         })
     }

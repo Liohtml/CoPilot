@@ -33,6 +33,10 @@ os.environ.setdefault("MYSQL_ROOT_PASSWORD", "e2eroot")
 os.environ.setdefault("JWT_SECRET", "e2e-test-secret-not-the-default")
 os.environ.setdefault("WEBAUTHN_ORIGINS", "http://localhost:5173")
 os.environ.setdefault("WEBAUTHN_RP_ID", "localhost")
+os.environ.setdefault("SMTP_HOST", "127.0.0.1")
+os.environ.setdefault("SMTP_PORT", os.environ.get("SMTP_STUB_PORT", "5196"))
+os.environ.setdefault("SMTP_USE_TLS", "false")
+os.environ.setdefault("SMTP_FROM", "copilot@parity.test")
 
 import bcrypt  # noqa: E402
 import httpx  # noqa: E402
@@ -291,6 +295,7 @@ def build_python_app():
     from app.auth.routes.auth import auth_router
     from app.auth.routes.customer_users import customer_users_router
     from app.auth.routes.passkey import passkey_router
+    from app.auth.routes.security_admin import security_admin_router
     from app.auth.routes.sso import sso_router
     from app.auth.routes.totp import totp_router
     from app.connectors.talon.routes.talon import talon_router
@@ -315,6 +320,7 @@ def build_python_app():
     api.include_router(totp_router, prefix="/auth")
     api.include_router(sso_router, prefix="/auth")
     api.include_router(passkey_router, prefix="/auth")
+    api.include_router(security_admin_router, prefix="/auth")
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -2066,6 +2072,134 @@ async def main():
         r1.status_code == r2.status_code == 200 and r1.json() == r2.json(),
         f"{r1.text} / {r2.text}",
     )
+
+    # --- Security admin ----------------------------------------------------------------
+    print("\n=== auth: security ===")
+    SEC = "/api/auth/security"
+    await same("security: smtp status", "GET", f"{SEC}/smtp-status", t_admin)
+    await same("security: smtp status, analyst", "GET", f"{SEC}/smtp-status", t_analyst)
+    await same("security: smtp status, no token", "GET", f"{SEC}/smtp-status")
+    sec_users = {}
+    async with AsyncSession(async_engine) as s_:
+        # Customer A: one user with 2FA on, one with 2FA set up but off, one without,
+        # one also assigned to B, one listed twice; B alone for the empty-ish list.
+        for key, role, codes, totp, login in (
+            ("on", 4, [CUST_A], 1, "2026-02-03 04:05:06"),
+            ("off", 4, [CUST_A], 0, None),
+            ("none", 2, [CUST_A], None, None),
+            ("two", 5, [CUST_A, CUST_B], None, None),
+            ("twice", 4, [CUST_A, CUST_A], None, None),
+            ("odd", 9, [CUST_A], None, None),
+            ("reset_py", 4, [CUST_B], 1, None),
+            ("reset_rs", 4, [CUST_B], 1, None),
+        ):
+            name = f"par_sec_{key}{SFX}"
+            if role == 9:
+                role = None
+            r = await s_.execute(
+                text(
+                    "INSERT INTO `user` (username, password, email, created_at, role_id, last_login_at) "
+                    "VALUES (:n, 'x', :e, UTC_TIMESTAMP(), :r, :l)",
+                ),
+                {"n": name, "e": f"{key}@sec.example", "r": role, "l": login},
+            )
+            sec_users[key] = r.lastrowid
+            for code in codes:
+                await s_.execute(
+                    text("INSERT INTO user_customer_access (user_id, customer_code, created_at) VALUES (:u, :c, UTC_TIMESTAMP())"),
+                    {"u": r.lastrowid, "c": code},
+                )
+            if totp is not None:
+                await s_.execute(
+                    text("INSERT INTO user_totp (user_id, secret_enc, enabled, backup_codes) VALUES (:u, 'x', :e, '[]')"),
+                    {"u": r.lastrowid, "e": totp},
+                )
+        await s_.commit()
+    await same("security: customer users", "GET", f"{SEC}/customers/{CUST_A}/users", t_admin)
+    await same("security: customer users, other case", "GET", f"{SEC}/customers/{CUST_A.lower()}/users", t_admin)
+    await same("security: customer users, B", "GET", f"{SEC}/customers/{CUST_B}/users", t_admin)
+    await same("security: customer users, unknown", "GET", f"{SEC}/customers/NOPE{SFX}/users", t_admin)
+    await same("security: customer users, analyst", "GET", f"{SEC}/customers/{CUST_A}/users", t_analyst)
+    await same("security: customer users, no token", "GET", f"{SEC}/customers/{CUST_A}/users")
+
+    await same("security: totp reset, analyst", "DELETE", f"{SEC}/users/{sec_users['on']}/totp", t_analyst)
+    await same("security: totp reset, bad id", "DELETE", f"{SEC}/users/abc/totp", t_admin)
+    await same("security: totp reset, unknown user", "DELETE", f"{SEC}/users/999999999/totp", t_admin)
+    await same("security: totp reset, huge id", "DELETE", f"{SEC}/users/99999999999999/totp", t_admin)
+    for attempt in ("enrolled", "again"):
+        r1 = await py.delete(f"{SEC}/users/{sec_users['reset_py']}/totp", headers=H(t_admin))
+        r2 = await rs.delete(f"{SEC}/users/{sec_users['reset_rs']}/totp", headers=H(t_admin))
+        check(
+            f"security: totp reset, {attempt} [{r1.status_code}]",
+            r1.status_code == r2.status_code == 200 and r1.json() == r2.json(),
+            f"{r1.text} / {r2.text}",
+        )
+    await asyncio.sleep(0.5)  # the Rust service writes audit rows from a spawned task
+    async with AsyncSession(async_engine) as s_:
+        rows = (
+            await s_.execute(
+                text(
+                    "SELECT entity_id, actor_username, action, result, details, old_value, new_value FROM audit_log "
+                    "WHERE entity_id IN (:a, :b) ORDER BY id",
+                ),
+                {"a": f"par_sec_reset_py{SFX}", "b": f"par_sec_reset_rs{SFX}"},
+            )
+        ).all()
+        left = [r[1:] for r in rows if r[0].startswith("par_sec_reset_py")]
+        right = [r[1:] for r in rows if r[0].startswith("par_sec_reset_rs")]
+        check("security: totp reset audit rows", left == right and len(left) == 2, f"{left}\n        {right}")
+        left_totp = (
+            await s_.execute(
+                text("SELECT COUNT(*) FROM user_totp WHERE user_id IN (:a, :b)"),
+                {"a": sec_users["reset_py"], "b": sec_users["reset_rs"]},
+            )
+        ).scalar_one()
+        check("security: totp rows removed", left_totp == 0, str(left_totp))
+
+    # Temporary-password templates: this customer's, shared, built-in, another customer's,
+    # a JSON one (not offered) and one for another trigger (never listed).
+    async with AsyncSession(async_engine) as s_:
+        tpl = {}
+        for key, code, fmt, default, trig, updated in (
+            ("a_html", CUST_A, "html", 0, "temp_password_issued", "2026-03-01 10:00:00"),
+            ("a_text_old", CUST_A, "text", 0, "temp_password_issued", "2026-02-01 10:00:00"),
+            ("b_only", CUST_B, "text", 0, "temp_password_issued", "2026-03-02 10:00:00"),
+            ("shared", None, "markdown", 0, "temp_password_issued", "2026-01-01 10:00:00"),
+            ("shared_json", None, "json", 0, "temp_password_issued", "2026-03-03 10:00:00"),
+            ("builtin", None, "html", 1, "temp_password_issued", None),
+            ("other_trigger", CUST_A, "text", 0, "alert_assigned", "2026-03-04 10:00:00"),
+        ):
+            r = await s_.execute(
+                text(
+                    "INSERT INTO notification_template (name, description, `trigger`, format, subject_template, body_template, "
+                    "customer_code, is_default, created_by, created_at, updated_at) VALUES (:n, :d, :t, :f, 'S', 'B', :c, :dflt, "
+                    "'par', '2026-01-01 00:00:00', :u)",
+                ),
+                {
+                    "n": f"par {key} {SFX}",
+                    "d": None if key == "shared" else f"desc {key}",
+                    "t": trig,
+                    "f": fmt,
+                    "c": code,
+                    "dflt": default,
+                    "u": updated,
+                },
+            )
+            tpl[key] = r.lastrowid
+        await s_.commit()
+    OPT = lambda key, q="": f"{SEC}/users/{sec_users[key]}/temp-password-email/options{q}"  # noqa: E731
+    await same("security: options, one customer", "GET", OPT("on"), t_admin)
+    await same("security: options, two customers", "GET", OPT("two"), t_admin)
+    await same("security: options, two customers, B chosen", "GET", OPT("two", f"?customer_code={CUST_B}"), t_admin)
+    await same("security: options, empty choice", "GET", OPT("two", "?customer_code="), t_admin)
+    await same("security: options, not theirs", "GET", OPT("on", f"?customer_code={CUST_B}"), t_admin)
+    await same("security: options, other case", "GET", OPT("on", f"?customer_code={CUST_A.lower()}"), t_admin)
+    await same("security: options, quote in code", "GET", OPT("on", "?customer_code=it%27s"), t_admin)
+    await same("security: options, repeated", "GET", OPT("two", f"?customer_code=x&customer_code={CUST_A}"), t_admin)
+    await same("security: options, listed twice", "GET", OPT("twice"), t_admin)
+    await same("security: options, unknown user", "GET", f"{SEC}/users/999999999/temp-password-email/options", t_admin)
+    await same("security: options, bad id", "GET", f"{SEC}/users/1.5/temp-password-email/options", t_admin)
+    await same("security: options, analyst", "GET", OPT("on"), t_analyst)
 
     # --- Deliberate differences ------------------------------------------------------
     print("\n=== differences by design ===")

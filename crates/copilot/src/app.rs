@@ -10,7 +10,8 @@
 //!                      │ /api/version/*, /api/audit/* → copilot-platform      │
 //!                      │ /api/auth/token*, /refresh, /2fa/*, users, /login,   │
 //!                      │ /register, /reset-password*, /me/customers,          │
-//!                      │ /sso/*, /passkey/*  → copilot-identity               │
+//!                      │ /sso/*, /passkey/*, GET/DELETE /security/*           │
+//!                      │                    → copilot-identity                │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -66,6 +67,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/auth/me/customers",
     "/api/auth/sso",
     "/api/auth/passkey",
+    "GET /api/auth/security",
+    "DELETE /api/auth/security",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -83,6 +86,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::users::REQUIREMENTS);
     all.extend_from_slice(copilot_db::sso::REQUIREMENTS);
     all.extend_from_slice(copilot_db::passkeys::REQUIREMENTS);
+    all.extend_from_slice(copilot_db::security::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -193,6 +197,7 @@ impl App {
             token_ttl_minutes: cfg.access_token_expire_minutes,
             relying_party: Arc::new(relying_party),
             sso: Arc::new(sso),
+            smtp: Arc::new(cfg.smtp.clone()),
         };
         Ok(Self {
             ctx,
@@ -235,8 +240,8 @@ impl App {
                 copilot_platform::version_router(platform.clone()),
             )
             .nest("/api/audit", copilot_platform::audit_router(platform))
-            // Login, 2FA and user management are ported; the rest of `/auth`
-            // (SSO, passkeys, security admin) falls through to the legacy proxy.
+            // `/auth` is ported but for the temporary-password email (the POST
+            // routes of `/auth/security`), which falls through to the legacy proxy.
             .nest("/api/auth", copilot_identity::router(self.identity.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))

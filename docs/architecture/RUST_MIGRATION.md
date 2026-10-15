@@ -24,8 +24,8 @@ file.
                        │ /api/version/*, /api/audit/* copilot-platform      │
                        │ /api/auth/token*, /refresh, /2fa/*, /login,        │
                        │   /register, /users*, /reset-password*, /delete/*, │
-                       │   /me/customers, /sso/*, /passkey/*                │
-                       │                     copilot-identity               │
+                       │   /me/customers, /sso/*, /passkey/*,               │
+                       │   GET/DELETE /security/*  copilot-identity         │
  Talon MCP tools  ───►│ /api/talon/*        copilot-talon ───────────────────► Talon :3100
                        │ /_copilot/health                                   │
                        │ anything else ──►   copilot-gateway (stream) ────────► Python backend
@@ -52,7 +52,7 @@ file.
   order, with the same error envelopes and 422 texts. This is not a goal on
   paper: `backend/tests/e2e/rust_parity_e2e.py` sends identical requests to
   both implementations on one database and compares the answers
-  (452 checks, all equal; see §5).
+  (481 checks, all equal; see §5).
 
 Enable it:
 
@@ -85,7 +85,7 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-customers` | `app/customers/` (reads) | `GET /api/customers/*` (7 routes); creating, changing and deleting customers provisions Graylog/Grafana/Wazuh and stays in Python |
 | `copilot-healthchecks` | `app/healthchecks/agents/` (database half) | `GET /api/healthcheck/*` (4 routes); the classification is shared with the customer routes. `POST /logs` (Wazuh indexer) stays in Python |
 | `copilot-platform` | `app/version/`, `app/audit/` (reads) | `GET /api/version/check` (PEP 440 compare; `COPILOT_VERSION_CHECK_URL` points it at a mirror), `GET /api/audit`, `/actions`, `/{id}` |
-| `copilot-identity` | `app/auth/routes/auth.py`, `routes/totp.py`, `routes/customer_users.py`, `routes/sso.py`, `routes/passkey.py`, `services/totp.py`, `services/customer_assignment.py`, `services/sso.py`, `services/passkey.py` | login (`/token`, `/token/customer-portal`, the deprecated JSON `/login`), `/refresh`, the six `/2fa/*` routes, user management (`/register`, `/users`, `/users/{id}`, `/reset-password`, `/reset-password/me`, `/delete/{id}`, `/users/{id}/role/by-name`, `/users/{id}/customers`, `/me/customers`), SSO (`/sso/*`: settings, allowlist, Azure, Google, Cloudflare Access), passkeys (`/passkey/*`); the enrolment QR code, the 2FA brute-force counter. Security admin stays in Python for now |
+| `copilot-identity` | `app/auth/routes/auth.py`, `routes/totp.py`, `routes/customer_users.py`, `routes/sso.py`, `routes/passkey.py`, `routes/security_admin.py`, `services/totp.py`, `services/customer_assignment.py`, `services/sso.py`, `services/passkey.py`, `services/security_admin.py` | login (`/token`, `/token/customer-portal`, the deprecated JSON `/login`), `/refresh`, the six `/2fa/*` routes, user management (`/register`, `/users`, `/users/{id}`, `/reset-password`, `/reset-password/me`, `/delete/{id}`, `/users/{id}/role/by-name`, `/users/{id}/customers`, `/me/customers`), SSO (`/sso/*`: settings, allowlist, Azure, Google, Cloudflare Access), passkeys (`/passkey/*`), the admin Security tab's reads and 2FA reset (`GET`/`DELETE /security/*`); the enrolment QR code, the 2FA brute-force counter. Previewing and sending the temporary-password email (the `POST /security/*` routes) stays in Python for now |
 | `copilot-webauthn` | `webauthn` (py_webauthn 2.8), `cbor2`, the origin helpers of `app/auth/services/passkey.py` | registration and assertion verification (attestation `none`, `packed`, `fido-u2f`; py_webauthn's default algorithms ES256, ES512, EdDSA, RS256/384/512, PS256/384/512), cbor2-exact CBOR, options JSON, the relying-party/origin rules |
 | `copilot-gateway` | — | legacy proxy and notification bridge; deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `palace drain|sweep` |
@@ -238,6 +238,18 @@ from py_webauthn, cbor2, cryptography and CoPilot's own helpers
 the CBOR round trips, the base64 decoder, the origin resolution and the
 options byte for byte.
 
+**Security tab.** `GET /security/customers/{code}/users` keeps Python's join
+without `ORDER BY` (and its de-duplication of a user listed twice), so MySQL
+returns the users in the same order. The `SMTP_*` settings are read as set and
+interpreted per request like `_smtp_config()`: a malformed `SMTP_PORT` is that
+request's `ValueError` 400 with CPython's `int()` sentence, a literal too large
+for a port still counts as configured. The template picker resolves the user's
+customer and ranks `notification_template` rows exactly as
+`list_available_templates` does (this customer's, shared, built-in; another
+customer's never). Its query is SQLAlchemy's, column list included, so
+MySQL's filesort orders same-second ties for both backends alike. A forced
+2FA reset writes the same `user.update` audit row.
+
 **Alert visibility.** One definition, as in Python:
 `copilot_db::visibility::AlertVisibility` (customer scoping *and* tag RBAC,
 `alert_visibility_filters_for_user`) for lists and counts, and
@@ -347,7 +359,7 @@ Python backend today: ~200 k lines in 930 files.
 |---|---|---|
 | **0 — done** | foundation; `ai_analyst` (2.4 k), `connectors/talon` | the Talon integration surface |
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
-| **2 — in progress** | `auth` (5 k). **Done** (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys. **Next:** security admin (`/auth/security/*`) | the login slice moved as one so the 2FA counter lives in one process |
+| **2 — in progress** | `auth` (5 k). **Done** (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab's reads and 2FA reset. **Next:** the temporary-password email (`POST /auth/security/*`: template rendering, SMTP) | the login slice moved as one so the 2FA counter lives in one process |
 | 3 | `notifications` (7.2 k) — retires the bridge; `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust |
 | 4 | `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |

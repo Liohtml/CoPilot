@@ -21,6 +21,8 @@ PORT="${RUST_PARITY_PORT:-5199}"
 RELEASE_STUB_PORT="${RELEASE_STUB_PORT:-5198}"
 # ... and an identity-provider stand-in here for the SSO flows (COPILOT_SSO_IDP_URL).
 IDP_STUB_PORT="${IDP_STUB_PORT:-5197}"
+# ... and an SMTP server stand-in here for the temporary-password email.
+SMTP_STUB_PORT="${SMTP_STUB_PORT:-5196}"
 
 cargo build -q -p copilot
 env -i PATH="$PATH" HOME="$HOME" \
@@ -28,6 +30,7 @@ env -i PATH="$PATH" HOME="$HOME" \
   JWT_SECRET="$JWT_SECRET" COPILOT_BIND=127.0.0.1 COPILOT_PORT="$PORT" \
   WEBAUTHN_ORIGINS=http://localhost:5173 WEBAUTHN_RP_ID=localhost \
   COPILOT_SSO_IDP_URL="http://127.0.0.1:${IDP_STUB_PORT}" \
+  SMTP_HOST=127.0.0.1 SMTP_PORT="$SMTP_STUB_PORT" SMTP_USE_TLS=false SMTP_FROM=copilot@parity.test \
   COPILOT_VERSION_CHECK_URL="http://127.0.0.1:${RELEASE_STUB_PORT}/releases/latest" \
   RUST_LOG="${RUST_LOG:-warn}" ./target/debug/copilot --root /nonexistent serve &
 RS_PID=$!
@@ -40,5 +43,6 @@ done
 cd backend
 MYSQL_URL="$MYSQL_URL" MYSQL_USER="$MYSQL_USER" MYSQL_PASSWORD="$MYSQL_PASSWORD" \
   MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-unused}" JWT_SECRET="$JWT_SECRET" \
-  RUST_BASE_URL="http://127.0.0.1:${PORT}" RELEASE_STUB_PORT="$RELEASE_STUB_PORT" IDP_STUB_PORT="$IDP_STUB_PORT" PYTHONPATH="$PWD" \
+  RUST_BASE_URL="http://127.0.0.1:${PORT}" RELEASE_STUB_PORT="$RELEASE_STUB_PORT" IDP_STUB_PORT="$IDP_STUB_PORT" \
+  SMTP_STUB_PORT="$SMTP_STUB_PORT" PYTHONPATH="$PWD" \
   "${PYTHON_ABS:-$OLDPWD/$PYTHON}" tests/e2e/rust_parity_e2e.py

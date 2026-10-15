@@ -31,6 +31,7 @@ pub mod passkeys;
 pub mod pool;
 pub mod scheduler;
 pub mod schema;
+pub mod security;
 pub mod sso;
 pub mod totp;
 pub mod users;

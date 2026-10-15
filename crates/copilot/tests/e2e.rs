@@ -4205,3 +4205,217 @@ async fn passkey_registration_and_login() {
         .await;
     assert_eq!(body["count"], 0);
 }
+
+#[tokio::test]
+async fn security_tab_reads_and_totp_reset() {
+    let h = harness_or_skip!(None, "SMTP_HOST=smtp.example\nSMTP_USE_TLS=no\n");
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&h.code("admin"), "admin");
+    let analyst = h.token(&h.code("analyst"), "analyst");
+    let acme = h.code("acme");
+    let beta = h.code("beta");
+
+    let (st, body) = h
+        .call("GET", "/api/auth/security/smtp-status", Some(&admin), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"configured": true, "success": true, "message": "SMTP status retrieved"})
+        )
+    );
+    let (st, _) = h
+        .call(
+            "GET",
+            "/api/auth/security/smtp-status",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st.as_u16(), 403);
+
+    // The customer's users: 2FA state from `user_totp`, role names from the enum.
+    let portal_id = h
+        .scalar_i64(&format!(
+            "SELECT id FROM `user` WHERE username = 'portal{s}'"
+        ))
+        .await;
+    h.enable_totp(portal_id).await;
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/auth/security/customers/{acme}/users"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    let users = body["users"].as_array().unwrap();
+    let names: Vec<&str> = users
+        .iter()
+        .map(|u| u["username"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            format!("analyst{s}"),
+            format!("responder{s}"),
+            format!("portal{s}")
+        ]
+    );
+    assert_eq!(users[1]["role_name"], "responder");
+    assert_eq!(users[2]["totp_enabled"], true);
+    assert_eq!(users[0]["totp_enabled"], false);
+    assert_eq!(users[0]["last_login_at"], Value::Null);
+
+    // TOTP reset: once removed, then nothing to remove; audited both times.
+    let uri = format!("/api/auth/security/users/{portal_id}/totp");
+    let (st, body) = h.call("DELETE", &uri, Some(&admin), None).await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"success": true, "message": "Two-factor authentication has been reset."})
+        )
+    );
+    let (_, body) = h.call("DELETE", &uri, Some(&admin), None).await;
+    assert_eq!(
+        body["message"],
+        "The user had no two-factor authentication configured."
+    );
+    let (st, body) = h
+        .call(
+            "DELETE",
+            "/api/auth/security/users/999999999/totp",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (404, json!("User 999999999 not found"))
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let audited = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'user.update' AND entity_id = 'portal{s}' \
+             AND details LIKE 'Forced TOTP (2FA) reset by admin (%'"
+        ))
+        .await;
+    assert_eq!(audited, 2);
+
+    // Template options: this customer's first, shared next, built-in last,
+    // another customer's never; a JSON template is not offered.
+    for (name, code, fmt, default, updated) in [
+        (
+            "mine",
+            format!("'{acme}'"),
+            "html",
+            0,
+            "'2026-01-03 00:00:00'",
+        ),
+        (
+            "shared",
+            "NULL".to_string(),
+            "text",
+            0,
+            "'2026-01-04 00:00:00'",
+        ),
+        (
+            "builtin",
+            "NULL".to_string(),
+            "html",
+            1,
+            "'2026-01-05 00:00:00'",
+        ),
+        (
+            "theirs",
+            format!("'{beta}'"),
+            "text",
+            0,
+            "'2026-01-06 00:00:00'",
+        ),
+        (
+            "json",
+            "NULL".to_string(),
+            "json",
+            0,
+            "'2026-01-07 00:00:00'",
+        ),
+    ] {
+        h.exec(&format!(
+            "INSERT INTO notification_template (name, `trigger`, format, body_template, customer_code, \
+             is_default, created_at, updated_at) VALUES ('{name}{s}', 'temp_password_issued', '{fmt}', \
+             'B', {code}, {default}, UTC_TIMESTAMP(), {updated})"
+        ))
+        .await;
+    }
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/auth/security/users/{portal_id}/temp-password-email/options"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    assert_eq!(body["customer_code"], json!(acme));
+    let ours: Vec<&str> = body["templates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .filter(|n| n.ends_with(s.as_str()))
+        .collect();
+    assert_eq!(
+        ours,
+        [
+            format!("mine{s}"),
+            format!("shared{s}"),
+            format!("builtin{s}")
+        ]
+    );
+    assert_eq!(body["resolved_template_id"], body["templates"][0]["id"]);
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!(
+                "/api/auth/security/users/{portal_id}/temp-password-email/options?customer_code={beta}"
+            ),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            400,
+            json!(format!(
+                "User 'portal{s}' does not have access to customer '{beta}'."
+            ))
+        )
+    );
+}
+
+#[tokio::test]
+async fn smtp_settings_are_read_per_request() {
+    let h = harness_or_skip!(None, "SMTP_HOST=smtp.example\nSMTP_PORT=2_5x\n");
+    h.seed().await;
+    let admin = h.token(&h.code("admin"), "admin");
+    let (st, body) = h
+        .call("GET", "/api/auth/security/smtp-status", Some(&admin), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (400, json!("invalid literal for int() with base 10: '2_5x'"))
+    );
+    let h = harness_or_skip!(None, "SMTP_HOST=\n");
+    h.seed().await;
+    let admin = h.token(&h.code("admin"), "admin");
+    let (_, body) = h
+        .call("GET", "/api/auth/security/smtp-status", Some(&admin), None)
+        .await;
+    assert_eq!(body["configured"], false);
+}
