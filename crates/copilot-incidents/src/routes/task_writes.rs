@@ -20,11 +20,11 @@ use copilot_web::{
 use super::common::{json, user_exists};
 use crate::access;
 use crate::events::{self, CaseEvent};
-use crate::notify;
 use crate::requests::merge;
 use crate::schema::{CaseTaskOut, TASK_STATUSES};
 use crate::store::{CaseTaskRow, TASK_COLS};
 use crate::templates;
+use copilot_core::notify::Assignment;
 
 type Soc = Authorized<AdminOrAnalyst>;
 type Obj = Map<String, Value>;
@@ -377,13 +377,15 @@ async fn update_task(
     }
     let stored = task_row(&ctx, task_id).await?;
     if assignment_changed {
-        let event = notify::case_task_assigned_event(
+        let event = copilot_core::notify::case_task_assigned_event(
             task_id,
             case_id,
-            Some(&task.title),
-            task.assigned_to.as_deref(),
-            Some(&auth.username),
-            None,
+            &Assignment {
+                title: Some(&task.title),
+                assignee: task.assigned_to.as_deref(),
+                actor: Some(&auth.username),
+                customer_code: None,
+            },
         );
         ctx.notifications.emit(event, Some(auth.bearer.clone()));
     }

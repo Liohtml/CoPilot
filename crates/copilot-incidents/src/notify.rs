@@ -1,188 +1,14 @@
-//! The incidents' notification events — port of the incident builders of
-//! `app/notifications/services/event_builders.py` (`alert_created_event`,
-//! `alert_assigned_event`, `case_assigned_event`, `case_task_assigned_event`)
-//! and of `app/incidents/services/notification_enrichment.py`.
+//! The incidents' notification events: the builders are
+//! `copilot_core::notify`'s (`alert_created_event`, `alert_assigned_event`,
+//! `case_assigned_event`, `case_task_assigned_event`); this module keeps the
+//! port of `app/incidents/services/notification_enrichment.py` and pins the
+//! events the incidents routes emit against values captured from the Python
+//! builders.
 //!
 //! Events go out through `ctx.notifications` (fire and forget, like
-//! `emit()`); building them here keeps the shapes pinned by the unit tests
-//! below against values captured from the Python builders.
+//! `emit()`).
 
-use copilot_core::notify::{
-    NotificationDefaults, NotificationEvent, NotificationSeverity, NotificationTrigger,
-};
-use serde_json::{Map, Value, json};
-
-/// `_ASSIGNMENT_SEVERITY`.
-pub const ASSIGNMENT_SEVERITY: NotificationSeverity = NotificationSeverity::Informational;
-
-fn opt(v: Option<&str>) -> Value {
-    v.map_or(Value::Null, |s| Value::String(s.to_string()))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn assignment_event(
-    trigger: NotificationTrigger,
-    entity_type: &str,
-    severity: NotificationSeverity,
-    entity_id: i64,
-    title: Option<&str>,
-    assignee: Option<&str>,
-    actor: Option<&str>,
-    customer_code: Option<&str>,
-    summary: String,
-    extra: &[(&str, Value)],
-) -> NotificationEvent {
-    let mut context = Map::new();
-    context.insert("title".into(), opt(title));
-    for (k, v) in extra {
-        context.insert((*k).to_string(), v.clone());
-    }
-    NotificationEvent {
-        customer_code: customer_code.map(str::to_string),
-        trigger,
-        severity,
-        subject: title
-            .filter(|t| !t.is_empty())
-            .map_or_else(|| format!("{entity_type} #{entity_id}"), str::to_string),
-        summary,
-        entity_type: entity_type.to_string(),
-        entity_id,
-        dedupe_key: format!(
-            "{entity_type}:{entity_id}:{}:{}",
-            trigger.as_str(),
-            assignee.filter(|a| !a.is_empty()).unwrap_or("unassigned")
-        ),
-        link_url: None,
-        assignee_username: assignee.map(str::to_string),
-        actor_username: actor.map(str::to_string),
-        context,
-    }
-}
-
-/// `alert_assigned_event`: the alert's own severity when known (the caller
-/// passes `severity_of(alert)`), else Informational.
-pub fn alert_assigned_event(
-    alert_id: i64,
-    title: Option<&str>,
-    assignee: Option<&str>,
-    actor: Option<&str>,
-    customer_code: Option<&str>,
-    severity: Option<&str>,
-    defaults: &NotificationDefaults,
-) -> NotificationEvent {
-    let severity = match severity.filter(|s| !s.is_empty()) {
-        Some(s) => NotificationSeverity::coerce(Some(s), defaults.default_severity),
-        None => ASSIGNMENT_SEVERITY,
-    };
-    let summary = match assignee.filter(|a| !a.is_empty()) {
-        Some(a) => format!("Alert #{alert_id} was assigned to {a}."),
-        None => format!("Alert #{alert_id} was unassigned."),
-    };
-    assignment_event(
-        NotificationTrigger::AlertAssigned,
-        "alert",
-        severity,
-        alert_id,
-        title,
-        assignee,
-        actor,
-        customer_code,
-        summary,
-        &[],
-    )
-}
-
-/// `case_assigned_event`.
-pub fn case_assigned_event(
-    case_id: i64,
-    title: Option<&str>,
-    assignee: Option<&str>,
-    actor: Option<&str>,
-    customer_code: Option<&str>,
-) -> NotificationEvent {
-    let summary = match assignee.filter(|a| !a.is_empty()) {
-        Some(a) => format!("Case #{case_id} was assigned to {a}."),
-        None => format!("Case #{case_id} was unassigned."),
-    };
-    assignment_event(
-        NotificationTrigger::CaseAssigned,
-        "case",
-        ASSIGNMENT_SEVERITY,
-        case_id,
-        title,
-        assignee,
-        actor,
-        customer_code,
-        summary,
-        &[],
-    )
-}
-
-/// `case_task_assigned_event`.
-pub fn case_task_assigned_event(
-    task_id: i64,
-    case_id: i64,
-    title: Option<&str>,
-    assignee: Option<&str>,
-    actor: Option<&str>,
-    customer_code: Option<&str>,
-) -> NotificationEvent {
-    let shown = title.map_or_else(|| "None".to_string(), str::to_string);
-    let summary = match assignee.filter(|a| !a.is_empty()) {
-        Some(a) => format!("Task '{shown}' on case #{case_id} was assigned to {a}."),
-        None => format!("Task '{shown}' was unassigned."),
-    };
-    assignment_event(
-        NotificationTrigger::CaseTaskAssigned,
-        "case_task",
-        ASSIGNMENT_SEVERITY,
-        task_id,
-        title,
-        assignee,
-        actor,
-        customer_code,
-        summary,
-        &[("case_id", json!(case_id))],
-    )
-}
-
-/// `alert_created_event`.
-#[allow(clippy::too_many_arguments)]
-pub fn alert_created_event(
-    alert_id: i64,
-    customer_code: &str,
-    alert_title: Option<&str>,
-    severity: Option<&str>,
-    rule_level: Option<i64>,
-    asset_name: Option<&str>,
-    link_url: Option<&str>,
-    defaults: &NotificationDefaults,
-) -> NotificationEvent {
-    let title = alert_title
-        .filter(|t| !t.is_empty())
-        .map_or_else(|| format!("Alert #{alert_id}"), str::to_string);
-    let mut context = Map::new();
-    context.insert("alert_name".into(), json!(title));
-    context.insert("rule_level".into(), json!(rule_level));
-    context.insert("asset_name".into(), opt(asset_name));
-    NotificationEvent {
-        customer_code: Some(customer_code.to_string()),
-        trigger: NotificationTrigger::AlertCreated,
-        severity: NotificationSeverity::coerce(severity, defaults.default_severity),
-        subject: title,
-        summary: format!("A new alert was created for {customer_code}."),
-        entity_type: "alert".into(),
-        entity_id: alert_id,
-        dedupe_key: format!("alert:{alert_id}:alert_created"),
-        link_url: link_url
-            .filter(|l| !l.is_empty())
-            .map(str::to_string)
-            .or_else(|| defaults.link(&format!("/alerts/{alert_id}"))),
-        assignee_username: None,
-        actor_username: None,
-        context,
-    }
-}
+use serde_json::Value;
 
 /// `extract_rule_level`: `rule_level`, else `rule.level`, as an int.
 pub fn extract_rule_level(context: Option<&Value>) -> Option<i64> {
@@ -216,6 +42,11 @@ pub fn severity_from_rule_level(rule_level: Option<i64>) -> Option<&'static str>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use copilot_core::notify::{
+        AlertCreatedInput, Assignment, NotificationDefaults, NotificationSeverity,
+        alert_assigned_event, alert_created_event, case_assigned_event, case_task_assigned_event,
+    };
+    use serde_json::json;
 
     fn defaults(url: Option<&str>) -> NotificationDefaults {
         NotificationDefaults {
@@ -228,13 +59,15 @@ mod tests {
     #[test]
     fn alert_assigned_matches_python() {
         let e = alert_assigned_event(
-            5,
-            Some("T"),
-            Some("bob"),
-            Some("al"),
-            Some("acme"),
-            Some("High"),
             &defaults(None),
+            5,
+            &Assignment {
+                title: Some("T"),
+                assignee: Some("bob"),
+                actor: Some("al"),
+                customer_code: Some("acme"),
+            },
+            Some("High"),
         );
         assert_eq!(
             serde_json::to_string(&e).unwrap(),
@@ -244,7 +77,13 @@ mod tests {
 
     #[test]
     fn case_unassigned_matches_python() {
-        let e = case_assigned_event(3, None, None, Some("al"), None);
+        let e = case_assigned_event(
+            3,
+            &Assignment {
+                actor: Some("al"),
+                ..Assignment::default()
+            },
+        );
         assert_eq!(
             serde_json::to_string(&e).unwrap(),
             r#"{"customer_code":null,"trigger":"case_assigned","severity":"Informational","subject":"case #3","summary":"Case #3 was unassigned.","entity_type":"case","entity_id":3,"dedupe_key":"case:3:case_assigned:unassigned","link_url":null,"assignee_username":null,"actor_username":"al","context":{"title":null}}"#
@@ -253,7 +92,16 @@ mod tests {
 
     #[test]
     fn case_task_assigned_matches_python() {
-        let e = case_task_assigned_event(9, 3, Some("x"), Some("b"), Some("al"), Some("c"));
+        let e = case_task_assigned_event(
+            9,
+            3,
+            &Assignment {
+                title: Some("x"),
+                assignee: Some("b"),
+                actor: Some("al"),
+                customer_code: Some("c"),
+            },
+        );
         assert_eq!(
             serde_json::to_string(&e).unwrap(),
             r#"{"customer_code":"c","trigger":"case_task_assigned","severity":"Informational","subject":"x","summary":"Task 'x' on case #3 was assigned to b.","entity_type":"case_task","entity_id":9,"dedupe_key":"case_task:9:case_task_assigned:b","link_url":null,"assignee_username":"b","actor_username":"al","context":{"title":"x","case_id":3}}"#
@@ -263,14 +111,13 @@ mod tests {
     #[test]
     fn alert_created_matches_python() {
         let e = alert_created_event(
-            1,
-            "c",
-            None,
-            Some("High"),
-            None,
-            None,
-            None,
             &defaults(Some("https://c.example/")),
+            &AlertCreatedInput {
+                alert_id: 1,
+                customer_code: "c",
+                severity: Some("High"),
+                ..AlertCreatedInput::default()
+            },
         );
         assert_eq!(
             serde_json::to_string(&e).unwrap(),

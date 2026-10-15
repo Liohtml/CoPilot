@@ -321,8 +321,10 @@ failing the request), the audit rows (`alert.verdict_set|clear`,
 alert (field-match templates fetch the raw event from the Wazuh indexer; any
 failure falls back to the tier picker, as in Python), the customer-reply
 hand-back of a waiting alert or case, and the `alert_assigned` /
-`case_assigned` notifications (on a change only), built by `notify.rs` and
-pinned against the Python builders. `IntegrityError`s Python maps to a 400
+`case_assigned` / `case_task_assigned` notifications (on a change only),
+built by `copilot_core::notify`'s builders, emitted through
+`ctx.notifications` (the binary's `DispatchingSink`) and pinned in
+`copilot-incidents`' `notify.rs` against the Python builders' output. `IntegrityError`s Python maps to a 400
 (`… already exists`) are mapped the same way; everything else is a bare 500,
 including Python's own 500s, kept on purpose because they write the same
 rows first: a duplicated dictionary entry (`scalar_one_or_none`), `PUT

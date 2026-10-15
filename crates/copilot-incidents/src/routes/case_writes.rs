@@ -24,7 +24,6 @@ use super::common::{
 };
 use crate::access;
 use crate::events::{self, CaseEvent};
-use crate::notify;
 use crate::requests::{
     self, CaseCreate, CommentCreate, CommentEdit, IdBool, IdText, TwoIds, UpdateCaseSeverity,
     UpdateStatus, merge,
@@ -34,6 +33,7 @@ use crate::store::{self, CaseTaskRow, TASK_COLS};
 use crate::templates;
 use crate::views;
 use crate::writes::{self, CommentKind};
+use copilot_core::notify::Assignment;
 
 type Soc = Authorized<AdminOrAnalyst>;
 type Any = Authorized<AnyPortalOrSoc>;
@@ -836,12 +836,14 @@ async fn assign(State(ctx): State<AppContext>, WithJson(auth, body): WithJson<An
         )
         .await;
     if previous.as_deref() != Some(req.value.as_str()) {
-        let event = notify::case_assigned_event(
+        let event = copilot_core::notify::case_assigned_event(
             req.id,
-            Some(&case.case_name),
-            Some(&req.value),
-            Some(&auth.username),
-            case.customer_code.as_deref(),
+            &Assignment {
+                title: Some(&case.case_name),
+                assignee: Some(&req.value),
+                actor: Some(&auth.username),
+                customer_code: case.customer_code.as_deref(),
+            },
         );
         ctx.notifications.emit(event, Some(auth.bearer.clone()));
     }

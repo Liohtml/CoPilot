@@ -25,7 +25,6 @@ use super::common::{
     is_customer_user, json, message_success, path_int, sla, user_exists,
 };
 use crate::access;
-use crate::notify;
 use crate::requests::{
     self, AlertContextCreate, AlertCreate, AssetCreate, BulkAssign, BulkUpdateAlertStatus,
     CommentCreate, CommentEdit, IdBool, IdText, IocCreate, TwoIds, UpdateAlertVerdict,
@@ -34,6 +33,7 @@ use crate::requests::{
 use crate::schema::AlertRecord;
 use crate::store::{self, AlertRow};
 use crate::writes::{self, CommentKind, VerdictState};
+use copilot_core::notify::Assignment;
 
 type Soc = Authorized<AdminOrAnalyst>;
 type Any = Authorized<AnyPortalOrSoc>;
@@ -415,14 +415,16 @@ fn notify_assigned(
         return;
     }
     let severity = before.map(|a| super::common::severity_of(ctx, a.severity.as_deref()));
-    let event = notify::alert_assigned_event(
-        alert_id,
-        before.map(|a| a.alert_name.as_str()),
-        Some(assignee),
-        Some(&user.username),
-        before.map(|a| a.customer_code.as_str()),
-        severity,
+    let event = copilot_core::notify::alert_assigned_event(
         &ctx.notification_defaults,
+        alert_id,
+        &Assignment {
+            title: before.map(|a| a.alert_name.as_str()),
+            assignee: Some(assignee),
+            actor: Some(&user.username),
+            customer_code: before.map(|a| a.customer_code.as_str()),
+        },
+        severity,
     );
     ctx.notifications.emit(event, Some(user.bearer.clone()));
 }
