@@ -603,6 +603,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bcrypt",
+ "chrono",
  "copilot-auth",
  "copilot-core",
  "copilot-db",
@@ -670,7 +671,10 @@ dependencies = [
  "copilot-core",
  "copilot-db",
  "http",
+ "icu_properties",
+ "idna",
  "pretty_assertions",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
@@ -681,6 +685,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "unicode-normalization",
  "url",
 ]
 

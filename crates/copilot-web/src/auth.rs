@@ -57,6 +57,21 @@ impl ScopeSet for AnyPortalOrSoc {
     const SCOPES: &'static [&'static str] = &["admin", "analyst", "customer_user"];
 }
 
+/// `require_any_scope("analyst", "admin")` — the same people as
+/// [`AdminOrAnalyst`], named in this order in the 403.
+#[derive(Debug)]
+pub struct AnalystOrAdmin;
+impl ScopeSet for AnalystOrAdmin {
+    const SCOPES: &'static [&'static str] = &["analyst", "admin"];
+}
+
+/// `require_any_scope("analyst", "admin", "customer_user")`.
+#[derive(Debug)]
+pub struct AnalystAdminOrPortal;
+impl ScopeSet for AnalystAdminOrPortal {
+    const SCOPES: &'static [&'static str] = &["analyst", "admin", "customer_user"];
+}
+
 /// No scope at all — `Depends(get_current_user)` (any signed-in user), for
 /// [`ScopedUser`].
 #[derive(Debug)]

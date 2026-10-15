@@ -717,8 +717,10 @@ async fn talon_and_ai_analyst_flow() {
     );
 
     // --- Notifications reached the bridge: report + first review only -------
+    // Each event is handed to the bridge from a spawned task: their order is
+    // not guaranteed, so compare them by trigger.
     let mut bridged = Vec::new();
-    for _ in 0..30 {
+    for _ in 0..100 {
         bridged = legacy
             .received_requests()
             .await
@@ -732,6 +734,7 @@ async fn talon_and_ai_analyst_flow() {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+    bridged.sort_by_key(|e| e["trigger"] != "investigation_complete");
     let triggers: Vec<&str> = bridged
         .iter()
         .map(|e| e["trigger"].as_str().unwrap())
@@ -2576,6 +2579,433 @@ async fn login_refresh_and_two_factor_flow() {
         .await,
         6
     );
+}
+
+#[tokio::test]
+async fn user_management_flow() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let (acme, beta) = (format!("acme{s}"), format!("beta{s}"));
+    let new_name = format!("newbie{s}");
+    let msg = |b: &Value| b["message"].as_str().unwrap_or_default().to_string();
+    let register = |body: Value| {
+        let mut base = json!({"username": new_name, "password": "Passw0rd!x",
+            "email": format!("New.User{s}@Example.COM")});
+        base.as_object_mut()
+            .unwrap()
+            .extend(body.as_object().unwrap().clone());
+        base
+    };
+
+    // --- register: the #1219 rules, then a user -------------------------------
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/register",
+            Some(&admin),
+            Some(register(json!({}))),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            400,
+            "Analysts and responders must be assigned at least one customer".into()
+        )
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/register",
+            Some(&admin),
+            Some(register(
+                json!({"customer_codes": [acme.to_uppercase(), "nope"]}),
+            )),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            400,
+            format!("Unknown customer code(s): {}, nope", acme.to_uppercase())
+        )
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/register",
+            Some(&admin),
+            Some(register(json!({"role_id": 1, "customer_codes": [acme]}))),
+        )
+        .await;
+    assert_eq!(st, 400, "{body}");
+    assert!(msg(&body).starts_with("Admins see every customer"));
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/register",
+            Some(&admin),
+            Some(register(json!({"password": "short", "email": "nope"}))),
+        )
+        .await;
+    assert_eq!(st, 422);
+    assert_eq!(body["details"].as_array().unwrap().len(), 2);
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/register",
+            Some(&analyst),
+            Some(register(json!({"customer_codes": [acme]}))),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            403,
+            "Insufficient permissions. Required one of: admin".into()
+        )
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/register",
+            Some(&admin),
+            Some(register(
+                json!({"role_id": "5", "customer_codes": [format!(" {acme} "), acme]}),
+            )),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            201,
+            json!({"message": "User created successfully", "success": true})
+        )
+    );
+    let new_id = h
+        .scalar_i64(&format!(
+            "SELECT id FROM `user` WHERE username = '{new_name}'"
+        ))
+        .await;
+    let stored_email: String = sqlx::query_scalar("SELECT email FROM `user` WHERE id = ?")
+        .bind(new_id)
+        .fetch_one(h.db.pool())
+        .await
+        .unwrap();
+    assert_eq!(stored_email, format!("New.User{s}@example.com"));
+    let created = format!(
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'user.create' AND entity_id = '{new_name}' \
+         AND JSON_EXTRACT(new_value, '$.role_id') = 5"
+    );
+    assert_eq!(wait_count(&h, &created, 1).await, 1);
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/register",
+            Some(&admin),
+            Some(register(json!({"customer_codes": [acme]}))),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (400, "Email is already registered".into())
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/register",
+            Some(&admin),
+            Some(register(
+                json!({"email": format!("other{s}@example.com"), "customer_codes": [acme]}),
+            )),
+        )
+        .await;
+    assert_eq!((st.as_u16(), msg(&body)), (400, "Username is taken".into()));
+
+    // --- reads ------------------------------------------------------------------
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/auth/users?search={s}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200);
+    let newbie = body["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|u| u["username"] == new_name.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(
+        newbie,
+        json!({"id": new_id, "username": new_name, "email": stored_email, "role_id": 5,
+               "role_name": "responder", "last_login_at": null, "customer_codes": [acme]})
+    );
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("/api/auth/users?search={s}&limit=1"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(body["users"].as_array().unwrap().len(), 1);
+    assert_eq!(body["users"][0]["customer_codes"], Value::Null);
+    let (st, _) = h
+        .call("GET", "/api/auth/users?limit=0", Some(&admin), None)
+        .await;
+    assert_eq!(st, 422);
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/auth/users/{new_id}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["user"]["role_name"].as_str()),
+        (200, Some("responder"))
+    );
+    let (st, body) = h
+        .call("GET", "/api/auth/users/999999999", Some(&admin), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (404, "User 999999999 not found".into())
+    );
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+    let (st, body) = h.call("GET", "/api/auth/users", Some(&portal), None).await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (
+            403,
+            "Insufficient permissions. Required one of: analyst, admin".into()
+        )
+    );
+
+    // --- customers and roles ------------------------------------------------------
+    let path = format!("/api/auth/users/{new_id}/customers");
+    let (st, body) = h
+        .call("POST", &path, Some(&admin), Some(json!([beta, acme, beta])))
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"success": true, "message": format!("Assigned 2 customers to user {new_id}"),
+                     "customer_codes": [beta, acme]})
+        )
+    );
+    let (_, body) = h.call("GET", &path, Some(&admin), None).await;
+    assert_eq!(body["customer_codes"].as_array().unwrap().len(), 2);
+    let (st, body) = h
+        .call("POST", &path, Some(&admin), Some(json!({"codes": [acme]})))
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (422, "Input should be a valid list".into())
+    );
+    let role = format!("/api/auth/users/{new_id}/role/by-name");
+    let (st, body) = h
+        .call(
+            "PUT",
+            &role,
+            Some(&admin),
+            Some(json!({"role_name": "wizard"})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (400, "Invalid role name. Valid roles are: ['admin', 'analyst', 'scheduler', 'customer_user', 'responder']".into())
+    );
+    let (st, body) = h
+        .call(
+            "PUT",
+            &role,
+            Some(&admin),
+            Some(json!({"role_name": "Analyst"})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"message": format!("User {new_name} role updated successfully to Analyst"),
+                     "success": true, "user_id": new_id, "new_role_name": "Analyst", "new_role_id": 2})
+        )
+    );
+    let (st, body) = h
+        .call(
+            "PUT",
+            &role,
+            Some(&admin),
+            Some(json!({"role_name": "admin", "customer_codes": [acme]})),
+        )
+        .await;
+    assert_eq!(st, 400, "{body}");
+    let (st, _) = h
+        .call(
+            "PUT",
+            &role,
+            Some(&admin),
+            Some(json!({"role_name": "responder", "customer_codes": [acme]})),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let changes = format!(
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'user.role_change' AND entity_id = '{new_name}'"
+    );
+    assert_eq!(wait_count(&h, &changes, 2).await, 2);
+    let (_, body) = h
+        .call("GET", "/api/auth/me/customers", Some(&analyst), None)
+        .await;
+    assert_eq!(
+        body,
+        json!({"success": true, "customer_codes": [acme], "scope": "assigned"})
+    );
+    let (_, body) = h
+        .call("GET", "/api/auth/me/customers", Some(&admin), None)
+        .await;
+    assert_eq!(
+        body,
+        json!({"success": true, "customer_codes": ["*"], "scope": "deployment"})
+    );
+
+    // --- passwords --------------------------------------------------------------
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/auth/reset-password",
+            Some(&admin),
+            Some(json!({"username": new_name, "new_password": "Changed1!x"})),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let (st, _) = h.login("/api/auth/token", &new_name, "Changed1!x").await;
+    assert_eq!(st, 200);
+    let mine = h.token(&new_name, "responder");
+    let (st, body) = h
+        .call("POST", "/api/auth/reset-password/me", Some(&mine),
+              Some(json!({"username": new_name, "current_password": "wrong", "new_password": "Changed2!x"})))
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (400, "Current password is incorrect".into())
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/reset-password/me",
+            Some(&mine),
+            Some(json!({"username": format!("analyst{s}"), "new_password": "Changed2!x"})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (401, "Invalid token. Username does not match.".into())
+    );
+    let (st, _) = h
+        .call("POST", "/api/auth/reset-password/me", Some(&mine),
+              Some(json!({"username": new_name, "current_password": "Changed1!x", "new_password": "Changed2!x"})))
+        .await;
+    assert_eq!(st, 200);
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/login",
+            None,
+            Some(json!({"username": new_name, "password": "Changed2!x"})),
+        )
+        .await;
+    assert_eq!(st, 200);
+    let keys: Vec<&str> = body
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(keys, ["token", "message", "success"]);
+    let claims = h
+        .jwt
+        .decode_claims(body["token"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(
+        claims["exp"].as_i64().unwrap() - claims["iat"].as_i64().unwrap(),
+        86_400
+    );
+    // The seeded users' password is not a bcrypt hash: bcrypt's error escapes.
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/auth/login",
+            None,
+            Some(json!({"username": format!("analyst{s}"), "password": "x"})),
+        )
+        .await;
+    assert_eq!((st.as_u16(), msg(&body)), (400, "Invalid salt".into()));
+
+    // --- delete ----------------------------------------------------------------------
+    let (st, body) = h
+        .call("DELETE", "/api/auth/delete/999999999", Some(&admin), None)
+        .await;
+    assert_eq!((st.as_u16(), msg(&body)), (404, "User not found.".into()));
+    let tag = h
+        .exec(&format!(
+            "INSERT INTO incident_management_alerttag (tag) VALUES ('t{s}')"
+        ))
+        .await;
+    h.exec(&format!(
+        "INSERT INTO user_tag_access (user_id, tag_id, created_at) VALUES ({new_id}, {tag}, UTC_TIMESTAMP())"
+    ))
+    .await;
+    let (st, body) = h
+        .call(
+            "DELETE",
+            &format!("/api/auth/delete/{new_id}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (500, "Error deleting user".into())
+    );
+    h.exec(&format!(
+        "DELETE FROM user_tag_access WHERE user_id = {new_id}"
+    ))
+    .await;
+    let (st, body) = h
+        .call(
+            "DELETE",
+            &format!("/api/auth/delete/{new_id}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"message": "User deleted successfully.", "success": true})
+        )
+    );
+    let left = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM user_customer_access WHERE user_id = {new_id}"
+        ))
+        .await;
+    assert_eq!(left, 0);
+    let deleted = format!(
+        "SELECT COUNT(*) FROM audit_log WHERE action = 'user.delete' AND entity_id = '{new_name}'"
+    );
+    assert_eq!(wait_count(&h, &deleted, 1).await, 1);
 }
 
 #[tokio::test]

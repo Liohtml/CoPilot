@@ -633,6 +633,77 @@ impl Validator {
         }
     }
 
+    /// Required `EmailStr` field: the normalized address (`crate::email`).
+    pub fn req_email(&mut self, obj: &Map<String, Value>, at: &Loc, name: &str) -> String {
+        let l = child(at, name);
+        match obj.get(name) {
+            None => {
+                self.missing(l);
+                String::new()
+            }
+            Some(Value::String(s)) => match crate::email::validate_email(s) {
+                Ok(email) => email,
+                Err(message) => {
+                    self.push("value_error", l, message);
+                    String::new()
+                }
+            },
+            Some(_) => {
+                self.push("string_type", l, "Input should be a valid string");
+                String::new()
+            }
+        }
+    }
+
+    /// An `int`-valued `Enum` field with a default when absent: lax integer
+    /// coercion, and any failure (`"abc"`, `null`, a value not in the enum)
+    /// is pydantic's single `enum` error.
+    pub fn int_enum_or(
+        &mut self,
+        obj: &Map<String, Value>,
+        at: &Loc,
+        name: &str,
+        allowed: &[i64],
+        default: i64,
+    ) -> i64 {
+        let Some(v) = obj.get(name) else {
+            return default;
+        };
+        let l = child(at, name);
+        let mut scratch = Validator::new();
+        match scratch.check_int(&l, v, IntRules::default()) {
+            Some(n) if allowed.contains(&n) => n,
+            _ => {
+                let names: Vec<String> = allowed.iter().map(ToString::to_string).collect();
+                let expected = match names.split_last() {
+                    Some((last, [])) => last.clone(),
+                    Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+                    None => String::new(),
+                };
+                self.push("enum", l, format!("Input should be {expected}"));
+                default
+            }
+        }
+    }
+
+    /// The strings of a `List[str]` value at `at` (`list_type`, then
+    /// `string_type` per item).
+    pub fn str_items(&mut self, value: &Value, at: &Loc) -> Vec<String> {
+        let Value::Array(items) = value else {
+            self.push("list_type", at.clone(), "Input should be a valid list");
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(items.len());
+        for (i, item) in items.iter().enumerate() {
+            let mut il = at.clone();
+            il.push(LocPart::Index(i));
+            if let Some(s) = self.check_str(&il, item, StrRules::any()) {
+                out.push(s);
+            }
+        }
+        out
+    }
+
     /// A list field; `None` absent/`null` handling is the caller's choice via
     /// `required`. Returns the items with their locations.
     pub fn list<'a>(

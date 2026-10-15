@@ -107,6 +107,29 @@ impl JsonBody {
     }
 }
 
+impl JsonBody {
+    /// Validate a body that is not a model (`List[str]`, …): `read` gets the
+    /// value — `null` for a body sent without a JSON content type, which no
+    /// such type accepts — and its location.
+    pub fn value<T>(
+        &self,
+        read: impl FnOnce(&mut Validator, &Value, &Loc) -> T,
+    ) -> Result<T, ApiError> {
+        let mut v = Validator::new();
+        let root = body_loc();
+        let out = match self {
+            Self::Missing => {
+                v.missing(root);
+                None
+            }
+            Self::NotJson => Some(read(&mut v, &Value::Null, &root)),
+            Self::Value(value) => Some(read(&mut v, value, &root)),
+        };
+        v.finish()?;
+        out.ok_or_else(|| ApiError::internal("JsonBody::value: missing body without errors"))
+    }
+}
+
 fn content_type(req: &Request) -> Option<String> {
     req.headers()
         .get(http::header::CONTENT_TYPE)

@@ -98,6 +98,20 @@ fn login_event(
         .source_ip(ip)
 }
 
+/// `get_role`: the role name behind a user's `role_id` (a user without one
+/// is an `AttributeError` in Python — a 500).
+pub async fn role_name(
+    st: &IdentityState,
+    username: &str,
+    role_id: Option<i32>,
+) -> Result<String, ApiError> {
+    let role_id =
+        role_id.ok_or_else(|| ApiError::internal(format!("user {username} has no role")))?;
+    users::role_name(&st.ctx.db, role_id)
+        .await?
+        .ok_or_else(|| ApiError::internal(format!("role {role_id} not found")))
+}
+
 /// `encode_token` for a user, with the `customer_codes` claim for a
 /// `customer_user`. Returns the token and the user's first customer code.
 pub async fn session_token(
@@ -115,12 +129,7 @@ pub async fn session_token(
     } else {
         (None, None)
     };
-    // `get_role`: a user without a role row is an AttributeError in Python.
-    let role_id =
-        role_id.ok_or_else(|| ApiError::internal(format!("user {username} has no role")))?;
-    let role = users::role_name(&st.ctx.db, role_id)
-        .await?
-        .ok_or_else(|| ApiError::internal(format!("role {role_id} not found")))?;
+    let role = role_name(st, username, role_id).await?;
     let token = st
         .ctx
         .jwt

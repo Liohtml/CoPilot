@@ -8,7 +8,8 @@
 //!                      │ GET /api/customers/*   → copilot-customers           │
 //!                      │ GET /api/healthcheck/* → copilot-healthchecks        │
 //!                      │ /api/version/*, /api/audit/* → copilot-platform      │
-//!                      │ /api/auth/token*, /refresh, /2fa/*                   │
+//!                      │ /api/auth/token*, /refresh, /2fa/*, users, /login,   │
+//!                      │ /register, /reset-password*, /me/customers           │
 //!                      │                    → copilot-identity                │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
@@ -56,6 +57,12 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/token",
     "GET /api/auth/refresh",
     "/api/auth/2fa",
+    "/api/auth/register",
+    "POST /api/auth/login",
+    "/api/auth/users",
+    "/api/auth/reset-password",
+    "DELETE /api/auth/delete",
+    "GET /api/auth/me/customers",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -70,6 +77,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::customers::REQUIREMENTS);
     all.extend_from_slice(copilot_db::agents::REQUIREMENTS);
     all.extend_from_slice(copilot_db::totp::REQUIREMENTS);
+    all.extend_from_slice(copilot_db::users::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -203,8 +211,8 @@ impl App {
                 copilot_platform::version_router(platform.clone()),
             )
             .nest("/api/audit", copilot_platform::audit_router(platform))
-            // Only the token and 2FA routes are ported; the rest of `/auth`
-            // (users, SSO, passkeys, …) falls through to the legacy proxy.
+            // Login, 2FA and user management are ported; the rest of `/auth`
+            // (SSO, passkeys, security admin) falls through to the legacy proxy.
             .nest("/api/auth", copilot_identity::router(self.identity.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))

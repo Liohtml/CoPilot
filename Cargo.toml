@@ -85,6 +85,10 @@ cbc = { version = "0.1", features = ["alloc"] }
 sha1 = "0.10"
 # pyotp compares codes after NFKC normalisation.
 unicode-normalization = "0.1"
+# EmailStr (email-validator): general categories and UTS #46, from the ICU data
+# `url` already ships.
+icu_properties = "2.1"
+idna = "1"
 # The 2FA enrolment QR code, rendered to PNG without an image stack.
 qrcode = { version = "0.14", default-features = false }
 miniz_oxide = "0.9"

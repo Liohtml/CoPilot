@@ -11,6 +11,11 @@
 //! | `GET /api/auth/2fa/status`, `POST /2fa/setup` | `routes/totp.py` | admin, analyst, customer_user |
 //! | `POST /2fa/verify-setup`, `DELETE /2fa/disable`, `POST /2fa/backup-codes/regenerate` | `routes/totp.py` | admin, analyst, customer_user |
 //! | `POST /api/auth/2fa/validate` | `validate_2fa_login` | the 2FA temp token |
+//! | `POST /api/auth/register`, `/reset-password`, `DELETE /delete/{id}`, `PUT /users/{id}/role/by-name`, `GET`/`POST /users/{id}/customers` | `routes/auth.py`, `routes/customer_users.py` | admin |
+//! | `GET /api/auth/users`, `/users/{id}` | `get_users`, `get_user_route` | analyst, admin |
+//! | `POST /api/auth/reset-password/me` | `reset_password_me` | analyst, admin, customer_user |
+//! | `GET /api/auth/me/customers` | `get_my_customer_access` | `get_current_user` |
+//! | `POST /api/auth/login` (deprecated, JSON) | `login` | none |
 //!
 //! Tokens are the ones Python issues (`copilot_auth::jwt`): a session token
 //! from either backend works on both. The 2FA secrets stay readable by both
@@ -18,8 +23,9 @@
 //! together because the brute-force counter ([`limiter`]) lives in memory:
 //! split across two processes it would count half the guesses.
 //!
-//! Module map: [`schema`] (forms, bodies, responses), [`services`] (login,
-//! 2FA), [`routes`], [`qr`] (the enrolment QR code), [`limiter`].
+//! Module map: [`schema`] (login and 2FA shapes), [`users_schema`] (user
+//! management shapes), [`services`] (login, 2FA, users), [`routes`], [`qr`]
+//! (the enrolment QR code), [`limiter`].
 
 #![warn(missing_docs)]
 
@@ -28,6 +34,7 @@ pub mod qr;
 pub mod routes;
 pub mod schema;
 pub mod services;
+pub mod users_schema;
 
 use std::sync::Arc;
 

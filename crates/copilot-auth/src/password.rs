@@ -22,6 +22,15 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
     bcrypt::verify(truncated(password), hash).unwrap_or(false)
 }
 
+/// The `ValueError` bcrypt 5 raises for a stored hash it cannot read.
+pub const INVALID_SALT: &str = "Invalid salt";
+
+/// `AuthHandler.verify_password` where Python lets bcrypt's error escape (it
+/// becomes a 400 carrying [`INVALID_SALT`]): `Err` for an unreadable hash.
+pub fn check_password(password: &str, hash: &str) -> Result<bool, &'static str> {
+    bcrypt::verify(truncated(password), hash).map_err(|_| INVALID_SALT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -34,6 +43,8 @@ mod tests {
         assert!(!verify_password("Admin", python));
         // A hash we cannot parse must never count as a match.
         assert!(!verify_password("admin", "not-a-hash"));
+        assert_eq!(check_password("admin", python), Ok(true));
+        assert_eq!(check_password("admin", "x"), Err(INVALID_SALT));
     }
 
     #[test]

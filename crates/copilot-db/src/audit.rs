@@ -2,7 +2,8 @@
 //!
 //! - [`DbAuditSink`] — `record_audit_event`: its own short transaction, after
 //!   the caller's commit, spawned so the request never waits on it; failures
-//!   are logged and swallowed. Over-long fields are cut to the column widths
+//!   are logged and swallowed. An absent before/after value is JSON `null`,
+//!   as SQLAlchemy writes it. Over-long fields are cut to the column widths
 //!   (the Python helper loses the whole event instead).
 //! - [`insert_error_log`] — the `log_entries` row the Python exception
 //!   handlers write for every handled error (`Logger.log_error`): event type
@@ -39,8 +40,13 @@ pub async fn insert_audit_record(db: &Db, r: AuditRecord) -> Result<(), DbError>
     .bind(cut(r.entity_type, 128))
     .bind(cut(r.entity_id, 256))
     .bind(r.result.as_str())
-    .bind(r.old_value.map(sqlx::types::Json))
-    .bind(r.new_value.map(sqlx::types::Json))
+    // SQLAlchemy's `JSON` column stores `None` as JSON `null`, not SQL NULL.
+    .bind(sqlx::types::Json(
+        r.old_value.unwrap_or(serde_json::Value::Null),
+    ))
+    .bind(sqlx::types::Json(
+        r.new_value.unwrap_or(serde_json::Value::Null),
+    ))
     .bind(cut(r.source_ip, 64))
     .bind(cut(r.details, 5024))
     .execute(db.pool())

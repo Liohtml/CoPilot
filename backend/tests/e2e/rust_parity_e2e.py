@@ -145,6 +145,7 @@ def build_python_app():
     from app.ai_analyst.routes.ai_analyst import ai_analyst_router
     from app.audit.routes.audit import audit_router
     from app.auth.routes.auth import auth_router
+    from app.auth.routes.customer_users import customer_users_router
     from app.auth.routes.totp import totp_router
     from app.connectors.talon.routes.talon import talon_router
     from app.customer_portal.routes.ai_reports import customer_portal_ai_reports_router
@@ -164,6 +165,7 @@ def build_python_app():
     api.include_router(version_router, prefix="/version")
     api.include_router(audit_router, prefix="/audit")
     api.include_router(auth_router, prefix="/auth")
+    api.include_router(customer_users_router, prefix="/auth")
     api.include_router(totp_router, prefix="/auth")
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
@@ -1181,6 +1183,260 @@ async def main():
             tk0,
             {"py": {"code": pyotp.TOTP(r1.json()["secret"]).now()}, "rs": {"code": pyotp.TOTP(r2.json()["secret"]).now()}},
         )
+
+    # --- Phase 2: user management ------------------------------------------------------
+    print("\n=== auth: user management ===")
+    reg = {"py": f"par_reg_py{SFX}", "rs": f"par_reg_rs{SFX}"}
+    sched, nobody_role, bad_hash = f"par_sched{SFX}", f"par_norole{SFX}", f"par_xhash{SFX}"
+    async with AsyncSession(async_engine) as s_:
+        for name, role, pw in ((sched, 3, pw_hash), (nobody_role, None, pw_hash), (bad_hash, 2, "x")):
+            await s_.execute(
+                text(
+                    "INSERT INTO `user` (username, password, email, created_at, role_id) "
+                    "VALUES (:n, :p, 'p@example.com', UTC_TIMESTAMP(), :r)",
+                ),
+                {"n": name, "p": pw, "r": role},
+            )
+        await s_.commit()
+
+    async def user_id(name):
+        async with AsyncSession(async_engine) as s_:
+            return (await s_.execute(text("SELECT id FROM `user` WHERE username = :n"), {"n": name})).scalar_one()
+
+    admin_id = await user_id(ADMIN)
+    analyst_id = await user_id(ANALYST)
+    U = "/api/auth/users"
+    await same("users: list (admin)", "GET", f"{U}?search={SFX}", t_admin)
+    await same("users: list (analyst)", "GET", f"{U}?search={SFX}", t_analyst)
+    await same("users: list, limit", "GET", f"{U}?search={SFX}&limit=2", t_admin)
+    await same("users: list, wildcard search", "GET", f"{U}?search=par%25analyst{SFX}", t_admin)
+    await same("users: list, limit=0", "GET", f"{U}?limit=0", t_admin)
+    await same("users: list, limit=abc", "GET", f"{U}?limit=abc", t_admin)
+    await same("users: list as portal user", "GET", U, t_portal)
+    await same("users: list without token", "GET", U)
+    await same("users: one", "GET", f"{U}/{analyst_id}", t_analyst)
+    await same("users: one without a role", "GET", f"{U}/{await user_id(nobody_role)}", t_admin)
+    await same("users: unknown", "GET", f"{U}/999999999", t_admin)
+    await same("users: id parsing", "GET", f"{U}/abc", t_admin)
+    await same("users: customers", "GET", f"{U}/{analyst_id}/customers", t_admin)
+    await same("users: customers of an unknown user", "GET", f"{U}/999999999/customers", t_admin)
+    await same("users: customers as analyst", "GET", f"{U}/{analyst_id}/customers", t_analyst)
+    await same("me/customers: admin", "GET", "/api/auth/me/customers", t_admin)
+    await same("me/customers: analyst", "GET", "/api/auth/me/customers", t_analyst)
+    await same("me/customers: portal user", "GET", "/api/auth/me/customers", t_portal)
+    await same("me/customers: scheduler", "GET", "/api/auth/me/customers", token(sched, ["scheduler"]))
+    await same("me/customers: user without a role", "GET", "/api/auth/me/customers", token(nobody_role, ["analyst"]))
+    await same("me/customers: no token", "GET", "/api/auth/me/customers")
+
+    R = "/api/auth/register"
+
+    def new_user(**extra):
+        return {"username": f"par_new{SFX}", "password": "Passw0rd!x", "email": f"new{SFX}@example.com", **extra}
+
+    await same("register: analyst without customers", "POST", R, t_admin, new_user())
+    await same("register: unknown and wrong-case codes", "POST", R, t_admin, new_user(customer_codes=[CUST_A.lower(), "nope"]))
+    await same("register: admin with customers", "POST", R, t_admin, new_user(role_id=1, customer_codes=[CUST_A]))
+    await same("register: taken email", "POST", R, t_admin, new_user(email="p@example.com", customer_codes=[CUST_A]))
+    await same("register: taken username", "POST", R, t_admin, new_user(username=ADMIN, customer_codes=[CUST_A]))
+    await same("register: username differs only in case", "POST", R, t_admin, new_user(username=ADMIN.upper(), email="zz" + SFX + "@x.io"))
+    await same(
+        "register: invalid fields",
+        "POST",
+        R,
+        t_admin,
+        {"password": "short", "email": "a@b.local", "role_id": "admin", "customer_codes": "A"},
+    )
+    await same("register: password too long", "POST", R, t_admin, new_user(password="Aa1!" * 19, customer_codes=[CUST_A]))
+    for label, email in (
+        ("display name (accepted, then refused for no customer)", "Name <x@y.com>"),
+        ("reserved domain", "x@y.test"),
+        ("no period", "x@y"),
+    ):
+        await same(f"register: email with a {label}", "POST", R, t_admin, new_user(email=email))
+    await same("register: as analyst", "POST", R, t_analyst, new_user(customer_codes=[CUST_A]))
+    await same("register: no body", "POST", R, t_admin)
+
+    for k in reg:
+        py_users[reg["py"]] = rs_users[reg["rs"]] = "<user>"
+    emails = {"py": f"Reg.Py{SFX}@EXAMPLE.com", "rs": f"Reg.Rs{SFX}@EXAMPLE.com"}
+    py_users[f"Reg.Py{SFX}"] = rs_users[f"Reg.Rs{SFX}"] = "<local>"
+    await pair(
+        "register: a responder",
+        "POST",
+        R,
+        {"py": t_admin, "rs": t_admin},
+        {
+            k: {"username": reg[k], "password": "Passw0rd!x", "email": emails[k], "role_id": "5", "customer_codes": [f" {CUST_A} ", CUST_A]}
+            for k in reg
+        },
+    )
+    ids = {k: await user_id(v) for k, v in reg.items()}
+    async with AsyncSession(async_engine) as s_:
+        rows = {
+            k: (
+                await s_.execute(
+                    text(
+                        "SELECT u.email, u.role_id, GROUP_CONCAT(a.customer_code) FROM `user` u "
+                        "LEFT JOIN user_customer_access a ON a.user_id = u.id WHERE u.id = :i GROUP BY u.id",
+                    ),
+                    {"i": ids[k]},
+                )
+            ).one()
+            for k in ids
+        }
+    check(
+        "register: both store the same normalized user",
+        norm(list(rows["py"]), py_users) == norm(list(rows["rs"]), rs_users),
+        f"{rows}",
+    )
+
+    def mask_ids(value):
+        if isinstance(value, dict):
+            return {k: mask_ids(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [mask_ids(v) for v in value]
+        if isinstance(value, int) and not isinstance(value, bool) and value in ids.values():
+            return "<id>"
+        if isinstance(value, str):
+            return value.replace(str(ids["py"]), "<id>").replace(str(ids["rs"]), "<id>")
+        return value
+
+    def id_shape(r, names):
+        return norm(mask_ids(body_of(r)), names)
+
+    tok_reg = {k: t_admin for k in reg}
+    RB = {k: f"{U}/{ids[k]}/role/by-name" for k in reg}
+
+    async def pair_paths(name, method, paths, bodies=None, toks=None, shape=id_shape):
+        toks, bodies = toks or tok_reg, bodies or {}
+        r1 = await send(py, method, paths["py"], toks["py"], bodies.get("py"), None, None)
+        r2 = await send(rs, method, paths["rs"], toks["rs"], bodies.get("rs"), None, None)
+        b1, b2 = shape(r1, py_users), shape(r2, rs_users)
+        check(
+            f"{name} [{r1.status_code}]",
+            r1.status_code == r2.status_code and b1 == b2,
+            f"python {r1.status_code} {json.dumps(b1)[:600]}\n        rust   {r2.status_code} {json.dumps(b2)[:600]}",
+        )
+        return r1, r2
+
+    both_bodies = lambda b: {"py": b, "rs": b}  # noqa: E731
+    await pair_paths("role: unknown role", "PUT", RB, both_bodies({"role_name": "wizard"}))
+    await pair_paths("role: to Admin, customers kept", "PUT", RB, both_bodies({"role_name": "Admin"}))
+    await pair_paths("role: admin with customers", "PUT", RB, both_bodies({"role_name": "admin", "customer_codes": [CUST_A]}))
+    await pair_paths("role: responder with none", "PUT", RB, both_bodies({"role_name": "responder", "customer_codes": []}))
+    await pair_paths("role: analyst, unknown code", "PUT", RB, both_bodies({"role_name": "analyst", "customer_codes": ["nope"]}))
+    await pair_paths("role: analyst with customers", "PUT", RB, both_bodies({"role_name": "ANALYST", "customer_codes": [CUST_B, CUST_A]}))
+    await pair_paths("role: customer_user", "PUT", RB, both_bodies({"role_name": "customer_user", "customer_codes": None}))
+    await same("role: unknown user", "PUT", f"{U}/999999999/role/by-name", t_admin, {"role_name": "admin"})
+    await same("role: missing role_name", "PUT", f"{U}/{analyst_id}/role/by-name", t_admin, {})
+    await same("role: as analyst", "PUT", f"{U}/{analyst_id}/role/by-name", t_analyst, {"role_name": "admin"})
+
+    CB = {k: f"{U}/{ids[k]}/customers" for k in reg}
+    await pair_paths("customers: replace (portal user, duplicates)", "POST", CB, both_bodies([CUST_B, f" {CUST_B}", CUST_A]))
+    await pair_paths("customers: empty list for a portal user", "POST", CB, both_bodies([]))
+    await pair_paths("customers: not a list", "POST", CB, both_bodies({"codes": [CUST_A]}))
+    await pair_paths("customers: not strings", "POST", CB, both_bodies([1, None]))
+    await pair_paths("customers: unknown code", "POST", CB, both_bodies([CUST_A, "nope"]))
+    await pair_paths("customers: read back", "GET", CB)
+    await same("customers: unknown user", "POST", f"{U}/999999999/customers", t_admin, [CUST_A])
+    await same("customers: analyst needs one", "POST", f"{U}/{analyst_id}/customers", t_admin, [])
+    await same("customers: admin gets none", "POST", f"{U}/{admin_id}/customers", t_admin, [CUST_A])
+
+    P = "/api/auth/reset-password"
+    await pair("password: admin reset", "POST", P, tok_reg, {k: {"username": reg[k], "new_password": "Changed1!x"} for k in reg})
+    await same("password: admin reset, unknown user", "POST", P, t_admin, {"username": f"ghost{SFX}", "new_password": "Changed1!x"})
+    await same("password: admin reset, too short", "POST", P, t_admin, {"username": ADMIN, "new_password": "x"})
+    await same("password: admin reset as analyst", "POST", P, t_analyst, {"username": ADMIN, "new_password": "Changed1!x"})
+    mine = {k: token(v, ["customer_user"]) for k, v in reg.items()}
+    PM = f"{P}/me"
+    await pair(
+        "password: self, wrong current",
+        "POST",
+        PM,
+        mine,
+        {k: {"username": reg[k], "current_password": "no", "new_password": "Changed2!x"} for k in reg},
+    )
+    await pair("password: self, someone else", "POST", PM, mine, {k: {"username": ANALYST, "new_password": "Changed2!x"} for k in reg})
+    await pair(
+        "password: self, unknown user",
+        "POST",
+        PM,
+        mine,
+        {k: {"username": f"ghost{SFX}", "new_password": "Changed2!x"} for k in reg},
+    )
+    await pair(
+        "password: self service",
+        "POST",
+        PM,
+        mine,
+        {k: {"username": reg[k], "current_password": "Changed1!x", "new_password": "Changed2!x"} for k in reg},
+    )
+    await pair(
+        "password: self, case-insensitive lookup",
+        "POST",
+        PM,
+        mine,
+        {k: {"username": reg[k].upper(), "new_password": "Changed2!x"} for k in reg},
+    )
+    await same(
+        "password: self, unreadable stored hash",
+        "POST",
+        PM,
+        token(bad_hash, ["analyst"]),
+        {"username": bad_hash, "current_password": "x", "new_password": "Changed2!x"},
+    )
+    await same("password: self as scheduler", "POST", PM, token(sched, ["scheduler"]), {"username": sched, "new_password": "Changed2!x"})
+
+    L = "/api/auth/login"
+    await pair(
+        "legacy login: portal user",
+        "POST",
+        L,
+        bodies={k: {"username": reg[k], "password": "Changed2!x"} for k in reg},
+        shape=lambda r, n: norm({**body_of(r), "token": claims_of(body_of(r)["token"])} if r.status_code == 200 else body_of(r), n),
+    )
+    r1, r2 = await both("POST", L, None, {"username": ADMIN, "password": "Pa55word!"})
+    legacy = [{**r.json(), "token": claims_of(r.json()["token"])} if r.status_code == 200 else r.json() for r in (r1, r2)]
+    check(f"legacy login: admin [{r1.status_code}]", r1.status_code == r2.status_code == 200 and legacy[0] == legacy[1], json.dumps(legacy))
+    await same("legacy login: wrong password", "POST", L, None, {"username": ANALYST, "password": "nope"})
+    await same("legacy login: unknown user", "POST", L, None, {"username": f"ghost{SFX}", "password": "nope"})
+    await same("legacy login: unreadable stored hash", "POST", L, None, {"username": bad_hash, "password": "x"})
+    await same("legacy login: missing field", "POST", L, None, {"username": ADMIN})
+    await same_raw("legacy login: form body", "POST", L, None, login_form(ADMIN), form_ct)
+
+    D = "/api/auth/delete"
+    async with AsyncSession(async_engine) as s_:
+        r = await s_.execute(text("INSERT INTO incident_management_alerttag (tag) VALUES (:t)"), {"t": f"par_del{SFX}"})
+        for k in ids:
+            await s_.execute(
+                text("INSERT INTO user_tag_access (user_id, tag_id, created_at) VALUES (:u, :t, UTC_TIMESTAMP())"),
+                {"u": ids[k], "t": r.lastrowid},
+            )
+        await s_.commit()
+    DP = {k: f"{D}/{ids[k]}" for k in ids}
+    await pair_paths("delete: a user other rows still point at", "DELETE", DP)
+    async with AsyncSession(async_engine) as s_:
+        await s_.execute(text("DELETE FROM user_tag_access WHERE user_id IN (:a, :b)"), {"a": ids["py"], "b": ids["rs"]})
+        await s_.commit()
+    await pair_paths("delete: a user", "DELETE", DP)
+    await pair_paths("delete: again", "DELETE", DP)
+    await same("delete: the built-in admin", "DELETE", f"{D}/1", t_admin)
+    await same("delete: id parsing", "DELETE", f"{D}/abc", t_admin)
+    await same("delete: as analyst", "DELETE", f"{D}/{analyst_id}", t_analyst)
+
+    await asyncio.sleep(0.5)  # the Rust service writes audit rows from a spawned task
+    async with AsyncSession(async_engine) as s_:
+        rows = (
+            await s_.execute(
+                text(
+                    "SELECT entity_id, action, actor_username, result, details, old_value, new_value FROM audit_log "
+                    "WHERE action LIKE 'user.%' AND entity_id IN (:a, :b) ORDER BY id",
+                ),
+                {"a": reg["py"], "b": reg["rs"]},
+            )
+        ).all()
+    events = {k: [norm([str(x) for x in r[1:]], py_users if k == "py" else rs_users) for r in rows if r[0] == reg[k]] for k in reg}
+    check(f"user audit events match ({len(events['py'])} each)", events["py"] and events["py"] == events["rs"], json.dumps(events)[:1200])
 
     # --- Deliberate differences ------------------------------------------------------
     print("\n=== differences by design ===")

@@ -9,6 +9,7 @@
 //! - [`auth`]       — `require_any_scope` / `get_current_user(scopes=…)` extractors
 //! - [`body`]       — JSON/form bodies read before the dependencies, like FastAPI
 //! - [`form`]       — Starlette's form parsing (urlencoded, multipart)
+//! - [`email`]      — pydantic's `EmailStr` (email-validator)
 //! - [`pyjson`]     — where CPython's `json.loads` reports a malformed body
 //! - [`query`]      — query strings, `customer_codes_query`
 //! - [`context`]    — [`AppContext`], the shared dependencies
@@ -35,6 +36,7 @@ pub mod auth;
 pub mod body;
 pub mod context;
 pub mod datetime;
+pub mod email;
 pub mod error;
 pub mod form;
 pub mod middleware;
@@ -44,8 +46,8 @@ pub mod respond;
 pub mod validate;
 
 pub use auth::{
-    AdminOnly, AdminOrAnalyst, AnyPortalOrSoc, AnyUser, Authorized, ClientIp, CurrentUser,
-    ScopeSet, ScopedUser,
+    AdminOnly, AdminOrAnalyst, AnalystAdminOrPortal, AnalystOrAdmin, AnyPortalOrSoc, AnyUser,
+    Authorized, ClientIp, CurrentUser, ScopeSet, ScopedUser,
 };
 pub use body::{Form, JsonBody, WithJson};
 pub use context::{AppContext, AppDeps};
