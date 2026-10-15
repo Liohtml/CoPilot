@@ -35,6 +35,24 @@ pub fn is_valid_customer_code(code: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
+/// `triggered_by` values: what `ai_analyst_job.triggered_by` accepts and
+/// what Talon's `POST /investigate` validates against.
+pub const TRIGGERED_BY_VALUES: [&str; 3] = ["manual", "scheduled", "webhook"];
+
+/// A human started the investigation (analyst, replay, customer portal).
+pub const TRIGGERED_MANUAL: &str = "manual";
+
+/// Talon's investigation-id rule: `[A-Za-z0-9_.:-]{1,128}`, not `.`/`..`.
+/// Checked before an id goes into a URL path.
+pub fn is_valid_investigation_id(id: &str) -> bool {
+    (1..=128).contains(&id.len())
+        && id != "."
+        && id != ".."
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':'))
+}
+
 /// Talon's template-name rule: a plain `.txt` filename of
 /// `[A-Za-z0-9._-]`, at most 128 bytes, no `..`, not hidden.
 pub fn is_valid_template_name(name: &str) -> bool {
@@ -55,9 +73,9 @@ pub struct InvestigateRequest {
     pub alert_id: i64,
     /// The alert's customer.
     pub customer_code: String,
-    /// `^[A-Za-z0-9_-]{1,32}$`; Talon defaults to `webhook`. CoPilot has
-    /// never sent it, and keeps not sending it until the agent prompt and
-    /// `ai_analyst_job.triggered_by` agree on values.
+    /// One of [`TRIGGERED_BY_VALUES`]; Talon defaults to `webhook`. Talon's
+    /// agent registers the CoPilot job with it (`CreateAiAnalystJobTool`),
+    /// so analyst-started investigations are no longer recorded as webhooks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub triggered_by: Option<String>,
     /// Force a prompt template (replay).
@@ -159,7 +177,7 @@ pub struct SessionResetResponse {
 /// One entry of `GET /status`'s `sessions`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusSession {
-    /// Lane JID.
+    /// Talon's lane session key (`copilot`, `copilot-u-…`), not a JID.
     #[serde(default)]
     pub lane: Option<String>,
     /// CoPilot user id of a per-user lane.
@@ -239,30 +257,54 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn investigate_request_matches_python_payloads() {
-        // investigate_alert(): {"alert_id", "customer_code", "sender"}
+    fn investigate_request_payloads() {
+        // investigate_alert(): Python's {"alert_id", "customer_code", "sender"}
+        // plus the trigger Talon's agent records on the CoPilot job.
         let r = InvestigateRequest {
             alert_id: 42,
             customer_code: "acme".into(),
-            triggered_by: None,
+            triggered_by: Some(TRIGGERED_MANUAL.into()),
             template_override: None,
             sender: "copilot-analyst".into(),
         };
         assert_eq!(
             serde_json::to_string(&r).unwrap(),
-            r#"{"alert_id":42,"customer_code":"acme","sender":"copilot-analyst"}"#
+            r#"{"alert_id":42,"customer_code":"acme","triggered_by":"manual","sender":"copilot-analyst"}"#
         );
         // replay_investigation(): + template_override
         let replay = InvestigateRequest {
             template_override: Some("sysmon_event_1.txt".into()),
             sender: "copilot-replay".into(),
-            ..r
+            ..r.clone()
         };
         assert_eq!(
             serde_json::to_value(&replay).unwrap(),
-            json!({"alert_id": 42, "customer_code": "acme",
+            json!({"alert_id": 42, "customer_code": "acme", "triggered_by": "manual",
                    "template_override": "sysmon_event_1.txt", "sender": "copilot-replay"})
         );
+        // Without a trigger the field is omitted (Talon defaults to webhook).
+        let bare = InvestigateRequest {
+            triggered_by: None,
+            ..r
+        };
+        assert!(
+            !serde_json::to_string(&bare)
+                .unwrap()
+                .contains("triggered_by")
+        );
+        assert!(TRIGGERED_BY_VALUES.contains(&TRIGGERED_MANUAL));
+    }
+
+    #[test]
+    fn investigation_ids_are_path_safe() {
+        assert!(is_valid_investigation_id("copilot-inv-42-1760000000000"));
+        assert!(is_valid_investigation_id("job:1.a_b"));
+        assert!(!is_valid_investigation_id(""));
+        assert!(!is_valid_investigation_id(".."));
+        assert!(!is_valid_investigation_id("a/b"));
+        assert!(!is_valid_investigation_id("a?b"));
+        assert!(!is_valid_investigation_id("a#b"));
+        assert!(!is_valid_investigation_id(&"x".repeat(129)));
     }
 
     #[test]

@@ -9,6 +9,7 @@
 //! | GET | `/status` | Talon's `/status` |
 //! | GET | `/templates` | prompt templates for the replay picker |
 //! | GET | `/jobs/{alert_id}` | database only; **now tenancy-checked** (Python was not) |
+//! | GET | `/jobs/{alert_id}/verdict` | **new**: Talon's structured verdict for the alert's newest Talon-known job; tenancy-checked |
 //!
 //! All routes: `require_any_scope("admin", "analyst")`.
 
@@ -55,6 +56,7 @@ pub fn router(state: TalonState) -> Router {
         .route("/status", get(status))
         .route("/templates", get(templates))
         .route("/jobs/{alert_id}", get(job))
+        .route("/jobs/{alert_id}/verdict", get(verdict))
         .with_state(state)
 }
 
@@ -191,6 +193,22 @@ async fn job(
     let data = services::talon_job(&st.ctx, alert_id).await?;
     Ok(ok(
         "Talon job retrieved successfully",
+        json!({ "data": data }),
+    ))
+}
+
+async fn verdict(
+    auth: Authorized<AdminOrAnalyst>,
+    State(st): State<TalonState>,
+    Path(raw): Path<String>,
+) -> ApiResult {
+    let alert_id = path_int("alert_id", &raw)?;
+    let owner = alerts::alert_customer_code(&st.ctx.db, alert_id).await?;
+    auth.enforce_owned(&st.ctx, owner.as_deref(), &format!("alert {alert_id}"))
+        .await?;
+    let data = services::talon_verdict(&st.ctx, &st.talon, alert_id).await?;
+    Ok(ok(
+        "Talon verdict retrieved successfully",
         json!({ "data": data }),
     ))
 }

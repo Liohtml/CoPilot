@@ -14,8 +14,8 @@ use copilot_web::{ApiError, AppContext, CurrentUser};
 
 use crate::client::{POST_TIMEOUT, TalonConnector, TalonError};
 use crate::contract::{
-    InvestigateRequest, MessageRequest, PalaceForgetRequest, PalaceLessonRequest,
-    SessionResetRequest, StatusResponse, TemplateInfo,
+    InvestigateRequest, Investigation, MessageRequest, PalaceForgetRequest, PalaceLessonRequest,
+    SessionResetRequest, StatusResponse, TRIGGERED_MANUAL, TemplateInfo, is_valid_investigation_id,
 };
 
 /// `ANALYST_SENDER`: what an analyst-initiated investigation is labelled.
@@ -39,7 +39,8 @@ pub fn message_payload(message: &str, sender: &str, user: &CurrentUser) -> Messa
 }
 
 /// `investigate_alert`: queue an investigation; Talon's JSON comes back as
-/// `data`.
+/// `data`. Every caller is a person (analyst or customer portal), so the job
+/// is recorded as `manual`.
 pub async fn investigate_alert(
     talon: &TalonConnector,
     alert_id: i64,
@@ -49,7 +50,7 @@ pub async fn investigate_alert(
     let body = InvestigateRequest {
         alert_id,
         customer_code: customer_code.to_string(),
-        triggered_by: None,
+        triggered_by: Some(TRIGGERED_MANUAL.to_string()),
         template_override: None,
         sender: sender.to_string(),
     };
@@ -81,7 +82,7 @@ pub async fn investigate_alert_for_user(
     investigate_alert(talon, alert_id, customer_code, ANALYST_SENDER).await
 }
 
-/// `replay_investigation`: re-run with a forced template.
+/// `replay_investigation`: re-run with a forced template (`manual`).
 pub async fn replay_investigation(
     talon: &TalonConnector,
     alert_id: i64,
@@ -92,7 +93,7 @@ pub async fn replay_investigation(
     let body = InvestigateRequest {
         alert_id,
         customer_code: customer_code.to_string(),
-        triggered_by: None,
+        triggered_by: Some(TRIGGERED_MANUAL.to_string()),
         template_override: Some(template_override.to_string()),
         sender: sender.to_string(),
     };
@@ -271,4 +272,92 @@ pub async fn talon_job(ctx: &AppContext, alert_id: i64) -> Result<Value, ApiErro
     data.insert("error_message".into(), json!(latest.error_message));
     data.insert("reports".into(), Value::Array(reports));
     Ok(Value::Object(data))
+}
+
+/// How many of an alert's newest jobs are looked up in Talon for a verdict.
+const VERDICT_LOOKUP_JOBS: usize = 5;
+
+/// Talon's structured verdict (`GET /investigations/{id}`) for the newest of
+/// the alert's jobs that Talon knows. Jobs registered by the scheduled sweep
+/// have no Talon investigation and are skipped.
+pub async fn talon_verdict(
+    ctx: &AppContext,
+    talon: &TalonConnector,
+    alert_id: i64,
+) -> Result<Value, ApiError> {
+    let jobs = ai_analyst::jobs_by_alert(&ctx.db, alert_id).await?;
+    if jobs.is_empty() {
+        return Err(ApiError::not_found(format!(
+            "No job found for alert {alert_id}"
+        )));
+    }
+    for job in jobs.iter().take(VERDICT_LOOKUP_JOBS) {
+        if !is_valid_investigation_id(&job.id) {
+            continue;
+        }
+        let Some(raw) = talon
+            .get_opt(&format!("/investigations/{}", job.id))
+            .await
+            .map_err(server_error)?
+        else {
+            continue;
+        };
+        let inv: Investigation = serde_json::from_value(raw).map_err(|e| {
+            ApiError::server_error(format!("Talon returned an invalid investigation: {e}"))
+        })?;
+        // Defense in depth: never hand out a verdict for another alert or
+        // tenant, whatever Talon answers.
+        if inv.id != job.id
+            || inv.alert_id != alert_id.to_string()
+            || inv.customer_code != job.customer_code
+        {
+            return Err(ApiError::server_error(format!(
+                "Talon investigation {} does not match alert {alert_id}",
+                job.id
+            )));
+        }
+        return Ok(verdict_view(&inv));
+    }
+    Err(ApiError::not_found(format!(
+        "No Talon verdict found for alert {alert_id}"
+    )))
+}
+
+/// The fields of a Talon investigation CoPilot hands to its UI.
+fn verdict_view(inv: &Investigation) -> Value {
+    json!({
+        "job_id": inv.id,
+        "alert_id": inv.alert_id,
+        "customer_code": inv.customer_code,
+        "status": inv.status,
+        "triggered_by": inv.triggered_by,
+        "template": inv.template,
+        "verdict": inv.verdict,
+        "error": inv.error,
+        "created_at": inv.created_at,
+        "updated_at": inv.updated_at,
+    })
+}
+
+#[cfg(test)]
+mod verdict_tests {
+    use super::*;
+
+    #[test]
+    fn verdict_view_keeps_talon_fields() {
+        let inv: Investigation = serde_json::from_value(json!({
+            "id": "copilot-inv-42-1", "alert_id": "42", "customer_code": "acme",
+            "triggered_by": "manual", "status": "completed", "template": null,
+            "created_at": "2026-10-15T07:00:00.000Z", "updated_at": "2026-10-15T07:02:00.000Z",
+            "verdict": {"verdict": "true_positive", "severity": "high", "confidence": 0.9},
+            "error": null
+        }))
+        .unwrap();
+        let v = verdict_view(&inv);
+        assert_eq!(v["job_id"], "copilot-inv-42-1");
+        assert_eq!(v["triggered_by"], "manual");
+        assert_eq!(v["verdict"]["verdict"], "true_positive");
+        assert_eq!(v["verdict"]["severity"], "high");
+        assert!(v["error"].is_null());
+    }
 }
