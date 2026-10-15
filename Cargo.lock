@@ -641,6 +641,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-jinja"
+version = "0.2.0"
+dependencies = [
+ "num-bigint-dig",
+ "num-integer",
+ "num-traits",
+ "regex",
+ "serde_json",
+ "unicode-ident",
+]
+
+[[package]]
 name = "copilot-platform"
 version = "0.2.0"
 dependencies = [

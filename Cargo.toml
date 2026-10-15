@@ -27,6 +27,7 @@ copilot-platform = { path = "crates/copilot-platform" }
 copilot-gateway = { path = "crates/copilot-gateway" }
 copilot-identity = { path = "crates/copilot-identity" }
 copilot-webauthn = { path = "crates/copilot-webauthn" }
+copilot-jinja = { path = "crates/copilot-jinja" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }
@@ -98,6 +99,9 @@ crc32fast = "1"
 # operations, without OpenSSL. `num-bigint-dig` is the bignum `rsa` already
 # brings in; RSA verification is done on it directly (`copilot_auth::rsa`).
 num-bigint-dig = "0.8"
+num-integer = "0.1"
+num-traits = "0.2"
+unicode-ident = "1"
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 p384 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 p521 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
