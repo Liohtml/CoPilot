@@ -1,0 +1,98 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
+license = "AGPL-3.0-only"
+repository = "https://github.com/Liohtml/CoPilot"
+authors = ["SOCFortress", "CoPilot contributors"]
+
+# Versions are kept in lock-step with Talon 2.0 (liohtml/talahon) so both
+# workspaces build against the same async runtime, HTTP stack and lint set.
+[workspace.dependencies]
+# --- internal crates ---
+copilot-core = { path = "crates/copilot-core" }
+copilot-db = { path = "crates/copilot-db" }
+copilot-auth = { path = "crates/copilot-auth" }
+copilot-web = { path = "crates/copilot-web" }
+copilot-talon = { path = "crates/copilot-talon" }
+copilot-ai-analyst = { path = "crates/copilot-ai-analyst" }
+copilot-gateway = { path = "crates/copilot-gateway" }
+
+# --- async runtime ---
+tokio = { version = "1.47", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio-stream = { version = "0.1", features = ["sync", "fs"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# --- serialization ---
+serde = { version = "1", features = ["derive"] }
+# preserve_order: responses keep Pydantic's field order.
+serde_json = { version = "1", features = ["preserve_order"] }
+
+# --- errors / logging ---
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+
+# --- time ---
+chrono = { version = "0.4", features = ["serde"] }
+
+# --- storage ---
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "mysql", "chrono", "json", "macros"] }
+
+# --- networking ---
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "http2"] }
+axum = { version = "0.8", features = ["macros"] }
+tower = { version = "0.5", features = ["util", "limit", "timeout"] }
+tower-http = { version = "0.6", features = ["trace", "limit", "cors", "timeout", "compression-gzip"] }
+url = "2"
+bytes = "1"
+http = "1"
+
+# --- text ---
+regex = "1"
+
+# --- crypto / ids ---
+subtle = "2"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+base64 = "0.22"
+rand = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+zeroize = { version = "1", features = ["derive"] }
+bcrypt = "0.17"
+
+# --- cli ---
+clap = { version = "4", features = ["derive", "env"] }
+
+# --- testing ---
+tempfile = "3"
+wiremock = "0.6"
+pretty_assertions = "1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 1

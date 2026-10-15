@@ -1,0 +1,129 @@
+name: Rust
+
+# Same gates as Talon 2.0 (liohtml/talahon .github/workflows/ci.yml), plus the
+# end-to-end suite against MySQL at the Alembic head.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rustfmt.toml"
+      - "clippy.toml"
+      - "backend/alembic/**"
+      - "scripts/check-alembic-head.py"
+      - ".github/workflows/rust.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "backend/alembic/**"
+      - ".github/workflows/rust.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust:
+    name: fmt / clippy / test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+  msrv:
+    name: MSRV (1.85, as Talon)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@1.85.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check
+        run: cargo check --workspace --locked
+
+  e2e:
+    name: end-to-end (MySQL at the Alembic head)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: copilot
+          MYSQL_USER: copilot
+          MYSQL_PASSWORD: copilot
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fixture matches the migrations
+        run: python3 scripts/check-alembic-head.py
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Load schema
+        run: mysql -h 127.0.0.1 -uroot -proot copilot < crates/copilot/tests/fixtures/schema.sql
+
+      - name: End-to-end
+        env:
+          COPILOT_TEST_DATABASE_URL: mysql://copilot:copilot@127.0.0.1:3306/copilot
+        run: cargo test -p copilot --test e2e --locked -- --test-threads=1
+
+  advisories:
+    name: dependency advisories (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories

@@ -733,6 +733,13 @@ class DispatchRequest(BaseModel):
     alert_name: Optional[str] = Field(default=None, description="Original alert title for context in the message.")
 
 
+class BridgedEventResponse(BaseModel):
+    """Answer to POST /notifications/events (the Rust service's hand-off)."""
+
+    success: bool
+    message: str
+
+
 class DispatchOutcome(BaseModel):
     route_id: int
     route_name: str

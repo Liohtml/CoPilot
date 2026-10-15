@@ -1,0 +1,178 @@
+//! Wiring: configuration → dependencies → router.
+//!
+//! ```text
+//!                      ┌─────────────── copilot (Rust, :5000) ───────────────┐
+//! frontend / portal ──►│ /api/ai_analyst/*  → copilot-ai-analyst             │
+//! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
+//!                      │ /_copilot/health                                     │
+//!                      │ anything else      → copilot-gateway ─────────────────► Python backend
+//!                      └──────────────────────────────────────────────────────┘
+//! ```
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::Context;
+use axum::Router;
+use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::middleware::{from_fn, from_fn_with_state};
+use axum::response::{IntoResponse, Response};
+use axum::routing::get;
+use serde_json::json;
+
+use copilot_auth::JwtCodec;
+use copilot_core::config::CopilotConfig;
+use copilot_core::notify::{NoopNotificationSink, SharedNotificationSink};
+use copilot_db::Db;
+use copilot_db::audit::DbAuditSink;
+use copilot_db::connectors::ConnectorCache;
+use copilot_db::schema::{self, TableRequirement};
+use copilot_gateway::{LegacyNotificationSink, LegacyProxy};
+use copilot_talon::{TalonConnector, TalonState};
+use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
+use copilot_web::{ApiError, AppContext, AppDeps};
+
+/// Route prefixes this build answers itself. Everything else is proxied.
+pub const PORTED_PREFIXES: &[&str] = &["/api/ai_analyst", "/api/talon"];
+
+/// While the Python backend can still write `connectors`, its cache
+/// invalidations cannot reach this process; cap how stale a row may get.
+pub const CONNECTOR_TTL_WITH_LEGACY: Duration = Duration::from_secs(60);
+
+/// Every column this build reads or writes.
+pub fn schema_requirements() -> Vec<TableRequirement> {
+    let mut all = schema::CORE_REQUIREMENTS.to_vec();
+    all.extend_from_slice(copilot_db::ai_analyst::REQUIREMENTS);
+    all.push(TableRequirement {
+        table: "scheduled_job_metadata",
+        columns: &["job_id", "last_success", "time_interval", "enabled"],
+    });
+    all
+}
+
+/// The assembled application.
+pub struct App {
+    /// Shared dependencies.
+    pub ctx: AppContext,
+    /// Talon connector (also used by the palace jobs).
+    pub talon: TalonConnector,
+    /// Legacy backend, if configured.
+    pub legacy: Option<LegacyProxy>,
+}
+
+impl App {
+    /// Build the dependencies from configuration and a pool.
+    pub fn new(cfg: &CopilotConfig, db: Db) -> anyhow::Result<Self> {
+        let legacy = cfg
+            .legacy_url
+            .clone()
+            .map(LegacyProxy::new)
+            .transpose()
+            .context("building the legacy backend client")?;
+        let ttl = if legacy.is_some() {
+            cfg.connector_cache_ttl.min(CONNECTOR_TTL_WITH_LEGACY)
+        } else {
+            cfg.connector_cache_ttl
+        };
+        let connectors = ConnectorCache::new(db.clone(), ttl);
+        let notifications: SharedNotificationSink = match &legacy {
+            Some(proxy) => Arc::new(LegacyNotificationSink::new(proxy.clone())),
+            None => Arc::new(NoopNotificationSink),
+        };
+        let verify_tls = std::env::var("TALON_VERIFY_TLS")
+            .map(|v| matches!(v.trim(), "1" | "true" | "True" | "TRUE" | "yes"))
+            .unwrap_or(false);
+        let talon = TalonConnector::new(connectors.clone(), verify_tls)
+            .context("building the Talon client")?;
+        let ctx = AppContext::new(AppDeps {
+            db: db.clone(),
+            jwt: JwtCodec::new(&cfg.jwt_secret),
+            connectors,
+            audit: Arc::new(DbAuditSink::new(db)),
+            notifications,
+            notification_defaults: cfg.notifications.clone(),
+            http: reqwest::Client::new(),
+            log_handled_errors: true,
+        });
+        Ok(Self { ctx, talon, legacy })
+    }
+
+    /// The full router: ported modules, health, and the legacy fallback.
+    pub fn router(&self, max_body_bytes: usize) -> Router {
+        let state = TalonState {
+            ctx: self.ctx.clone(),
+            talon: self.talon.clone(),
+        };
+        let ported = Router::new()
+            .nest("/api/ai_analyst", copilot_ai_analyst::router(state.clone()))
+            .nest("/api/talon", copilot_talon::router(state))
+            .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
+            .layer(from_fn(security_headers))
+            .layer(compression())
+            .layer(cors())
+            .layer(DefaultBodyLimit::max(max_body_bytes));
+        let health = Router::new()
+            .route("/_copilot/health", get(health))
+            .with_state(HealthState {
+                ctx: self.ctx.clone(),
+                legacy: self.legacy.is_some(),
+            });
+        let app = Router::new().merge(ported).merge(health);
+        match &self.legacy {
+            // Unported paths *and* methods go to Python, which answers its
+            // own 404/405 when it does not know them either.
+            Some(proxy) => {
+                let fallback = Router::new()
+                    .fallback(copilot_gateway::proxy_handler)
+                    .with_state(proxy.clone());
+                app.method_not_allowed_fallback({
+                    let proxy = proxy.clone();
+                    move |req: Request| async move { proxy.forward(req).await }
+                })
+                .fallback_service(fallback)
+            }
+            None => app
+                .method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
+                .fallback(root_or_404),
+        }
+    }
+}
+
+/// Without a legacy backend: the Python root greeting, else FastAPI's 404.
+async fn root_or_404(req: Request) -> Response {
+    if req.uri().path() == "/" && req.method() == http::Method::GET {
+        return axum::Json(json!({"message": "CoPilot - We Made It!"})).into_response();
+    }
+    ApiError::RouteNotFound.into_response()
+}
+
+#[derive(Clone)]
+struct HealthState {
+    ctx: AppContext,
+    legacy: bool,
+}
+
+/// Unauthenticated liveness + dependency summary (no secrets).
+async fn health(State(s): State<HealthState>) -> Response {
+    let database = match tokio::time::timeout(Duration::from_secs(3), s.ctx.db.ping()).await {
+        Ok(Ok(())) => "ok",
+        Ok(Err(_)) | Err(_) => "unreachable",
+    };
+    let status = if database == "ok" {
+        http::StatusCode::OK
+    } else {
+        http::StatusCode::SERVICE_UNAVAILABLE
+    };
+    (
+        status,
+        axum::Json(json!({
+            "status": if database == "ok" { "ok" } else { "degraded" },
+            "service": "copilot",
+            "version": env!("CARGO_PKG_VERSION"),
+            "database": database,
+            "legacy_backend": if s.legacy { "configured" } else { "none" },
+            "ported": PORTED_PREFIXES,
+        })),
+    )
+        .into_response()
+}

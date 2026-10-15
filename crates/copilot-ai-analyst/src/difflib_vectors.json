@@ -1,0 +1,77 @@
+[
+[
+"",
+"",
+1.0
+],
+[
+"abc",
+"",
+0.0
+],
+[
+"abcd",
+"bcde",
+0.75
+],
+[
+"dc01 runs sccm patching at 02:00",
+"dc01 runs sccm patches at 02:00 nightly",
+0.8169014084507042
+],
+[
+"the quick brown fox",
+"the quick brown dog",
+0.8947368421052632
+],
+[
+"Ünïcödé text ✓",
+"unicode text ✓",
+0.7142857142857143
+],
+[
+"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxabc",
+"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxabd",
+0.9758064516129032
+],
+[
+"ababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababzz",
+"babababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababazz",
+0.00684931506849315
+],
+[
+"svchost children expected during the sccm window on dc01 and dc02 every night at 02:00 utc; ignore unless parent is not services.exesvchost children expected during the sccm window on dc01 and dc02 every night at 02:00 utc; ignore unless parent is not services.exe",
+"expect svchost children during sccm window on dc01/dc02 nightly 02:00 utc; ignore unless parent isn't services.exeexpect svchost children during sccm window on dc01/dc02 nightly 02:00 utc; ignore unless parent isn't services.exe",
+0.15447154471544716
+],
+[
+"gamma patch powershell alpha beta svchost beta sccm lsass alpha svchost delta alpha beta patch patch beta delta beta svchost patch alpha lsass beta delta",
+"powershell lsass alpha lsass lsass patch alpha delta alpha svchost gamma epsilon patch gamma svchost beta lsass epsilon svchost powershell gamma beta lsass lsass powershell delta sccm beta svchost encoded beta lsass alpha lsass delta dc01 powershell svchost patch sccm dc01 lsass dc01 sccm epsilon",
+0.02666666666666667
+],
+[
+"gamma encoded delta beta lsass epsilon svchost dc01 sccm encoded dc01 epsilon lsass beta beta svchost patch gamma sccm gamma",
+"patch alpha powershell beta svchost lsass sccm sccm encoded sccm lsass dc01 lsass dc01 beta beta epsilon dc01 encoded powershell beta alpha encoded encoded epsilon powershell lsass powershell dc01 epsilon encoded patch powershell sccm alpha dc01",
+0.0975609756097561
+],
+[
+"gamma lsass beta dc01 alpha delta epsilon gamma encoded delta patch patch dc01 beta gamma dc01 patch svchost epsilon gamma patch svchost epsilon encoded patch sccm powershell",
+"delta gamma beta gamma gamma delta powershell delta alpha dc01 lsass gamma epsilon epsilon alpha gamma patch svchost sccm lsass lsass sccm gamma encoded svchost lsass powershell powershell encoded",
+0.4594594594594595
+],
+[
+"dc01 powershell svchost patch patch patch patch beta",
+"powershell patch alpha delta beta delta dc01 gamma beta sccm lsass alpha beta alpha lsass gamma svchost beta sccm lsass alpha beta delta lsass patch gamma powershell epsilon sccm lsass sccm dc01 beta beta dc01",
+0.12260536398467432
+],
+[
+"dc01 dc01 epsilon beta gamma beta encoded sccm encoded epsilon dc01 encoded gamma svchost alpha delta svchost sccm gamma encoded svchost alpha svchost epsilon powershell beta encoded epsilon svchost sccm gamma sccm delta svchost",
+"svchost sccm powershell delta lsass delta delta patch encoded delta delta svchost dc01 sccm encoded alpha alpha epsilon dc01 epsilon delta encoded lsass sccm dc01 encoded sccm sccm beta delta beta delta dc01 delta sccm delta dc01 lsass lsass",
+0.08955223880597014
+],
+[
+"alpha dc01 powershell sccm powershell beta powershell beta patch encoded delta dc01 gamma patch powershell sccm beta encoded patch dc01 patch encoded beta encoded gamma gamma gamma alpha gamma lsass dc01 powershell gamma lsass lsass dc01 powershell sccm gamma svchost svchost gamma alpha alpha encoded powershell beta svchost encoded gamma patch delta delta alpha epsilon delta epsilon svchost",
+"lsass sccm epsilon svchost patch gamma alpha encoded sccm dc01 powershell lsass svchost patch svchost gamma svchost gamma svchost svchost",
+0.2679245283018868
+]
+]

@@ -1,0 +1,30 @@
+# Run the Rust backend in front of the Python one (docs/architecture/RUST_MIGRATION.md).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d
+#
+# copilot-rs takes host port 5000 — the port the frontend, the Customer Portal
+# and Talon already call — answers the ported modules itself and streams every
+# other request to copilot-backend, which keeps running unchanged (migrations,
+# scheduler, all unported routes) but is no longer published on the host.
+# Remove this file from the command line to roll back.
+services:
+    copilot-backend:
+        ports: !reset []
+
+    copilot-rs:
+        image: ghcr.io/socfortress/copilot-rs:latest
+        build:
+            context: .
+            dockerfile: crates/copilot/Dockerfile
+        ports:
+            - "5000:5000"
+        env_file: .env
+        environment:
+            - COPILOT_LEGACY_URL=http://copilot-backend:5000
+            # Opt-in: run the palace-lesson drainer/sweeper here. They only act
+            # while the APScheduler jobs are disabled in the Scheduler UI.
+            - COPILOT_RS_PALACE_JOBS=${COPILOT_RS_PALACE_JOBS:-false}
+        depends_on:
+            - copilot-mysql
+            - copilot-backend
+        restart: always

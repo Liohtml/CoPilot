@@ -6,9 +6,10 @@ Repository orientation for AI coding assistants and human contributors. The note
 
 SOCFortress CoPilot — a "single pane of glass" SOC platform that wraps open-source security tooling (Wazuh, Graylog, Velociraptor, Cortex, Grafana, InfluxDB, Shuffle, Sublime, …) plus many commercial integrations (CrowdStrike, Carbon Black, Defender, Mimecast, Huntress, Bitdefender, Darktrace, Duo, …).
 
-Three independent apps in one repo:
+Three independent apps in one repo, plus the Rust backend that is replacing `backend/` module by module:
 
 - `backend/` — Python 3.11 FastAPI (port 5000) + APScheduler
+- `crates/` — Rust workspace (`copilot` binary): serves the ported modules and proxies everything else to `backend/`; conventions are Talon 2.0's (see "Rust backend" below and `docs/architecture/RUST_MIGRATION.md`)
 - `frontend/` — Vue 3 / Vite SOC-analyst UI (Naive UI, Pinia, Tailwind, pnpm)
 - `customer-portal/` — Vue 3 / Vite end-customer UI (port 3001 in dev, separate build)
 
@@ -42,6 +43,19 @@ alembic revision --autogenerate -m "msg"
 
 `JWT_SECRET` is a hard startup gate (`backend/app/auth/utils.py`) — the app refuses to boot if unset or set to the GHSA-4gxj-hw3c-3x2x default.
 
+### Rust backend (repo root, Rust ≥ 1.85)
+
+```bash
+cargo build --workspace
+cargo test --workspace                                   # unit tests, no services needed
+cargo clippy --workspace --all-targets -- -D warnings    # CI gate (fmt --check too)
+cargo run -p copilot -- doctor                           # config, DB, schema, Talon, legacy backend
+COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13306/copilot \
+  cargo test -p copilot --test e2e -- --test-threads=1   # MySQL at the Alembic head
+MYSQL_PASSWORD=… scripts/rust-parity.sh                  # Rust vs. Python, same DB, compared response by response
+docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d   # Rust in front of Python
+```
+
 ### Frontend / Customer Portal (both pnpm, Node ≥ 18)
 
 ```bash
@@ -66,6 +80,19 @@ pre-commit run --all-files
 Hooks: black (py3.11, **line-length 140** per `pyproject.toml`), isort (`force_single_line = true`, black profile), flake8 (`.flake8`, max-line-length 400, many `E*` ignored), `add-trailing-comma`, `setup-cfg-fmt`, eslint via `frontend/eslint.config.mjs`. The whole repo's hooks skip `backend/app/routers/__init__.py` and `backend/app/db/all_models.py`.
 
 ## Architecture
+
+### Rust backend (`crates/`) — strangler-fig migration
+
+`copilot` (Rust) owns port 5000, answers the ported prefixes (`crates/copilot/src/app.rs:PORTED_PREFIXES`, today `/api/ai_analyst` and `/api/talon`) and streams every other path *or method* to the Python backend (`COPILOT_LEGACY_URL`). Same MySQL, same `JWT_SECRET`, same JSON. Plan, contracts and phase list: `docs/architecture/RUST_MIGRATION.md`. Things that are load-bearing:
+
+- **Alembic still owns the schema.** The Rust service never creates or alters tables; each module lists the columns it needs (`TableRequirement`) and the binary refuses to start without them. A new migration must be followed by `scripts/dump-schema.sh` (fixture for the Rust e2e tests) and `TESTED_ALEMBIC_HEAD` — `scripts/check-alembic-head.py` fails CI otherwise.
+- **Wire parity is tested, not assumed.** `backend/tests/e2e/rust_parity_e2e.py` sends the same requests to the real FastAPI routers and to the Rust binary on one database. Field order, Pydantic 422 texts (`copilot_web::validate`), FastAPI's check order (token → path → tenancy → query → body), MySQL's rounding of `utcnow()` and its same-second tie order are all reproduced. A deliberate difference is a test there and a row in the doc's "Differences by design" table — today all of them close tenant leaks or Python response artefacts.
+- **Tokens are interchangeable**: HS256 over the raw `JWT_SECRET` with PyJWT's claim rules (`copilot_auth::jwt`, implemented on `hmac`/`sha2` like Talon, no JWT crate). The 2FA temp token is never a session. Token issuance (`/api/auth/*`) is still Python.
+- **The Talon contract is typed** in `crates/copilot-talon/src/contract.rs` against Talon 2.0's `talon-http` (`/investigate`, `/investigations`, SSE frames, palace endpoints, `{"error"}` bodies). Change it together with talahon.
+- **Notifications go through a bridge**: Rust builds the exact `NotificationEvent` and POSTs it to `POST /api/notifications/events` (`app/notifications/services/bridge.py`), which accepts only AI-analyst alert triggers, checks the alert's customer and re-derives dedupe key and link. Don't widen the trigger list without the same checks.
+- **Scheduled jobs move by hand-over**: a Rust job runs only when its env opt-in is set *and* its `scheduled_job_metadata` row is disabled; it stamps `last_success`. Never let both schedulers run a job.
+- **Connector rows are cached per process**; Python's invalidation cannot reach the Rust process, so its TTL is capped at 60 s while a legacy backend is configured.
+- Conventions match Talon: edition 2024, MSRV 1.85 (no let-chains), `unsafe` forbidden, no `unwrap` outside tests, `#![warn(missing_docs)]`, rustfmt width 100, `routes / services / schema` per module.
 
 ### `backend/copilot.py` startup
 

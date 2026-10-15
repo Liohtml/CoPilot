@@ -151,3 +151,4 @@ nav:
       - Data Flows: architecture/DATA_FLOWS.md
       - Database Schema: architecture/DATABASE_SCHEMA.md
       - Adding a Connector: integrations/ADDING_A_CONNECTOR.md
+      - Rust Migration: architecture/RUST_MIGRATION.md

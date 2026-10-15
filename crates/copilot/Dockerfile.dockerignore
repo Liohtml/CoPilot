@@ -1,0 +1,8 @@
+# Allowlist: only the Cargo workspace is sent to the builder.
+*
+!Cargo.toml
+!Cargo.lock
+!rustfmt.toml
+!clippy.toml
+!crates/
+crates/**/target/
