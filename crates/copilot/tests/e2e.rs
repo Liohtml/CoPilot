@@ -492,7 +492,8 @@ async fn talon_and_ai_analyst_flow() {
         .and(path("/investigate"))
         .and(header("x-api-key", "talon-key"))
         .and(body_json(
-            json!({"alert_id": acme_alert, "customer_code": acme, "sender": "copilot-analyst"}),
+            json!({"alert_id": acme_alert, "customer_code": acme, "triggered_by": "manual",
+                   "sender": "copilot-analyst"}),
         ))
         .respond_with(ResponseTemplate::new(202).set_body_json(json!({
             "job_id": format!("copilot-inv-{acme_alert}-1760000000000"), "status": "queued",
@@ -756,7 +757,7 @@ async fn talon_and_ai_analyst_flow() {
     Mock::given(method("POST"))
         .and(path("/investigate"))
         .and(body_json(
-            json!({"alert_id": acme_alert, "customer_code": acme,
+            json!({"alert_id": acme_alert, "customer_code": acme, "triggered_by": "manual",
             "template_override": "sysmon_event_1.v2.txt", "sender": "copilot-replay"}),
         ))
         .respond_with(
@@ -1304,7 +1305,8 @@ async fn customer_portal_ai_reports_flow() {
             .and(path("/investigate"))
             .and(header("x-api-key", "talon-key"))
             .and(body_json(
-                json!({"alert_id": id, "customer_code": acme, "sender": "customer-portal"}),
+                json!({"alert_id": id, "customer_code": acme, "triggered_by": "manual",
+                       "sender": "customer-portal"}),
             ))
             .respond_with(
                 ResponseTemplate::new(status)

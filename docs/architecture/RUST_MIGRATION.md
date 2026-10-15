@@ -238,6 +238,9 @@ Each is covered by a test and listed in the parity harness.
 | concurrent first review | unique-key 500 | retried as an edit | race |
 | `POST …/replay` template | Python's regex only; Talon then 400s → 500 | Talon's rule (no `..`, not hidden), same 422 text | fail early |
 | `/talon/*` upstream failure text | `requests` exception text | status plus Talon's `{"error"}` text | actionable |
+| TLS to Talon | `verify=False` | verified; `TALON_VERIFY_TLS=false` opts out | the request carries Talon's API key |
+| `triggered_by` of an investigation a person starts (analyst, replay, portal request) | not sent: Talon records the job as `webhook` | `manual` (Talon registers it so, Liohtml/talahon#4) | the job says who started it |
+| `GET /talon/jobs/{alert_id}/verdict` | — | Talon's structured verdict for the newest of the alert's jobs, tenancy-checked like `/jobs/{alert_id}` | Rust-only addition |
 | palace search hits | numeric `id` → 400 | stringified | robustness |
 | "latest" row on a same-second tie (`alerts_with_reports/{alert_id}`, portal recent reports) | whichever row MySQL's plan reaches first — varies with the data | the newest id, the rule the portal's `MAX(id)` already uses | deterministic |
 | agent healthcheck clock | `datetime.now()`: the process's local time (UTC in the image) | UTC | the `*_last_seen` columns hold UTC; equal in the shipped image |
