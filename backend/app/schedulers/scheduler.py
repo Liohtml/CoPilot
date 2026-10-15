@@ -13,6 +13,8 @@ from sqlalchemy.future import select
 from app.audit.services.retention import prune_audit_log
 from app.db.db_session import async_engine
 from app.db.db_session import sync_engine
+from app.schedulers.handover import JOB_SKIPPED
+from app.schedulers.handover import RUST_CAPABLE_JOBS
 from app.schedulers.models.scheduler import CreateSchedulerRequest
 from app.schedulers.models.scheduler import JobMetadata
 from app.schedulers.services.agent_sync import agent_sync
@@ -117,6 +119,10 @@ def scheduler_listener(event):
     success, which is what an operator means by "it is running fine".
     """
     if event.code == EVENT_JOB_EXECUTED:
+        if getattr(event, "retval", None) is JOB_SKIPPED:
+            # A hand-over guard skipped the run (the job is disabled here or running in the
+            # Rust service, see handover.py): nothing ran, so nothing is stamped.
+            return
         _schedule_success_record(event.job_id)
     elif event.code == EVENT_JOB_ERROR:
         logger.error(f"Job {event.job_id} crashed: {event.exception}")
@@ -305,7 +311,11 @@ async def initialize_job_metadata():
                 session.add(job_metadata)
             else:
                 job_metadata.time_interval = job["time_interval"]
-                job_metadata.enabled = True
+                # A job the Rust service can run keeps its flag: disabled is how it is
+                # handed over (handover.py), and re-enabling it on every start would take
+                # it back silently.
+                if job["job_id"] not in RUST_CAPABLE_JOBS:
+                    job_metadata.enabled = True
         await session.commit()
 
 

@@ -9,19 +9,19 @@
 //!   `expired` whether or not MemPalace confirmed.
 //!
 //! Status changes are guarded on the previous status, so a row is never
-//! flipped twice. The loops only act while `COPILOT_RS_PALACE_JOBS=true`
-//! **and** the legacy APScheduler row (`scheduled_job_metadata.job_id`) is
-//! disabled — disable the job in CoPilot's Scheduler UI to hand it over.
-
-use std::time::Duration;
+//! flipped twice. Both run on `copilot-scheduler`'s runner ([`job_specs`]):
+//! only while the operator opted in (`COPILOT_RS_PALACE_JOBS=true`, or the
+//! ids in `COPILOT_RS_JOBS`) **and** the job's `scheduled_job_metadata` row is
+//! disabled — *Pause* in CoPilot's Scheduler UI hands a job over, *Start*
+//! hands it back. Like the Python functions, a manual run stamps
+//! `last_success` too.
 
 use chrono::Duration as ChronoDuration;
 use serde_json::Value;
-use tokio_util::sync::CancellationToken;
 
 use copilot_core::time::now_utc_naive;
 use copilot_db::ai_analyst as db;
-use copilot_db::scheduler;
+use copilot_scheduler::{JobError, JobSpec};
 use copilot_talon::TalonConnector;
 use copilot_talon::contract::PalaceLessonRequest;
 use copilot_talon::services::{forget_palace_drawer, post_palace_lesson};
@@ -150,46 +150,33 @@ fn truthy(v: &Value) -> bool {
     }
 }
 
-/// Whether this service should run `job_id` now, and how often.
-async fn handed_over(ctx: &AppContext, job_id: &str, default_minutes: i64) -> (bool, Duration) {
-    match scheduler::legacy_job(&ctx.db, job_id).await {
-        Ok(Some((enabled, minutes))) => (
-            !enabled,
-            Duration::from_secs(u64::try_from(minutes.max(1)).unwrap_or(1) * 60),
-        ),
-        Ok(None) => (
-            true,
-            Duration::from_secs(u64::try_from(default_minutes).unwrap_or(1) * 60),
-        ),
-        Err(e) => {
-            tracing::warn!(job_id, err = %e, "cannot read scheduled_job_metadata; skipping tick");
-            (false, Duration::from_secs(60))
-        }
-    }
-}
-
-/// Run both jobs until `cancel` fires.
-pub async fn run(ctx: AppContext, talon: TalonConnector, cancel: CancellationToken) {
+/// The two jobs, for the scheduler: the drainer every 2 minutes, the sweeper
+/// hourly (the intervals `initialize_job_metadata` seeds).
+pub fn job_specs(ctx: &AppContext, talon: &TalonConnector) -> Vec<JobSpec> {
     let drainer = {
-        let (ctx, talon, cancel) = (ctx.clone(), talon.clone(), cancel.clone());
-        tokio::spawn(async move {
-            job_loop(&ctx, DRAINER_JOB_ID, 2, &cancel, || async {
-                drain_once(&ctx, &talon).await.map(|r| {
-                    if r != DrainReport::default() {
-                        tracing::info!(
-                            ingested = r.ingested,
-                            failed = r.failed,
-                            "palace drainer tick"
-                        );
-                    }
-                })
-            })
-            .await;
+        let (ctx, talon) = (ctx.clone(), talon.clone());
+        JobSpec::new(DRAINER_JOB_ID, 2, move || {
+            let (ctx, talon) = (ctx.clone(), talon.clone());
+            async move {
+                let r = drain_once(&ctx, &talon).await.map_err(JobError::from)?;
+                if r != DrainReport::default() {
+                    tracing::info!(
+                        ingested = r.ingested,
+                        failed = r.failed,
+                        "palace drainer tick"
+                    );
+                }
+                Ok(())
+            }
         })
+        .stamps_manual_runs()
     };
-    let sweeper = tokio::spawn(async move {
-        job_loop(&ctx, SWEEPER_JOB_ID, 60, &cancel, || async {
-            sweep_once(&ctx, &talon).await.map(|r| {
+    let sweeper = {
+        let (ctx, talon) = (ctx.clone(), talon.clone());
+        JobSpec::new(SWEEPER_JOB_ID, 60, move || {
+            let (ctx, talon) = (ctx.clone(), talon.clone());
+            async move {
+                let r = sweep_once(&ctx, &talon).await.map_err(JobError::from)?;
                 if r != SweepReport::default() {
                     tracing::info!(
                         forgotten = r.forgotten,
@@ -197,42 +184,12 @@ pub async fn run(ctx: AppContext, talon: TalonConnector, cancel: CancellationTok
                         "palace sweeper tick"
                     );
                 }
-            })
-        })
-        .await;
-    });
-    let _ = tokio::join!(drainer, sweeper);
-}
-
-async fn job_loop<F, Fut>(
-    ctx: &AppContext,
-    job_id: &'static str,
-    default_minutes: i64,
-    cancel: &CancellationToken,
-    mut tick: F,
-) where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<(), copilot_db::DbError>>,
-{
-    loop {
-        let (active, every) = handed_over(ctx, job_id, default_minutes).await;
-        if active {
-            match tick().await {
-                Ok(()) => {
-                    if let Err(e) = scheduler::stamp_last_success(&ctx.db, job_id).await {
-                        tracing::warn!(job_id, err = %e, "cannot stamp last_success");
-                    }
-                }
-                Err(e) => tracing::error!(job_id, err = %e, "scheduled job failed"),
+                Ok(())
             }
-        } else {
-            tracing::debug!(job_id, "legacy scheduler owns this job; idle");
-        }
-        tokio::select! {
-            _ = cancel.cancelled() => break,
-            _ = tokio::time::sleep(every) => {}
-        }
-    }
+        })
+        .stamps_manual_runs()
+    };
+    vec![drainer, sweeper]
 }
 
 #[cfg(test)]

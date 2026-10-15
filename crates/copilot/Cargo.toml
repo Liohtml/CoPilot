@@ -24,6 +24,7 @@ copilot-platform = { workspace = true }
 copilot-gateway = { workspace = true }
 copilot-identity = { workspace = true }
 copilot-webauthn = { workspace = true }
+copilot-scheduler = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

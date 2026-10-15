@@ -21,8 +21,12 @@ services:
         env_file: .env
         environment:
             - COPILOT_LEGACY_URL=http://copilot-backend:5000
-            # Opt-in: run the palace-lesson drainer/sweeper here. They only act
-            # while the APScheduler jobs are disabled in the Scheduler UI.
+            # Opt-in: scheduled jobs this service may take over from APScheduler
+            # (ids, comma-separated: prune_audit_log, invoke_palace_lesson_drainer,
+            # invoke_palace_lesson_sweeper, or "all"; COPILOT_RS_PALACE_JOBS=true
+            # names the two palace jobs). A job moves only when it is then paused
+            # in the Scheduler UI; Start hands it back.
+            - COPILOT_RS_JOBS=${COPILOT_RS_JOBS:-}
             - COPILOT_RS_PALACE_JOBS=${COPILOT_RS_PALACE_JOBS:-false}
         depends_on:
             - copilot-mysql

@@ -1,0 +1,18 @@
+[package]
+name = "copilot-scheduler"
+description = "Scheduled jobs: a tokio runner for the jobs handed over from APScheduler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+chrono = { workspace = true }
+
+[lints]
+workspace = true

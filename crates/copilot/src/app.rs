@@ -40,6 +40,7 @@ use copilot_gateway::{LegacyNotificationSink, LegacyProxy};
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
+use copilot_scheduler::{OptIn, Scheduler};
 use copilot_talon::{TalonConnector, TalonState};
 use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
 use copilot_web::{ApiError, AppContext, AppDeps};
@@ -107,7 +108,15 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     });
     all.push(TableRequirement {
         table: "scheduled_job_metadata",
-        columns: &["job_id", "last_success", "time_interval", "enabled"],
+        columns: &[
+            "id",
+            "job_id",
+            "last_success",
+            "time_interval",
+            "extra_data",
+            "enabled",
+            "job_description",
+        ],
     });
     all
 }
@@ -124,6 +133,8 @@ pub struct App {
     pub identity: IdentityState,
     /// Legacy backend, if configured.
     pub legacy: Option<LegacyProxy>,
+    /// The scheduled jobs this build can take over from APScheduler.
+    pub scheduler: Scheduler,
 }
 
 impl App {
@@ -180,6 +191,11 @@ impl App {
             http: reqwest::Client::new(),
             log_handled_errors: true,
         });
+        let scheduler = Scheduler::new(
+            ctx.db.clone(),
+            OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
+            scheduled_jobs(&ctx, &talon, cfg),
+        );
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -205,6 +221,7 @@ impl App {
             version,
             identity,
             legacy,
+            scheduler,
         })
     }
 
@@ -271,6 +288,21 @@ impl App {
                 .fallback(root_or_404),
         }
     }
+}
+
+/// Every job this build can take over from APScheduler (`handover.py`'s
+/// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`.
+pub fn scheduled_jobs(
+    ctx: &AppContext,
+    talon: &TalonConnector,
+    cfg: &CopilotConfig,
+) -> Vec<copilot_scheduler::JobSpec> {
+    let mut jobs = copilot_ai_analyst::palace_jobs::job_specs(ctx, talon);
+    jobs.push(copilot_scheduler::jobs::prune_audit_log_spec(
+        ctx.db.clone(),
+        cfg.audit_log_retention_days.clone(),
+    ));
+    jobs
 }
 
 /// Without a legacy backend: the Python root greeting, else FastAPI's 404.
