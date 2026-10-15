@@ -631,6 +631,7 @@ dependencies = [
  "copilot-core",
  "copilot-db",
  "copilot-jinja",
+ "copilot-notifications",
  "copilot-web",
  "copilot-webauthn",
  "crc32fast",
@@ -672,6 +673,31 @@ version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "copilot-notifications"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-jinja",
+ "copilot-markdown",
+ "copilot-web",
+ "futures",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

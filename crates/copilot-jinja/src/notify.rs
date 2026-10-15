@@ -38,6 +38,9 @@ pub enum Input {
     Float(f64),
     /// `str`.
     Str(String),
+    /// `markupsafe.Markup`: a `str` already safe for HTML (autoescaping
+    /// leaves it alone), such as an AI report's pre-rendered HTML.
+    Markup(String),
     /// `list`.
     List(Vec<Input>),
     /// `dict` with string keys, in insertion order.
@@ -143,6 +146,7 @@ pub fn input_value(i: &Input) -> Value {
         Input::Int(n) => Value::Int(BigInt::from(*n)),
         Input::Float(f) => Value::Float(*f),
         Input::Str(s) => Value::str(s),
+        Input::Markup(s) => Value::markup(s),
         Input::List(items) => Value::list(items.iter().map(input_value).collect()),
         Input::Dict(pairs) => Value::str_dict(
             pairs

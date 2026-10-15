@@ -1,0 +1,33 @@
+[package]
+name = "copilot-notifications"
+description = "Notification routes, templates, channel providers and the dispatch pipeline (/api/notifications, notification routes, Shuffle integrations)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-jinja = { workspace = true }
+copilot-markdown = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+reqwest = { workspace = true }
+uuid = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+sha2 = { workspace = true }
+
+[lints]
+workspace = true

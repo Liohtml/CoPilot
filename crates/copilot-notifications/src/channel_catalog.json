@@ -1,0 +1,222 @@
+[
+ {
+  "key": "shuffle",
+  "display_name": "Shuffle",
+  "config_schema": {
+   "additionalProperties": false,
+   "description": "`customer_notification_route.config` when channel='shuffle'.\n\n`app_id` is the Shuffle app UUID we POST to /api/v1/apps/{id}/mcp;\n`app_name` is the human label (\"Slack\") cached so the route list renders\nwithout a round-trip to Shuffle.\n\nThe org lives on `shuffle_integration_id`, which stays a real FK column —\nsee the note on the model.",
+   "properties": {
+    "app_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "App Id"
+    },
+    "app_name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "App Name"
+    }
+   },
+   "title": "ShuffleConfig",
+   "type": "object"
+  },
+  "supports_recipient_modes": [
+   "static"
+  ],
+  "supports_internal_scope": false,
+  "secret_fields": [],
+  "template_formats": [
+   "markdown",
+   "text"
+  ]
+ },
+ {
+  "key": "webhook",
+  "display_name": "Webhook",
+  "config_schema": {
+   "additionalProperties": false,
+   "description": "`customer_notification_route.config` when channel='webhook'.\n\n`headers` is a real dict here, unlike the legacy `webhook_headers` column,\nwhich stored a JSON *string* inside a Text column and needed hand-decoding\non every read.",
+   "properties": {
+    "url": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Url"
+    },
+    "method": {
+     "default": "POST",
+     "title": "Method",
+     "type": "string"
+    },
+    "headers": {
+     "anyOf": [
+      {
+       "additionalProperties": {
+        "type": "string"
+       },
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Headers"
+    },
+    "include_full_report": {
+     "default": false,
+     "title": "Include Full Report",
+     "type": "boolean"
+    }
+   },
+   "title": "WebhookConfig",
+   "type": "object"
+  },
+  "supports_recipient_modes": [
+   "static"
+  ],
+  "supports_internal_scope": true,
+  "secret_fields": [
+   "headers"
+  ],
+  "template_formats": [
+   "markdown",
+   "text"
+  ]
+ },
+ {
+  "key": "resend",
+  "display_name": "Email (Resend)",
+  "config_schema": {
+   "additionalProperties": false,
+   "description": "`customer_notification_route.config` when channel='resend'.\n\n`to` is required for recipient_mode='static' and ignored for 'assignee',\nwhere the address is resolved from the event instead. Enforced at save time\nin the route schema, which knows the mode.\n\nNo secret_fields: the API key lives on the deployment's connector row, not\nin per-route config, so nothing here needs encrypting in #1020.",
+   "properties": {
+    "to": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "To",
+     "type": "array"
+    },
+    "cc": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Cc",
+     "type": "array"
+    },
+    "from_address": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "From Address"
+    },
+    "reply_to": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Reply To"
+    },
+    "subject_prefix": {
+     "default": "[CoPilot]",
+     "title": "Subject Prefix",
+     "type": "string"
+    },
+    "max_per_hour": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": 20,
+     "title": "Max Per Hour"
+    }
+   },
+   "title": "ResendConfig",
+   "type": "object"
+  },
+  "supports_recipient_modes": [
+   "assignee",
+   "static"
+  ],
+  "supports_internal_scope": true,
+  "secret_fields": [],
+  "template_formats": [
+   "html",
+   "markdown",
+   "text"
+  ]
+ },
+ {
+  "key": "teams",
+  "display_name": "Microsoft Teams",
+  "config_schema": {
+   "additionalProperties": false,
+   "description": "`customer_notification_route.config` when channel='teams'.\n\nOne field, which is the point — a channel this simple should need no\nfrontend work, and the generic renderer handles it.",
+   "properties": {
+    "webhook_url": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Webhook Url"
+    }
+   },
+   "title": "TeamsConfig",
+   "type": "object"
+  },
+  "supports_recipient_modes": [
+   "static"
+  ],
+  "supports_internal_scope": true,
+  "secret_fields": [
+   "webhook_url"
+  ],
+  "template_formats": [
+   "markdown",
+   "text"
+  ]
+ }
+]
