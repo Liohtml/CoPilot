@@ -136,9 +136,16 @@ impl App {
             Some(proxy) => Arc::new(LegacyNotificationSink::new(proxy.clone())),
             None => Arc::new(NoopNotificationSink),
         };
+        // Verified unless explicitly disabled: the request carries Talon's
+        // API key (Python used verify=False).
         let verify_tls = std::env::var("TALON_VERIFY_TLS")
-            .map(|v| matches!(v.trim(), "1" | "true" | "True" | "TRUE" | "yes"))
-            .unwrap_or(false);
+            .map(|v| {
+                !matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "0" | "false" | "no" | "off"
+                )
+            })
+            .unwrap_or(true);
         let talon = TalonConnector::new(connectors.clone(), verify_tls)
             .context("building the Talon client")?;
         let version = VersionChecker::new(cfg.version_check_url.clone())
