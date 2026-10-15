@@ -158,8 +158,9 @@ def start_recorder():
     return f"http://127.0.0.1:{server.server_address[1]}"
 
 
-#: An id inside text: not part of a longer number, a dotted quad or a ratio.
-ID_PATTERN = r"(?<![0-9.]){}(?![0-9./])"
+#: An id inside text: not part of a longer number, a dotted quad, a ratio or a word (the
+#: random hex suffix of a customer code holds digits too).
+ID_PATTERN = r"(?<![0-9A-Za-z_.]){}(?![0-9A-Za-z_./])"
 
 
 def normalised(captures, subs):
