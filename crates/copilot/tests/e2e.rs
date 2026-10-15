@@ -744,7 +744,7 @@ async fn talon_and_ai_analyst_flow() {
         triggers,
         vec!["investigation_complete", "ai_report_reviewed"]
     );
-    assert_eq!(bridged[0]["subject"], format!("Mimikatz acme"));
+    assert_eq!(bridged[0]["subject"], "Mimikatz acme");
     assert_eq!(bridged[0]["context"]["asset_name"], "dc01-acme");
     assert_eq!(bridged[0]["severity"], "Critical");
     assert_eq!(bridged[1]["actor_username"], format!("analyst{s}"));

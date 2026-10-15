@@ -136,18 +136,14 @@ fn content_type(req: &Request) -> Option<String> {
         .map(|v| latin1(v.as_bytes()))
 }
 
-async fn bytes<S: Send + Sync>(req: Request, state: &S) -> Result<Bytes, Response> {
-    Bytes::from_request(req, state)
-        .await
-        .map_err(IntoResponse::into_response)
-}
-
 impl<S: Send + Sync> FromRequest<S> for JsonBody {
     type Rejection = Response;
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Response> {
         let ct = content_type(&req);
-        let body = bytes(req, state).await?;
+        let body = Bytes::from_request(req, state)
+            .await
+            .map_err(IntoResponse::into_response)?;
         Self::read(ct.as_deref(), &body).map_err(IntoResponse::into_response)
     }
 }
@@ -171,7 +167,9 @@ where
         let guard = A::from_request_parts(&mut parts, state)
             .await
             .map_err(IntoResponse::into_response);
-        let raw = bytes(Request::from_parts(parts, body), state).await?;
+        let raw = Bytes::from_request(Request::from_parts(parts, body), state)
+            .await
+            .map_err(IntoResponse::into_response)?;
         let json = JsonBody::read(ct.as_deref(), &raw).map_err(IntoResponse::into_response)?;
         let guard = guard?;
         Ok(Self(guard, json))
@@ -187,7 +185,9 @@ impl<S: Send + Sync> FromRequest<S> for Form {
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Response> {
         let ct = content_type(&req);
-        let raw = bytes(req, state).await?;
+        let raw = Bytes::from_request(req, state)
+            .await
+            .map_err(IntoResponse::into_response)?;
         form::read_form(ct.as_deref(), &raw).map(Form).map_err(|e| {
             let detail = match e {
                 FormError::Rejected(message) => message,
