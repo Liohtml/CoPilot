@@ -229,9 +229,16 @@ impl CopilotConfig {
         let jwt_secret = Secret::new(env.get("JWT_SECRET").unwrap_or_default());
         validate_jwt_secret(&jwt_secret)?;
 
+        // `alert_severity.default_severity()`: matched case-insensitively.
         let default_severity = env
             .get("DEFAULT_ALERT_SEVERITY")
-            .and_then(|s| NotificationSeverity::parse(s.trim()))
+            .and_then(|s| {
+                let wanted = s.trim().to_lowercase();
+                ["Critical", "High", "Medium", "Low", "Informational"]
+                    .into_iter()
+                    .find(|level| level.to_lowercase() == wanted)
+                    .and_then(NotificationSeverity::parse)
+            })
             .unwrap_or(NotificationSeverity::High);
 
         let max_body = env.get_u64("COPILOT_MAX_BODY_BYTES", 256 * 1024 * 1024, 1024);

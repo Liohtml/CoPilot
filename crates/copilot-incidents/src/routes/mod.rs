@@ -5,11 +5,21 @@ use axum::Router;
 
 use copilot_web::AppContext;
 
+pub mod alert_writes;
+pub mod case_writes;
+pub mod common;
+pub mod config_writes;
 pub mod reads;
 
 /// The router, to be nested at `/api/incidents/db_operations`. Paths and
-/// methods not routed here (writes, the Wazuh-indexer and MinIO routes) fall
-/// through to the legacy backend.
+/// methods not routed here (the Wazuh-indexer and MinIO routes, the Shuffle
+/// case notification, the case-task writes) fall through to the legacy
+/// backend.
 pub fn db_operations(ctx: AppContext) -> Router {
-    Router::new().merge(reads::router()).with_state(ctx)
+    Router::new()
+        .merge(reads::router())
+        .merge(alert_writes::router())
+        .merge(case_writes::router())
+        .merge(config_writes::router())
+        .with_state(ctx)
 }

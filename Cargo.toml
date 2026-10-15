@@ -29,6 +29,7 @@ copilot-identity = { path = "crates/copilot-identity" }
 copilot-webauthn = { path = "crates/copilot-webauthn" }
 copilot-jinja = { path = "crates/copilot-jinja" }
 copilot-incidents = { path = "crates/copilot-incidents" }
+copilot-sla = { path = "crates/copilot-sla" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }
@@ -53,6 +54,8 @@ chrono = { version = "0.4", features = ["serde"] }
 # The parser behind Pydantic's `datetime` fields: the same version pydantic-core
 # pins, so request timestamps parse (and fail) exactly as in the Python backend.
 speedate = "=0.17.0"
+# IANA zones for business-hours SLA calendars (`zoneinfo` in the Python backend).
+chrono-tz = "0.10"
 # `EnumMessage::get_documentation()`: speedate's error sentences (its own strum).
 strum = "0.27"
 

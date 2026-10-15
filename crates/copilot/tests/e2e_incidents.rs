@@ -568,9 +568,9 @@ async fn unported_paths_and_methods_reach_the_legacy_backend() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-get"})))
         .mount(&legacy)
         .await;
-    Mock::given(method("PUT"))
-        .and(path(format!("{P}/alert/status")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-put"})))
+    Mock::given(method("DELETE"))
+        .and(path(format!("{P}/case/12345")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-delete"})))
         .mount(&legacy)
         .await;
     Mock::given(method("GET"))
@@ -586,7 +586,7 @@ async fn unported_paths_and_methods_reach_the_legacy_backend() {
             format!("{P}/available-source/wazuh-alerts"),
             "python-get",
         ),
-        ("PUT", format!("{P}/alert/status"), "python-put"),
+        ("DELETE", format!("{P}/case/12345"), "python-delete"),
         (
             "GET",
             format!("{P}/case/data-store/download/1/f.txt"),
@@ -600,4 +600,427 @@ async fn unported_paths_and_methods_reach_the_legacy_backend() {
             "{m} {uri}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Writes: SLA tracking, timeline, audit and notifications
+// ---------------------------------------------------------------------------
+
+use std::sync::Arc;
+
+use copilot_core::audit::MemoryAuditSink;
+use copilot_core::notify::{MemoryNotificationSink, NotificationDefaults, NotificationSeverity};
+use copilot_db::connectors::ConnectorCache;
+use copilot_web::{AppContext, AppDeps};
+
+/// The incidents router over the harness database, with sinks that keep
+/// what is emitted.
+struct Sinks {
+    router: axum::Router,
+    notes: Arc<MemoryNotificationSink>,
+    audit: Arc<MemoryAuditSink>,
+}
+
+fn with_sinks(h: &Harness) -> Sinks {
+    let notes = Arc::new(MemoryNotificationSink::default());
+    let audit = Arc::new(MemoryAuditSink::default());
+    let ctx = AppContext::new(AppDeps {
+        db: h.db.clone(),
+        jwt: h.jwt.clone(),
+        connectors: ConnectorCache::new(h.db.clone(), std::time::Duration::ZERO),
+        audit: audit.clone(),
+        notifications: notes.clone(),
+        notification_defaults: NotificationDefaults {
+            copilot_url: Some("https://copilot.example.com".into()),
+            default_severity: NotificationSeverity::High,
+        },
+        http: reqwest::Client::new(),
+        log_handled_errors: false,
+    });
+    let router = axum::Router::new().nest(P, copilot_incidents::db_operations(ctx));
+    Sinks {
+        router,
+        notes,
+        audit,
+    }
+}
+
+async fn send(
+    router: &axum::Router,
+    method: &str,
+    uri: &str,
+    token: &str,
+    body: Option<Value>,
+) -> (u16, Value) {
+    use tower::ServiceExt;
+    let mut b = http::Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("authorization", format!("Bearer {token}"));
+    let req = match body {
+        Some(v) => {
+            b = b.header("content-type", "application/json");
+            b.body(axum::body::Body::from(serde_json::to_vec(&v).unwrap()))
+                .unwrap()
+        }
+        None => b.body(axum::body::Body::empty()).unwrap(),
+    };
+    let resp = router.clone().oneshot(req).await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 22)
+        .await
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or_else(|_| json!(String::from_utf8_lossy(&bytes))),
+    )
+}
+
+async fn tracking_row(
+    h: &Harness,
+    table: &str,
+    key: &str,
+    id: i64,
+) -> Option<(
+    String,
+    bool,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    i32,
+)> {
+    sqlx::query_as(&format!(
+        "SELECT severity, tracked, first_ack_by, first_ack_action, resolved_by, reopen_count \
+         FROM {table} WHERE {key} = ?"
+    ))
+    .bind(id)
+    .fetch_optional(h.db.pool())
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn alert_writes_track_sla_audit_and_notify() {
+    let h = harness_or_skip!(None);
+    let s = &h.suffix.clone();
+    let seeded = seed(&h).await;
+    let sinks = with_sinks(&h);
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+    let admin = h.token(&format!("admin{s}"), "admin");
+
+    // Creation by a SOC user opens the clocks and is its first response.
+    let (st, created) = send(
+        &sinks.router,
+        "POST",
+        &format!("{P}/alert"),
+        &analyst,
+        Some(json!({
+            "alert_name": format!("Created {s}"), "alert_description": "d", "status": "OPEN",
+            "alert_creation_time": "2026-03-05T10:00:00+02:00", "customer_code": format!("acme{s}"),
+            "source": "wazuh", "assigned_to": format!("analyst{s}"),
+        })),
+    )
+    .await;
+    assert_eq!(st, 200, "{created}");
+    assert_eq!(created["alert_creation_time"], json!("2026-03-05T10:00:00"));
+    let id = created["id"].as_i64().unwrap();
+    let row = tracking_row(&h, "soc_sla_alert_tracking", "alert_id", id)
+        .await
+        .unwrap();
+    assert_eq!(
+        row,
+        (
+            "High".into(),
+            true,
+            Some(format!("analyst{s}")),
+            Some("created".into()),
+            None,
+            0
+        )
+    );
+
+    // Assignment notifies on a change only, with the alert's resolved severity.
+    let assign = json!({"alert_id": id, "assigned_to": format!("admin{s}")});
+    let (st, _) = send(
+        &sinks.router,
+        "PUT",
+        &format!("{P}/alert/assigned-to"),
+        &analyst,
+        Some(assign.clone()),
+    )
+    .await;
+    assert_eq!(st, 200);
+    let (st, _) = send(
+        &sinks.router,
+        "PUT",
+        &format!("{P}/alert/assigned-to"),
+        &analyst,
+        Some(assign),
+    )
+    .await;
+    assert_eq!(st, 200);
+    let events = sinks.notes.snapshot();
+    assert_eq!(events.len(), 1, "{events:?}");
+    let e = serde_json::to_value(&events[0]).unwrap();
+    assert_eq!(
+        e,
+        json!({
+            "customer_code": format!("acme{s}"), "trigger": "alert_assigned", "severity": "High",
+            "subject": format!("Created {s}"), "summary": format!("Alert #{id} was assigned to admin{s}."),
+            "entity_type": "alert", "entity_id": id,
+            "dedupe_key": format!("alert:{id}:alert_assigned:admin{s}"), "link_url": null,
+            "assignee_username": format!("admin{s}"), "actor_username": format!("analyst{s}"),
+            "context": {"title": format!("Created {s}")},
+        })
+    );
+
+    // Closing resolves; a reopen counts; a customer cannot put it on hold.
+    for status in ["CLOSED", "OPEN"] {
+        let (st, body) = send(
+            &sinks.router,
+            "PUT",
+            &format!("{P}/alert/status"),
+            &analyst,
+            Some(json!({"alert_id": id, "status": status})),
+        )
+        .await;
+        assert_eq!(st, 200, "{body}");
+    }
+    let row = tracking_row(&h, "soc_sla_alert_tracking", "alert_id", id)
+        .await
+        .unwrap();
+    assert_eq!((row.4, row.5), (None, 1));
+    let (st, body) = send(
+        &sinks.router,
+        "PUT",
+        &format!("{P}/alert/status"),
+        &portal,
+        Some(json!({"alert_id": id, "status": "PENDING_CUSTOMER"})),
+    )
+    .await;
+    assert_eq!(st, 403, "{body}");
+
+    // A verdict is audited with the before/after values.
+    let (st, body) = send(
+        &sinks.router,
+        "PUT",
+        &format!("{P}/alert/verdict"),
+        &analyst,
+        Some(json!({"alert_id": id, "verdict": "FALSE_POSITIVE", "verdict_reason": "OTHER"})),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    let audit = sinks.audit.snapshot();
+    let verdict = audit
+        .iter()
+        .find(|r| r.action == "alert.verdict_set")
+        .unwrap();
+    assert_eq!(verdict.entity_id.as_deref(), Some(id.to_string().as_str()));
+    assert_eq!(
+        verdict.old_value,
+        Some(
+            json!({"verdict": null, "verdict_reason": null, "verdict_note": null, "verdict_by": null})
+        )
+    );
+    assert_eq!(
+        verdict.new_value,
+        Some(json!({"verdict": "FALSE_POSITIVE", "verdict_reason": "OTHER", "verdict_note": null}))
+    );
+
+    // Tenancy: another tenant's alert is refused before anything is written.
+    let (st, _) = send(
+        &sinks.router,
+        "PUT",
+        &format!("{P}/alert/escalated"),
+        &analyst,
+        Some(json!({"alert_id": seeded.beta, "escalated": true})),
+    )
+    .await;
+    assert_eq!(st, 403);
+    let escalated: bool =
+        sqlx::query_scalar("SELECT escalated FROM incident_management_alert WHERE id = ?")
+            .bind(seeded.beta)
+            .fetch_one(h.db.pool())
+            .await
+            .unwrap();
+    assert!(!escalated);
+    let (st, body) = send(
+        &sinks.router,
+        "POST",
+        &format!("{P}/alerts/verdict-state"),
+        &analyst,
+        Some(json!({"alert_ids": [id, seeded.beta]})),
+    )
+    .await;
+    assert_eq!(st, 200);
+    assert_eq!(body["missing"], json!([seeded.beta]));
+    // ... and the settings of another tenant (a leak closed in Rust).
+    let (st, _) = send(
+        &sinks.router,
+        "PUT",
+        &format!("{P}/ai_trigger?customer_code=acme{s}"),
+        &analyst,
+        Some(json!({"customer_code": format!("beta{s}"), "enabled": true})),
+    )
+    .await;
+    assert_eq!(st, 403);
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM incident_management_ai_analyst_trigger_enabled WHERE customer_code = ?",
+    )
+    .bind(format!("beta{s}"))
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(rows, 0);
+    let (st, _) = send(
+        &sinks.router,
+        "DELETE",
+        &format!("{P}/alert/{id}"),
+        &admin,
+        None,
+    )
+    .await;
+    assert_eq!(st, 200);
+    assert!(
+        tracking_row(&h, "soc_sla_alert_tracking", "alert_id", id)
+            .await
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn case_writes_keep_the_timeline_and_notify() {
+    let h = harness_or_skip!(None);
+    let s = &h.suffix.clone();
+    let seeded = seed(&h).await;
+    let sinks = with_sinks(&h);
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+
+    let (st, body) = send(
+        &sinks.router,
+        "POST",
+        &format!("{P}/case/create"),
+        &analyst,
+        Some(json!({
+            "case_name": format!("Case {s}"), "case_description": "d", "case_creation_time": "2026-03-05",
+            "case_status": "OPEN", "customer_code": format!("acme{s}"),
+        })),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    let case = body["case"]["id"].as_i64().unwrap();
+    assert_eq!(
+        body["case"]["case_creation_time"],
+        json!("2026-03-05T00:00:00")
+    );
+    assert!(
+        sinks
+            .audit
+            .snapshot()
+            .iter()
+            .any(|r| r.action == "case.create")
+    );
+
+    // Linking the alert: the case follows its severity (default High).
+    let (st, body) = send(
+        &sinks.router,
+        "POST",
+        &format!("{P}/case/alert-link"),
+        &analyst,
+        Some(json!({"case_id": case, "alert_id": seeded.acme})),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    let row = tracking_row(&h, "soc_sla_case_tracking", "case_id", case)
+        .await
+        .unwrap();
+    assert_eq!(
+        (row.0.as_str(), row.1, row.3.as_deref()),
+        ("High", true, Some("created"))
+    );
+
+    // Assignment notifies (internal scope, Informational).
+    let (st, _) = send(
+        &sinks.router,
+        "PUT",
+        &format!("{P}/case/assigned-to"),
+        &analyst,
+        Some(json!({"case_id": case, "assigned_to": format!("analyst{s}")})),
+    )
+    .await;
+    assert_eq!(st, 200);
+    let events = sinks.notes.snapshot();
+    let e = serde_json::to_value(events.last().unwrap()).unwrap();
+    assert_eq!(e["trigger"], json!("case_assigned"));
+    assert_eq!(e["severity"], json!("Informational"));
+    assert_eq!(
+        e["dedupe_key"],
+        json!(format!("case:{case}:case_assigned:analyst{s}"))
+    );
+
+    // Waiting on the customer takes the alert along; the customer's reply
+    // hands both back.
+    let (st, body) = send(
+        &sinks.router,
+        "PUT",
+        &format!("{P}/case/status"),
+        &analyst,
+        Some(json!({"case_id": case, "status": "PENDING_CUSTOMER"})),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body["cases"][0]["alerts"][0]["status"],
+        json!("PENDING_CUSTOMER")
+    );
+    let (st, body) = send(
+        &sinks.router,
+        "POST",
+        &format!("{P}/case/comment"),
+        &portal,
+        Some(json!({"case_id": case, "comment": "done", "user_name": "x"})),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["comment"]["user_name"], json!(format!("portal{s}")));
+    let (status, alert_status): (String, String) = sqlx::query_as(
+        "SELECT c.case_status, a.status FROM incident_management_case c, incident_management_alert a \
+         WHERE c.id = ? AND a.id = ?",
+    )
+    .bind(case)
+    .bind(seeded.acme)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        (status.as_str(), alert_status.as_str()),
+        ("IN_PROGRESS", "IN_PROGRESS")
+    );
+    let timeline: Vec<String> = sqlx::query_scalar(
+        "SELECT event_type FROM incident_management_case_event WHERE case_id = ? ORDER BY id",
+    )
+    .bind(case)
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        timeline,
+        [
+            "case_created",
+            "alert_linked",
+            "case_assigned",
+            "case_status_changed",
+            "comment_added",
+            "case_status_changed"
+        ]
+    );
+    let paused: Option<chrono::NaiveDateTime> =
+        sqlx::query_scalar("SELECT paused_at FROM soc_sla_case_tracking WHERE case_id = ?")
+            .bind(case)
+            .fetch_one(h.db.pool())
+            .await
+            .unwrap();
+    assert!(paused.is_none());
 }

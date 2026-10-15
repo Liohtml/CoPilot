@@ -10,7 +10,15 @@
 //! - [`lists`], [`cases`], [`options`] — listings, counts, filter options
 //! - [`verdict_stats`]  — the false-positive statistics
 //! - [`config`], [`files`] — per-customer settings, field dictionaries, case files
+//! - [`requests`]       — the write routes' request models (Pydantic's lax rules)
+//! - [`writes`], [`dictionary`] — the service-layer writes
+//! - [`events`]         — the case timeline (`emit_case_event`)
+//! - [`templates`]      — case templates applied to cases (selection, snapshot copy)
+//! - [`notify`]         — the incidents' notification events
 //! - [`routes`]         — the HTTP routes
+//!
+//! SLA bookkeeping (#1187) goes through `copilot_sla::SlaRecorder`, called
+//! where the Python routes call `SlaLifecycleRecorder`.
 //!
 //! Alert visibility is `copilot_db::visibility` (customer scoping *and* tag
 //! RBAC), the one definition every listing goes through.
@@ -20,14 +28,20 @@
 pub mod access;
 pub mod cases;
 pub mod config;
+pub mod dictionary;
+pub mod events;
 pub mod files;
 pub mod lists;
+pub mod notify;
 pub mod options;
+pub mod requests;
 pub mod routes;
 pub mod schema;
 pub mod store;
+pub mod templates;
 pub mod verdict_stats;
 pub mod views;
+pub mod writes;
 
 pub use routes::db_operations;
 
@@ -168,6 +182,39 @@ pub const REQUIREMENTS: &[TableRequirement] = &[
     TableRequirement {
         table: "incident_management_case_report_template_datastore",
         columns: &["id", "report_template_name"],
+    },
+    TableRequirement {
+        table: "incident_management_case_template",
+        columns: &[
+            "id",
+            "name",
+            "customer_code",
+            "source",
+            "is_default",
+            "match_field",
+            "match_value",
+            "created_at",
+        ],
+    },
+    TableRequirement {
+        table: "incident_management_case_template_task",
+        columns: &[
+            "id",
+            "template_id",
+            "title",
+            "description",
+            "guidelines",
+            "mandatory",
+            "order_index",
+        ],
+    },
+    TableRequirement {
+        table: "incident_management_threshold_alert_metadata",
+        columns: &["alert_id"],
+    },
+    TableRequirement {
+        table: "custom_alert_creation_settings",
+        columns: &["id", "customer_code"],
     },
     TableRequirement {
         table: "incident_management_ai_analyst_trigger_enabled",

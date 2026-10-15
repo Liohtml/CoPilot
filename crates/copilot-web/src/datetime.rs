@@ -72,10 +72,10 @@ pub fn parse_lax(raw: &str) -> Result<NaiveDateTime, DateTimeError> {
     }
 }
 
-/// Parse like a Pydantic `datetime` field, then `time_utils.to_naive_utc`:
-/// an aware value (an offset, `Z`, or a unix timestamp) is converted to UTC,
-/// a naive one is taken to be UTC already.
-pub fn parse_lax_utc(raw: &str) -> Result<NaiveDateTime, DateTimeError> {
+/// Parse like a Pydantic `datetime` field and keep the offset: the naive
+/// wall clock and the UTC offset in seconds (`None` for a naive value; `Some(0)`
+/// for `Z` and for unix timestamps, which Pydantic makes aware UTC values).
+pub fn parse_lax_offset(raw: &str) -> Result<(NaiveDateTime, Option<i32>), DateTimeError> {
     let wall = parse_lax(raw)?;
     let config = DateTimeConfig {
         timestamp_unit: TimestampUnit::Infer,
@@ -87,9 +87,16 @@ pub fn parse_lax_utc(raw: &str) -> Result<NaiveDateTime, DateTimeError> {
     };
     let offset = DateTime::parse_bytes_with_config(raw.as_bytes(), &config)
         .ok()
-        .and_then(|dt| dt.time.tz_offset)
-        .unwrap_or(0);
-    Ok(wall - chrono::Duration::seconds(i64::from(offset)))
+        .and_then(|dt| dt.time.tz_offset);
+    Ok((wall, offset))
+}
+
+/// Parse like a Pydantic `datetime` field, then `time_utils.to_naive_utc`:
+/// an aware value (an offset, `Z`, or a unix timestamp) is converted to UTC,
+/// a naive one is taken to be UTC already.
+pub fn parse_lax_utc(raw: &str) -> Result<NaiveDateTime, DateTimeError> {
+    let (wall, offset) = parse_lax_offset(raw)?;
+    Ok(wall - chrono::Duration::seconds(i64::from(offset.unwrap_or(0))))
 }
 
 /// `err.get_documentation()`, as pydantic-core puts it in its message.
@@ -136,6 +143,12 @@ mod tests {
         assert_eq!(iso("2026-01-02T03:04:05"), "2026-01-02T03:04:05");
         assert_eq!(iso("2026-01-02"), "2026-01-02T00:00:00");
         assert!(parse_lax_utc("nope").is_err());
+        assert_eq!(
+            parse_lax_offset("2026-01-02T03:04:05-03:30").unwrap().1,
+            Some(-12600)
+        );
+        assert_eq!(parse_lax_offset("1700000000").unwrap().1, Some(0));
+        assert_eq!(parse_lax_offset("2026-01-02").unwrap().1, None);
     }
 
     #[test]

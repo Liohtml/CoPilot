@@ -68,19 +68,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/sso",
     "/api/auth/passkey",
     "/api/auth/security",
-    // Every GET of /api/incidents/db_operations but the Wazuh-indexer reads
-    // (/available-source, /available-indices, /mappings) and the MinIO ones
-    // (/case-report-template, /case/data-store/download, …/download).
-    "GET /api/incidents/db_operations/alert",
-    "GET /api/incidents/db_operations/alerts",
-    "GET /api/incidents/db_operations/cases",
-    "GET /api/incidents/db_operations/case/",
-    "GET /api/incidents/db_operations/ai_trigger",
-    "GET /api/incidents/db_operations/notification",
-    "GET /api/incidents/db_operations/socfortress",
-    "GET /api/incidents/db_operations/configured",
-    "GET /api/incidents/db_operations/fields-assets-title-and-timefield",
-    "GET /api/incidents/db_operations/case-report-template/do-default-template-exists",
+    // /api/incidents/db_operations but the Wazuh-indexer reads (/available-source,
+    // /available-indices, /mappings), the MinIO routes (case files, report
+    // templates, DELETE /case/{id}), POST /case/notification (Shuffle) and the
+    // case-task writes: those fall through to the legacy backend.
+    "/api/incidents/db_operations",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -101,6 +93,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::security::REQUIREMENTS);
     all.extend_from_slice(copilot_db::branding::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::REQUIREMENTS);
+    all.extend_from_slice(copilot_sla::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[

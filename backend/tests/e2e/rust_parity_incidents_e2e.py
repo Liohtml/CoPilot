@@ -12,7 +12,9 @@ listed in docs/architecture/RUST_MIGRATION.md §4.
 """
 
 import asyncio
+import datetime
 import json
+import re
 import sys
 import uuid
 
@@ -33,6 +35,8 @@ from app.db.db_session import async_engine  # noqa: E402
 
 SFX = uuid.uuid4().hex[:6]
 CUST_A, CUST_B = f"INC_A{SFX}", f"INC_B{SFX}"
+# Twins for the settings writes: Python writes P's rows, Rust R's.
+CUST_P, CUST_R = f"INC_P{SFX}", f"INC_R{SFX}"
 ADMIN, ANALYST, PORTAL = f"inc_admin{SFX}", f"inc_analyst{SFX}", f"inc_portal{SFX}"
 NOBODY, TAGGED, RESPONDER = f"inc_nobody{SFX}", f"inc_tagged{SFX}", f"inc_resp{SFX}"
 SOURCE = f"src{SFX}"
@@ -63,8 +67,53 @@ async def seed():
         async def ins(sql, **params):
             return (await s.execute(text(sql), params)).lastrowid
 
-        for c in (CUST_A, CUST_B):
+        for c in (CUST_A, CUST_B, CUST_P, CUST_R):
             await ins("INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :c, UTC_TIMESTAMP())", c=c)
+        for c in (CUST_A, CUST_B):
+            await ins("INSERT INTO custom_alert_creation_settings (customer_code, customer_name) VALUES (:c, :c)", c=c)
+        # Case templates: a customer+source default with a mandatory task, and a field-match one (its raw
+        # event cannot be fetched here, so both backends fall back to the tier picker).
+        for name, cust, src, default, field, created in (
+            (f"tmpl-cs-{SFX}", CUST_A, SOURCE, 1, None, "2026-01-02 00:00:00"),
+            (f"tmpl-c-{SFX}", CUST_A, None, 0, None, "2026-01-01 00:00:00"),
+            (f"tmpl-fm-{SFX}", CUST_A, SOURCE, 0, "data_win_system_eventID", "2026-01-03 00:00:00"),
+        ):
+            ids[name] = await ins(
+                "INSERT INTO incident_management_case_template (name, customer_code, source, is_default, match_field, match_value, "
+                "created_by, created_at, updated_at) VALUES (:n, :c, :s, :d, :f, IF(:f IS NULL, NULL, '1'), 'seed', :t, :t)",
+                n=name,
+                c=cust,
+                s=src,
+                d=default,
+                f=field,
+                t=created,
+            )
+            for title, mandatory, order in (("Triage", 1, 1), ("Contain", 0, 0)):
+                await ins(
+                    "INSERT INTO incident_management_case_template_task (template_id, title, description, guidelines, mandatory, "
+                    "order_index) VALUES (:t, :ti, 'd', 'g', :m, :o)",
+                    t=ids[name],
+                    ti=f"{title} ({name})",
+                    m=mandatory,
+                    o=order,
+                )
+        # SLA: customer A's High alerts and High/Critical cases run on business hours of its own calendar.
+        for entity, severity, ack, resolve in (("alert", "High", 45, 300), ("case", "High", 60, 1440), ("case", "Critical", 30, 600)):
+            await ins(
+                "INSERT INTO soc_sla_policy (customer_code, entity_type, severity, ack_minutes, resolve_minutes, updated_at, "
+                "business_hours) VALUES (:c, :e, :s, :a, :r, UTC_TIMESTAMP(), 1)",
+                c=CUST_A,
+                e=entity,
+                s=severity,
+                a=ack,
+                r=resolve,
+            )
+        await ins(
+            "INSERT INTO soc_sla_calendar (customer_code, timezone, week, holidays, updated_at) VALUES (:c, 'Europe/Rome', :w, '[]', "
+            "UTC_TIMESTAMP())",
+            c=CUST_A,
+            w=json.dumps({d: [["08:00", "12:00"], ["13:00", "18:00"]] for d in ("mon", "tue", "wed", "thu", "fri")}),
+        )
         for name, role in ((ADMIN, 1), (ANALYST, 2), (PORTAL, 4), (NOBODY, 2), (TAGGED, 2), (RESPONDER, 5)):
             ids[name] = await ins(
                 "INSERT INTO `user` (username, password, email, created_at, role_id) VALUES (:n, 'x', 'i@example.com', UTC_TIMESTAMP(), :r)",
@@ -515,11 +564,757 @@ async def main():
                 await s_.execute(text("DELETE FROM user_tag_access WHERE tag_id = :t"), {"t": ids["tag_t1"]})
                 await s_.commit()
 
+    await writes(py, rs, tok, ids, body_of)
+
     await py.aclose()
     await rs.aclose()
     failed = [n for n, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
     return 1 if failed else 0
+
+
+# ── writes ─────────────────────────────────────────────────────────────────────
+#
+# Every write runs twice: Python on one twin, Rust on the other (created the same way), and the
+# answers are compared once each side's ids are replaced by shared labels and the timestamps a write
+# stamps with `utcnow()` are masked. The rows a write leaves behind (SLA tracking, case timeline,
+# tasks, audit) are compared the same way.
+
+# Which kind of object an id key names; `None`: always a new row ("<new>"). `id` takes the kind
+# of the object it sits in (`_kind_of`).
+ID_KINDS = {
+    "alert_id": "alert",
+    "alert_linked": "alert",
+    "case_id": "case",
+    "ioc_id": "ioc",
+    "tag_id": "tag",
+    "comment_id": "comment",
+    "alert_context_id": "ctx",
+    "task_id": None,
+    "entity_id": None,
+}
+LIST_ID_KEYS = {"updated_alert_ids", "not_updated_alert_ids", "deleted_alert_ids", "not_deleted_alert_ids", "missing", "alert_ids"}
+TIME_KEYS = {"time_closed", "verdict_at", "created_at", "updated_at", "timestamp", "case_closed_time", "completed_at"}
+
+
+def _kind_of(obj):
+    if "alert_name" in obj:
+        return "alert"
+    if "case_name" in obj:
+        return "case"
+    if "comment" in obj:
+        return "comment"
+    if "context" in obj:
+        return "ctx"
+    if set(obj) == {"id", "tag"}:
+        return "tag"
+    return None
+
+
+def norm(value, labels, keep=(), key=None, owner=None):
+    """`labels`: {kind: {id: label}} plus {"str": {text: label}}."""
+    if isinstance(value, dict):
+        kind = _kind_of(value)
+        return {k: norm(v, labels, keep, k, kind) for k, v in value.items()}
+    if isinstance(value, list):
+        if key in LIST_ID_KEYS:
+            return [labels.get("alert", {}).get(v, "<new>") if isinstance(v, int) else v for v in value]
+        return [norm(v, labels, keep, key, owner) for v in value]
+    if key in TIME_KEYS and key not in keep and value is not None:
+        return "<t>"
+    if isinstance(value, int) and not isinstance(value, bool) and (key == "id" or key in ID_KINDS):
+        kind = owner if key == "id" else ID_KINDS[key]
+        return labels.get(kind, {}).get(value, "<new>") if kind else "<new>"
+    if isinstance(value, str):
+        for text_, label in labels.get("str", {}).items():
+            value = value.replace(text_, label)
+        if key in ("message", "detail"):
+            for kind in ("alert", "case"):
+                for id_, label in labels.get(kind, {}).items():
+                    value = re.sub(rf"\b{kind} {id_}\b", f"{kind} {label}", value)
+    return value
+
+
+def mask_keys(value, keys):
+    if not keys:
+        return value
+    if isinstance(value, dict):
+        return {k: ("<m>" if k in keys and v is not None else mask_keys(v, keys)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [mask_keys(v, keys) for v in value]
+    return value
+
+
+async def rows(sql, **params):
+    async with AsyncSession(async_engine) as s:
+        return [dict(r._mapping) for r in (await s.execute(text(sql), params)).all()]
+
+
+async def tracking(entity, item_id):
+    table, key = ("soc_sla_alert_tracking", "alert_id") if entity == "alert" else ("soc_sla_case_tracking", "case_id")
+    found = await rows(f"SELECT * FROM {table} WHERE {key} = :i", i=item_id)
+    if not found:
+        return None
+    t = found[0]
+    out = {k: ("set" if isinstance(v, datetime.datetime) else v) for k, v in t.items() if k != key}
+    out["paused_seconds"] = "n" if t["paused_seconds"] is not None else None
+    out["pause_credit_seconds"] = "n" if t["pause_credit_seconds"] is not None else None
+    dues = {k: t[k] for k in ("ack_due_at", "resolve_due_at")}
+    return out, t["opened_at"], dues
+
+
+async def events_of(case_id, labels):
+    found = await rows("SELECT event_type, actor, payload FROM incident_management_case_event WHERE case_id = :c ORDER BY id", c=case_id)
+    return [(e["event_type"], e["actor"], norm(json.loads(e["payload"]) if e["payload"] else None, labels)) for e in found]
+
+
+async def tasks_of(case_id, labels):
+    found = await rows(
+        "SELECT alert_id, template_task_id, title, mandatory, order_index, status, created_by FROM incident_management_case_task "
+        "WHERE case_id = :c ORDER BY id",
+        c=case_id,
+    )
+    return [norm(t, labels) for t in found]
+
+
+async def audit_of(entity_type, entity_id, labels, want=1):
+    for _ in range(40):
+        found = await rows(
+            "SELECT action, actor_username, customer_code, result, old_value, new_value FROM audit_log "
+            "WHERE entity_type = :t AND entity_id = :i ORDER BY id",
+            t=entity_type,
+            i=str(entity_id),
+        )
+        if len(found) >= want:
+            break
+        await asyncio.sleep(0.1)
+    return [
+        norm(
+            {
+                **a,
+                "old_value": json.loads(a["old_value"]) if a["old_value"] else None,
+                "new_value": json.loads(a["new_value"]) if a["new_value"] else None,
+            },
+            labels,
+        )
+        for a in found
+    ]
+
+
+async def writes(py, rs, tok, ids, body_of):
+    L = {"p": {"str": {}}, "r": {"str": {}}}  # {kind: {id: label}}, {"str": {text: label}}
+    ID = {"p": {}, "r": {}}  # name -> this side's id
+    client = {"p": py, "r": rs}
+
+    def H(t):
+        return {"Authorization": f"Bearer {t}"} if t else {}
+
+    async def call(side, method, path, t, body=None, raw=None):
+        kw = {"headers": H(t)}
+        if body is not None:
+            kw["json"] = body
+        if raw is not None:
+            kw["content"] = raw
+            kw["headers"] = {**kw["headers"], "Content-Type": "application/json"}
+        return await client[side].request(method, path, **kw)
+
+    async def pair(name, method, path, t, body=None, keep=(), raw=None, exact=False, extra=()):
+        """`path` and `body` are callables of the side ("p" / "r") or plain values. `exact`: the
+        same request on both sides, compared without labels; `extra`: keys masked as well."""
+        out = {}
+        for side in ("p", "r"):
+            p = path(side) if callable(path) else path
+            b = body(side) if callable(body) else body
+            out[side] = await call(side, method, p, t, b, raw)
+        if exact:
+            n1, n2 = body_of(out["p"]), body_of(out["r"])
+        else:
+            n1 = mask_keys(norm(body_of(out["p"]), L["p"], keep), extra)
+            n2 = mask_keys(norm(body_of(out["r"]), L["r"], keep), extra)
+        check(
+            f"{name} [{out['p'].status_code}]",
+            out["p"].status_code == out["r"].status_code and n1 == n2,
+            f"python {out['p'].status_code} {json.dumps(n1)[:900]}\n        rust   {out['r'].status_code} {json.dumps(n2)[:900]}",
+        )
+        return out["p"], out["r"]
+
+    async def same_rows(name, fetch):
+        a, b = await fetch("p"), await fetch("r")
+        check(name, a == b, f"python {a}\n        rust   {b}")
+
+    async def same_tracking(name, entity, key):
+        tp, tr = await tracking(entity, ID["p"][key]), await tracking(entity, ID["r"][key])
+        ok = (tp is None) == (tr is None)
+        detail = f"python {tp}\n        rust   {tr}"
+        if ok and tp is not None:
+            ok = tp[0] == tr[0]
+            for col in ("ack_due_at", "resolve_due_at"):
+                dp, dr = tp[2][col], tr[2][col]
+                if (dp is None) != (dr is None):
+                    ok = False
+                elif dp is not None:
+                    by_delta = abs(((dp - tp[1]) - (dr - tr[1])).total_seconds()) <= 2
+                    by_value = abs((dp - dr).total_seconds()) <= 2
+                    ok = ok and (by_delta or by_value)
+        check(f"{name}: SLA tracking", ok, detail)
+
+    def label(key, rp, rr, kind):
+        L["p"].setdefault(kind, {})[rp] = f"<{key}>"
+        L["r"].setdefault(kind, {})[rr] = f"<{key}>"
+        ID["p"][key] = rp
+        ID["r"][key] = rr
+
+    def label_str(text_p, text_r, lab):
+        L["p"]["str"][text_p] = lab
+        L["r"]["str"][text_r] = lab
+
+    def lid(side, key):
+        return ID[side][key]
+
+    adm, ana, portal, nobody = tok["admin"], tok["analyst"], tok["portal"], tok["nobody"]
+    b1 = ids["b1"]
+
+    print("\n=== incidents writes: alert creation ===")
+    await pair("create alert: empty body", "POST", f"{P}/alert", adm, {})
+    await pair("create alert: malformed JSON", "POST", f"{P}/alert", None, raw=b'{"alert_name": ')
+    await pair("create alert: no token", "POST", f"{P}/alert", None, {"alert_name": "x"})
+    await pair("create alert: portal scope", "POST", f"{P}/alert", portal, {"alert_name": "x"})
+
+    def alert_body(title, cust=CUST_A, **kw):
+        return {
+            "alert_name": title,
+            "alert_description": "made by the parity suite",
+            "status": kw.get("status", "OPEN"),
+            "alert_creation_time": kw.get("when", "2026-03-05T10:00:00+02:00"),
+            "customer_code": cust,
+            "source": kw.get("source", SOURCE),
+            "assigned_to": kw.get("assigned_to", ANALYST),
+            **({"time_closed": kw["time_closed"]} if "time_closed" in kw else {}),
+        }
+
+    await pair(
+        "create alert: bad datetime + types",
+        "POST",
+        f"{P}/alert",
+        adm,
+        {**alert_body("x"), "alert_creation_time": "soon", "status": 5},
+    )
+    await pair("create alert: another tenant (analyst)", "POST", f"{P}/alert", ana, alert_body("x", CUST_B))
+    created = {}
+    for key, title, who in (("w1", f"Write one {SFX}", adm), ("w2", f"Write two {SFX}", ana), ("w3", f"Write three {SFX}", ana)):
+        rp = await call("p", "POST", f"{P}/alert", who, alert_body(title, when="1767225600"))
+        rr = await call("r", "POST", f"{P}/alert", who, alert_body(title, when="1767225600"))
+        if rp.status_code == 200 and rr.status_code == 200:
+            label(key, rp.json()["id"], rr.json()["id"], "alert")
+        n1, n2 = norm(rp.json(), L["p"]), norm(rr.json(), L["r"])
+        check(f"create alert {key} [{rp.status_code}]", rp.status_code == rr.status_code and n1 == n2, f"{n1}\n        {n2}")
+        created[key] = (rp, rr)
+        if key in ID["p"]:
+            await same_tracking(f"create alert {key}", "alert", key)
+    await pair(
+        "create alert: aware creation time, closed",
+        "POST",
+        f"{P}/alert",
+        adm,
+        alert_body(f"Write aware {SFX}", when="2026-03-05T10:00:00.6+02:00", time_closed="2026-03-05T11:00:00Z", status="CLOSED"),
+    )
+
+    W1 = lambda s: lid(s, "w1")  # noqa: E731
+    W2 = lambda s: lid(s, "w2")  # noqa: E731
+
+    print("\n=== incidents writes: alert status, verdict, escalation ===")
+    await pair("status: body errors", "PUT", f"{P}/alert/status", ana, {"alert_id": "x", "status": "DONE"})
+    await pair("status: missing alert", "PUT", f"{P}/alert/status", ana, {"alert_id": 999999999, "status": "OPEN"})
+    await pair("status: another tenant", "PUT", f"{P}/alert/status", ana, {"alert_id": b1, "status": "OPEN"})
+    await pair(
+        "status: portal cannot wait",
+        "PUT",
+        f"{P}/alert/status",
+        portal,
+        lambda s: {"alert_id": W1(s), "status": "PENDING_CUSTOMER"},
+    )
+    for status in ("IN_PROGRESS", "CLOSED", "OPEN", "PENDING_CUSTOMER"):
+        await pair(f"status -> {status}", "PUT", f"{P}/alert/status", ana, lambda s, st=status: {"alert_id": W1(s), "status": st})
+        await same_tracking(f"status -> {status}", "alert", "w1")
+    await pair(
+        "portal reply on a waiting alert",
+        "POST",
+        f"{P}/alert/comment",
+        portal,
+        lambda s: {"alert_id": W1(s), "comment": "here you go", "user_name": "spoofed"},
+    )
+    await pair("alert after the reply", "GET", lambda s: f"{P}/alert/{W1(s)}", ana)
+    await same_tracking("after the portal reply", "alert", "w1")
+    await pair("status by portal on own alert", "PUT", f"{P}/alert/status", portal, lambda s: {"alert_id": W1(s), "status": "CLOSED"})
+    await same_tracking("closed by the customer", "alert", "w1")
+
+    await pair(
+        "verdict: reason without FP",
+        "PUT",
+        f"{P}/alert/verdict",
+        ana,
+        lambda s: {"alert_id": W2(s), "verdict": "TRUE_POSITIVE", "verdict_reason": "OTHER"},
+    )
+    await pair("verdict: FP without reason", "PUT", f"{P}/alert/verdict", ana, lambda s: {"alert_id": W2(s), "verdict": "FALSE_POSITIVE"})
+    await pair(
+        "verdict: bad enum + long note",
+        "PUT",
+        f"{P}/alert/verdict",
+        ana,
+        {"alert_id": 1, "verdict": "MAYBE", "verdict_note": "x" * 1025},
+    )
+    await pair("verdict: portal scope", "PUT", f"{P}/alert/verdict", portal, {"alert_id": 1})
+    await pair("verdict: another tenant", "PUT", f"{P}/alert/verdict", ana, {"alert_id": b1, "verdict": "TRUE_POSITIVE"})
+    await pair(
+        "verdict: set FP",
+        "PUT",
+        f"{P}/alert/verdict",
+        ana,
+        lambda s: {"alert_id": W2(s), "verdict": "FALSE_POSITIVE", "verdict_reason": "AUTHORIZED_USER", "verdict_note": "known"},
+    )
+    await pair("verdict: clear", "PUT", f"{P}/alert/verdict", ana, lambda s: {"alert_id": W2(s)})
+    await same_rows("verdict: audit rows", lambda s: audit_of("alert", W2(s), L[s], want=2))
+    await same_tracking("verdict", "alert", "w2")
+    await pair("escalate", "PUT", f"{P}/alert/escalated", ana, lambda s: {"alert_id": W2(s), "escalated": True})
+    await pair("escalate: bool parse error", "PUT", f"{P}/alert/escalated", ana, {"alert_id": 1, "escalated": "perhaps"})
+
+    print("\n=== incidents writes: comments ===")
+    await pair("comment: missing fields", "POST", f"{P}/alert/comment", ana, {"alert_id": 1})
+    await pair("comment: another tenant", "POST", f"{P}/alert/comment", ana, {"alert_id": b1, "comment": "x", "user_name": "x"})
+    rp, rr = await pair(
+        "comment: create with an aware time",
+        "POST",
+        f"{P}/alert/comment",
+        ana,
+        lambda s: {"alert_id": W2(s), "comment": "looked at it", "user_name": "spoofed", "created_at": "2026-03-05T10:00:00.5+02:00"},
+        keep=("created_at",),
+    )
+    if rp.status_code == rr.status_code == 200:
+        label("cm", rp.json()["comment"]["id"], rr.json()["comment"]["id"], "comment")
+        CM = lambda s: lid(s, "cm")  # noqa: E731
+        await pair(
+            "comment: edit",
+            "PUT",
+            f"{P}/alert/comment",
+            ana,
+            lambda s: {"alert_id": W2(s), "comment_id": CM(s), "comment": "edited", "user_name": "z", "created_at": "2026-01-01"},
+        )
+        await pair(
+            "comment: edit, wrong alert",
+            "PUT",
+            f"{P}/alert/comment",
+            ana,
+            lambda s: {"alert_id": ids["a1"], "comment_id": CM(s), "comment": "e", "user_name": "z", "created_at": "2026-01-01"},
+        )
+        await pair(
+            "comment: edit by portal (not theirs)",
+            "PUT",
+            f"{P}/alert/comment",
+            portal,
+            lambda s: {"alert_id": W2(s), "comment_id": CM(s), "comment": "e", "user_name": "z", "created_at": "2026-01-01"},
+        )
+        await pair("comment: delete by portal (not theirs)", "DELETE", lambda s: f"{P}/alert/comment/{CM(s)}", portal)
+        await pair("comment: delete", "DELETE", lambda s: f"{P}/alert/comment/{CM(s)}", ana)
+        await pair("comment: delete again", "DELETE", lambda s: f"{P}/alert/comment/{CM(s)}", ana)
+    await pair("comment: delete, path not an int", "DELETE", f"{P}/alert/comment/abc", ana)
+    await pair(
+        "comment: delete b1's (analyst)",
+        "DELETE",
+        f"{P}/alert/comment/{(await rows('SELECT id FROM incident_management_comment WHERE alert_id = :a', a=b1))[0]['id']}",
+        ana,
+    )
+
+    print("\n=== incidents writes: assignment ===")
+    await pair("assign: unknown user", "PUT", f"{P}/alert/assigned-to", ana, lambda s: {"alert_id": W2(s), "assigned_to": f"ghost{SFX}"})
+    await pair(
+        "assign: case-different user",
+        "PUT",
+        f"{P}/alert/assigned-to",
+        ana,
+        lambda s: {"alert_id": W2(s), "assigned_to": ANALYST.upper()},
+    )
+    await pair("assign: another tenant", "PUT", f"{P}/alert/assigned-to", ana, {"alert_id": b1, "assigned_to": ADMIN})
+    await pair("assign", "PUT", f"{P}/alert/assigned-to", ana, lambda s: {"alert_id": W2(s), "assigned_to": ADMIN})
+    await same_tracking("assign", "alert", "w2")
+    await pair("bulk assign: unknown user", "PUT", f"{P}/alerts/assigned-to", ana, {"alert_ids": [1], "assigned_to": f"ghost{SFX}"})
+    await pair(
+        "bulk assign",
+        "PUT",
+        f"{P}/alerts/assigned-to",
+        ana,
+        lambda s: {"alert_ids": [W2(s), b1, 999999999, W2(s)], "assigned_to": ANALYST},
+    )
+    await pair("bulk status", "PUT", f"{P}/alerts/status", ana, lambda s: {"alert_ids": [W2(s), b1, 999999999], "status": "IN_PROGRESS"})
+    await pair(
+        "bulk status: portal waiting",
+        "PUT",
+        f"{P}/alerts/status",
+        portal,
+        lambda s: {"alert_ids": [W2(s)], "status": "PENDING_CUSTOMER"},
+    )
+    await pair("bulk status: errors", "PUT", f"{P}/alerts/status", ana, {"alert_ids": ["x", 2], "status": "NOPE"})
+    await same_tracking("bulk", "alert", "w2")
+
+    print("\n=== incidents writes: contexts, assets, IoCs, tags ===")
+    rp, rr = await pair(
+        "context: create",
+        "POST",
+        f"{P}/alert/context",
+        ana,
+        {"source": "wazuh", "context": {"b": 1, "a": {"zz": [1, 2.5, None], "y": "x"}}},
+    )
+    if rp.status_code == rr.status_code == 200:
+        label("ctx", rp.json()["alert_context"]["id"], rr.json()["alert_context"]["id"], "ctx")
+    await pair("context: not a dict", "POST", f"{P}/alert/context", ana, {"source": "wazuh", "context": [1]})
+    await pair(
+        "asset: missing context",
+        "POST",
+        f"{P}/alert/asset",
+        ana,
+        lambda s: {
+            "alert_linked": W2(s),
+            "asset_name": "h",
+            "alert_context_id": 999999999,
+            "customer_code": CUST_A,
+            "index_name": "i",
+            "index_id": "d",
+        },
+    )
+    await pair(
+        "asset: create",
+        "POST",
+        f"{P}/alert/asset",
+        ana,
+        lambda s: {
+            "alert_linked": W2(s),
+            "asset_name": f"host-{SFX}",
+            "alert_context_id": lid(s, "ctx"),
+            "customer_code": CUST_A,
+            "index_name": "wazuh-alerts-x",
+            "index_id": "doc",
+            "agent_id": "001",
+        },
+    )
+    await pair(
+        "asset: another tenant",
+        "POST",
+        f"{P}/alert/asset",
+        ana,
+        {"alert_linked": b1, "asset_name": "h", "alert_context_id": 1, "customer_code": CUST_A, "index_name": "i", "index_id": "d"},
+    )
+    await pair("ioc: bad type", "POST", f"{P}/alert/ioc", ana, {"alert_id": 1, "ioc_value": "x", "ioc_type": "ip"})
+    rp, rr = await pair(
+        "ioc: create",
+        "POST",
+        f"{P}/alert/ioc",
+        ana,
+        lambda s: {"alert_id": W2(s), "ioc_value": f"9.9.9.{SFX[:1]}", "ioc_type": "IP"},
+    )
+    if rp.status_code == rr.status_code == 200:
+        label("ioc", rp.json()["alert_ioc"]["ioc_id"], rr.json()["alert_ioc"]["ioc_id"], "ioc")
+        await pair("alert with its new children", "GET", lambda s: f"{P}/alert/{W2(s)}", ana)
+        await pair("ioc: delete", "DELETE", f"{P}/alert/ioc", ana, lambda s: {"alert_id": W2(s), "ioc_id": lid(s, "ioc")})
+        await pair("ioc: delete again", "DELETE", f"{P}/alert/ioc", ana, lambda s: {"alert_id": W2(s), "ioc_id": lid(s, "ioc")})
+    rp, rr = await pair("tag: create", "POST", f"{P}/alert/tag", ana, lambda s: {"alert_id": W2(s), "tag": f"w-{SFX}"})
+    if rp.status_code == rr.status_code == 200:
+        label("tag", rp.json()["alert_tag"]["id"], rr.json()["alert_tag"]["id"], "tag")
+        await pair("tag: link missing", "DELETE", f"{P}/alert/tag", ana, lambda s: {"alert_id": ids["a1"], "tag_id": lid(s, "tag")})
+        await pair("tag: delete", "DELETE", f"{P}/alert/tag", ana, lambda s: {"alert_id": W2(s), "tag_id": lid(s, "tag")})
+        await pair("tag: delete again", "DELETE", f"{P}/alert/tag", ana, lambda s: {"alert_id": W2(s), "tag_id": lid(s, "tag")})
+    await pair("tag: shared tag still linked elsewhere", "DELETE", f"{P}/alert/tag", adm, {"alert_id": ids["a2"], "tag_id": ids["tag_t2"]})
+
+    print("\n=== incidents writes: verdict state ===")
+    both_ids = [lid("p", "w2"), lid("r", "w2"), b1, 999999999, lid("p", "w2")]
+    for who in ("admin", "analyst", "nobody"):
+        await pair(f"verdict-state ({who})", "POST", f"{P}/alerts/verdict-state", tok[who], {"alert_ids": both_ids}, exact=True)
+    await pair("verdict-state: empty", "POST", f"{P}/alerts/verdict-state", adm, {"alert_ids": []})
+    await pair("verdict-state: too many", "POST", f"{P}/alerts/verdict-state", adm, {"alert_ids": list(range(501))})
+
+    print("\n=== incidents writes: cases ===")
+    await pair("case create: errors (query + body)", "POST", f"{P}/case/create?template_id=abc", ana, {"case_name": 1})
+    await pair(
+        "case create: another tenant",
+        "POST",
+        f"{P}/case/create",
+        ana,
+        {"case_name": "c", "case_description": "d", "case_creation_time": "2026-03-05", "case_status": "OPEN", "customer_code": CUST_B},
+    )
+    await pair(
+        "case create: portal, no customer",
+        "POST",
+        f"{P}/case/create",
+        portal,
+        {"case_name": "c", "case_description": "d", "case_creation_time": "2026-03-05", "case_status": "OPEN"},
+    )
+    tmpl = ids[f"tmpl-cs-{SFX}"]
+    for key, query, body in (
+        ("c1", f"?template_id={tmpl}", {"severity": "High"}),
+        ("c2", "", {}),
+        ("c3", "?template_id=999999999", {}),
+    ):
+        b = {
+            "case_name": f"Write case {key} {SFX}",
+            "case_description": "d",
+            "case_creation_time": "2026-03-05T09:00:00+01:00",
+            "case_status": "OPEN",
+            "customer_code": CUST_A,
+            "assigned_to": ANALYST,
+            **body,
+        }
+        rp = await call("p", "POST", f"{P}/case/create{query}", ana, b)
+        rr = await call("r", "POST", f"{P}/case/create{query}", ana, b)
+        if rp.status_code == rr.status_code == 200:
+            label(key, rp.json()["case"]["id"], rr.json()["case"]["id"], "case")
+        n1, n2 = norm(body_of(rp), L["p"]), norm(body_of(rr), L["r"])
+        check(f"case create {key} [{rp.status_code}]", rp.status_code == rr.status_code and n1 == n2, f"{n1}\n        {n2}")
+        if key in ID["p"]:
+            await same_rows(f"case create {key}: timeline", lambda s, k=key: events_of(lid(s, k), L[s]))
+            await same_rows(f"case create {key}: tasks", lambda s, k=key: tasks_of(lid(s, k), L[s]))
+            await same_rows(f"case create {key}: audit", lambda s, k=key: audit_of("case", lid(s, k), L[s]))
+            await same_tracking(f"case create {key}", "case", key)
+    C1 = lambda s: lid(s, "c1")  # noqa: E731
+    C2 = lambda s: lid(s, "c2")  # noqa: E731
+
+    await pair(
+        "case comment: create",
+        "POST",
+        f"{P}/case/comment",
+        ana,
+        lambda s: {"case_id": C1(s), "comment": "x" * 150, "user_name": "spoof"},
+    )
+    found = await rows("SELECT id FROM incident_management_case_comment WHERE case_id = :c ORDER BY id DESC LIMIT 1", c=lid("p", "c1"))
+    found_r = await rows("SELECT id FROM incident_management_case_comment WHERE case_id = :c ORDER BY id DESC LIMIT 1", c=lid("r", "c1"))
+    if found and found_r:
+        label("ccm", found[0]["id"], found_r[0]["id"], "comment")
+        await pair(
+            "case comment: edit",
+            "PUT",
+            f"{P}/case/comment",
+            ana,
+            lambda s: {"case_id": C1(s), "comment_id": lid(s, "ccm"), "comment": "new", "user_name": "x", "created_at": "2026-01-01"},
+        )
+        await pair(
+            "case comment: edit, wrong case",
+            "PUT",
+            f"{P}/case/comment",
+            ana,
+            lambda s: {"case_id": C2(s), "comment_id": lid(s, "ccm"), "comment": "new", "user_name": "x", "created_at": "2026-01-01"},
+        )
+        await pair("case comment: delete by portal", "DELETE", lambda s: f"{P}/case/comment/{lid(s, 'ccm')}", portal)
+        await pair("case comment: delete", "DELETE", lambda s: f"{P}/case/comment/{lid(s, 'ccm')}", ana)
+    await pair("case comment: another tenant", "POST", f"{P}/case/comment", ana, {"case_id": ids["cb1"], "comment": "x", "user_name": "x"})
+
+    print("\n=== incidents writes: links ===")
+    await pair("link: another tenant's alert", "POST", f"{P}/case/alert-link", ana, lambda s: {"case_id": C1(s), "alert_id": b1})
+    await pair("link w2", "POST", f"{P}/case/alert-link", ana, lambda s: {"case_id": C1(s), "alert_id": W2(s)})
+    await pair("link w2 again", "POST", f"{P}/case/alert-link", ana, lambda s: {"case_id": C1(s), "alert_id": W2(s)})
+    await same_rows("link: tasks", lambda s: tasks_of(C1(s), L[s]))
+    await same_tracking("link: case re-targeted", "case", "c1")
+    await pair("links: bulk", "POST", f"{P}/case/alert-links", ana, lambda s: {"case_id": C2(s), "alert_ids": [lid(s, "w3"), W1(s)]})
+    await pair("links: bulk, already linked", "POST", f"{P}/case/alert-links", ana, lambda s: {"case_id": C2(s), "alert_ids": [W1(s)]})
+    await pair("links: bulk, another tenant", "POST", f"{P}/case/alert-links", ana, lambda s: {"case_id": C2(s), "alert_ids": [b1]})
+    await pair("links: portal scope", "POST", f"{P}/case/alert-links", portal, {"case_id": 1, "alert_ids": []})
+    await same_rows("links: tasks", lambda s: tasks_of(C2(s), L[s]))
+    await same_rows("links: timeline", lambda s: events_of(C2(s), L[s]))
+    await same_tracking("links: case re-targeted", "case", "c2")
+    await pair("unlink: missing link", "POST", f"{P}/case/alert-unlink", ana, lambda s: {"case_id": C1(s), "alert_id": b1})
+    await pair("unlink w3", "POST", f"{P}/case/alert-unlink", ana, lambda s: {"case_id": C2(s), "alert_id": lid(s, "w3")})
+    await same_rows("unlink: tasks orphaned", lambda s: tasks_of(C2(s), L[s]))
+    await same_rows("unlink: timeline", lambda s: events_of(C2(s), L[s]))
+
+    print("\n=== incidents writes: case status cascade ===")
+    await pair("case status: query + body errors", "PUT", f"{P}/case/status?force=maybe", ana, {"case_id": "x"})
+    await pair(
+        "case status: close with mandatory tasks open",
+        "PUT",
+        f"{P}/case/status",
+        ana,
+        lambda s: {"case_id": C1(s), "status": "CLOSED"},
+    )
+    await pair("case status: force close", "PUT", f"{P}/case/status?force=true", ana, lambda s: {"case_id": C1(s), "status": "CLOSED"})
+    await same_tracking("case closed", "case", "c1")
+    await same_tracking("case closed: alert", "alert", "w2")
+    await pair("case status: reopen", "PUT", f"{P}/case/status", ana, lambda s: {"case_id": C1(s), "status": "OPEN"})
+    await pair("case status: wait on customer", "PUT", f"{P}/case/status", ana, lambda s: {"case_id": C1(s), "status": "PENDING_CUSTOMER"})
+    await pair(
+        "case status: portal cannot wait",
+        "PUT",
+        f"{P}/case/status",
+        portal,
+        lambda s: {"case_id": C1(s), "status": "PENDING_CUSTOMER"},
+    )
+    await pair(
+        "case: portal reply",
+        "POST",
+        f"{P}/case/comment",
+        portal,
+        lambda s: {"case_id": C1(s), "comment": "answer", "user_name": "x"},
+    )
+    await pair("case after the reply", "GET", lambda s: f"{P}/case/{C1(s)}", ana)
+    await same_rows("case status: timeline", lambda s: events_of(C1(s), L[s]))
+    await same_tracking("case after the reply", "case", "c1")
+    await same_tracking("case after the reply: alert", "alert", "w2")
+
+    print("\n=== incidents writes: case escalation, severity, assignment, customer ===")
+    await pair("case escalate", "PUT", f"{P}/case/escalated", ana, lambda s: {"case_id": C2(s), "escalated": True})
+    await pair("case escalate: portal scope", "PUT", f"{P}/case/escalated", portal, {"case_id": 1, "escalated": True})
+    await pair("case severity: bad enum", "PUT", f"{P}/case/severity", ana, {"case_id": 1, "severity": "critical"})
+    for sev in ("Critical", None):
+        await pair(f"case severity {sev}", "PUT", f"{P}/case/severity", ana, lambda s, v=sev: {"case_id": C2(s), "severity": v})
+        await same_tracking(f"case severity {sev}", "case", "c2")
+    await pair("case assign: unknown user", "PUT", f"{P}/case/assigned-to", ana, lambda s: {"case_id": C2(s), "assigned_to": f"ghost{SFX}"})
+    await pair("case assign", "PUT", f"{P}/case/assigned-to", ana, lambda s: {"case_id": C2(s), "assigned_to": ADMIN})
+    await pair("case assign (portal)", "PUT", f"{P}/case/assigned-to", portal, lambda s: {"case_id": C2(s), "assigned_to": PORTAL})
+    await same_rows("case assign: timeline", lambda s: events_of(C2(s), L[s]))
+    await pair("case customer: params missing", "PUT", f"{P}/case/customer-code", adm)
+    await pair("case customer: no settings", "PUT", lambda s: f"{P}/case/customer-code?case_id={C2(s)}&customer_code={CUST_P}", adm)
+    await pair("case customer: analyst to B", "PUT", lambda s: f"{P}/case/customer-code?case_id={C2(s)}&customer_code={CUST_B}", ana)
+    await pair("case customer: admin to B", "PUT", lambda s: f"{P}/case/customer-code?case_id={C2(s)}&customer_code={CUST_B}", adm)
+    await pair("case customer: analyst cannot see it now", "GET", lambda s: f"{P}/case/{C2(s)}", ana)
+
+    print("\n=== incidents writes: case from alert ===")
+    rp = await call("p", "POST", f"{P}/alert", ana, alert_body(f"Write four {SFX}"))
+    rr = await call("r", "POST", f"{P}/alert", ana, alert_body(f"Write four {SFX}"))
+    if rp.status_code == rr.status_code == 200:
+        label("w4", rp.json()["id"], rr.json()["id"], "alert")
+        rp, rr = await pair("from alert", "POST", f"{P}/case/from-alert", ana, lambda s: {"alert_id": lid(s, "w4")})
+        if rp.status_code == rr.status_code == 200:
+            label("c4", rp.json()["case_alert_link"]["case_id"], rr.json()["case_alert_link"]["case_id"], "case")
+            await pair("from alert: the case", "GET", lambda s: f"{P}/case/{lid(s, 'c4')}", ana, extra=("case_creation_time",))
+            await same_rows("from alert: tasks", lambda s: tasks_of(lid(s, "c4"), L[s]))
+            await same_rows("from alert: timeline", lambda s: events_of(lid(s, "c4"), L[s]))
+            await same_tracking("from alert: case", "case", "c4")
+        await pair("from alert: errors", "POST", f"{P}/case/from-alert?template_id=x", ana, {"alert_id": "y"})
+        await pair("from alert: another tenant", "POST", f"{P}/case/from-alert", ana, {"alert_id": b1})
+        await pair(
+            "from alert, explicit template",
+            "POST",
+            f"{P}/case/from-alert?template_id={ids[f'tmpl-c-{SFX}']}",
+            ana,
+            lambda s: {"alert_id": lid(s, "w4")},
+        )
+
+    print("\n=== incidents writes: deletion ===")
+    await pair("delete alert: linked to a case", "DELETE", lambda s: f"{P}/alert/{W2(s)}", ana)
+    await pair("delete alert: another tenant", "DELETE", f"{P}/alert/{b1}", ana)
+    await pair("delete alert: not an int", "DELETE", f"{P}/alert/x", ana)
+    await pair("delete alert", "DELETE", lambda s: f"{P}/alert/{lid(s, 'w3')}", ana)
+    await pair("delete alert again", "DELETE", lambda s: f"{P}/alert/{lid(s, 'w3')}", ana)
+    for key in ("d1", "d2"):
+        rp = await call("p", "POST", f"{P}/alert", ana, alert_body(f"Del {key} P{SFX}"))
+        rr = await call("r", "POST", f"{P}/alert", ana, alert_body(f"Del {key} R{SFX}"))
+        label(key, rp.json()["id"], rr.json()["id"], "alert")
+        label_str(f"Del {key} P{SFX}", f"Del {key} R{SFX}", f"<{key} title>")
+    await pair("bulk delete", "DELETE", f"{P}/alerts", ana, lambda s: {"alert_ids": [lid(s, "d1"), W2(s), b1, 999999999]})
+    await pair("delete by title", "DELETE", lambda s: f"{P}/alerts/by-title/Del d2 {s.upper()}{SFX}", ana)
+    await pair("delete by title: nothing", "DELETE", f"{P}/alerts/by-title/nothing-{SFX}", ana)
+    await pair("delete by title: nobody", "DELETE", f"{P}/alerts/by-title/{SFX}", nobody)
+
+    print("\n=== incidents writes: settings ===")
+    TWIN = {"p": CUST_P, "r": CUST_R}
+    label_str(CUST_P, CUST_R, "<CUST>")
+    await pair("ai_trigger: query + body errors", "PUT", f"{P}/ai_trigger", adm, {"enabled": "x"})
+    await pair("ai_trigger: unknown customer", "PUT", f"{P}/ai_trigger?customer_code=nope{SFX}", adm, {"customer_code": "x"})
+    for enabled in (True, False):
+        await pair(
+            f"ai_trigger: put {enabled}",
+            "PUT",
+            lambda s: f"{P}/ai_trigger?customer_code={TWIN[s]}",
+            adm,
+            lambda s, e=enabled: {"customer_code": TWIN[s], "enabled": e},
+        )
+        await pair(
+            f"notification: put {enabled}",
+            "PUT",
+            lambda s: f"{P}/notification?customer_code={TWIN[s]}",
+            adm,
+            lambda s, e=enabled: {"customer_code": TWIN[s], "shuffle_workflow_id": f"wf-{e}", "enabled": e},
+        )
+    r1, r2 = await call("p", "PUT", f"{P}/ai_trigger?customer_code={CUST_A}", ana, {"customer_code": CUST_B, "enabled": True}), None
+    r2 = await call("r", "PUT", f"{P}/ai_trigger?customer_code={CUST_A}", ana, {"customer_code": CUST_B, "enabled": True})
+    check(
+        "DIFF_BY_DESIGN ai_trigger for another tenant (analyst): Python 200, Rust 403",
+        r1.status_code == 200 and r2.status_code == 403,
+        f"{r1.text[:200]} / {r2.text[:200]}",
+    )
+    r1 = await call(
+        "p",
+        "PUT",
+        f"{P}/notification?customer_code={CUST_A}",
+        ana,
+        {"customer_code": CUST_B, "shuffle_workflow_id": "x", "enabled": True},
+    )
+    r2 = await call(
+        "r",
+        "PUT",
+        f"{P}/notification?customer_code={CUST_A}",
+        ana,
+        {"customer_code": CUST_B, "shuffle_workflow_id": "x", "enabled": True},
+    )
+    check(
+        "DIFF_BY_DESIGN notification for another tenant (analyst): Python 200, Rust 403",
+        r1.status_code == 200 and r2.status_code == 403,
+        f"{r1.text[:200]} / {r2.text[:200]}",
+    )
+
+    SRC = {"p": f"srcP{SFX}", "r": f"srcR{SFX}"}
+    label_str(SRC["p"], SRC["r"], "<SRC>")
+
+    def names(s, **kw):
+        return {
+            "field_names": ["f1", "f2", "f1"],
+            "asset_name": "agent",
+            "timefield_name": "ts",
+            "alert_title_name": "title",
+            "source": SRC[s],
+            **kw,
+        }
+
+    await pair("dictionary: body errors", "POST", f"{P}/fields-assets-title-and-timefield", adm, {"field_names": "x"})
+    await pair(
+        "dictionary: create",
+        "POST",
+        f"{P}/fields-assets-title-and-timefield",
+        adm,
+        lambda s: names(s, ioc_field_names=["ip", "ip"]),
+    )
+    await pair("dictionary: read back", "GET", lambda s: f"{P}/fields-assets-title-and-timefield?source={SRC[s]}", adm)
+    await pair(
+        "dictionary: replace without IoCs (500)",
+        "PUT",
+        f"{P}/fields-assets-title-and-timefield",
+        adm,
+        lambda s: names(s, field_names=["f3"], asset_name="host"),
+    )
+    await pair("dictionary: after the failed replace", "GET", lambda s: f"{P}/fields-assets-title-and-timefield?source={SRC[s]}", adm)
+    await pair(
+        "dictionary: replace",
+        "PUT",
+        f"{P}/fields-assets-title-and-timefield",
+        adm,
+        lambda s: names(s, field_names=["f4", "f5"], ioc_field_names=["dst"]),
+    )
+    await pair("dictionary: after replace", "GET", lambda s: f"{P}/fields-assets-title-and-timefield?source={SRC[s]}", adm)
+    await pair(
+        "dictionary: delete with IoCs (500)",
+        "DELETE",
+        f"{P}/delete-fields-assets-title-and-timefield",
+        adm,
+        lambda s: names(s, field_names=["f4"], ioc_field_names=["dst"]),
+    )
+    await pair("dictionary: deprecated delete", "DELETE", lambda s: f"{P}/field_name/f4/{SRC[s]}", adm)
+    await pair(
+        "dictionary: delete",
+        "DELETE",
+        f"{P}/delete-fields-assets-title-and-timefield",
+        adm,
+        lambda s: names(s, field_names=["f4"], asset_name="host"),
+    )
+    await pair("dictionary: after delete", "GET", lambda s: f"{P}/fields-assets-title-and-timefield?source={SRC[s]}", adm)
+    await pair("dictionary: configured source delete", "DELETE", lambda s: f"{P}/configured/sources/{SRC[s]}", adm)
+    await pair("dictionary: after source delete", "GET", lambda s: f"{P}/fields-assets-title-and-timefield?source={SRC[s]}", adm)
+    await pair("dictionary: duplicate rows (500)", "DELETE", f"{P}/field_name/rule_id/{SOURCE}", adm)
+    await pair("dictionary: duplicate rows, configured source (500)", "DELETE", f"{P}/configured/sources/{SOURCE}", adm)
 
 
 if __name__ == "__main__":
