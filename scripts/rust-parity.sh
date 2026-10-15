@@ -41,9 +41,20 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 
+# Every suite (`rust_parity_e2e.py`, then one `rust_parity_<module>_e2e.py` per
+# ported module), or only those named in PARITY_SUITES.
+PY="${PYTHON_ABS:-$PWD/$PYTHON}"
 cd backend
-MYSQL_URL="$MYSQL_URL" MYSQL_USER="$MYSQL_USER" MYSQL_PASSWORD="$MYSQL_PASSWORD" \
-  MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-unused}" JWT_SECRET="$JWT_SECRET" \
-  RUST_BASE_URL="http://127.0.0.1:${PORT}" RELEASE_STUB_PORT="$RELEASE_STUB_PORT" IDP_STUB_PORT="$IDP_STUB_PORT" \
-  SMTP_STUB_PORT="$SMTP_STUB_PORT" PYTHONPATH="$PWD" \
-  "${PYTHON_ABS:-$OLDPWD/$PYTHON}" tests/e2e/rust_parity_e2e.py
+shopt -s nullglob
+module_suites=(tests/e2e/rust_parity_*_e2e.py)
+suites="${PARITY_SUITES:-tests/e2e/rust_parity_e2e.py ${module_suites[*]}}"
+status=0
+for suite in $suites; do
+  echo "=== $suite"
+  MYSQL_URL="$MYSQL_URL" MYSQL_USER="$MYSQL_USER" MYSQL_PASSWORD="$MYSQL_PASSWORD" \
+    MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-unused}" JWT_SECRET="$JWT_SECRET" \
+    RUST_BASE_URL="http://127.0.0.1:${PORT}" RELEASE_STUB_PORT="$RELEASE_STUB_PORT" IDP_STUB_PORT="$IDP_STUB_PORT" \
+    SMTP_STUB_PORT="$SMTP_STUB_PORT" PYTHONPATH="$PWD" \
+    "$PY" "$suite" || status=1
+done
+exit $status

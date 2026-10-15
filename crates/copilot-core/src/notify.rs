@@ -12,23 +12,76 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
-/// `NotificationTrigger` values the Rust services emit today.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// `NotificationTrigger` (`app/notifications/schema/notifications.py`), every
+/// value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationTrigger {
     /// An AI investigation finished and its report was written back.
     InvestigationComplete,
     /// An analyst signed off on an AI report.
     AiReportReviewed,
+    /// CoPilot created an alert.
+    AlertCreated,
+    /// An alert was assigned to someone.
+    AlertAssigned,
+    /// A case was assigned to someone.
+    CaseAssigned,
+    /// A case task was assigned to someone.
+    CaseTaskAssigned,
+    /// An SLA clock entered its last quarter (`notify_sla_transitions`).
+    SlaAtRisk,
+    /// An SLA clock ran out (`notify_sla_transitions`).
+    SlaBreached,
+    /// Not a dispatch trigger: the scope of the temporary-password email's
+    /// templates (#999). Routes must not accept it ([`Self::DISPATCH`]).
+    TempPasswordIssued,
 }
 
 impl NotificationTrigger {
+    /// Every value, in the Python enum's order.
+    pub const ALL: [Self; 9] = [
+        Self::InvestigationComplete,
+        Self::AiReportReviewed,
+        Self::AlertCreated,
+        Self::AlertAssigned,
+        Self::CaseAssigned,
+        Self::CaseTaskAssigned,
+        Self::SlaAtRisk,
+        Self::SlaBreached,
+        Self::TempPasswordIssued,
+    ];
+
+    /// `DISPATCH_TRIGGERS`: what a notification route may fire on.
+    pub const DISPATCH: [Self; 8] = [
+        Self::InvestigationComplete,
+        Self::AiReportReviewed,
+        Self::AlertCreated,
+        Self::AlertAssigned,
+        Self::CaseAssigned,
+        Self::CaseTaskAssigned,
+        Self::SlaAtRisk,
+        Self::SlaBreached,
+    ];
+
     /// Wire value.
     pub const fn as_str(self) -> &'static str {
         match self {
-            NotificationTrigger::InvestigationComplete => "investigation_complete",
-            NotificationTrigger::AiReportReviewed => "ai_report_reviewed",
+            Self::InvestigationComplete => "investigation_complete",
+            Self::AiReportReviewed => "ai_report_reviewed",
+            Self::AlertCreated => "alert_created",
+            Self::AlertAssigned => "alert_assigned",
+            Self::CaseAssigned => "case_assigned",
+            Self::CaseTaskAssigned => "case_task_assigned",
+            Self::SlaAtRisk => "sla_at_risk",
+            Self::SlaBreached => "sla_breached",
+            Self::TempPasswordIssued => "temp_password_issued",
         }
+    }
+
+    /// The value for a wire string (exact, like the Python enum).
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|t| t.as_str() == value)
     }
 }
 
@@ -319,5 +372,38 @@ mod tests {
         assert_eq!(e.link_url, None);
         assert_eq!(e.actor_username.as_deref(), Some("alice"));
         assert_eq!(e.context["report_id"], 3);
+    }
+
+    #[test]
+    fn triggers_are_the_python_enums() {
+        // `class NotificationTrigger(str, Enum)` in the Python schema, in order.
+        let source = include_str!("../../../backend/app/notifications/schema/notifications.py");
+        let body = source
+            .split("class NotificationTrigger(str, Enum):")
+            .nth(1)
+            .unwrap()
+            .split("\n\n\n")
+            .next()
+            .unwrap();
+        let values: Vec<&str> = body
+            .lines()
+            .filter_map(|l| {
+                let l = l.trim();
+                let (name, value) = l.split_once(" = \"")?;
+                (name.chars().all(|c| c.is_ascii_uppercase() || c == '_'))
+                    .then(|| value.trim_end_matches('"'))
+            })
+            .collect();
+        let ours: Vec<&str> = NotificationTrigger::ALL
+            .iter()
+            .map(|t| t.as_str())
+            .collect();
+        assert_eq!(values, ours);
+        for t in NotificationTrigger::ALL {
+            assert_eq!(NotificationTrigger::parse(t.as_str()), Some(t));
+            assert_eq!(serde_json::to_value(t).unwrap(), t.as_str());
+        }
+        assert_eq!(NotificationTrigger::parse("Alert_Created"), None);
+        assert!(!NotificationTrigger::DISPATCH.contains(&NotificationTrigger::TempPasswordIssued));
     }
 }

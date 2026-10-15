@@ -351,8 +351,8 @@ not provoked.
 | unit | every crate | nothing |
 | vectors | `crates/*/src/*_vectors.json`, recorded from the Python implementations (CPython difflib; and through `scripts/gen-*-vectors.py`: pydantic datetimes, PEP 440, Starlette forms and CPython JSON, email-validator, Fernet/TOTP, py_webauthn/cbor2) | nothing; Python to regenerate |
 | contract | `copilot-talon/src/contract.rs`, `copilot-core/src/notify.rs`, `backend/tests/test_notification_rust_bridge.py` | nothing |
-| end-to-end | `crates/copilot/tests/e2e.rs` — the production router against MySQL at the Alembic head, Talon and Python replaced by recorders | MySQL |
-| parity | `backend/tests/e2e/rust_parity_e2e.py` via `scripts/rust-parity.sh` — real FastAPI routers vs. the running Rust binary, one database; Talon, GitHub's release API and an identity provider (token endpoint, JWKS, signing key) are local stubs both backends call, and a software authenticator registers and logs in on both; an unhandled Python error compares as the bare 500 uvicorn sends | MySQL + Python venv |
+| end-to-end | `crates/copilot/tests/e2e.rs` and one `tests/e2e_<module>.rs` per later module, on the shared harness in `tests/common/mod.rs` — the production router against MySQL at the Alembic head, Talon and Python replaced by recorders | MySQL |
+| parity | `backend/tests/e2e/rust_parity_e2e.py`, then every `rust_parity_<module>_e2e.py` (or `PARITY_SUITES`), via `scripts/rust-parity.sh` — real FastAPI routers vs. the running Rust binary, one database; Talon, GitHub's release API and an identity provider (token endpoint, JWKS, signing key) are local stubs both backends call, and a software authenticator registers and logs in on both; an unhandled Python error compares as the bare 500 uvicorn sends | MySQL + Python venv |
 
 ```bash
 # disposable MySQL on 13306, schema from the fixture (or `alembic upgrade head`)
@@ -398,7 +398,9 @@ rewrite: they talk to the same API.
 4. Mount it in `crates/copilot/src/app.rs` and add the prefix to
    `PORTED_PREFIXES` (`GET /api/…` when only that method is ported: other
    methods on those paths are 405s the binary forwards to Python).
-5. Extend the e2e suite and the parity harness; every intentional difference
-   goes in §4 with a test.
+5. Extend the e2e suite and the parity harness — a new module gets its own
+   `crates/copilot/tests/e2e_<module>.rs` (`mod common;`) and
+   `backend/tests/e2e/rust_parity_<module>_e2e.py`; every intentional
+   difference goes in §4 with a test.
 6. Background work: hand over through `scheduled_job_metadata`, never run in
    both services.
