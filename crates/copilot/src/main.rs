@@ -7,6 +7,7 @@
 //! copilot serve           serve the API (default)
 //! copilot doctor          check configuration, database, schema, Talon, legacy backend
 //! copilot routes          list the route prefixes this build serves itself
+//! copilot jobs            list the scheduled jobs this build can run, and who runs them
 //! copilot palace drain    run one palace-lesson drainer tick now
 //! copilot palace sweep    run one one-off-lesson sweeper tick now
 //! ```
@@ -51,6 +52,8 @@ enum Command {
     Doctor,
     /// Print the route prefixes this build answers itself.
     Routes,
+    /// List the scheduled jobs this build can take over and who runs each now.
+    Jobs,
     /// Run one palace job tick now.
     Palace {
         #[command(subcommand)]
@@ -109,6 +112,7 @@ fn main() -> anyhow::Result<()> {
             Command::Serve => serve(cfg).await,
             Command::Doctor => doctor(cfg).await,
             Command::Palace { job } => palace(cfg, job).await,
+            Command::Jobs => jobs(cfg).await,
             Command::Routes => Ok(()),
         }
     })
@@ -154,18 +158,9 @@ async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
     let router = app.router(cfg.max_body_bytes);
     let cancel = CancellationToken::new();
 
-    let jobs = if cfg.palace_jobs {
-        tracing::info!(
-            "palace lesson jobs enabled (they run only while the APScheduler jobs are disabled)"
-        );
-        Some(tokio::spawn(copilot_ai_analyst::palace_jobs::run(
-            app.ctx.clone(),
-            app.talon.clone(),
-            cancel.clone(),
-        )))
-    } else {
-        None
-    };
+    // One loop per opted-in job; each runs only while its
+    // scheduled_job_metadata row is disabled (copilot-scheduler).
+    let jobs = app.scheduler.spawn(cancel.clone());
 
     let addr = SocketAddr::new(cfg.bind, cfg.port);
     let listener = tokio::net::TcpListener::bind(addr)
@@ -188,9 +183,8 @@ async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
     .await
     .context("server")?;
 
-    if let Some(jobs) = jobs {
-        let _ = tokio::time::timeout(Duration::from_secs(5), jobs).await;
-    }
+    // A run in progress gets copilot_scheduler::runner::SHUTDOWN_GRACE.
+    let _ = tokio::time::timeout(Duration::from_secs(15), jobs).await;
     db.close().await;
     tracing::info!("stopped");
     Ok(())
@@ -274,6 +268,9 @@ async fn doctor(cfg: CopilotConfig) -> anyhow::Result<()> {
         }
         None => println!("legacy      none (unported routes answer 404)"),
     }
+    for line in job_lines(&app.scheduler).await {
+        println!("job         {line}");
+    }
     if failures > 0 {
         bail!("{failures} check(s) failed");
     }
@@ -283,18 +280,69 @@ async fn doctor(cfg: CopilotConfig) -> anyhow::Result<()> {
 async fn palace(cfg: CopilotConfig, job: PalaceJob) -> anyhow::Result<()> {
     let db = connect_and_check(&cfg).await?;
     let app = App::new(&cfg, db)?;
-    match job {
-        PalaceJob::Drain => {
-            let r = copilot_ai_analyst::palace_jobs::drain_once(&app.ctx, &app.talon).await?;
-            println!("ingested={} failed={}", r.ingested, r.failed);
-        }
-        PalaceJob::Sweep => {
-            let r = copilot_ai_analyst::palace_jobs::sweep_once(&app.ctx, &app.talon).await?;
-            println!(
-                "forgotten={} forget_failed={}",
-                r.forgotten, r.forget_failed
-            );
-        }
+    // Serialized with every scheduled run of the job, here or in APScheduler
+    // (the job's run lock), like a manual run.
+    let lock = match job {
+        PalaceJob::Drain => copilot_ai_analyst::palace_jobs::DRAINER_JOB_ID,
+        PalaceJob::Sweep => copilot_ai_analyst::palace_jobs::SWEEPER_JOB_ID,
+    };
+    let Some(held) = copilot_db::scheduler::JobLock::acquire(
+        &app.ctx.db,
+        lock,
+        copilot_scheduler::runner::MANUAL_LOCK_WAIT,
+    )
+    .await?
+    else {
+        bail!("{lock} is running (here or in APScheduler); try again when it has finished");
+    };
+    let outcome = match job {
+        PalaceJob::Drain => copilot_ai_analyst::palace_jobs::drain_once(&app.ctx, &app.talon)
+            .await
+            .map(|r| format!("ingested={} failed={}", r.ingested, r.failed)),
+        PalaceJob::Sweep => copilot_ai_analyst::palace_jobs::sweep_once(&app.ctx, &app.talon)
+            .await
+            .map(|r| {
+                format!(
+                    "forgotten={} forget_failed={}",
+                    r.forgotten, r.forget_failed
+                )
+            }),
+    };
+    held.release().await;
+    println!("{}", outcome?);
+    Ok(())
+}
+
+/// One line per job: id, opt-in, owner, interval, next run here.
+async fn job_lines(scheduler: &copilot_scheduler::Scheduler) -> Vec<String> {
+    scheduler
+        .status()
+        .await
+        .into_iter()
+        .map(|j| {
+            format!(
+                "{:<30} opted-in={:<3} owner={:<7} every={}{}",
+                j.id,
+                if j.opted_in { "yes" } else { "no" },
+                j.owner.map_or("unknown", |o| o.as_str()),
+                j.interval_minutes
+                    .map_or_else(|| "-".to_string(), |m| format!("{m}m")),
+                j.next_run
+                    .map(|t| format!(" next={}", t.to_rfc3339()))
+                    .unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
+async fn jobs(cfg: CopilotConfig) -> anyhow::Result<()> {
+    let db = connect_and_check(&cfg).await?;
+    let app = App::new(&cfg, db)?;
+    for id in app.scheduler.opt_in().unknown(&app.scheduler.job_ids()) {
+        println!("warning: COPILOT_RS_JOBS names {id:?}, which this build cannot run");
+    }
+    for line in job_lines(&app.scheduler).await {
+        println!("{line}");
     }
     Ok(())
 }

@@ -364,14 +364,33 @@ async fn talon_and_ai_analyst_flow() {
         "Report body fields must be non-empty: severity_assessment, summary, report_markdown, recommended_actions. A report missing these persists a blank row in CoPilot."
     );
 
-    // The bridge receives the investigation_complete event.
+    // Notifications are dispatched in-process: a webhook route per AI
+    // trigger, and the customer's AI report switch on (AI-sourced events
+    // never reach a customer-facing route without it).
+    h.exec(&format!(
+        "INSERT INTO customer_portal_ai_report_settings (customer_code, enabled, updated_at) \
+         VALUES ('{acme}', 1, UTC_TIMESTAMP())"
+    ))
+    .await;
+    for (trigger, hook) in [
+        ("investigation_complete", "/hook/ic"),
+        ("ai_report_reviewed", "/hook/review"),
+    ] {
+        let (st, body) = h
+            .call(
+                "POST",
+                &format!("/api/customers/{acme}/notification_routes"),
+                Some(&admin),
+                Some(json!({"name": format!("AI {trigger}"), "trigger": trigger,
+                    "channel": "webhook", "min_severity": "Low",
+                    "config": {"url": format!("{}{hook}", legacy.uri())}})),
+            )
+            .await;
+        assert_eq!(st, 200, "{body}");
+    }
     Mock::given(method("POST"))
-        .and(path("/api/notifications/events"))
-        .and(header("authorization", format!("Bearer {admin}").as_str()))
-        .respond_with(
-            ResponseTemplate::new(202)
-                .set_body_json(json!({"success": true, "message": "Notification event queued"})),
-        )
+        .and(wiremock::matchers::path_regex("^/hook/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
         .mount(&legacy)
         .await;
     let (st, body) = h
@@ -507,40 +526,84 @@ async fn talon_and_ai_analyst_flow() {
         "sysmon_event_1.txt"
     );
 
-    // --- Notifications reached the bridge: report + first review only -------
-    // Each event is handed to the bridge from a spawned task: their order is
-    // not guaranteed, so compare them by trigger.
-    let mut bridged = Vec::new();
+    // --- Notifications went out in-process: report + first review only -----
+    // Each event is dispatched from a spawned task: wait for both.
+    let mut hooks: Vec<(String, Value)> = Vec::new();
     for _ in 0..100 {
-        bridged = legacy
+        hooks = legacy
             .received_requests()
             .await
             .unwrap_or_default()
             .into_iter()
-            .filter(|r| r.url.path() == "/api/notifications/events")
-            .map(|r| serde_json::from_slice::<Value>(&r.body).unwrap())
+            .filter(|r| r.url.path().starts_with("/hook/"))
+            .map(|r| {
+                (
+                    r.url.path().to_string(),
+                    serde_json::from_slice::<Value>(&r.body).unwrap(),
+                )
+            })
             .collect();
-        if bridged.len() >= 2 {
+        if hooks.len() >= 2 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    bridged.sort_by_key(|e| e["trigger"] != "investigation_complete");
-    let triggers: Vec<&str> = bridged
-        .iter()
-        .map(|e| e["trigger"].as_str().unwrap())
-        .collect();
+    hooks.sort_by(|a, b| a.0.cmp(&b.0));
+    let paths: Vec<&str> = hooks.iter().map(|(p, _)| p.as_str()).collect();
     assert_eq!(
-        triggers,
-        vec!["investigation_complete", "ai_report_reviewed"]
+        paths,
+        vec!["/hook/ic", "/hook/review"],
+        "one each, the edit sent nothing"
     );
-    assert_eq!(bridged[0]["subject"], "Mimikatz acme");
-    assert_eq!(bridged[0]["context"]["asset_name"], "dc01-acme");
-    assert_eq!(bridged[0]["severity"], "Critical");
-    assert_eq!(bridged[1]["actor_username"], format!("analyst{s}"));
+    let link = format!("https://copilot.example.com/alerts/{acme_alert}");
+    let ic = &hooks[0].1;
+    assert_eq!(ic["customer_code"], acme.as_str());
+    assert_eq!(ic["alert_id"], acme_alert);
+    assert_eq!(ic["alert_name"], "Mimikatz acme");
+    assert_eq!(ic["severity"], "Critical");
+    assert_eq!(ic["summary"], "Credential dumping.");
+    assert_eq!(ic["report_url"], link.as_str());
+    let review = &hooks[1].1;
+    assert_eq!(review["report_url"], link.as_str());
+    assert_eq!(review["alert_name"], "Mimikatz acme");
+    // The dispatch log holds the re-derived dedupe keys and the reviewer.
+    let mut logged = Vec::new();
+    for _ in 0..50 {
+        logged = sqlx::query_as::<_, (String, String, Option<String>)>(&format!(
+            "SELECT dedupe_key, status, triggered_by FROM notification_dispatch_log \
+             WHERE customer_code = '{acme}' ORDER BY dedupe_key"
+        ))
+        .fetch_all(h.db.pool())
+        .await
+        .unwrap();
+        if logged.len() >= 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     assert_eq!(
-        bridged[1]["link_url"],
-        format!("https://copilot.example.com/alerts/{acme_alert}")
+        logged,
+        vec![
+            (
+                format!("alert:{acme_alert}:ai_report_reviewed"),
+                "sent".into(),
+                Some(format!("analyst{s}"))
+            ),
+            (
+                format!("alert:{acme_alert}:investigation_complete"),
+                "sent".into(),
+                None
+            ),
+        ]
+    );
+    assert!(
+        legacy
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .iter()
+            .all(|r| r.url.path() != "/api/notifications/events"),
+        "nothing is handed to the Python backend any more"
     );
 
     // --- Replay goes to Talon with the forced template -----------------------

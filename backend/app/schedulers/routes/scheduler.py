@@ -14,6 +14,7 @@ from app.db.db_session import get_db
 from app.middleware.search_query import SearchParams
 from app.middleware.search_query import filter_and_limit
 from app.middleware.search_query import search_query
+from app.schedulers.handover import manual_run
 from app.schedulers.models.scheduler import JobMetadata
 from app.schedulers.scheduler import get_function_by_name
 from app.schedulers.scheduler import get_scheduler_instance
@@ -246,12 +247,15 @@ async def run_job_manually(job_id: str, session: AsyncSession = Depends(get_db))
         # Retrieve the function associated with the job and run it
         job_function = get_function_by_name(job.name)  # Ensure this function maps job names to function objects
         logger.info(f"Running job {job_id} manually")
-        if asyncio.iscoroutinefunction(job_function):
-            logger.info(f"Running async job {job_id}")
-            result = await job_function()  # Execute the function if it's async
-        else:
-            logger.info(f"Running sync job {job_id}")
-            result = job_function()  # Execute synchronously if not an async function
+        # A manual run: a job guarded for the hand-over to the Rust service waits for a run in
+        # progress instead of skipping (handover.py).
+        with manual_run():
+            if asyncio.iscoroutinefunction(job_function):
+                logger.info(f"Running async job {job_id}")
+                result = await job_function()  # Execute the function if it's async
+            else:
+                logger.info(f"Running sync job {job_id}")
+                result = job_function()  # Execute synchronously if not an async function
 
         return {"success": True, "message": "Job executed successfully", "result": result}
     except Exception as e:

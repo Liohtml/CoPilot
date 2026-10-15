@@ -1,0 +1,474 @@
+[
+ {
+  "event": {
+   "customer_code": "ACME",
+   "trigger": "investigation_complete",
+   "severity": "Critical",
+   "subject": "Mimikatz on dc01",
+   "summary": "s",
+   "entity_type": "alert",
+   "entity_id": 14,
+   "dedupe_key": "k",
+   "link_url": "https://copilot.example.com/alerts/14"
+  },
+  "body": "short body",
+  "repeat": 1,
+  "raw_body": false,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"attention\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Critical \\u00b7 Mimikatz on dc01\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"FactSet\", \"facts\": [{\"title\": \"Trigger\", \"value\": \"investigation complete\"}, {\"title\": \"Customer\", \"value\": \"ACME\"}, {\"title\": \"Entity\", \"value\": \"alert #14\"}]}, {\"type\": \"TextBlock\", \"text\": \"short body\", \"wrap\": true}, {\"type\": \"TextBlock\", \"text\": \"[Open in CoPilot](https://copilot.example.com/alerts/14)\", \"wrap\": true, \"isSubtle\": true}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Open in CoPilot\", \"url\": \"https://copilot.example.com/alerts/14\"}]}}]}",
+  "length": 907,
+  "sha256": "6634e40e9ac9d79ebac9b66bb335fe732add289e154d371614164c188a445e79"
+ },
+ {
+  "event": {
+   "customer_code": "ACME",
+   "trigger": "investigation_complete",
+   "severity": "Critical",
+   "subject": "Mimikatz on dc01",
+   "summary": "s",
+   "entity_type": "alert",
+   "entity_id": 14,
+   "dedupe_key": "k",
+   "link_url": "https://copilot.example.com/alerts/14"
+  },
+  "body": "short body",
+  "repeat": 1,
+  "raw_body": true,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"attention\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Critical \\u00b7 Mimikatz on dc01\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"TextBlock\", \"text\": \"short body\", \"wrap\": true}, {\"type\": \"TextBlock\", \"text\": \"[Open in CoPilot](https://copilot.example.com/alerts/14)\", \"wrap\": true, \"isSubtle\": true}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Open in CoPilot\", \"url\": \"https://copilot.example.com/alerts/14\"}]}}]}",
+  "length": 735,
+  "sha256": "8aa4303507e16b79b106825b31524d9d66e5d896a4a7cd6e1b2a014249eab578"
+ },
+ {
+  "event": {
+   "customer_code": "ACME",
+   "trigger": "investigation_complete",
+   "severity": "Critical",
+   "subject": "Mimikatz on dc01",
+   "summary": "s",
+   "entity_type": "alert",
+   "entity_id": 14,
+   "dedupe_key": "k",
+   "link_url": "https://copilot.example.com/alerts/14"
+  },
+  "body": "*bold* — ünicode 😀\nline two\ttab",
+  "repeat": 1,
+  "raw_body": false,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"attention\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Critical \\u00b7 Mimikatz on dc01\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"FactSet\", \"facts\": [{\"title\": \"Trigger\", \"value\": \"investigation complete\"}, {\"title\": \"Customer\", \"value\": \"ACME\"}, {\"title\": \"Entity\", \"value\": \"alert #14\"}]}, {\"type\": \"TextBlock\", \"text\": \"*bold* \\u2014 \\u00fcnicode \\ud83d\\ude00\\nline two\\ttab\", \"wrap\": true}, {\"type\": \"TextBlock\", \"text\": \"[Open in CoPilot](https://copilot.example.com/alerts/14)\", \"wrap\": true, \"isSubtle\": true}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Open in CoPilot\", \"url\": \"https://copilot.example.com/alerts/14\"}]}}]}",
+  "length": 951,
+  "sha256": "7f0d28991d7476969720e0f621d908909ecb6230a4ea7d5eefd00393586bcb2e"
+ },
+ {
+  "event": {
+   "customer_code": "ACME",
+   "trigger": "investigation_complete",
+   "severity": "Critical",
+   "subject": "Mimikatz on dc01",
+   "summary": "s",
+   "entity_type": "alert",
+   "entity_id": 14,
+   "dedupe_key": "k",
+   "link_url": "https://copilot.example.com/alerts/14"
+  },
+  "body": "*bold* — ünicode 😀\nline two\ttab",
+  "repeat": 1,
+  "raw_body": true,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"attention\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Critical \\u00b7 Mimikatz on dc01\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"TextBlock\", \"text\": \"*bold* \\u2014 \\u00fcnicode \\ud83d\\ude00\\nline two\\ttab\", \"wrap\": true}, {\"type\": \"TextBlock\", \"text\": \"[Open in CoPilot](https://copilot.example.com/alerts/14)\", \"wrap\": true, \"isSubtle\": true}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Open in CoPilot\", \"url\": \"https://copilot.example.com/alerts/14\"}]}}]}",
+  "length": 779,
+  "sha256": "223f89d250cff86050365a58f1626b57cc335e136cc9b2fb0fb4f23defa0cdeb"
+ },
+ {
+  "event": {
+   "customer_code": "ACME",
+   "trigger": "investigation_complete",
+   "severity": "Critical",
+   "subject": "Mimikatz on dc01",
+   "summary": "s",
+   "entity_type": "alert",
+   "entity_id": 14,
+   "dedupe_key": "k",
+   "link_url": "https://copilot.example.com/alerts/14"
+  },
+  "body": "Report line with é and \"quotes\" and \\ backslashes. ",
+  "repeat": 600,
+  "raw_body": false,
+  "card": null,
+  "length": 28672,
+  "sha256": "cedae6fe5732f0fc81c7cc50512f846efc3d02a67ce86309af0a862f7f283489"
+ },
+ {
+  "event": {
+   "customer_code": "ACME",
+   "trigger": "investigation_complete",
+   "severity": "Critical",
+   "subject": "Mimikatz on dc01",
+   "summary": "s",
+   "entity_type": "alert",
+   "entity_id": 14,
+   "dedupe_key": "k",
+   "link_url": "https://copilot.example.com/alerts/14"
+  },
+  "body": "Report line with é and \"quotes\" and \\ backslashes. ",
+  "repeat": 600,
+  "raw_body": true,
+  "card": null,
+  "length": 28672,
+  "sha256": "cedae6fe5732f0fc81c7cc50512f846efc3d02a67ce86309af0a862f7f283489"
+ },
+ {
+  "event": {
+   "customer_code": "ACME",
+   "trigger": "investigation_complete",
+   "severity": "Critical",
+   "subject": "Mimikatz on dc01",
+   "summary": "s",
+   "entity_type": "alert",
+   "entity_id": 14,
+   "dedupe_key": "k",
+   "link_url": "https://copilot.example.com/alerts/14"
+  },
+  "body": "😀",
+  "repeat": 9000,
+  "raw_body": false,
+  "card": null,
+  "length": 28670,
+  "sha256": "d6a31b97fa12b7f3341046ddf9b22275ee28246ad2b7a5e1522b562cb7897b85"
+ },
+ {
+  "event": {
+   "customer_code": "ACME",
+   "trigger": "investigation_complete",
+   "severity": "Critical",
+   "subject": "Mimikatz on dc01",
+   "summary": "s",
+   "entity_type": "alert",
+   "entity_id": 14,
+   "dedupe_key": "k",
+   "link_url": "https://copilot.example.com/alerts/14"
+  },
+  "body": "😀",
+  "repeat": 9000,
+  "raw_body": true,
+  "card": null,
+  "length": 28670,
+  "sha256": "d6a31b97fa12b7f3341046ddf9b22275ee28246ad2b7a5e1522b562cb7897b85"
+ },
+ {
+  "event": {
+   "customer_code": null,
+   "trigger": "case_task_assigned",
+   "severity": "Informational",
+   "subject": "Task été 🎉",
+   "summary": "s",
+   "entity_type": "case_task",
+   "entity_id": 7,
+   "dedupe_key": "k",
+   "assignee_username": "bob",
+   "actor_username": "alice"
+  },
+  "body": "short body",
+  "repeat": 1,
+  "raw_body": false,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"default\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Informational \\u00b7 Task \\u00e9t\\u00e9 \\ud83c\\udf89\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"FactSet\", \"facts\": [{\"title\": \"Trigger\", \"value\": \"case task assigned\"}, {\"title\": \"Entity\", \"value\": \"case_task #7\"}, {\"title\": \"Assignee\", \"value\": \"bob\"}, {\"title\": \"By\", \"value\": \"alice\"}]}, {\"type\": \"TextBlock\", \"text\": \"short body\", \"wrap\": true}]}}]}",
+  "length": 718,
+  "sha256": "c9612bebc2eeadb6dcee311b86a87b9cfd5e406c8e3245c06ed13f393daa14d6"
+ },
+ {
+  "event": {
+   "customer_code": null,
+   "trigger": "case_task_assigned",
+   "severity": "Informational",
+   "subject": "Task été 🎉",
+   "summary": "s",
+   "entity_type": "case_task",
+   "entity_id": 7,
+   "dedupe_key": "k",
+   "assignee_username": "bob",
+   "actor_username": "alice"
+  },
+  "body": "short body",
+  "repeat": 1,
+  "raw_body": true,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"default\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Informational \\u00b7 Task \\u00e9t\\u00e9 \\ud83c\\udf89\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"TextBlock\", \"text\": \"short body\", \"wrap\": true}]}}]}",
+  "length": 513,
+  "sha256": "51c22cd4e097a8295cadd4e4b867a283be38e6e0d6c778c788b7412071015688"
+ },
+ {
+  "event": {
+   "customer_code": null,
+   "trigger": "case_task_assigned",
+   "severity": "Informational",
+   "subject": "Task été 🎉",
+   "summary": "s",
+   "entity_type": "case_task",
+   "entity_id": 7,
+   "dedupe_key": "k",
+   "assignee_username": "bob",
+   "actor_username": "alice"
+  },
+  "body": "*bold* — ünicode 😀\nline two\ttab",
+  "repeat": 1,
+  "raw_body": false,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"default\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Informational \\u00b7 Task \\u00e9t\\u00e9 \\ud83c\\udf89\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"FactSet\", \"facts\": [{\"title\": \"Trigger\", \"value\": \"case task assigned\"}, {\"title\": \"Entity\", \"value\": \"case_task #7\"}, {\"title\": \"Assignee\", \"value\": \"bob\"}, {\"title\": \"By\", \"value\": \"alice\"}]}, {\"type\": \"TextBlock\", \"text\": \"*bold* \\u2014 \\u00fcnicode \\ud83d\\ude00\\nline two\\ttab\", \"wrap\": true}]}}]}",
+  "length": 762,
+  "sha256": "fa3ca11f0d108f1700995b333570e5d446a71d7f08227f74ef4651537f2c4045"
+ },
+ {
+  "event": {
+   "customer_code": null,
+   "trigger": "case_task_assigned",
+   "severity": "Informational",
+   "subject": "Task été 🎉",
+   "summary": "s",
+   "entity_type": "case_task",
+   "entity_id": 7,
+   "dedupe_key": "k",
+   "assignee_username": "bob",
+   "actor_username": "alice"
+  },
+  "body": "*bold* — ünicode 😀\nline two\ttab",
+  "repeat": 1,
+  "raw_body": true,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"default\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Informational \\u00b7 Task \\u00e9t\\u00e9 \\ud83c\\udf89\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"TextBlock\", \"text\": \"*bold* \\u2014 \\u00fcnicode \\ud83d\\ude00\\nline two\\ttab\", \"wrap\": true}]}}]}",
+  "length": 557,
+  "sha256": "12d179a2090881e7b568cea4b1dfa1e6ce71afc96326ccb3fd749e498ec29e1f"
+ },
+ {
+  "event": {
+   "customer_code": null,
+   "trigger": "case_task_assigned",
+   "severity": "Informational",
+   "subject": "Task été 🎉",
+   "summary": "s",
+   "entity_type": "case_task",
+   "entity_id": 7,
+   "dedupe_key": "k",
+   "assignee_username": "bob",
+   "actor_username": "alice"
+  },
+  "body": "Report line with é and \"quotes\" and \\ backslashes. ",
+  "repeat": 600,
+  "raw_body": false,
+  "card": null,
+  "length": 28672,
+  "sha256": "88ca4d66f13d90e4b872ded7d49f64703e5592a213a44dab6022a211a4c34622"
+ },
+ {
+  "event": {
+   "customer_code": null,
+   "trigger": "case_task_assigned",
+   "severity": "Informational",
+   "subject": "Task été 🎉",
+   "summary": "s",
+   "entity_type": "case_task",
+   "entity_id": 7,
+   "dedupe_key": "k",
+   "assignee_username": "bob",
+   "actor_username": "alice"
+  },
+  "body": "Report line with é and \"quotes\" and \\ backslashes. ",
+  "repeat": 600,
+  "raw_body": true,
+  "card": null,
+  "length": 28672,
+  "sha256": "88ca4d66f13d90e4b872ded7d49f64703e5592a213a44dab6022a211a4c34622"
+ },
+ {
+  "event": {
+   "customer_code": null,
+   "trigger": "case_task_assigned",
+   "severity": "Informational",
+   "subject": "Task été 🎉",
+   "summary": "s",
+   "entity_type": "case_task",
+   "entity_id": 7,
+   "dedupe_key": "k",
+   "assignee_username": "bob",
+   "actor_username": "alice"
+  },
+  "body": "😀",
+  "repeat": 9000,
+  "raw_body": false,
+  "card": null,
+  "length": 28664,
+  "sha256": "ecdeff64f8effb71611ac0c8b06dedb7d5059947174964527936008c4be87ff9"
+ },
+ {
+  "event": {
+   "customer_code": null,
+   "trigger": "case_task_assigned",
+   "severity": "Informational",
+   "subject": "Task été 🎉",
+   "summary": "s",
+   "entity_type": "case_task",
+   "entity_id": 7,
+   "dedupe_key": "k",
+   "assignee_username": "bob",
+   "actor_username": "alice"
+  },
+  "body": "😀",
+  "repeat": 9000,
+  "raw_body": true,
+  "card": null,
+  "length": 28664,
+  "sha256": "ecdeff64f8effb71611ac0c8b06dedb7d5059947174964527936008c4be87ff9"
+ },
+ {
+  "event": {
+   "customer_code": "B",
+   "trigger": "sla_breached",
+   "severity": "Medium",
+   "subject": "Quote \" and \\ backslash",
+   "summary": "s",
+   "entity_type": "case",
+   "entity_id": 3,
+   "dedupe_key": "k",
+   "link_url": "https://c/x?a=1&b=<2>",
+   "actor_username": "carol"
+  },
+  "body": "short body",
+  "repeat": 1,
+  "raw_body": false,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"warning\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Medium \\u00b7 Quote \\\" and \\\\ backslash\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"FactSet\", \"facts\": [{\"title\": \"Trigger\", \"value\": \"sla breached\"}, {\"title\": \"Customer\", \"value\": \"B\"}, {\"title\": \"Entity\", \"value\": \"case #3\"}, {\"title\": \"By\", \"value\": \"carol\"}]}, {\"type\": \"TextBlock\", \"text\": \"short body\", \"wrap\": true}, {\"type\": \"TextBlock\", \"text\": \"[Open in CoPilot](https://c/x?a=1&b=<2>)\", \"wrap\": true, \"isSubtle\": true}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Open in CoPilot\", \"url\": \"https://c/x?a=1&b=<2>\"}]}}]}",
+  "length": 900,
+  "sha256": "1155ac2574d01f0dc2d25fd8f59d63e99801fe21d41b16ad81c82344a02a6534"
+ },
+ {
+  "event": {
+   "customer_code": "B",
+   "trigger": "sla_breached",
+   "severity": "Medium",
+   "subject": "Quote \" and \\ backslash",
+   "summary": "s",
+   "entity_type": "case",
+   "entity_id": 3,
+   "dedupe_key": "k",
+   "link_url": "https://c/x?a=1&b=<2>",
+   "actor_username": "carol"
+  },
+  "body": "short body",
+  "repeat": 1,
+  "raw_body": true,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"warning\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Medium \\u00b7 Quote \\\" and \\\\ backslash\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"TextBlock\", \"text\": \"short body\", \"wrap\": true}, {\"type\": \"TextBlock\", \"text\": \"[Open in CoPilot](https://c/x?a=1&b=<2>)\", \"wrap\": true, \"isSubtle\": true}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Open in CoPilot\", \"url\": \"https://c/x?a=1&b=<2>\"}]}}]}",
+  "length": 708,
+  "sha256": "45e2b33cb0ca29f87b480cb3b2ac871dd9ff000dd8bf791fdce6551c596c7e7e"
+ },
+ {
+  "event": {
+   "customer_code": "B",
+   "trigger": "sla_breached",
+   "severity": "Medium",
+   "subject": "Quote \" and \\ backslash",
+   "summary": "s",
+   "entity_type": "case",
+   "entity_id": 3,
+   "dedupe_key": "k",
+   "link_url": "https://c/x?a=1&b=<2>",
+   "actor_username": "carol"
+  },
+  "body": "*bold* — ünicode 😀\nline two\ttab",
+  "repeat": 1,
+  "raw_body": false,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"warning\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Medium \\u00b7 Quote \\\" and \\\\ backslash\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"FactSet\", \"facts\": [{\"title\": \"Trigger\", \"value\": \"sla breached\"}, {\"title\": \"Customer\", \"value\": \"B\"}, {\"title\": \"Entity\", \"value\": \"case #3\"}, {\"title\": \"By\", \"value\": \"carol\"}]}, {\"type\": \"TextBlock\", \"text\": \"*bold* \\u2014 \\u00fcnicode \\ud83d\\ude00\\nline two\\ttab\", \"wrap\": true}, {\"type\": \"TextBlock\", \"text\": \"[Open in CoPilot](https://c/x?a=1&b=<2>)\", \"wrap\": true, \"isSubtle\": true}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Open in CoPilot\", \"url\": \"https://c/x?a=1&b=<2>\"}]}}]}",
+  "length": 944,
+  "sha256": "cd3234df37f724fae014245f5554bb775f24af2be39644b29d70af77c61d0470"
+ },
+ {
+  "event": {
+   "customer_code": "B",
+   "trigger": "sla_breached",
+   "severity": "Medium",
+   "subject": "Quote \" and \\ backslash",
+   "summary": "s",
+   "entity_type": "case",
+   "entity_id": 3,
+   "dedupe_key": "k",
+   "link_url": "https://c/x?a=1&b=<2>",
+   "actor_username": "carol"
+  },
+  "body": "*bold* — ünicode 😀\nline two\ttab",
+  "repeat": 1,
+  "raw_body": true,
+  "card": "{\"type\": \"message\", \"attachments\": [{\"contentType\": \"application/vnd.microsoft.card.adaptive\", \"contentUrl\": null, \"content\": {\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"Container\", \"style\": \"warning\", \"bleed\": true, \"items\": [{\"type\": \"TextBlock\", \"text\": \"Medium \\u00b7 Quote \\\" and \\\\ backslash\", \"weight\": \"Bolder\", \"size\": \"Medium\", \"wrap\": true}]}, {\"type\": \"TextBlock\", \"text\": \"*bold* \\u2014 \\u00fcnicode \\ud83d\\ude00\\nline two\\ttab\", \"wrap\": true}, {\"type\": \"TextBlock\", \"text\": \"[Open in CoPilot](https://c/x?a=1&b=<2>)\", \"wrap\": true, \"isSubtle\": true}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Open in CoPilot\", \"url\": \"https://c/x?a=1&b=<2>\"}]}}]}",
+  "length": 752,
+  "sha256": "233ea7eb0414254ad7e5fee0ae2d52bff76bdaef24c6d8f473960739d52feb75"
+ },
+ {
+  "event": {
+   "customer_code": "B",
+   "trigger": "sla_breached",
+   "severity": "Medium",
+   "subject": "Quote \" and \\ backslash",
+   "summary": "s",
+   "entity_type": "case",
+   "entity_id": 3,
+   "dedupe_key": "k",
+   "link_url": "https://c/x?a=1&b=<2>",
+   "actor_username": "carol"
+  },
+  "body": "Report line with é and \"quotes\" and \\ backslashes. ",
+  "repeat": 600,
+  "raw_body": false,
+  "card": null,
+  "length": 28672,
+  "sha256": "2160277733a7214b8b27a95b7e3f1b24dff676718832986c6529468f7ee89fda"
+ },
+ {
+  "event": {
+   "customer_code": "B",
+   "trigger": "sla_breached",
+   "severity": "Medium",
+   "subject": "Quote \" and \\ backslash",
+   "summary": "s",
+   "entity_type": "case",
+   "entity_id": 3,
+   "dedupe_key": "k",
+   "link_url": "https://c/x?a=1&b=<2>",
+   "actor_username": "carol"
+  },
+  "body": "Report line with é and \"quotes\" and \\ backslashes. ",
+  "repeat": 600,
+  "raw_body": true,
+  "card": null,
+  "length": 28672,
+  "sha256": "2160277733a7214b8b27a95b7e3f1b24dff676718832986c6529468f7ee89fda"
+ },
+ {
+  "event": {
+   "customer_code": "B",
+   "trigger": "sla_breached",
+   "severity": "Medium",
+   "subject": "Quote \" and \\ backslash",
+   "summary": "s",
+   "entity_type": "case",
+   "entity_id": 3,
+   "dedupe_key": "k",
+   "link_url": "https://c/x?a=1&b=<2>",
+   "actor_username": "carol"
+  },
+  "body": "😀",
+  "repeat": 9000,
+  "raw_body": false,
+  "card": null,
+  "length": 28667,
+  "sha256": "e61574130231df0a5528b211603c2bbd6def7324aada7ca7ebc83d1a7805b9d4"
+ },
+ {
+  "event": {
+   "customer_code": "B",
+   "trigger": "sla_breached",
+   "severity": "Medium",
+   "subject": "Quote \" and \\ backslash",
+   "summary": "s",
+   "entity_type": "case",
+   "entity_id": 3,
+   "dedupe_key": "k",
+   "link_url": "https://c/x?a=1&b=<2>",
+   "actor_username": "carol"
+  },
+  "body": "😀",
+  "repeat": 9000,
+  "raw_body": true,
+  "card": null,
+  "length": 28667,
+  "sha256": "e61574130231df0a5528b211603c2bbd6def7324aada7ca7ebc83d1a7805b9d4"
+ }
+]

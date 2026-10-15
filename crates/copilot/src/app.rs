@@ -12,6 +12,12 @@
 //!                      │ /register, /reset-password*, /me/customers,          │
 //!                      │ /sso/*, /passkey/*, /security/*                      │
 //!                      │                    → copilot-identity                │
+//!                      │ GET /api/scheduler/*, run/start/pause                │
+//!                      │                    → copilot-scheduler (+ its jobs)  │
+//!                      │ /api/notifications/*, notification routes, Shuffle   │
+//!                      │ integrations, dispatch log, channel catalog          │
+//!                      │                    → copilot-notifications ───────────► webhook, Teams,
+//!                      │ (every module emits in-process: DispatchingSink)     │   Resend, Shuffle
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -31,15 +37,17 @@ use serde_json::json;
 
 use copilot_auth::{Fernet, JwtCodec};
 use copilot_core::config::CopilotConfig;
-use copilot_core::notify::{NoopNotificationSink, SharedNotificationSink};
+use copilot_core::notify::SharedNotificationSink;
 use copilot_db::Db;
 use copilot_db::audit::DbAuditSink;
 use copilot_db::connectors::ConnectorCache;
 use copilot_db::schema::{self, TableRequirement};
-use copilot_gateway::{LegacyNotificationSink, LegacyProxy};
+use copilot_gateway::LegacyProxy;
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
+use copilot_notifications::{Dispatcher, DispatchingSink, NotificationsState};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
+use copilot_scheduler::{OptIn, Scheduler, SchedulerState};
 use copilot_talon::{TalonConnector, TalonState};
 use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
 use copilot_web::{ApiError, AppContext, AppDeps};
@@ -81,6 +89,16 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // draft and dry-run stay in Python.
     "/api/incidents/alerts/create/velo-sigma/exclusion",
     "/api/incidents/alerts/velo-sigma/exclusion",
+    "GET /api/scheduler",
+    "POST /api/scheduler/jobs/run",
+    "POST /api/scheduler/start",
+    "POST /api/scheduler/pause",
+    "/api/notifications",
+    "/api/notification_channels",
+    "/api/internal_notification_routes",
+    "/api/customers/{customer_code}/notification_routes",
+    "/api/customers/{customer_code}/notification_dispatch_log",
+    "/api/customers/{customer_code}/shuffle_integrations",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -102,6 +120,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::branding::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::REQUIREMENTS);
     all.extend_from_slice(copilot_sla::REQUIREMENTS);
+    all.extend_from_slice(copilot_notifications::db::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -122,8 +141,19 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     });
     all.push(TableRequirement {
         table: "scheduled_job_metadata",
-        columns: &["job_id", "last_success", "time_interval", "enabled"],
+        columns: &[
+            "id",
+            "job_id",
+            "last_success",
+            "time_interval",
+            "extra_data",
+            "enabled",
+            "job_description",
+        ],
     });
+    // `apscheduler_jobs` is APScheduler's own table, created by the Python
+    // scheduler at its first start rather than by Alembic: the Scheduler
+    // routes read it when it exists and let Python answer until then.
     all
 }
 
@@ -137,8 +167,12 @@ pub struct App {
     pub version: VersionChecker,
     /// Login and 2FA state (the TOTP key, the brute-force counter).
     pub identity: IdentityState,
+    /// Notification dispatch (routes and the in-process sink).
+    pub dispatcher: Dispatcher,
     /// Legacy backend, if configured.
     pub legacy: Option<LegacyProxy>,
+    /// The scheduled jobs this build can take over from APScheduler.
+    pub scheduler: Scheduler,
 }
 
 impl App {
@@ -156,10 +190,13 @@ impl App {
             cfg.connector_cache_ttl
         };
         let connectors = ConnectorCache::new(db.clone(), ttl);
-        let notifications: SharedNotificationSink = match &legacy {
-            Some(proxy) => Arc::new(LegacyNotificationSink::new(proxy.clone())),
-            None => Arc::new(NoopNotificationSink),
-        };
+        // Notifications are dispatched in-process, whatever else is ported.
+        let dispatcher = Dispatcher::new(db.clone(), connectors.clone(), cfg.notifications.clone())
+            .context("building the notification clients")?;
+        let notifications: SharedNotificationSink = Arc::new(DispatchingSink::new(
+            dispatcher.clone(),
+            JwtCodec::new(&cfg.jwt_secret),
+        ));
         // Verified unless explicitly disabled: the request carries Talon's
         // API key (Python used verify=False).
         let verify_tls = std::env::var("TALON_VERIFY_TLS")
@@ -195,6 +232,11 @@ impl App {
             http: reqwest::Client::new(),
             log_handled_errors: true,
         });
+        let scheduler = Scheduler::new(
+            ctx.db.clone(),
+            OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
+            scheduled_jobs(&ctx, &talon, cfg),
+        );
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -219,7 +261,9 @@ impl App {
             talon,
             version,
             identity,
+            dispatcher,
             legacy,
+            scheduler,
         })
     }
 
@@ -274,6 +318,21 @@ impl App {
                 "/api/incidents/alerts",
                 copilot_incidents::alerts(self.ctx.clone()),
             )
+            .nest(
+                "/api/scheduler",
+                copilot_scheduler::router(SchedulerState {
+                    ctx: self.ctx.clone(),
+                    scheduler: self.scheduler.clone(),
+                    legacy: self.legacy.clone(),
+                }),
+            )
+            // Full paths: the module spans `/api/customers/{code}/…`,
+            // `/api/notifications`, `/api/notification_channels` and
+            // `/api/internal_notification_routes`.
+            .merge(copilot_notifications::router(NotificationsState {
+                ctx: self.ctx.clone(),
+                dispatcher: self.dispatcher.clone(),
+            }))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
@@ -326,6 +385,21 @@ impl App {
             }
         }
     }
+}
+
+/// Every job this build can take over from APScheduler (`handover.py`'s
+/// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`.
+pub fn scheduled_jobs(
+    ctx: &AppContext,
+    talon: &TalonConnector,
+    cfg: &CopilotConfig,
+) -> Vec<copilot_scheduler::JobSpec> {
+    let mut jobs = copilot_ai_analyst::palace_jobs::job_specs(ctx, talon);
+    jobs.push(copilot_scheduler::jobs::prune_audit_log_spec(
+        ctx.db.clone(),
+        cfg.audit_log_retention_days.clone(),
+    ));
+    jobs
 }
 
 /// Without a legacy backend: the Python root greeting, else FastAPI's 404.

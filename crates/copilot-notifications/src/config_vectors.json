@@ -1,0 +1,999 @@
+[
+ {
+  "channel": "webhook",
+  "input": {},
+  "ok": {
+   "url": null,
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "https://hooks.example.com/a",
+   "method": "put",
+   "headers": {
+    "X-Key": "s"
+   },
+   "include_full_report": true
+  },
+  "ok": {
+   "url": "https://hooks.example.com/a",
+   "method": "PUT",
+   "headers": {
+    "X-Key": "s"
+   },
+   "include_full_report": true
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": 5
+  },
+  "error": "1 validation error for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": null
+  },
+  "ok": {
+   "url": null,
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "éééééééééééééééééééééééééééééé"
+  },
+  "ok": {
+   "url": "éééééééééééééééééééééééééééééé",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "method": "get"
+  },
+  "error": "1 validation error for WebhookConfig\nmethod\n  Value error, method must be POST or PUT [type=value_error, input_value='get', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "method": "DELETE"
+  },
+  "error": "1 validation error for WebhookConfig\nmethod\n  Value error, method must be POST or PUT [type=value_error, input_value='DELETE', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "method": null
+  },
+  "error": "1 validation error for WebhookConfig\nmethod\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "method": ""
+  },
+  "ok": {
+   "url": null,
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "method": "ß"
+  },
+  "error": "1 validation error for WebhookConfig\nmethod\n  Value error, method must be POST or PUT [type=value_error, input_value='ß', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "method": " post"
+  },
+  "error": "1 validation error for WebhookConfig\nmethod\n  Value error, method must be POST or PUT [type=value_error, input_value=' post', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "headers": {
+    "a": 1
+   }
+  },
+  "error": "1 validation error for WebhookConfig\nheaders.a\n  Input should be a valid string [type=string_type, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "headers": "x"
+  },
+  "error": "1 validation error for WebhookConfig\nheaders\n  Input should be a valid dictionary [type=dict_type, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/dict_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "headers": null
+  },
+  "ok": {
+   "url": null,
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "headers": {
+    "k": null,
+    "j": [
+     1
+    ]
+   }
+  },
+  "error": "2 validation errors for WebhookConfig\nheaders.k\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nheaders.j\n  Input should be a valid string [type=string_type, input_value=[1], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "headers": []
+  },
+  "error": "1 validation error for WebhookConfig\nheaders\n  Input should be a valid dictionary [type=dict_type, input_value=[], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/dict_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "bogus": 1,
+   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+  },
+  "error": "2 validation errors for WebhookConfig\nbogus\n  Extra inputs are not permitted [type=extra_forbidden, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n  Extra inputs are not permitted [type=extra_forbidden, input_value='yyyyyyyyyyyyyyyyyyyyyyyy...yyyyyyyyyyyyyyyyyyyyyyy', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "z": 1,
+   "url": 5
+  },
+  "error": "2 validation errors for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nz\n  Extra inputs are not permitted [type=extra_forbidden, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": 5,
+   "z": 1,
+   "method": 3
+  },
+  "error": "3 validation errors for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nmethod\n  Input should be a valid string [type=string_type, input_value=3, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nz\n  Extra inputs are not permitted [type=extra_forbidden, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": "yes"
+  },
+  "ok": {
+   "url": null,
+   "method": "POST",
+   "headers": null,
+   "include_full_report": true
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": "maybe"
+  },
+  "error": "1 validation error for WebhookConfig\ninclude_full_report\n  Input should be a valid boolean, unable to interpret input [type=bool_parsing, input_value='maybe', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/bool_parsing"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": 1
+  },
+  "ok": {
+   "url": null,
+   "method": "POST",
+   "headers": null,
+   "include_full_report": true
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": 2
+  },
+  "error": "1 validation error for WebhookConfig\ninclude_full_report\n  Input should be a valid boolean, unable to interpret input [type=bool_parsing, input_value=2, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/bool_parsing"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": 0.0
+  },
+  "ok": {
+   "url": null,
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": null
+  },
+  "error": "1 validation error for WebhookConfig\ninclude_full_report\n  Input should be a valid boolean [type=bool_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/bool_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "ok": {
+   "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "ok": {
+   "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "ok": {
+   "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "ok": {
+   "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": {
+    "nested": {
+     "deep": [
+      1,
+      2.5,
+      true,
+      null,
+      "s"
+     ]
+    }
+   }
+  },
+  "error": "1 validation error for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value={'nested': {'deep': [1, 2.5, True, None, 's']}}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22
+   ]
+  },
+  "error": "1 validation error for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=[1, 2, 3, 4, 5, 6, 7, 8, ... 17, 18, 19, 20, 21, 22], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "it's"
+  },
+  "ok": {
+   "url": "it's",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "say \"hi\""
+  },
+  "ok": {
+   "url": "say \"hi\"",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "both ' and \""
+  },
+  "ok": {
+   "url": "both ' and \"",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "tab\there\nnewline\\"
+  },
+  "ok": {
+   "url": "tab\there\nnewline\\",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "\u0000\u001f  "
+  },
+  "ok": {
+   "url": "\u0000\u001f  ",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": "emoji 😀 and ퟿"
+  },
+  "ok": {
+   "url": "emoji 😀 and ퟿",
+   "method": "POST",
+   "headers": null,
+   "include_full_report": false
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": 1.5
+  },
+  "error": "1 validation error for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=1.5, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": 1e+100
+  },
+  "error": "1 validation error for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=1e+100, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": -0.0
+  },
+  "error": "1 validation error for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=-0.0, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": false
+  },
+  "error": "1 validation error for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=False, input_type=bool]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "headers": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "error": "1 validation error for WebhookConfig\nheaders\n  Input should be a valid dictionary [type=dict_type, input_value='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/dict_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "headers": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "error": "1 validation error for WebhookConfig\nheaders\n  Input should be a valid dictionary [type=dict_type, input_value='xxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxx', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/dict_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": [
+    "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+   ]
+  },
+  "error": "1 validation error for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=['ééééééééééé...ééééééééééé'], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "url": [
+    "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+   ]
+  },
+  "error": "1 validation error for WebhookConfig\nurl\n  Input should be a valid string [type=string_type, input_value=['😀😀😀😀😀...😀😀😀😀😀'], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": " YES "
+  },
+  "error": "1 validation error for WebhookConfig\ninclude_full_report\n  Input should be a valid boolean, unable to interpret input [type=bool_parsing, input_value=' YES ', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/bool_parsing"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": "Yes"
+  },
+  "ok": {
+   "url": null,
+   "method": "POST",
+   "headers": null,
+   "include_full_report": true
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": [
+    true
+   ]
+  },
+  "error": "1 validation error for WebhookConfig\ninclude_full_report\n  Input should be a valid boolean [type=bool_type, input_value=[True], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/bool_type"
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": 1.0
+  },
+  "ok": {
+   "url": null,
+   "method": "POST",
+   "headers": null,
+   "include_full_report": true
+  }
+ },
+ {
+  "channel": "webhook",
+  "input": {
+   "include_full_report": -1
+  },
+  "error": "1 validation error for WebhookConfig\ninclude_full_report\n  Input should be a valid boolean, unable to interpret input [type=bool_parsing, input_value=-1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/bool_parsing"
+ },
+ {
+  "channel": "resend",
+  "input": {},
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 20
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "to": "a@b.c"
+  },
+  "ok": {
+   "to": [
+    "a@b.c"
+   ],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 20
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "to": ""
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 20
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "to": "   "
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 20
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "to": [
+    1
+   ]
+  },
+  "error": "1 validation error for ResendConfig\nto.0\n  Input should be a valid string [type=string_type, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "to": [
+    "a@b.c",
+    2,
+    null
+   ]
+  },
+  "error": "2 validation errors for ResendConfig\nto.1\n  Input should be a valid string [type=string_type, input_value=2, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nto.2\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "cc": null
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 20
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "cc": "c@d.e"
+  },
+  "ok": {
+   "to": [],
+   "cc": [
+    "c@d.e"
+   ],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 20
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "to": {
+    "a": 1
+   }
+  },
+  "error": "1 validation error for ResendConfig\nto\n  Input should be a valid list [type=list_type, input_value={'a': 1}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/list_type"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "to": 7
+  },
+  "error": "1 validation error for ResendConfig\nto\n  Input should be a valid list [type=list_type, input_value=7, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/list_type"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": 0
+  },
+  "error": "1 validation error for ResendConfig\nmax_per_hour\n  Value error, max_per_hour must be at least 1, or null to disable the throttle [type=value_error, input_value=0, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": -3
+  },
+  "error": "1 validation error for ResendConfig\nmax_per_hour\n  Value error, max_per_hour must be at least 1, or null to disable the throttle [type=value_error, input_value=-3, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": 1
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 1
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": "3"
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 3
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": " 4 "
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 4
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": "x"
+  },
+  "error": "1 validation error for ResendConfig\nmax_per_hour\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": 2.5
+  },
+  "error": "1 validation error for ResendConfig\nmax_per_hour\n  Input should be a valid integer, got a number with a fractional part [type=int_from_float, input_value=2.5, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_from_float"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": 2.0
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 2
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": true
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 1
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": null
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": null
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": "0"
+  },
+  "error": "1 validation error for ResendConfig\nmax_per_hour\n  Value error, max_per_hour must be at least 1, or null to disable the throttle [type=value_error, input_value='0', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": "+5"
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 5
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": "007"
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 7
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": "1_0"
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "[CoPilot]",
+   "max_per_hour": 10
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": " -2 "
+  },
+  "error": "1 validation error for ResendConfig\nmax_per_hour\n  Value error, max_per_hour must be at least 1, or null to disable the throttle [type=value_error, input_value=' -2 ', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": 1e+20
+  },
+  "error": "1 validation error for ResendConfig\nmax_per_hour\n  Unable to parse input string as an integer, exceeded maximum size [type=int_parsing_size, input_value=1e+20, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing_size"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": []
+  },
+  "error": "1 validation error for ResendConfig\nmax_per_hour\n  Input should be a valid integer [type=int_type, input_value=[], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "max_per_hour": false
+  },
+  "error": "1 validation error for ResendConfig\nmax_per_hour\n  Value error, max_per_hour must be at least 1, or null to disable the throttle [type=value_error, input_value=False, input_type=bool]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "subject_prefix": null
+  },
+  "error": "1 validation error for ResendConfig\nsubject_prefix\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "subject_prefix": ""
+  },
+  "ok": {
+   "to": [],
+   "cc": [],
+   "from_address": null,
+   "reply_to": null,
+   "subject_prefix": "",
+   "max_per_hour": 20
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "from_address": 3,
+   "reply_to": [],
+   "subject_prefix": 1
+  },
+  "error": "3 validation errors for ResendConfig\nfrom_address\n  Input should be a valid string [type=string_type, input_value=3, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nreply_to\n  Input should be a valid string [type=string_type, input_value=[], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nsubject_prefix\n  Input should be a valid string [type=string_type, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "to": [
+    "x@y.z"
+   ],
+   "cc": [
+    "c@y.z"
+   ],
+   "from_address": "f@y.z",
+   "reply_to": "r@y.z",
+   "subject_prefix": "[ACME]",
+   "max_per_hour": 5
+  },
+  "ok": {
+   "to": [
+    "x@y.z"
+   ],
+   "cc": [
+    "c@y.z"
+   ],
+   "from_address": "f@y.z",
+   "reply_to": "r@y.z",
+   "subject_prefix": "[ACME]",
+   "max_per_hour": 5
+  }
+ },
+ {
+  "channel": "resend",
+  "input": {
+   "extra": true
+  },
+  "error": "1 validation error for ResendConfig\nextra\n  Extra inputs are not permitted [type=extra_forbidden, input_value=True, input_type=bool]\n    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden"
+ },
+ {
+  "channel": "teams",
+  "input": {},
+  "ok": {
+   "webhook_url": null
+  }
+ },
+ {
+  "channel": "teams",
+  "input": {
+   "webhook_url": " https://x "
+  },
+  "ok": {
+   "webhook_url": "https://x"
+  }
+ },
+ {
+  "channel": "teams",
+  "input": {
+   "webhook_url": "HTTPS://Example.com"
+  },
+  "ok": {
+   "webhook_url": "HTTPS://Example.com"
+  }
+ },
+ {
+  "channel": "teams",
+  "input": {
+   "webhook_url": "http://x"
+  },
+  "error": "1 validation error for TeamsConfig\nwebhook_url\n  Value error, webhook_url must start with https:// [type=value_error, input_value='http://x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+ },
+ {
+  "channel": "teams",
+  "input": {
+   "webhook_url": ""
+  },
+  "ok": {
+   "webhook_url": ""
+  }
+ },
+ {
+  "channel": "teams",
+  "input": {
+   "webhook_url": "   "
+  },
+  "ok": {
+   "webhook_url": ""
+  }
+ },
+ {
+  "channel": "teams",
+  "input": {
+   "webhook_url": 3
+  },
+  "error": "1 validation error for TeamsConfig\nwebhook_url\n  Input should be a valid string [type=string_type, input_value=3, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "teams",
+  "input": {
+   "webhook_url": null
+  },
+  "ok": {
+   "webhook_url": null
+  }
+ },
+ {
+  "channel": "teams",
+  "input": {
+   "webhook_url": "https://x",
+   "other": "y"
+  },
+  "error": "1 validation error for TeamsConfig\nother\n  Extra inputs are not permitted [type=extra_forbidden, input_value='y', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden"
+ },
+ {
+  "channel": "shuffle",
+  "input": {},
+  "ok": {
+   "app_id": null,
+   "app_name": null
+  }
+ },
+ {
+  "channel": "shuffle",
+  "input": {
+   "app_id": 1
+  },
+  "error": "1 validation error for ShuffleConfig\napp_id\n  Input should be a valid string [type=string_type, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+ },
+ {
+  "channel": "shuffle",
+  "input": {
+   "app_id": "x",
+   "app_name": "y",
+   "z": [
+    1,
+    2
+   ]
+  },
+  "error": "1 validation error for ShuffleConfig\nz\n  Extra inputs are not permitted [type=extra_forbidden, input_value=[1, 2], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden"
+ },
+ {
+  "channel": "shuffle",
+  "input": {
+   "app_id": "abc",
+   "app_name": null
+  },
+  "ok": {
+   "app_id": "abc",
+   "app_name": null
+  }
+ }
+]

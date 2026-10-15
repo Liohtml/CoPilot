@@ -30,6 +30,9 @@ copilot-webauthn = { path = "crates/copilot-webauthn" }
 copilot-jinja = { path = "crates/copilot-jinja" }
 copilot-incidents = { path = "crates/copilot-incidents" }
 copilot-sla = { path = "crates/copilot-sla" }
+copilot-scheduler = { path = "crates/copilot-scheduler" }
+copilot-markdown = { path = "crates/copilot-markdown" }
+copilot-notifications = { path = "crates/copilot-notifications" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

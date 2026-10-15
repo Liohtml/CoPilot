@@ -22,6 +22,8 @@
 //! | `DEFAULT_ALERT_SEVERITY` | `High` | notification severity fallback |
 //! | `CONNECTOR_CACHE_TTL_SECONDS` | `600` | `connectors` row cache; `0` disables |
 //! | `COPILOT_RS_PALACE_JOBS` | `false` | run the palace-lesson drainer/sweeper here instead of in APScheduler |
+//! | `COPILOT_RS_JOBS` | *(unset)* | scheduled jobs this service may take over (ids, comma-separated, or `all`); each runs only while its `scheduled_job_metadata` row is disabled |
+//! | `AUDIT_LOG_RETENTION_DAYS` | `90` | `prune_audit_log`'s window, read as Python reads it (`<= 0` keeps everything) |
 //! | `COPILOT_MAX_BODY_BYTES` | `268435456` | request body cap (nginx's `client_max_body_size 256m`) |
 //! | `COPILOT_LOG_FORMAT` | `text` | `json` for structured logs |
 //! | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` | *(unset)*, `587`, …, `true` | the temporary-password email; read as set, and parsed per request like Python (a bad `SMTP_PORT` is that request's 400) |
@@ -119,6 +121,11 @@ pub struct CopilotConfig {
     pub connector_cache_ttl: Duration,
     /// Run the palace-lesson jobs in this process.
     pub palace_jobs: bool,
+    /// `COPILOT_RS_JOBS`, as set: the scheduled jobs this process may take
+    /// over (parsed by `copilot-scheduler`).
+    pub rust_jobs: Option<String>,
+    /// `AUDIT_LOG_RETENTION_DAYS`, as set (`os.getenv` semantics).
+    pub audit_log_retention_days: Option<String>,
     /// Request body cap.
     pub max_body_bytes: usize,
     /// Emit JSON logs.
@@ -272,6 +279,8 @@ impl CopilotConfig {
                 0,
             )),
             palace_jobs: env.get_bool("COPILOT_RS_PALACE_JOBS"),
+            rust_jobs: env.get("COPILOT_RS_JOBS"),
+            audit_log_retention_days: env.get_raw("AUDIT_LOG_RETENTION_DAYS"),
             max_body_bytes: usize::try_from(max_body).unwrap_or(usize::MAX),
             json_logs: env
                 .get("COPILOT_LOG_FORMAT")

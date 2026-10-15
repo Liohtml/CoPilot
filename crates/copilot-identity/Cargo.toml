@@ -13,6 +13,7 @@ copilot-auth = { workspace = true }
 copilot-web = { workspace = true }
 copilot-webauthn = { workspace = true }
 copilot-jinja = { workspace = true }
+copilot-notifications = { workspace = true }
 lettre = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
