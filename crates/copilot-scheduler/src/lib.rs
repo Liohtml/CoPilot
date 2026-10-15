@@ -1,8 +1,8 @@
-//! # copilot-scheduler — scheduled jobs
+//! # copilot-scheduler — scheduled jobs and `/api/scheduler`
 //!
 //! Port of `app/schedulers/`. CoPilot's jobs run in APScheduler inside the
 //! Python process; this crate takes them over **one at a time, by explicit
-//! hand-over**.
+//! hand-over**, and serves the Scheduler routes.
 //!
 //! ## The hand-over (no job ever runs in both schedulers)
 //!
@@ -15,8 +15,9 @@
 //! The two conditions are disjoint ([`job::Owner::decide`]), and both sides
 //! re-read the row under one MySQL named lock held for the whole run
 //! (`copilot_db::scheduler::JobLock`), so a hand-over in the middle of a run
-//! never starts the other side. Hand over by disabling the row, hand back by
-//! enabling it.
+//! never starts the other side. Hand over with *Pause* in the Scheduler UI
+//! (through this service, which then disables the row), hand back with
+//! *Start*.
 //!
 //! - [`job`]      — [`JobSpec`], the opt-in, ownership
 //! - [`trigger`]  — APScheduler's interval trigger (grid, coalesce, one
@@ -24,15 +25,23 @@
 //! - [`runner`]   — [`Scheduler`]: one task per opted-in job, ticks,
 //!   manual runs, shutdown
 //! - [`jobs`]     — jobs that need only the database (`prune_audit_log`)
+//! - [`pickle`], [`jobstore`] — APScheduler's job store, read only
+//! - [`schema`], [`services`], [`routes`] — `/api/scheduler`
 
 #![warn(missing_docs)]
 
 pub mod job;
 pub mod jobs;
+pub mod jobstore;
+pub mod pickle;
+pub mod routes;
 pub mod runner;
+pub mod schema;
+pub mod services;
 pub mod trigger;
 
 pub use job::{JobError, JobSpec, OptIn, Owner};
+pub use routes::{SchedulerState, router};
 pub use runner::Scheduler;
 
 #[cfg(test)]

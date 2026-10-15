@@ -12,6 +12,8 @@
 //!                      │ /register, /reset-password*, /me/customers,          │
 //!                      │ /sso/*, /passkey/*, /security/*                      │
 //!                      │                    → copilot-identity                │
+//!                      │ GET /api/scheduler/*, run/start/pause                │
+//!                      │                    → copilot-scheduler (+ its jobs)  │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -40,7 +42,7 @@ use copilot_gateway::{LegacyNotificationSink, LegacyProxy};
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
-use copilot_scheduler::{OptIn, Scheduler};
+use copilot_scheduler::{OptIn, Scheduler, SchedulerState};
 use copilot_talon::{TalonConnector, TalonState};
 use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
 use copilot_web::{ApiError, AppContext, AppDeps};
@@ -69,6 +71,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/sso",
     "/api/auth/passkey",
     "/api/auth/security",
+    "GET /api/scheduler",
+    "POST /api/scheduler/jobs/run",
+    "POST /api/scheduler/start",
+    "POST /api/scheduler/pause",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -118,6 +124,9 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
             "job_description",
         ],
     });
+    // `apscheduler_jobs` is APScheduler's own table, created by the Python
+    // scheduler at its first start rather than by Alembic: the Scheduler
+    // routes read it when it exists and let Python answer until then.
     all
 }
 
@@ -258,6 +267,14 @@ impl App {
             )
             .nest("/api/audit", copilot_platform::audit_router(platform))
             .nest("/api/auth", copilot_identity::router(self.identity.clone()))
+            .nest(
+                "/api/scheduler",
+                copilot_scheduler::router(SchedulerState {
+                    ctx: self.ctx.clone(),
+                    scheduler: self.scheduler.clone(),
+                    legacy: self.legacy.clone(),
+                }),
+            )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
