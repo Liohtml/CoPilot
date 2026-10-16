@@ -769,3 +769,85 @@ async fn the_snapshot_job_snapshots_what_is_new_and_records_it_on_the_schedule()
     .await;
     give_back(&h, id, old).await;
 }
+
+#[tokio::test]
+async fn a_scoped_analyst_searches_their_customers_indices_only() {
+    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let s = &h.suffix;
+    let es = wiremock::MockServer::start().await;
+    let (id, old) = borrow_connector(&h, "Wazuh-Indexer", &es.uri(), "indexer", "pw-e2e").await;
+    let (acme, beta) = (format!("wazuh_acme{s}_1"), format!("wazuh_beta{s}_1"));
+    Mock::given(method("GET"))
+        .and(path("/*/_alias"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                json!({acme.clone(): {"aliases": {}}, beta.clone(): {"aliases": {}}}),
+            ),
+        )
+        .mount(&es)
+        .await;
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/[^/]+/_search$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"hits": {"hits": []}})))
+        .mount(&es)
+        .await;
+    let searched = |reqs: Vec<wiremock::Request>| -> Vec<String> {
+        reqs.iter()
+            .filter(|r| r.url.path().ends_with("/_search"))
+            .map(|r| {
+                r.url
+                    .path()
+                    .trim_start_matches('/')
+                    .trim_end_matches("/_search")
+                    .to_string()
+            })
+            .collect()
+    };
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let (status, _) = h
+        .call("POST", "/api/alerts", Some(&analyst), Some(json!({})))
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        searched(es.received_requests().await.unwrap()),
+        std::slice::from_ref(&acme)
+    );
+    es.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/*/_alias"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                json!({acme.clone(): {"aliases": {}}, beta.clone(): {"aliases": {}}}),
+            ),
+        )
+        .mount(&es)
+        .await;
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/[^/]+/_search$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"hits": {"hits": []}})))
+        .mount(&es)
+        .await;
+    let (status, _) = h
+        .call("POST", "/api/alerts", Some(&admin), Some(json!({})))
+        .await;
+    assert_eq!(status, 200);
+    let mut all = searched(es.received_requests().await.unwrap());
+    all.sort();
+    assert_eq!(all, [acme, beta.clone()]);
+    // Another tenant's index is "not managed" for the analyst.
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/alerts/index",
+            Some(&analyst),
+            Some(json!({"index_name": beta})),
+        )
+        .await;
+    assert_eq!(status, 400, "{body}");
+    give_back(&h, id, old).await;
+}

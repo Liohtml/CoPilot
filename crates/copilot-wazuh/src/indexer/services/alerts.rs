@@ -201,16 +201,21 @@ fn index_failure(index: &str, e: PyErr) -> Result<(), PyErr> {
 
 /// `get_alerts_generic(search_body, is_host_specific, index_name)` — the
 /// `{alerts_summary, success, message}` dict, before its response model.
+///
+/// `scope` (not in Python, which reads every tenant's indices): a scoped
+/// caller's customer codes; only the indices named after one of them are
+/// searched (`index_matches_customer`, the rule of `/wazuh_indexer/indices`).
 pub async fn get_alerts_generic(
     st: &WazuhState,
     body: &mut AlertsSearchBody,
     host: bool,
     index_name: Option<&str>,
+    scope: Option<&[String]>,
 ) -> Result<Value, PyErr> {
     let indices = collect_indices(st, false).await?;
     let list = match index_name {
         Some(i) => vec![i.to_string()],
-        None => indices,
+        None => scope_indices(st, indices, scope).await?,
     };
     let mut summary = Vec::new();
     for index in &list {
@@ -272,8 +277,10 @@ pub async fn collect_and_aggregate(
     st: &WazuhState,
     fields: &[&str],
     body: &mut AlertsSearchBody,
+    scope: Option<&[String]>,
 ) -> Result<Vec<(Vec<Value>, i64)>, PyErr> {
     let indices = collect_indices(st, false).await?;
+    let indices = scope_indices(st, indices, scope).await?;
     let mut out: Vec<(Vec<String>, Vec<Value>, i64)> = Vec::new();
     for index in &indices {
         match collect_alerts_generic(st, index, body, false).await {
@@ -333,10 +340,57 @@ pub async fn single_alert(es: &Es, index: &str, id: &str) -> Result<Value, PyErr
     }
 }
 
+/// The indices a scoped caller may read: those named after one of their
+/// customers (`None`: every index).
+pub async fn scope_indices(
+    st: &WazuhState,
+    indices: Vec<String>,
+    scope: Option<&[String]>,
+) -> Result<Vec<String>, PyErr> {
+    let Some(codes) = scope else {
+        return Ok(indices);
+    };
+    let matchers = customer_matchers(&st.ctx.db, codes).await?;
+    Ok(indices
+        .into_iter()
+        .filter(|i| index_matches_customer(i, &matchers))
+        .collect())
+}
+
+/// Whether a scoped caller may read `index` (`None`: anyone may).
+pub async fn index_in_scope(
+    st: &WazuhState,
+    index: &str,
+    scope: Option<&[String]>,
+) -> Result<bool, PyErr> {
+    let Some(codes) = scope else {
+        return Ok(true);
+    };
+    let matchers = customer_matchers(&st.ctx.db, codes).await?;
+    Ok(index_matches_customer(index, &matchers))
+}
+
 /// `get_alert_by_id(index_name, alert_id)`.
-pub async fn alert_by_id(st: &WazuhState, index: &str, id: &str) -> Result<Value, PyErr> {
+///
+/// An index outside a scoped caller's customers reads as a missing
+/// document (the `AlertNotFound` stub), without asking the indexer.
+pub async fn alert_by_id(
+    st: &WazuhState,
+    index: &str,
+    id: &str,
+    scope: Option<&[String]>,
+) -> Result<Value, PyErr> {
     let es = async_client(st).await?;
-    single_alert(&es, index.trim(), id.trim()).await
+    let (index, id) = (index.trim(), id.trim());
+    if !index_in_scope(st, index, scope).await? {
+        require(&[index, id])?;
+        return Ok(json!({
+            "_index": index,
+            "_id": id,
+            "_source": {"message": "alert not found"},
+        }));
+    }
+    single_alert(&es, index, id).await
 }
 
 /// `get_graylog_alerts(request, index_filter, customer_codes)`.

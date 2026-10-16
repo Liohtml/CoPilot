@@ -511,11 +511,14 @@ Python validates upstream answers with (`ClusterHealth`, `SnapshotStatus`, …)
 is validated with the same models and error texts (`pymodel.rs`). The parity
 suite (`rust_parity_connectors_e2e.py`) puts a recording stand-in in front of
 both backends and compares, besides the responses, every request each one
-sends. The tenant rules are Python's: `/indices`, `/indices/size-per-customer`
-and the Graylog alert routes narrow to the caller's customers; the other alert
-routes read every index an analyst names, as in Python (a follow-up for both
-backends: Wazuh alert indices mix tenants, so scoping them means a filter on
-`agent_labels_customer`).
+sends. Tenancy: `/indices`, `/indices/size-per-customer` and the Graylog alert
+routes narrow to the caller's customers as in Python; the other alert routes
+(all, by host, by index, the three aggregations, by id), which in Python read
+every tenant's indices, narrow the same way here — a scoped caller searches
+only the indices named after one of their customers (`index_matches_customer`),
+another tenant's index reads as unmanaged and another tenant's alert as
+missing (§4). Shared indices that name no customer (`wazuh-alerts-*`) are
+admins' only; scoping those would take a filter on `agent_labels_customer`.
 
 **Wazuh manager.** `copilot-wazuh` answers the manager routes CoPilot's UI
 uses (rules, rule files and their upload, groups and the group
@@ -594,6 +597,7 @@ not provoked.
 | a delivery with an invalid header (webhook `headers`, a Shuffle `Org-Id`, an API key) to an unreachable host | h11 checks headers after connecting: the connection error | checked before connecting: the header error | same texts whenever the host answers |
 | a header value with a control character other than tab | sent (h11 allows `\x01`–`\x08`, `\x0e`–`\x1f`) | `LocalProtocolError: Illegal header value …` | the `http` crate cannot carry them |
 | an `xn--` autolink host that decodes to a lone surrogate | the surrogate in the link text | the label left encoded | a Rust string cannot hold one |
+| `POST /alerts`, `/alerts/host`, `/alerts/hosts/all`, `/alerts/rules/all`, `/alerts/rules/hosts/all`, `/alerts/index`, `/alerts/by-id` for a scoped caller | every managed index is searched: any analyst reads every tenant's Wazuh alerts, and any index or document they name | only the indices named after one of the caller's customers (the `/wazuh_indexer/indices` rule); another tenant's index is the 400 of an unmanaged one, another tenant's alert the not-found answer, without asking the indexer; admins unchanged | tenant leak |
 | the indexer refusing connections | `ConnectionError(<urllib3.connection.HTTPConnection object at 0x7f…>: …)` | the same text with `object at 0x0` | there is no Python object; the parity suite masks the address |
 | a snapshot index pattern Python's `re` and Rust's `regex` disagree on (a broken one, a look-around, a back-reference) | `re.error`'s text, or a match | `regex`'s text in `Failed to create snapshot: …` | a different regex engine; the `*` patterns operators write match alike (`re.match(f"^{p}$")` is reproduced, alternations included) |
 | the Wazuh manager's token after its connector row changes (URL, user or password) | reused, keyed by the connector name, for up to 10 minutes: sent to a new URL, it is answered 401 and only then replaced | a token is reused only for the row it was issued against: the first call after a change authenticates | a credential is never sent to a host that did not issue it |

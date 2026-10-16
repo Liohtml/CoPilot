@@ -977,36 +977,87 @@ async def main():
     es.mode.clear()
 
     # -- C3. alerts -----------------------------------------------------------------
-    await both("alerts (defaults)", "POST", "/api/alerts", t_analyst, {}, rec=es)
+    await both("alerts (defaults)", "POST", "/api/alerts", t_admin, {}, rec=es)
     await both(
         "alerts: other field and window",
         "POST",
         "/api/alerts",
-        t_analyst,
+        t_admin,
         {"size": 2, "timerange": "2w", "alert_field": "rule_description", "alert_value": "Mimikatz é", "timestamp_field": "@timestamp"},
         rec=es,
     )
-    await both("alerts: days window", "POST", "/api/alerts", t_analyst, {"timerange": "3d"}, rec=es)
-    await both("host alerts", "POST", "/api/alerts/host", t_analyst, {"agent_name": "dc01", "timerange": "1h"}, rec=es)
-    await both("index alerts", "POST", "/api/alerts/index", t_analyst, {"index_name": f"  {IDX_A}_1 "}, rec=es)
-    await both("index alerts: unmanaged index", "POST", "/api/alerts/index", t_analyst, {"index_name": ".kibana_1"}, rec=es)
-    await both("index alerts: the timestamp fallback", "POST", "/api/alerts/index", t_analyst, {"index_name": "nomap_0"}, rec=es)
-    await both("by host", "POST", "/api/alerts/hosts/all", t_analyst, {}, rec=es)
-    await both("by rule", "POST", "/api/alerts/rules/all", t_analyst, {"size": 5}, rec=es)
-    await both("by rule per host", "POST", "/api/alerts/rules/hosts/all", t_analyst, {}, rec=es)
+    await both("alerts: days window", "POST", "/api/alerts", t_admin, {"timerange": "3d"}, rec=es)
+    await both("host alerts", "POST", "/api/alerts/host", t_admin, {"agent_name": "dc01", "timerange": "1h"}, rec=es)
+    await both("index alerts", "POST", "/api/alerts/index", t_admin, {"index_name": f"  {IDX_A}_1 "}, rec=es)
+    await both("index alerts: unmanaged index", "POST", "/api/alerts/index", t_admin, {"index_name": ".kibana_1"}, rec=es)
+    await both("index alerts: the timestamp fallback", "POST", "/api/alerts/index", t_admin, {"index_name": "nomap_0"}, rec=es)
+    await both("by host", "POST", "/api/alerts/hosts/all", t_admin, {}, rec=es)
+    await both("by rule", "POST", "/api/alerts/rules/all", t_admin, {"size": 5}, rec=es)
+    await both("by rule per host", "POST", "/api/alerts/rules/hosts/all", t_admin, {}, rec=es)
     es.mode["bad_agent"] = True
-    await both("by host: a non-string agent name", "POST", "/api/alerts/hosts/all", t_analyst, {}, rec=es)
+    await both("by host: a non-string agent name", "POST", "/api/alerts/hosts/all", t_admin, {}, rec=es)
     es.mode.clear()
     es.mode["broken"] = True
-    await both("alerts: an index failing with another 400", "POST", "/api/alerts", t_analyst, {}, rec=es)
+    await both("alerts: an index failing with another 400", "POST", "/api/alerts", t_admin, {}, rec=es)
     es.mode.clear()
     es.mode["no_alerts"] = True
-    await both("index alerts: none found", "POST", "/api/alerts/index", t_analyst, {"index_name": "wazuh-alerts-4.x-2026.10.15"}, rec=es)
+    await both("index alerts: none found", "POST", "/api/alerts/index", t_admin, {"index_name": "wazuh-alerts-4.x-2026.10.15"}, rec=es)
     es.mode.clear()
-    await both("by id", "POST", "/api/alerts/by-id", t_analyst, {"index_name": f" {IDX_A}_1", "alert_id": "a2 "}, rec=es)
-    await both("by id: not found", "POST", "/api/alerts/by-id", t_analyst, {"index_name": f"{IDX_A}_1", "alert_id": "nope"}, rec=es)
-    await both("by id: missing index", "POST", "/api/alerts/by-id", t_analyst, {"index_name": "missing-index", "alert_id": "x/y z"}, rec=es)
-    await both("by id: empty id is a ValueError", "POST", "/api/alerts/by-id", t_analyst, {"index_name": "x", "alert_id": "  "}, rec=es)
+    await both("by id", "POST", "/api/alerts/by-id", t_admin, {"index_name": f" {IDX_A}_1", "alert_id": "a2 "}, rec=es)
+    await both("by id: not found", "POST", "/api/alerts/by-id", t_admin, {"index_name": f"{IDX_A}_1", "alert_id": "nope"}, rec=es)
+    await both("by id: missing index", "POST", "/api/alerts/by-id", t_admin, {"index_name": "missing-index", "alert_id": "x/y z"}, rec=es)
+    await both("by id: empty id is a ValueError", "POST", "/api/alerts/by-id", t_admin, {"index_name": "x", "alert_id": "  "}, rec=es)
+    # By design: a scoped analyst reads their customers' indices only (Python: every tenant's).
+    names = lambda r: sorted(x["index_name"] for x in r.json().get("alerts_summary", []))  # noqa: E731
+    es.captured.clear()
+    r_py = await call(py, "POST", "/api/alerts", t_analyst, {})
+    r_rs = await call(rs, "POST", "/api/alerts", t_analyst, {})
+    check(
+        "by design: a scoped analyst's alerts come from their customers' indices only",
+        r_py.status_code == r_rs.status_code == 200 and f"{IDX_B}_1" in names(r_py) and names(r_rs) == [f"{IDX_A}_1", f"{IDX_A}_2"],
+        f"{names(r_py)} / {names(r_rs)}",
+    )
+    es.captured.clear()
+    await call(py, "POST", "/api/alerts/rules/hosts/all", t_analyst, {})
+    py_searched = sorted({unquote(c["path"].split("?")[0].split("/")[1]) for c in es.captured if "/_search" in c["path"]})
+    es.captured.clear()
+    await call(rs, "POST", "/api/alerts/rules/hosts/all", t_analyst, {})
+    rs_searched = sorted({unquote(c["path"].split("?")[0].split("/")[1]) for c in es.captured if "/_search" in c["path"]})
+    check(
+        "by design: a scoped analyst's aggregations search their customers' indices only",
+        f"{IDX_B}_1" in py_searched and rs_searched == [f"{IDX_A}_1", f"{IDX_A}_2"],
+        f"{py_searched} / {rs_searched}",
+    )
+    r_py = await call(py, "POST", "/api/alerts/index", t_analyst, {"index_name": f"{IDX_B}_1"})
+    r_rs = await call(rs, "POST", "/api/alerts/index", t_analyst, {"index_name": f"{IDX_B}_1"})
+    r_unmanaged = await call(rs, "POST", "/api/alerts/index", t_analyst, {"index_name": "nonexistent_index_1"})
+    check(
+        "by design: another tenant's index reads as one that is not managed",
+        r_py.status_code == 200
+        and r_rs.status_code == 400
+        and r_rs.json()["message"] == f"Index name '{IDX_B}_1' is not managed by Wazuh Indexer or no longer exists."
+        and r_unmanaged.status_code == 400,
+        f"{r_py.status_code} {r_rs.text}",
+    )
+    es.captured.clear()
+    r_py = await call(py, "POST", "/api/alerts/by-id", t_analyst, {"index_name": f"{IDX_B}_1", "alert_id": "b1"})
+    py_asked = len(es.captured)
+    es.captured.clear()
+    r_rs = await call(rs, "POST", "/api/alerts/by-id", t_analyst, {"index_name": f"{IDX_B}_1", "alert_id": "b1"})
+    rs_asked = [c for c in es.captured if "_doc" in c["path"]]
+    r_missing = await call(py, "POST", "/api/alerts/by-id", t_admin, {"index_name": f"{IDX_B}_1", "alert_id": "b1-gone"})
+    check(
+        "by design: another tenant's alert reads as a missing one, and the indexer is not asked",
+        r_py.json()["success"] is True
+        and py_asked == 1
+        and not rs_asked
+        and r_rs.status_code == 200
+        and r_rs.json()
+        == {**r_missing.json(), "alert": {**r_missing.json()["alert"], "_id": "b1"}, "message": f"Alert b1 not found in index {IDX_B}_1"},
+        f"{r_rs.text}",
+    )
+    r_admin = await call(rs, "POST", "/api/alerts/by-id", t_admin, {"index_name": f"{IDX_B}_1", "alert_id": "b1"})
+    check("an admin still reads every tenant's alert", r_admin.json()["success"] is True, r_admin.text)
     await both(
         "graylog alerts (admin)",
         "POST",
@@ -1227,17 +1278,21 @@ async def main():
     await both("schedule delete: missing", "DELETE", f"/api/snapshots/schedules/{sid['py']}", t_admin)
 
     # -- C5. the connector row: problems, and a write behind Rust's back --------------
+    # A read first, so that Rust's last look at the table is fresh when the row changes.
+    await call(rs, "GET", "/api/wazuh_indexer/health", t_analyst)
     await sql("UPDATE connectors SET connector_url = :u WHERE id = :i", u=es2.url, i=indexer_id)
     es.captured.clear()
     es2.captured.clear()
     await call(rs, "GET", "/api/wazuh_indexer/health", t_analyst)
+    # The guarantee is a bound, not a delay: inside the interval either row may serve.
     check(
         "rust: inside the check interval the cached row may still be used",
-        len(es.captured) == 1 and not es2.captured,
+        len(es.captured) + len(es2.captured) == 1,
         f"{len(es.captured)} / {len(es2.captured)}",
     )
     await settle()
     es.captured.clear()
+    es2.captured.clear()
     await call(rs, "GET", "/api/wazuh_indexer/health", t_analyst)
     check(
         "rust: after the interval the new row is used",

@@ -5,6 +5,10 @@
 //! | `/api/alerts` | `POST ""`, `/by-id`, `/host`, `/index`, `/hosts/all`, `/rules/all`, `/rules/hosts/all`, `/alerts/graylog`, `/alerts/graylog/index` | admin/analyst (`require_any_scope`) |
 //! | `/api/wazuh_indexer` | `GET /health`, `/allocation`, `/indices`, `/indices/size-per-customer`, `/shards`, `/output_shard_number_to_be_set_based_on_nodes`, `/resize_wazuh_index_fields` | admin/analyst |
 //! | `/api/snapshots` | `GET /repositories`, `/status`, `/repositories/{repository}/snapshots`, `POST /create`, `/restore`, `GET`/`POST /schedules`, `GET`/`PUT`/`DELETE /schedules/{schedule_id}` | `get_current_user(scopes=["admin"])` |
+//!
+//! The alert routes but the Graylog ones read every tenant's indices in
+//! Python; here a scoped caller searches only the indices named after one of
+//! their customers (`alerts::scope_indices`, the rule of `/indices`).
 
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
@@ -100,18 +104,31 @@ fn timerange_crash(body: &JsonBody) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// The caller's customers for the alert routes (`None`: deployment-wide).
+/// Not in Python, where these routes read every tenant's indices.
+async fn alert_scope(st: &WazuhState, auth: &Analyst) -> Result<Option<Vec<String>>, ApiError> {
+    Ok(auth.access(&st.ctx).await?.scoped_customer_codes(None))
+}
+
 async fn search(
     st: &WazuhState,
+    auth: &Analyst,
     body: &JsonBody,
     kind: AlertsBodyKind,
     model: &'static Model,
 ) -> ApiResult {
     timerange_crash(body)?;
     let mut b = body.model(AlertsSearchBody::read(kind))?;
+    let scope = alert_scope(st, auth).await?;
     let index = b.index_name.clone();
-    let result =
-        alerts::get_alerts_generic(st, &mut b, kind == AlertsBodyKind::Host, index.as_deref())
-            .await?;
+    let result = alerts::get_alerts_generic(
+        st,
+        &mut b,
+        kind == AlertsBodyKind::Host,
+        index.as_deref(),
+        scope.as_deref(),
+    )
+    .await?;
     let out = alerts::summary_response(
         model,
         result["alerts_summary"]
@@ -126,17 +143,25 @@ async fn search(
 
 async fn all_alerts(
     State(st): State<WazuhState>,
-    WithJson(_a, body): WithJson<Analyst>,
+    WithJson(auth, body): WithJson<Analyst>,
 ) -> ApiResult {
-    search(&st, &body, AlertsBodyKind::Plain, &ALERTS_SEARCH_RESPONSE).await
+    search(
+        &st,
+        &auth,
+        &body,
+        AlertsBodyKind::Plain,
+        &ALERTS_SEARCH_RESPONSE,
+    )
+    .await
 }
 
 async fn host_alerts(
     State(st): State<WazuhState>,
-    WithJson(_a, body): WithJson<Analyst>,
+    WithJson(auth, body): WithJson<Analyst>,
 ) -> ApiResult {
     search(
         &st,
+        &auth,
         &body,
         AlertsBodyKind::Host,
         &HOST_ALERTS_SEARCH_RESPONSE,
@@ -149,19 +174,21 @@ async fn host_alerts(
 /// again.
 async fn index_alerts(
     State(st): State<WazuhState>,
-    WithJson(_a, body): WithJson<Analyst>,
+    WithJson(auth, body): WithJson<Analyst>,
 ) -> ApiResult {
     timerange_crash(&body)?;
     let mut b = body.model(AlertsSearchBody::read(AlertsBodyKind::Index))?;
     let name = b.index_name.clone().unwrap_or_default().trim().to_string();
     b.index_name = Some(name.clone());
     let managed = collect_indices(&st, false).await?;
-    if !managed.contains(&name) {
+    let scope = alert_scope(&st, &auth).await?;
+    // Another tenant's index reads as one that is not managed.
+    if !managed.contains(&name) || !alerts::index_in_scope(&st, &name, scope.as_deref()).await? {
         return Err(ApiError::bad_request(format!(
             "Index name '{name}' is not managed by Wazuh Indexer or no longer exists."
         )));
     }
-    let result = alerts::get_alerts_generic(&st, &mut b, false, Some(&name)).await?;
+    let result = alerts::get_alerts_generic(&st, &mut b, false, Some(&name), None).await?;
     let out = alerts::summary_response(
         &INDEX_ALERTS_SEARCH_RESPONSE,
         result["alerts_summary"]
@@ -174,9 +201,10 @@ async fn index_alerts(
     Ok(json(out))
 }
 
-async fn by_id(State(st): State<WazuhState>, WithJson(_a, body): WithJson<Analyst>) -> ApiResult {
+async fn by_id(State(st): State<WazuhState>, WithJson(auth, body): WithJson<Analyst>) -> ApiResult {
     let b = body.model(AlertByIdSearchBody::read)?;
-    let alert = alerts::alert_by_id(&st, &b.index_name, &b.alert_id).await?;
+    let scope = alert_scope(&st, &auth).await?;
+    let alert = alerts::alert_by_id(&st, &b.index_name, &b.alert_id, scope.as_deref()).await?;
     // `alert.get("_source", {}).get("message")`: attribute errors on
     // anything but dicts.
     let source = match &alert {
@@ -210,16 +238,21 @@ async fn by_id(State(st): State<WazuhState>, WithJson(_a, body): WithJson<Analys
 
 async fn counts(
     st: &WazuhState,
+    auth: &Analyst,
     body: &JsonBody,
     fields: &[&str],
 ) -> Result<Vec<(Vec<Value>, i64)>, ApiError> {
     timerange_crash(body)?;
     let mut b = body.model(AlertsSearchBody::read(AlertsBodyKind::Plain))?;
-    Ok(alerts::collect_and_aggregate(st, fields, &mut b).await?)
+    let scope = alert_scope(st, auth).await?;
+    Ok(alerts::collect_and_aggregate(st, fields, &mut b, scope.as_deref()).await?)
 }
 
-async fn by_host(State(st): State<WazuhState>, WithJson(_a, body): WithJson<Analyst>) -> ApiResult {
-    let rows = counts(&st, &body, &["agent_name"]).await?;
+async fn by_host(
+    State(st): State<WazuhState>,
+    WithJson(auth, body): WithJson<Analyst>,
+) -> ApiResult {
+    let rows = counts(&st, &auth, &body, &["agent_name"]).await?;
     let mut out = Vec::new();
     for (values, n) in rows {
         let value = values.into_iter().next().unwrap_or(Value::Null);
@@ -236,8 +269,11 @@ async fn by_host(State(st): State<WazuhState>, WithJson(_a, body): WithJson<Anal
     })))
 }
 
-async fn by_rule(State(st): State<WazuhState>, WithJson(_a, body): WithJson<Analyst>) -> ApiResult {
-    let rows = counts(&st, &body, &["rule_description"]).await?;
+async fn by_rule(
+    State(st): State<WazuhState>,
+    WithJson(auth, body): WithJson<Analyst>,
+) -> ApiResult {
+    let rows = counts(&st, &auth, &body, &["rule_description"]).await?;
     let mut out = Vec::new();
     for (values, n) in rows {
         let value = values.into_iter().next().unwrap_or(Value::Null);
@@ -256,9 +292,9 @@ async fn by_rule(State(st): State<WazuhState>, WithJson(_a, body): WithJson<Anal
 
 async fn by_rule_per_host(
     State(st): State<WazuhState>,
-    WithJson(_a, body): WithJson<Analyst>,
+    WithJson(auth, body): WithJson<Analyst>,
 ) -> ApiResult {
-    let rows = counts(&st, &body, &["agent_name", "rule_description"]).await?;
+    let rows = counts(&st, &auth, &body, &["agent_name", "rule_description"]).await?;
     let mut out = Vec::new();
     for (values, n) in rows {
         let mut it = values.into_iter();
