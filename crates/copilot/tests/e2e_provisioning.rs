@@ -1051,3 +1051,258 @@ async fn network_connector_decommissioning_is_tenant_bound() {
     graylog.verify().await;
     grafana.verify().await;
 }
+
+// --- customer provisioning (copilot-provisioning::customer) -------------------
+
+async fn set_verified(h: &Harness, name: &str, verified: bool) {
+    sqlx::query("UPDATE connectors SET connector_verified = ? WHERE connector_name = ?")
+        .bind(verified)
+        .bind(name)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn default_settings_are_one_row() {
+    let h = harness_or_skip!(None, &env());
+    h.seed().await;
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let saved: Vec<(i32,)> =
+        sqlx::query_as("SELECT id FROM customer_provisioning_default_settings")
+            .fetch_all(h.db.pool())
+            .await
+            .unwrap();
+    if !saved.is_empty() {
+        eprintln!("customer_provisioning_default_settings is not empty; skipping");
+        return;
+    }
+    let uri = "/api/customer_provisioning/default_settings";
+    let (status, _) = h.call("GET", uri, Some(&analyst), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let body = json!({"cluster_name": "c", "cluster_key": 5, "master_ip": "10.0.0.5",
+                      "grafana_url": "https://g", "wazuh_worker_hostname": "w"});
+    let (status, created) = h
+        .call("POST", uri, Some(&analyst), Some(body.clone()))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    let settings = &created["customer_provisioning_default_settings"];
+    // The values as sent (the table model is not validated), the id last.
+    assert_eq!(settings["cluster_key"], 5);
+    assert_eq!(settings["repo_url"], Value::Null);
+    let keys: Vec<&String> = settings.as_object().unwrap().keys().collect();
+    assert_eq!(keys.last().unwrap().as_str(), "id");
+    let id = settings["id"].as_i64().unwrap();
+    let (status, again) = h.call("POST", uri, Some(&analyst), Some(body)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{again}");
+    let (status, updated) = h
+        .call(
+            "PUT",
+            uri,
+            Some(&analyst),
+            Some(json!({"id": id, "master_ip": "10.9.9.9", "repo_url": "https://repo"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    let s = &updated["customer_provisioning_default_settings"];
+    assert_eq!(s["cluster_key"], "5");
+    assert_eq!(s["master_ip"], "10.9.9.9");
+    assert_eq!(s["repo_url"], "https://repo");
+    let (status, deleted) = h.call("DELETE", uri, Some(&analyst), None).await;
+    assert_eq!(status, StatusCode::OK, "{deleted}");
+    let (status, _) = h.call("DELETE", uri, Some(&analyst), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn decommissioning_a_customer_tears_down_every_tool() {
+    let h = harness_or_skip!(None, &env());
+    h.seed().await;
+    let (admin, analyst) = (
+        h.token(&format!("admin{}", h.suffix), "admin"),
+        h.token(&format!("analyst{}", h.suffix), "analyst"),
+    );
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    for code in [&acme, &beta] {
+        sqlx::query(
+            "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, \
+             customer_meta_graylog_stream, customer_meta_grafana_org_id, customer_meta_wazuh_group, \
+             customer_meta_wazuh_registration_port, customer_meta_wazuh_log_ingestion_port, \
+             customer_meta_wazuh_auth_password) VALUES (?, ?, 'is-1', 'st-1', '44', ?, '1515', \
+             '1514', 'pw')",
+        )
+        .bind(code)
+        .bind(format!("{code} corp"))
+        .bind(code)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+    let tools = stand_in(0).await;
+    let base = tools.uri();
+    let saved = vec![
+        replace_connector(&h, "Wazuh-Manager", &format!("{base}/wazuh"), None, None).await,
+        replace_connector(&h, "Graylog", &format!("{base}/graylog"), None, None).await,
+        replace_connector(&h, "Grafana", &format!("{base}/grafana"), None, None).await,
+        replace_connector(&h, "Portainer", &format!("{base}/portainer"), None, None).await,
+        replace_connector(
+            &h,
+            "Wazuh Worker Provisioning",
+            &format!("{base}/worker"),
+            None,
+            None,
+        )
+        .await,
+        replace_connector(
+            &h,
+            "HAProxy Provisioning",
+            &format!("{base}/haproxy"),
+            None,
+            None,
+        )
+        .await,
+    ];
+    set_verified(&h, "Portainer", false).await;
+    set_verified(&h, "HAProxy Provisioning", false).await;
+    Mock::given(method("GET"))
+        .and(path("/wazuh/security/user/authenticate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {"token": "t"}})))
+        .mount(&tools)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/wazuh/agents"))
+        .and(query_param("group", format!("Linux_{acme}").as_str()))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"data": {"affected_items": [{"id": "001"}]}})),
+        )
+        .mount(&tools)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/wazuh/agents"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"data": {"affected_items": []}})),
+        )
+        .mount(&tools)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/wazuh/agents"))
+        .and(query_param("agents_list", "001"))
+        .and(query_param("older_than", "0s"))
+        .and(header("authorization", "Bearer t"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {}})))
+        .expect(1)
+        .mount(&tools)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/wazuh/groups"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {}})))
+        .expect(3)
+        .mount(&tools)
+        .await;
+    for p in [
+        "/graylog/api/streams/st-1",
+        "/graylog/api/system/indices/index_sets/is-1",
+    ] {
+        Mock::given(method("DELETE"))
+            .and(path(p))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&tools)
+            .await;
+    }
+    Mock::given(method("DELETE"))
+        .and(path("/grafanaapi/orgs/44"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"message": "deleted"})))
+        .expect(1)
+        .mount(&tools)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/worker/provision_worker/decommission"))
+        .and(body_string_contains(format!(
+            "{{\"customer_name\": \"{acme} corp\", \"customer_code\": \"{acme}\", \
+             \"portainer_deployment\": false}}"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"success": true})))
+        .expect(1)
+        .mount(&tools)
+        .await;
+
+    let uri = "/api/customer_provisioning/decommission";
+    let (status, refused) = h
+        .call(
+            "POST",
+            &format!("{uri}?customer_code={beta}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{refused}");
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{uri}?customer_code={acme}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    for s in saved {
+        restore_connector(&h, s).await;
+    }
+    let left: Vec<(String,)> =
+        sqlx::query_as("SELECT customer_code FROM customersmeta WHERE customer_code IN (?, ?)")
+            .bind(&acme)
+            .bind(&beta)
+            .fetch_all(h.db.pool())
+            .await
+            .unwrap();
+    sqlx::query("DELETE FROM customersmeta WHERE customer_code IN (?, ?)")
+        .bind(&acme)
+        .bind(&beta)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["decomissioned_data"],
+        json!({"agents_deleted": ["001"],
+               "groups_deleted": [format!("Linux_{acme}"), format!("Windows_{acme}"),
+                                  format!("Mac_{acme}")],
+               "stream_deleted": "st-1", "index_deleted": "is-1"})
+    );
+    assert_eq!(body["manual_steps"], json!([]));
+    assert_eq!(left, [(beta,)]);
+    tools.verify().await;
+}
+
+#[tokio::test]
+async fn template_bound_provisioning_stays_in_python() {
+    let legacy = stand_in(2).await;
+    let h = harness_or_skip!(Some(&legacy), &env());
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    h.seed().await;
+    let routes = [
+        "/api/customer_provisioning/provision",
+        "/api/customer_provisioning/provision/dashboards",
+        "/api/customer_provisioning/provision/wazuh_worker",
+        "/api/stack_provisioning/graylog/provision/fortinet",
+        "/api/stack_provisioning/graylog/provision/sonicwall",
+        "/api/stack_provisioning/graylog/provision/sentinelone",
+    ];
+    for route in routes {
+        Mock::given(method("POST"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+            .expect(1)
+            .mount(&legacy)
+            .await;
+    }
+    for route in routes {
+        let (status, body) = h
+            .call("POST", route, Some(&analyst), Some(json!({"x": 1})))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{route}: {body}");
+        assert_eq!(body, json!({"from": "python"}), "{route}");
+    }
+    legacy.verify().await;
+}

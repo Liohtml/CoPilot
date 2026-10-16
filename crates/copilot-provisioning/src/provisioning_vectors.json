@@ -11169,5 +11169,105 @@
    "text": "replace() argument 2 must be str, not int"
   }
  ],
+ "customer": {
+  "dashboards": [
+   "WAZUH_SUMMARY",
+   "EDR_WINDOWS_EVENT_LOGS",
+   "EDR_USERS_AND_GROUPS",
+   "EDR_SYSTEM_SECURITY_AUDIT",
+   "EDR_SYSTEM_PROCESSES",
+   "EDR_PROCESS_INJECTION",
+   "EDR_OPEN_AUDIT",
+   "EDR_NETWORK_SCAN",
+   "EDR_NETWORK_CONNECTIONS",
+   "EDR_MITRE",
+   "EDR_FIM",
+   "EDR_DOCKER_MONITORING",
+   "EDR_DNS_REQUESTS",
+   "EDR_DLL_SIDE_LOADING",
+   "EDR_COMPLIANCE",
+   "EDR_AV_MALWARE_IOC",
+   "EDR_AGENT_INVENTORY",
+   "EDR_AD_INVENTORY"
+  ],
+  "subscriptions": [
+   "Wazuh"
+  ],
+  "edr": [
+   {
+    "settings": {
+     "repo_url": "https://repo.example.com/",
+     "repo_username": "acme",
+     "repo_password": "s3cr3t",
+     "windows_edr_installer": "edr.msi",
+     "wazuh_domain": "wazuh.example.com"
+    },
+    "meta": {
+     "customer_meta_wazuh_registration_port": "1515",
+     "customer_meta_wazuh_log_ingestion_port": "1514",
+     "customer_meta_wazuh_auth_password": "reg"
+    },
+    "commands": {
+     "windows": "$user = 'acme'; $pass = 's3cr3t'; $pair = \"$($user):$($pass)\"; $encodedCreds = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($pair)); $basicAuthValue = \"Basic $encodedCreds\"; $Headers = @{ Authorization = $basicAuthValue }; Invoke-RestMethod -Uri 'https://repo.example.com/repository/acme/prod/edr.msi' -Headers $Headers -OutFile \"$env:TMP\\edr.msi\"; Start-Process -FilePath \"$env:TMP\\edr.msi\" -ArgumentList '/q WAZUHMANAGER=\"wazuh.example.com\" WAZUHPASSWORD=\"reg\" CUSTOMERCODE=\"Windows_ACME\" WAZUHREGISTRATIONPORT=\"1515\" WAZUHMANAGERPORT=\"1514\"';",
+     "linux": "if command -v apt >/dev/null 2>&1; then apt update && apt install -y sudo dos2unix; elif command -v yum >/dev/null 2>&1; then sudo yum install -y dos2unix; else echo \"Error: Neither apt nor yum package manager found.\"; exit 1; fi; curl -u acme:s3cr3t -so ~/Client_EDR_install.bash https://repo.example.com/repository/acme/installer/Client_EDR_install.bash && dos2unix ~/Client_EDR_install.bash && CLIENT_USER=acme CLIENT_PASS=s3cr3t bash ~/Client_EDR_install.bash -i wazuh.example.com 1514 1515 reg Linux_ACME",
+     "macos": "curl -fsSL -u 'acme:s3cr3t' 'https://repo.example.com/repository/acme/installer/macOS_kickstart.sh' | sudo bash -s -- --no-stagger"
+    }
+   },
+   {
+    "settings": {
+     "repo_url": "https://__REPO_USERNAME__.example.com//",
+     "repo_username": "acme",
+     "repo_password": "s3cr3t",
+     "windows_edr_installer": "edr.msi",
+     "wazuh_domain": "wazuh.example.com"
+    },
+    "meta": {
+     "customer_meta_wazuh_registration_port": "1515",
+     "customer_meta_wazuh_log_ingestion_port": "1514",
+     "customer_meta_wazuh_auth_password": "p'__LOGS_PORT__$x"
+    },
+    "commands": {
+     "windows": "$user = 'acme'; $pass = 's3cr3t'; $pair = \"$($user):$($pass)\"; $encodedCreds = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($pair)); $basicAuthValue = \"Basic $encodedCreds\"; $Headers = @{ Authorization = $basicAuthValue }; Invoke-RestMethod -Uri 'https://acme.example.com/repository/acme/prod/edr.msi' -Headers $Headers -OutFile \"$env:TMP\\edr.msi\"; Start-Process -FilePath \"$env:TMP\\edr.msi\" -ArgumentList '/q WAZUHMANAGER=\"wazuh.example.com\" WAZUHPASSWORD=\"p'1514$x\" CUSTOMERCODE=\"Windows_ACME\" WAZUHREGISTRATIONPORT=\"1515\" WAZUHMANAGERPORT=\"1514\"';",
+     "linux": "if command -v apt >/dev/null 2>&1; then apt update && apt install -y sudo dos2unix; elif command -v yum >/dev/null 2>&1; then sudo yum install -y dos2unix; else echo \"Error: Neither apt nor yum package manager found.\"; exit 1; fi; curl -u acme:s3cr3t -so ~/Client_EDR_install.bash https://acme.example.com/repository/acme/installer/Client_EDR_install.bash && dos2unix ~/Client_EDR_install.bash && CLIENT_USER=acme CLIENT_PASS=s3cr3t bash ~/Client_EDR_install.bash -i wazuh.example.com 1514 1515 p'1514$x Linux_ACME",
+     "macos": "curl -fsSL -u 'acme:s3cr3t' 'https://acme.example.com/repository/acme/installer/macOS_kickstart.sh' | sudo bash -s -- --no-stagger"
+    }
+   },
+   {
+    "settings": {
+     "repo_url": "https://repo.example.com/",
+     "repo_username": "acme",
+     "repo_password": "",
+     "windows_edr_installer": "edr.msi",
+     "wazuh_domain": null
+    },
+    "meta": {
+     "customer_meta_wazuh_registration_port": null,
+     "customer_meta_wazuh_log_ingestion_port": "1514",
+     "customer_meta_wazuh_auth_password": "reg"
+    },
+    "status": 400,
+    "detail": "Cannot generate EDR install commands; missing required value(s): repo_password, wazuh_domain, customer_meta_wazuh_registration_port."
+   },
+   {
+    "settings": {
+     "repo_url": "https://repo.example.com/",
+     "repo_username": "acme",
+     "repo_password": "s3cr3t",
+     "windows_edr_installer": "edr.msi",
+     "wazuh_domain": "wazuh.example.com"
+    },
+    "meta": {
+     "customer_meta_wazuh_registration_port": "1515",
+     "customer_meta_wazuh_log_ingestion_port": "1514",
+     "customer_meta_wazuh_auth_password": "__CUSTOMER_CODE__"
+    },
+    "commands": {
+     "windows": "$user = 'acme'; $pass = 's3cr3t'; $pair = \"$($user):$($pass)\"; $encodedCreds = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($pair)); $basicAuthValue = \"Basic $encodedCreds\"; $Headers = @{ Authorization = $basicAuthValue }; Invoke-RestMethod -Uri 'https://repo.example.com/repository/acme/prod/edr.msi' -Headers $Headers -OutFile \"$env:TMP\\edr.msi\"; Start-Process -FilePath \"$env:TMP\\edr.msi\" -ArgumentList '/q WAZUHMANAGER=\"wazuh.example.com\" WAZUHPASSWORD=\"ACME\" CUSTOMERCODE=\"Windows_ACME\" WAZUHREGISTRATIONPORT=\"1515\" WAZUHMANAGERPORT=\"1514\"';",
+     "linux": "if command -v apt >/dev/null 2>&1; then apt update && apt install -y sudo dos2unix; elif command -v yum >/dev/null 2>&1; then sudo yum install -y dos2unix; else echo \"Error: Neither apt nor yum package manager found.\"; exit 1; fi; curl -u acme:s3cr3t -so ~/Client_EDR_install.bash https://repo.example.com/repository/acme/installer/Client_EDR_install.bash && dos2unix ~/Client_EDR_install.bash && CLIENT_USER=acme CLIENT_PASS=s3cr3t bash ~/Client_EDR_install.bash -i wazuh.example.com 1514 1515 ACME Linux_ACME",
+     "macos": "curl -fsSL -u 'acme:s3cr3t' 'https://repo.example.com/repository/acme/installer/macOS_kickstart.sh' | sudo bash -s -- --no-stagger"
+    }
+   }
+  ]
+ },
  "etw_rule": "rule \"Set Syslog Level to ALERT for ETW Registry\"\nwhen\n  has_field(\"syscheck_path\") &&\n  starts_with(to_string($message.syscheck_path), \"HKEY_LOCAL_MACHINE\\\\SYSTEM\\\\CurrentControlSet\\\\Control\\\\WMI\\\\Autologger\\\\EventLog\")\nthen\n  set_field(\"syslog_level\", \"ALERT\");\nend"
 }

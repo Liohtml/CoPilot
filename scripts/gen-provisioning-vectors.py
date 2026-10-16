@@ -13,7 +13,10 @@ Writes `crates/copilot-provisioning/src/provisioning_vectors.json`:
   alias (`ok`; for `ContentPackList` only the packs' names, which is all the code reads) or the
   `ValidationError` text (`err`);
 * `render` — `render_check_template`'s text replacement on the four templates with odd org ids
-  and buckets: the payload's JSON dump, or the exception's class and text.
+  and buckets: the payload's JSON dump, or the exception's class and text;
+* `customer` — the dashboards and subscriptions customer provisioning lists, and
+  `generate_edr_install_commands` on settings and meta values (tokens carried by values
+  included): the three commands, or the `HTTPException`'s status and detail.
 
 Re-run after a Pydantic upgrade or a change to one of these models or templates.
 """
@@ -138,6 +141,50 @@ def render(name, org_id, bucket):
     return {"ok": json.dumps(out, ensure_ascii=False)}
 
 
+def edr(settings, meta):
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from app.customer_provisioning.services import edr_install
+
+    class Result:
+        def scalars(self):
+            return self
+
+        def first(self):
+            return object()
+
+    class Session:
+        async def execute(self, statement):
+            return Result()
+
+    async def run():
+        with mock.patch.object(edr_install, "_get_default_settings", mock.AsyncMock(return_value=SimpleNamespace(**settings))):
+            with mock.patch.object(edr_install, "_get_customer_meta", mock.AsyncMock(return_value=SimpleNamespace(**meta))):
+                return await edr_install.generate_edr_install_commands("ACME", Session())
+
+    try:
+        out = asyncio.run(run())
+    except HTTPException as e:
+        return {"status": e.status_code, "detail": e.detail}
+    return {"commands": out.model_dump()}
+
+
+EDR_SETTINGS = {
+    "repo_url": "https://repo.example.com/",
+    "repo_username": "acme",
+    "repo_password": "s3cr3t",
+    "windows_edr_installer": "edr.msi",
+    "wazuh_domain": "wazuh.example.com",
+}
+EDR_META = {
+    "customer_meta_wazuh_registration_port": "1515",
+    "customer_meta_wazuh_log_ingestion_port": "1514",
+    "customer_meta_wazuh_auth_password": "reg",
+}
+
+
 def main():
     vectors = {
         "enums": {
@@ -168,6 +215,25 @@ def main():
                 ("é", "ünï"),
                 ("REPLACE_BUCKET", "b"),
                 (5, "b"),
+            )
+        ],
+    }
+    from app.connectors.grafana.schema.dashboards import WazuhDashboard
+    from app.customer_provisioning.schema.provision import CustomerSubsctipion
+
+    vectors["customer"] = {
+        "dashboards": [d.name for d in WazuhDashboard],
+        "subscriptions": [c.value for c in CustomerSubsctipion],
+        "edr": [
+            {"settings": st, "meta": me, **edr(st, me)}
+            for st, me in (
+                (EDR_SETTINGS, EDR_META),
+                (
+                    {**EDR_SETTINGS, "repo_url": "https://__REPO_USERNAME__.example.com//"},
+                    {**EDR_META, "customer_meta_wazuh_auth_password": "p'__LOGS_PORT__$x"},
+                ),
+                ({**EDR_SETTINGS, "repo_password": "", "wazuh_domain": None}, {**EDR_META, "customer_meta_wazuh_registration_port": None}),
+                (EDR_SETTINGS, {**EDR_META, "customer_meta_wazuh_auth_password": "__CUSTOMER_CODE__"}),
             )
         ],
     }

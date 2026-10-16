@@ -184,6 +184,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/stack_provisioning/graylog/provision/content_pack",
     "/api/stack_provisioning/influxdb",
     "/api/stack_decommissioning",
+    // Customer provisioning (copilot-provisioning) but `POST /provision`,
+    // `POST /provision/dashboards` and `POST /provision/wazuh_worker`
+    // (Grafana dashboard and Portainer stack templates), which fall through.
+    "/api/customer_provisioning",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -278,6 +282,8 @@ pub struct App {
     pub portainer: PortainerClient,
     /// The customer WAF module (`/api/customer_waf`, the WAF alerts).
     pub waf: WafState,
+    /// `requests` for the Wazuh worker and HAProxy provisioning services.
+    pub worker_http: copilot_provisioning::customer::decommission::WorkerHttp,
 }
 
 impl App {
@@ -401,6 +407,8 @@ impl App {
             grafana,
             portainer,
             waf,
+            worker_http: copilot_provisioning::customer::decommission::worker_http()
+                .context("building the provisioning-worker client")?,
         })
     }
 
@@ -555,6 +563,16 @@ impl App {
                     graylog: self.graylog.clone(),
                     influx: self.influxdb.clone(),
                     grafana: self.grafana.clone(),
+                },
+            ))
+            .merge(copilot_provisioning::customer::routes::router(
+                copilot_provisioning::customer::decommission::Tools {
+                    ctx: self.ctx.clone(),
+                    wazuh: self.wazuh.clone(),
+                    graylog: self.graylog.clone(),
+                    grafana: self.grafana.clone(),
+                    portainer: self.portainer.clone(),
+                    http: self.worker_http.clone(),
                 },
             ))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))

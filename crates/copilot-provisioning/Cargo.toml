@@ -1,6 +1,6 @@
 [package]
 name = "copilot-provisioning"
-description = "Stack provisioning (/api/stack_provisioning, /api/stack_decommissioning): Graylog content packs, the InfluxDB monitoring checks, network-connector decommissioning"
+description = "Stack and customer provisioning (/api/stack_provisioning, /api/stack_decommissioning, /api/customer_provisioning): Graylog content packs, the InfluxDB checks, network-connector and customer decommissioning, provisioning defaults"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,6 +16,8 @@ copilot-graylog = { workspace = true }
 copilot-influxdb = { workspace = true }
 copilot-grafana = { workspace = true }
 copilot-platform = { workspace = true }
+copilot-portainer = { workspace = true }
+copilot-wazuh = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 axum = { workspace = true }

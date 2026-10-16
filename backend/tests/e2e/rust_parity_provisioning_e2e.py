@@ -87,11 +87,19 @@ ENV = {
 NOKEY_UNSET = ("WAF_TOKEN_ENCRYPTION_KEY", "ALERT_FORWARDING_IP", "GRAYLOG_API_HEADER_VALUE", "WAF_SYSLOG_DEFAULT_HOST")
 os.environ.update(ENV)
 
-CUST_A, CUST_B = f"WAFA{SFX}", f"WAFB{SFX}"
+CUST_A, CUST_B, CUST_C = f"WAFA{SFX}", f"WAFB{SFX}", f"WAFC{SFX}"
 ADMIN, ANALYST, ANALYST_B, PORTAL = f"waf_admin{SFX}", f"waf_analyst{SFX}", f"waf_analyst_b{SFX}", f"waf_portal{SFX}"
 UNASSIGNED = f"waf_unassigned{SFX}"
 USERS = (ADMIN, ANALYST, ANALYST_B, PORTAL, UNASSIGNED)
-OUR_CONNECTORS = ("Graylog", "InfluxDB", "Grafana")
+OUR_CONNECTORS = (
+    "Graylog",
+    "InfluxDB",
+    "Grafana",
+    "Wazuh-Manager",
+    "Portainer",
+    "Wazuh Worker Provisioning",
+    "HAProxy Provisioning",
+)
 results = []
 
 
@@ -618,20 +626,116 @@ class Grafana:
         self.reset()
 
     def reset(self, overrides=None):
-        self.overrides = dict(overrides or {})
+        self.overrides = copy.deepcopy(overrides or {})
 
     def answer(self, method, target, body):
         path = urlsplit(target).path.removeprefix("/grafanaapi")
         for key in ((method, path), (method, re.sub(r"/[^/]+$", "/*", path))):
             if key in self.overrides:
-                return self.overrides[key]
+                answer = self.overrides[key]
+                if isinstance(answer, list):  # one answer per call, the last one repeated
+                    return answer.pop(0) if len(answer) > 1 else answer[0]
+                return answer
         if method == "POST" and re.fullmatch(r"/user/using/[^/]+", path):
             return 200, "application/json", _json({"message": "Active organization changed"})
         if method == "DELETE" and re.fullmatch(r"/folders/[^/]+", path):
             return 200, "application/json", _json({"id": 12, "message": "Folder deleted", "title": "FORTINET"})
         if method == "DELETE" and re.fullmatch(r"/datasources/uid/[^/]+", path):
             return 200, "application/json", _json({"id": 7, "message": "Data source deleted"})
+        if method == "DELETE" and re.fullmatch(r"/orgs/[^/]+", path):
+            return 200, "application/json", _json({"message": "Organization deleted"})
         return 404, "application/json", _json({"message": "Not found"})
+
+
+class WazuhManager:
+    """The Wazuh manager API for decommissioning: the token, agents by group, deletions."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self, agents=None, overrides=None):
+        self.agents = copy.deepcopy(agents or {})
+        self.overrides = dict(overrides or {})
+
+    def answer(self, method, target, body):
+        parts = urlsplit(target)
+        path, query = parts.path.removeprefix("/wazuh"), parse_qs(parts.query)
+        for key in ((method, target.removeprefix("/wazuh")), (method, path)):
+            if key in self.overrides:
+                return self.overrides[key]
+        if method == "GET" and path == "/security/user/authenticate":
+            return 200, "application/json", _json({"data": {"token": "wazuh-token-parity"}, "error": 0})
+        if method == "GET" and path == "/agents":
+            group = query.get("group", [""])[0]
+            found = self.agents.get(group, [])
+            return 200, "application/json", _json({"data": {"affected_items": found, "total_affected_items": len(found)}, "error": 0})
+        if method == "DELETE" and path in ("/agents", "/groups"):
+            return (
+                200,
+                "application/json",
+                _json({"data": {"affected_items": query.get("agents_list") or query.get("groups_list") or []}, "error": 0}),
+            )
+        return 404, "application/json", _json({"title": "Not Found", "detail": "not found"})
+
+
+class PortainerStub:
+    """Portainer 2.21 for decommissioning: the login, the environment, the stack, the nodes (the
+    login `urljoin`s `/api/auth` onto the connector URL, so it reaches the root; every other call
+    keeps the URL's `/portainer` path)."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self, nodes=None, overrides=None):
+        self.nodes = copy.deepcopy(nodes if nodes is not None else [])
+        self.stacks = {s["Id"]: copy.deepcopy(s) for s in samples.PORTAINER_STACKS}
+        self.overrides = dict(overrides or {})
+
+    def answer(self, method, target, body):
+        parts = urlsplit(target)
+        path, query = parts.path.removeprefix("/portainer"), parse_qs(parts.query)
+        if (method, path) in self.overrides:
+            return self.overrides[(method, path)]
+        if method == "POST" and path == "/api/auth":
+            return 200, "application/json", _json({"jwt": samples.PORTAINER_JWT})
+        if method == "GET" and path == "/api/endpoints":
+            return 200, "application/json", _json(samples.PORTAINER_ENDPOINTS)
+        if method == "GET" and path == "/api/endpoints/1/docker/nodes":
+            return 200, "application/json", _json(self.nodes)
+        m = re.fullmatch(r"/api/stacks/(\d+)(?:/(start|stop))?", path)
+        if m and query.get("endpointId") == ["1"]:
+            stack = self.stacks.get(int(m.group(1)))
+            if stack is None:
+                return 404, "application/json", _json({"message": "Unable to find a stack", "details": "Object not found"})
+            if method == "GET" and not m.group(2):
+                return 200, "application/json", _json(stack)
+            if method == "POST" and m.group(2):
+                stack["Status"] = 1 if m.group(2) == "start" else 2
+                return 200, "application/json", _json(stack)
+            if method == "DELETE" and not m.group(2):
+                del self.stacks[stack["Id"]]
+                return 204, None, b""
+        return 404, "application/json", _json({"message": "Not found", "details": "Not found"})
+
+
+class Service:
+    """The Wazuh worker and HAProxy provisioning services: every POST answered 200 unless
+    overridden."""
+
+    def __init__(self, prefix):
+        self.prefix = prefix
+        self.reset()
+
+    def reset(self, overrides=None):
+        self.overrides = dict(overrides or {})
+
+    def answer(self, method, target, body):
+        path = urlsplit(target).path.removeprefix(self.prefix)
+        if (method, path) in self.overrides:
+            return self.overrides[(method, path)]
+        if method == "POST":
+            return 200, "application/json", _json({"success": True, "message": "done"})
+        return 405, "application/json", _json({"detail": "Method Not Allowed"})
 
 
 class ByPrefix:
@@ -658,12 +762,29 @@ WAF = Waf()
 GRAYLOG = Graylog()
 INFLUX = Influx()
 GRAFANA = Grafana()
+WAZUH = WazuhManager()
+PORTAINER = PortainerStub()
+WORKER = Service("/worker")
+HAPROXY = Service("/haproxy")
 WAF_REC = Recorder(("authorization", "accept", "content-type", "content-length"))
 GRAYLOG_REC = Recorder(("authorization", "x-requested-by", "content-type", "content-length"))
 INFLUX_REC = Recorder(("authorization", "accept", "accept-encoding", "user-agent", "content-type", "content-length"))
 GRAFANA_REC = Recorder(("authorization", "user-agent", "content-type", "content-length"))
-RECORDERS = (WAF_REC, GRAYLOG_REC, INFLUX_REC, GRAFANA_REC)
-TOOLS = ByPrefix((("/graylog", GRAYLOG, GRAYLOG_REC), ("/influx", INFLUX, INFLUX_REC), ("/grafanaapi", GRAFANA, GRAFANA_REC)))
+WAZUH_REC = Recorder(("authorization", "content-type", "content-length"))
+PORTAINER_REC = Recorder(("authorization", "content-type", "content-length"))
+SERVICE_REC = Recorder(("content-type", "content-length", "user-agent", "accept-encoding"))
+RECORDERS = (WAF_REC, GRAYLOG_REC, INFLUX_REC, GRAFANA_REC, WAZUH_REC, PORTAINER_REC, SERVICE_REC)
+TOOLS = ByPrefix(
+    (
+        ("/graylog", GRAYLOG, GRAYLOG_REC),
+        ("/influx", INFLUX, INFLUX_REC),
+        ("/grafanaapi", GRAFANA, GRAFANA_REC),
+        ("/wazuh", WAZUH, WAZUH_REC),
+        ("/worker", WORKER, SERVICE_REC),
+        ("/haproxy", HAPROXY, SERVICE_REC),
+        ("", PORTAINER, PORTAINER_REC),
+    ),
+)
 
 
 def make_handler(tool, recorder):
@@ -706,23 +827,25 @@ def start_stub(port, tool, recorder, tls=False):
 # --- Database ----------------------------------------------------------------------------------------
 
 SAVED_CONNECTORS = []
+SAVED_SETTINGS = []
 IDS = {}
 
 
-def set_connector(name, url, username=None, password=None, api_key=None, extra=None):
+def set_connector(name, url, username=None, password=None, api_key=None, extra=None, verified=1):
     sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
     sql(
         "INSERT INTO connectors (connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
         "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
         "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
         "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) "
-        "VALUES (:n, '3', :u, UTC_TIMESTAMP(), :un, :pw, :k, 'parity', 'parity', 1, 1, 0, 0, 1, 0, 0, :x, 1)",
+        "VALUES (:n, '3', :u, UTC_TIMESTAMP(), :un, :pw, :k, 'parity', 'parity', 1, :v, 0, 0, 1, 0, 0, :x, 1)",
         n=name,
         u=url,
         un=username,
         pw=password,
         k=api_key,
         x=extra,
+        v=verified,
     )
 
 
@@ -736,6 +859,18 @@ def set_influx(url=None, api_key="influx-token-parity", extra="SOCFORTRESS, tele
 
 def set_grafana():
     set_connector("Grafana", GRAFANA_URL, "admin", "gräfana")
+
+
+def set_tools(portainer=0, worker=1, haproxy=1):
+    """The decommissioning connectors: the Wazuh manager, Portainer (verified or not), and the
+    worker and HAProxy services (verified, unverified, or `None` for no row)."""
+    set_connector("Wazuh-Manager", f"http://127.0.0.1:{STUB_PORT}/wazuh", "wazuh", "wazuh-pw")
+    set_connector("Portainer", f"http://127.0.0.1:{STUB_PORT}/portainer", "admin", "portainer-pw", verified=portainer)
+    for name, prefix, verified in (("Wazuh Worker Provisioning", "worker", worker), ("HAProxy Provisioning", "haproxy", haproxy)):
+        if verified is None:
+            sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
+        else:
+            set_connector(name, f"http://127.0.0.1:{STUB_PORT}/{prefix}", verified=verified)
 
 
 def encrypt(value, key=WAF_KEY):
@@ -785,7 +920,8 @@ def seed():
     set_connector("Graylog", f"http://127.0.0.1:{STUB_PORT}/graylog", "admin", "pässword")
     set_influx()
     set_grafana()
-    for code, name in ((CUST_A, f"Alpha Co {SFX}"), (CUST_B, f"Beta Co {SFX}")):
+    SAVED_SETTINGS.extend(rows("SELECT * FROM customer_provisioning_default_settings"))
+    for code, name in ((CUST_A, f"Alpha Co {SFX}"), (CUST_B, f"Beta Co {SFX}"), (CUST_C, f"Gamma Co {SFX}")):
         sql("INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :n, UTC_TIMESTAMP())", c=code, n=name)
     for name, role in ((ADMIN, 1), (ANALYST, 2), (ANALYST_B, 2), (PORTAL, 4), (UNASSIGNED, 2)):
         sql(
@@ -841,6 +977,14 @@ def seed():
         IDS[key] = nbase + i
     for i, key in enumerate(("nc_a", "nc_b", "nc_a2")):
         IDS[key] = nbase + 10 + i
+    # customersmeta and the default settings: explicit ids of their own range.
+    mtop = 0
+    for table in ("customersmeta", "customer_provisioning_default_settings"):
+        mtop = max(mtop, rows(f"SELECT COALESCE(MAX(id), 0) AS n FROM {table}")[0]["n"])
+    mbase = max(mtop + 100, 3_000_000)
+    for i, key in enumerate(("cm_a", "cm_b", "cm_a_dup")):
+        IDS[key] = mbase + i
+    IDS["settings"] = mbase + 20
 
 
 META_ROWS = {
@@ -908,7 +1052,12 @@ def cleanup():
         sql("DELETE FROM incident_management_case WHERE id = :i", i=IDS.get(key, -1))
     for name in USERS:
         sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
-    for code in (CUST_A, CUST_B):
+    sql("DELETE FROM customer_provisioning_default_settings")
+    for row in SAVED_SETTINGS:
+        cols = ", ".join(row)
+        sql(f"INSERT INTO customer_provisioning_default_settings ({cols}) VALUES ({', '.join(':' + c for c in row)})", **row)
+    for code in (CUST_A, CUST_B, CUST_C):
+        sql("DELETE FROM customersmeta WHERE customer_code = :c", c=code)
         sql("DELETE FROM customer_network_connectors_meta WHERE customer_code = :c", c=code)
         sql("DELETE FROM customer_network_connectors WHERE customer_code = :c", c=code)
         sql("DELETE FROM customer_waf_instances WHERE customer_code = :c", c=code)
@@ -933,6 +1082,7 @@ def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers import customer_provisioning
     from app.routers import customer_waf
     from app.routers import monitoring_alert
     from app.routers import stack_provisioning
@@ -941,6 +1091,7 @@ def build_python_app():
     api.include_router(customer_waf.router)
     api.include_router(monitoring_alert.router)
     api.include_router(stack_provisioning.router)
+    api.include_router(customer_provisioning.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -1014,7 +1165,7 @@ def pin_graylog_version(version):
 def out_norm(requests):
     out = []
     for method, target, headers, body in requests:
-        if method == "GET" and target == "/graylog/api/system":
+        if method == "GET" and target in ("/graylog/api/system", "/wazuh/security/user/authenticate"):
             continue
         for pattern, repl in OUT_MASKS:
             body = pattern.sub(repl, body)
@@ -1043,7 +1194,21 @@ class Pair:
         await asyncio.sleep(0)
         return r, [request for recorder in RECORDERS for request in recorder.take()]
 
-    async def same(self, name, method, path, tok=None, before=None, after=None, masked=(), rust=None, nokey=False, expect=None, **kw):
+    async def same(
+        self,
+        name,
+        method,
+        path,
+        tok=None,
+        before=None,
+        after=None,
+        masked=(),
+        rust=None,
+        nokey=False,
+        expect=None,
+        unordered=False,
+        **kw,
+    ):
         """Python, then Rust, each after `before(side)`; `after(side)` returns the state the
         request left, compared too. `nokey`: Python without the WAF key and alert-forwarding
         settings, against the Rust instance started without them. `expect`: a deliberate
@@ -1075,6 +1240,10 @@ class Pair:
             )
             return r1, r2
         b1, b2 = body_norm(r1.content, masked), body_norm(r2.content, masked)
+        if unordered:
+            # A table model SQLAlchemy loaded keeps its attributes in its load order, which
+            # varies between Python processes (RUST_MIGRATION.md §4): compare the values.
+            b1, b2 = (json.dumps(json.loads(b), sort_keys=True).encode() if b[:1] == b"{" else b for b in (b1, b2))
         ok = r1.status_code == r2.status_code and b1 == b2
         detail = f"python {r1.status_code} {b1[:1200]!r}\n        rust   {r2.status_code} {b2[:1200]!r}"
         o1, o2 = out_norm(out1), out_norm(out2)
@@ -2430,6 +2599,339 @@ async def stack_checks(p, t_admin, t_analyst, t_analyst_b, t_portal):
     await p.same("decommission: no Grafana connector", "POST", NC, t_admin, json=A_BODY, before=no_grafana, after=grafana_back)
 
 
+CM_ROWS = {
+    # key: customer, name, stream, index, grafana org, stack id
+    "cm_a": (CUST_A, f"Alpha Co {SFX}", "st-alpha", "is-alpha", "44", 5),
+    "cm_b": (CUST_B, f"Beta Co {SFX}", "st-beta", "is-beta", "45", None),
+    "cm_a_dup": (CUST_A, f"Alpha Dup {SFX}", "st-dup", "is-dup", "46", None),
+}
+
+
+def reset_meta(keys=("cm_a", "cm_b"), **changes):
+    for code in (CUST_A, CUST_B, CUST_C):
+        sql("DELETE FROM customersmeta WHERE customer_code = :c", c=code)
+    for key in keys:
+        code, name, stream, index, org, stack = CM_ROWS[key]
+        values = {
+            "customer_meta_grafana_org_id": org,
+            "customer_meta_portainer_stack_id": stack,
+            "customer_meta_wazuh_registration_port": "1515",
+            "customer_meta_wazuh_log_ingestion_port": "1514",
+            "customer_meta_wazuh_auth_password": "reg-pass",
+            **changes.get(key, {}),
+        }
+        sql(
+            "INSERT INTO customersmeta (id, customer_code, customer_name, customer_meta_graylog_index, customer_meta_graylog_stream, "
+            "customer_meta_grafana_org_id, customer_meta_wazuh_group, customer_meta_index_retention, customer_meta_wazuh_registration_port, "
+            "customer_meta_wazuh_log_ingestion_port, customer_meta_wazuh_api_port, customer_meta_wazuh_auth_password, "
+            "customer_meta_iris_customer_id, customer_meta_office365_organization_id, customer_meta_portainer_stack_id) VALUES "
+            "(:i, :c, :n, :ix, :st, :org, :c, '30', :reg, :logs, '55000', :pw, NULL, NULL, :stack)",
+            i=IDS[key],
+            c=code,
+            n=name,
+            ix=index,
+            st=stream,
+            org=values["customer_meta_grafana_org_id"],
+            reg=values["customer_meta_wazuh_registration_port"],
+            logs=values["customer_meta_wazuh_log_ingestion_port"],
+            pw=values["customer_meta_wazuh_auth_password"],
+            stack=values["customer_meta_portainer_stack_id"],
+        )
+
+
+def meta_state(side=None):
+    return rows(
+        "SELECT * FROM customersmeta WHERE customer_code IN (:a, :b, :c) ORDER BY id",
+        a=CUST_A,
+        b=CUST_B,
+        c=CUST_C,
+    )
+
+
+SETTINGS = {
+    "cluster_name": "wazuh-cluster",
+    "cluster_key": "c98b62a9b6169ac5f67dae55ae4a9088",
+    "master_ip": "10.0.0.5",
+    "grafana_url": "https://grafana.parity.test",
+    "wazuh_worker_hostname": "worker01",
+    "repo_url": "https://repo.parity.test/",
+    "repo_username": "acme",
+    "repo_password": "r3po",
+    "windows_edr_installer": "edr.msi",
+    "wazuh_domain": "wazuh.parity.test",
+}
+
+
+def reset_settings(row=None):
+    sql("DELETE FROM customer_provisioning_default_settings")
+    if row is not None:
+        cols = {"id": IDS["settings"], **row}
+        sql(
+            f"INSERT INTO customer_provisioning_default_settings ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})",
+            **cols,
+        )
+
+
+def settings_state(side=None):
+    found = rows("SELECT * FROM customer_provisioning_default_settings ORDER BY id")
+    for row in found:
+        if row["id"] != IDS["settings"]:
+            row["id"] = "<new>"
+    return found
+
+
+async def customer_checks(p, t_admin, t_analyst, t_portal):
+    CP = "/api/customer_provisioning"
+    DS = f"{CP}/default_settings"
+
+    def settings(row=None):
+        def before(side):
+            reset_settings(row)
+
+        return before
+
+    # ---- default settings
+    await p.same("settings: no token", "GET", DS)
+    await p.same("settings: portal user", "GET", DS, t_portal)
+    await p.same("settings: none", "GET", DS, t_analyst, before=settings())
+    await p.same("settings: one", "GET", DS, t_analyst, before=settings(SETTINGS), unordered=True)
+    await p.same(
+        "settings: one, EDR fields unset",
+        "GET",
+        DS,
+        t_analyst,
+        before=settings({k: SETTINGS[k] for k in list(SETTINGS)[:5]}),
+        unordered=True,
+    )
+    for label, kw in (
+        ("no body", {}),
+        ("a list", {"json": [SETTINGS]}),
+        ("text", {"content": b"x", "headers": {"Content-Type": "text/plain"}}),
+        ("malformed JSON", {"content": b"{", "headers": {"Content-Type": "application/json"}}),
+        ("an empty object", {"json": {}}),
+        ("a null required field", {"json": {**SETTINGS, "master_ip": None}}),
+        ("a field too long", {"json": {**SETTINGS, "cluster_name": "c" * 51}}),
+        ("a list value", {"json": {**SETTINGS, "cluster_key": ["k"]}}),
+    ):
+        await p.same(f"settings create: {label}", "POST", DS, t_analyst, before=settings(), after=settings_state, masked=("id",), **kw)
+    await p.same(
+        "settings create",
+        "POST",
+        DS,
+        t_analyst,
+        json=SETTINGS,
+        before=settings(),
+        after=settings_state,
+        masked=("id",),
+    )
+    await p.same(
+        "settings create: values kept as sent",
+        "POST",
+        DS,
+        t_analyst,
+        json={**{k: SETTINGS[k] for k in list(SETTINGS)[:5]}, "id": None, "cluster_key": 5, "master_ip": 1.5, "unknown": "x"},
+        before=settings(),
+        after=settings_state,
+        masked=("id",),
+    )
+    await p.same(
+        "settings create: an explicit id",
+        "POST",
+        DS,
+        t_admin,
+        json={**SETTINGS, "id": IDS["settings"]},
+        before=settings(),
+        after=settings_state,
+    )
+    await p.same("settings create: one exists", "POST", DS, t_analyst, json=SETTINGS, before=settings(SETTINGS), after=settings_state)
+    for label, body in (
+        ("no id", SETTINGS),
+        ("a null id", {**SETTINGS, "id": None}),
+        ("an unknown id", {**SETTINGS, "id": IDS["settings"] + 1}),
+        ("the id", {**SETTINGS, "id": IDS["settings"], "cluster_name": "renamed"}),
+        ("the id as text", {"id": str(IDS["settings"]), "master_ip": "10.9.9.9"}),
+        ("a field too long", {**SETTINGS, "id": IDS["settings"], "master_ip": "1" * 51}),
+        ("an object", {"id": IDS["settings"], "cluster_key": {"a": 1}}),
+    ):
+        await p.same(
+            f"settings update: {label}",
+            "PUT",
+            DS,
+            t_analyst,
+            json=body,
+            before=settings(SETTINGS),
+            after=settings_state,
+            unordered=True,
+        )
+    await p.same("settings update: no body", "PUT", DS, t_analyst, before=settings(SETTINGS))
+    await p.same("settings delete", "DELETE", DS, t_analyst, before=settings(SETTINGS), after=settings_state, unordered=True)
+    await p.same("settings delete: none", "DELETE", DS, t_analyst, before=settings(), after=settings_state)
+
+    # ---- lists, meta, Office 365, EDR commands
+    await p.same("dashboards", "GET", f"{CP}/provision/dashboards", t_analyst)
+    await p.same("subscriptions", "GET", f"{CP}/provision/subscriptions", t_analyst)
+    await p.same("subscriptions: portal user", "GET", f"{CP}/provision/subscriptions", t_portal)
+
+    def meta(keys=("cm_a", "cm_b"), settings_row=SETTINGS, **changes):
+        def before(side):
+            reset_meta(keys, **changes)
+            reset_settings(settings_row)
+
+        return before
+
+    await p.same("meta: A", "GET", f"{CP}/provision/{CUST_A}", t_analyst, before=meta(), unordered=True)
+    await p.same("meta: B by A's analyst", "GET", f"{CP}/provision/{CUST_B}", t_analyst, before=meta())
+    await p.same("meta: no meta", "GET", f"{CP}/provision/{CUST_C}", t_admin, before=meta())
+    await p.same(
+        "meta: the first of two",
+        "GET",
+        f"{CP}/provision/{CUST_A}",
+        t_admin,
+        before=meta(keys=("cm_a_dup", "cm_a")),
+        unordered=True,
+    )
+    O365 = f"{CP}/update/office365_org_id"
+    for label, path, tok, kw in (
+        ("A", f"{O365}/{CUST_A}", t_analyst, {"json": {"office365_org_id": "11111111-2222-3333-4444-555555555555"}}),
+        ("B by A's analyst", f"{O365}/{CUST_B}", t_analyst, {"json": {"office365_org_id": "x"}}),
+        ("B by A's analyst, bad body", f"{O365}/{CUST_B}", t_analyst, {"json": {}}),
+        ("no meta", f"{O365}/{CUST_C}", t_admin, {"json": {"office365_org_id": "x"}}),
+        ("no body", f"{O365}/{CUST_A}", t_admin, {}),
+        ("a number", f"{O365}/{CUST_A}", t_admin, {"json": {"office365_org_id": 5}}),
+        ("too long", f"{O365}/{CUST_A}", t_admin, {"json": {"office365_org_id": "x" * 1025}}),
+    ):
+        await p.same(f"office365: {label}", "PUT", path, tok, before=meta(), after=meta_state, **kw)
+    EDR = f"{CP}/edr_install_commands"
+    await p.same("edr: A", "GET", f"{EDR}/{CUST_A}", t_analyst, before=meta())
+    await p.same("edr: B by A's analyst", "GET", f"{EDR}/{CUST_B}", t_analyst, before=meta())
+    await p.same("edr: unknown customer", "GET", f"{EDR}/NOPE{SFX}", t_admin, before=meta())
+    await p.same("edr: no settings", "GET", f"{EDR}/{CUST_A}", t_admin, before=meta(settings_row=None))
+    await p.same("edr: no meta", "GET", f"{EDR}/{CUST_C}", t_admin, before=meta())
+    await p.same(
+        "edr: missing values",
+        "GET",
+        f"{EDR}/{CUST_A}",
+        t_admin,
+        before=meta(settings_row={**SETTINGS, "repo_password": "", "wazuh_domain": None}, cm_a={"customer_meta_wazuh_auth_password": ""}),
+    )
+    await p.same(
+        "edr: a value carrying a token",
+        "GET",
+        f"{EDR}/{CUST_A}",
+        t_admin,
+        before=meta(settings_row={**SETTINGS, "repo_url": "https://__REPO_USERNAME__.repo//", "repo_password": "p'__LOGS_PORT__"}),
+    )
+
+    # ---- decommissioning
+    DC = f"{CP}/decommission"
+    GROUP_AGENTS = {f"Linux_{CUST_A}": [{"id": "001", "name": "web"}, {"id": "002"}], f"Windows_{CUST_A}": [{"id": "003"}]}
+
+    def tools(
+        keys=("cm_a", "cm_b"),
+        portainer=0,
+        worker=1,
+        haproxy=1,
+        agents=None,
+        wazuh=None,
+        grafana=None,
+        graylog=None,
+        nodes=None,
+        **changes,
+    ):
+        def before(side):
+            reset_meta(keys, **changes)
+            set_tools(portainer, worker, haproxy)
+            WAZUH.reset(agents=GROUP_AGENTS if agents is None else agents, overrides=wazuh)
+            GRAFANA.reset(overrides=grafana)
+            GRAYLOG.reset(overrides=graylog)
+            pin_graylog_version(6)
+            PORTAINER.reset(nodes=nodes)
+            WORKER.reset()
+            HAPROXY.reset()
+
+        return before
+
+    await p.same("decommission: no query", "POST", DC, t_admin, before=tools())
+    await p.same("decommission: no token", "POST", DC, params={"customer_code": CUST_A})
+    await p.same(
+        "decommission: B by A's analyst",
+        "POST",
+        DC,
+        t_analyst,
+        params={"customer_code": CUST_B},
+        before=tools(),
+        after=meta_state,
+    )
+    await p.same("decommission: no meta", "POST", DC, t_admin, params={"customer_code": CUST_C}, before=tools(), after=meta_state)
+    await p.same("decommission: A", "POST", DC, t_analyst, params={"customer_code": CUST_A}, before=tools(), after=meta_state)
+    await p.same(
+        "decommission: A, the first of two",
+        "POST",
+        DC,
+        t_admin,
+        params={"customer_code": CUST_A},
+        before=tools(keys=("cm_a_dup", "cm_a")),
+        after=meta_state,
+    )
+    for label, kw in (
+        ("no agents", {"agents": {}}),
+        ("an agent without id", {"agents": {f"Mac_{CUST_A}": [{"name": "mac"}]}}),
+        ("a numeric agent id", {"agents": {f"Mac_{CUST_A}": [{"id": 7}]}}),
+        ("agents not a list", {"wazuh": {("GET", "/agents"): (200, "application/json", _json({"data": {"affected_items": "x"}}))}}),
+        ("the manager refusing deletes", {"wazuh": {("DELETE", "/agents"): (500, "application/json", _json({"detail": "boom"}))}}),
+        (
+            "the manager unreachable",
+            {"wazuh": {("GET", "/security/user/authenticate"): (401, "application/json", _json({"title": "Unauthorized"}))}},
+        ),
+        ("worker unverified", {"worker": 0}),
+        ("worker without a row", {"worker": None}),
+        ("HAProxy unverified", {"haproxy": 0}),
+        ("HAProxy without a row", {"haproxy": None}),
+        (
+            "the stream already gone",
+            {
+                "graylog": {
+                    ("DELETE", "/api/streams/st-alpha"): (
+                        404,
+                        "application/json",
+                        _json({"type": "ApiError", "message": "Stream not found"}),
+                    ),
+                },
+            },
+        ),
+        ("the index set answering text", {"graylog": {("DELETE", "/api/system/indices/index_sets/is-alpha"): (500, "text/plain", b"x")}}),
+        (
+            "the org delete retried from org 1",
+            {
+                "grafana": {
+                    ("DELETE", "/orgs/44"): [(409, "application/json", _json({"message": "busy"})), (200, "application/json", _json({}))],
+                },
+            },
+        ),
+        ("the org delete failing twice, not JSON", {"grafana": {("DELETE", "/orgs/*"): (200, "text/html", b"")}}),
+        ("the org delete failing twice", {"grafana": {("DELETE", "/orgs/*"): (500, "application/json", _json({"message": "down"}))}}),
+        ("a non-numeric org id", {"cm_a": {"customer_meta_grafana_org_id": "acme"}}),
+        ("a padded org id", {"cm_a": {"customer_meta_grafana_org_id": " 44 "}}),
+        ("Portainer, no nodes", {"portainer": 1}),
+        ("Portainer, a node", {"portainer": 1, "nodes": [samples.portainer_node("n1", "swarm-01", "manager", leader=True)]}),
+        (
+            "Portainer, a node with a bad address",
+            {"portainer": 1, "nodes": [{**samples.portainer_node("n1", "s", "worker"), "Status": {"State": "ready", "Addr": "bad host"}}]},
+        ),
+        ("Portainer, no stack id", {"portainer": 1, "cm_a": {"customer_meta_portainer_stack_id": None}}),
+        ("Portainer, an unknown stack", {"portainer": 1, "cm_a": {"customer_meta_portainer_stack_id": 99}}),
+    ):
+        await p.same(
+            f"decommission: {label}",
+            "POST",
+            DC,
+            t_admin,
+            params={"customer_code": CUST_A},
+            before=tools(**kw),
+            after=meta_state,
+        )
+
+
 async def main():
     servers = [
         start_stub(STUB_PORT, TOOLS, TOOLS),
@@ -2442,7 +2944,7 @@ async def main():
     t_admin, t_analyst = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"])
     t_analyst_b, t_portal = token(ANALYST_B, ["analyst"]), token(PORTAL, ["customer_user"])
     try:
-        sections = os.environ.get("PROVISIONING_PARITY_SECTIONS", "waf,forwarding,alerts,stack").split(",")
+        sections = os.environ.get("PROVISIONING_PARITY_SECTIONS", "waf,forwarding,alerts,stack,customer").split(",")
         if "waf" in sections:
             await waf_checks(p, t_admin, t_analyst, t_analyst_b, t_portal)
         if "forwarding" in sections:
@@ -2451,6 +2953,8 @@ async def main():
             await alert_checks(p, t_admin, t_analyst, t_portal)
         if "stack" in sections:
             await stack_checks(p, t_admin, t_analyst, t_analyst_b, t_portal)
+        if "customer" in sections:
+            await customer_checks(p, t_admin, t_analyst, t_portal)
     finally:
         await p.close()
         for proc in procs:

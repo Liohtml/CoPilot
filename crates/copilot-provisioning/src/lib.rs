@@ -1,5 +1,7 @@
-//! Stack provisioning — port of `app/stack_provisioning/` — mounted under
-//! `/api/stack_provisioning` and `/api/stack_decommissioning`.
+//! Stack and customer provisioning — ports of `app/stack_provisioning/`
+//! (mounted under `/api/stack_provisioning` and `/api/stack_decommissioning`)
+//! and of `app/customer_provisioning/` (`/api/customer_provisioning`, see
+//! [`customer`]).
 //!
 //! - [`templates`] — the content packs and InfluxDB checks, compiled in
 //!   (copies of the backend's template files, pinned to them by a test)
@@ -8,7 +10,9 @@
 //!   and network-connector decommissioning
 //! - [`influx`]    — the four InfluxDB monitoring checks, over an httpx-shaped
 //!   InfluxDB v2 REST transport
-//! - [`routes`]    — the handlers
+//! - [`routes`]    — the stack-provisioning handlers
+//! - [`customer`]  — customer provisioning: default settings, customer meta,
+//!   the EDR install commands, decommissioning
 //!
 //! The network-connector *provisioning* routes (`/graylog/provision/fortinet`,
 //! `…/sonicwall`, `…/sentinelone`) stay in Python: each also provisions a
@@ -17,6 +21,7 @@
 
 #![warn(missing_docs)]
 
+pub mod customer;
 pub mod graylog;
 pub mod influx;
 pub mod routes;
@@ -65,6 +70,18 @@ pub const REQUIREMENTS: &[TableRequirement] = &[
             "network_connector_service_name",
             "deployed",
         ],
+    },
+    TableRequirement {
+        table: "customersmeta",
+        columns: customer::store::META_COLUMNS,
+    },
+    TableRequirement {
+        table: "customer_provisioning_default_settings",
+        columns: customer::store::SETTINGS_COLUMNS,
+    },
+    TableRequirement {
+        table: "customers",
+        columns: &["id", "customer_code"],
     },
 ];
 
@@ -176,6 +193,52 @@ mod vectors {
             }
         }
         assert!(checked > 300, "{checked}");
+    }
+
+    #[test]
+    fn customer_lists_and_edr_commands() {
+        let d = doc();
+        let c = &d["customer"];
+        let names = |v: &Value| -> Vec<String> {
+            v.as_array()
+                .unwrap()
+                .iter()
+                .map(|n| n.as_str().unwrap().to_string())
+                .collect()
+        };
+        assert_eq!(names(&c["dashboards"]), crate::customer::WAZUH_DASHBOARDS);
+        assert_eq!(names(&c["subscriptions"]), crate::customer::SUBSCRIPTIONS);
+        let text = |v: &Value, k: &str| v[k].as_str().map(str::to_string);
+        for case in c["edr"].as_array().unwrap() {
+            let (st, me) = (&case["settings"], &case["meta"]);
+            let values = crate::customer::edr::EdrValues {
+                repo_url: text(st, "repo_url"),
+                repo_username: text(st, "repo_username"),
+                repo_password: text(st, "repo_password"),
+                windows_edr_installer: text(st, "windows_edr_installer"),
+                wazuh_domain: text(st, "wazuh_domain"),
+                registration_port: text(me, "customer_meta_wazuh_registration_port"),
+                logs_port: text(me, "customer_meta_wazuh_log_ingestion_port"),
+                registration_password: text(me, "customer_meta_wazuh_auth_password"),
+            };
+            match (
+                crate::customer::edr::build(&values, "ACME"),
+                case.get("commands"),
+            ) {
+                (Ok(got), Some(want)) => {
+                    assert_eq!(pydantic_json(&got), want.to_string(), "{case}")
+                }
+                (Err(PyExc::Http(status, detail)), None) => {
+                    assert_eq!(
+                        u64::from(status),
+                        case["status"].as_u64().unwrap(),
+                        "{case}"
+                    );
+                    assert_eq!(detail, case["detail"].as_str().unwrap(), "{case}");
+                }
+                (got, _) => panic!("{case}: {got:?}"),
+            }
+        }
     }
 
     #[test]
