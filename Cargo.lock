@@ -474,6 +474,7 @@ dependencies = [
  "copilot-healthchecks",
  "copilot-identity",
  "copilot-incidents",
+ "copilot-influxdb",
  "copilot-notifications",
  "copilot-platform",
  "copilot-scheduler",
@@ -707,6 +708,30 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-influxdb"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-upstream",
+ "copilot-web",
+ "flate2",
+ "hex",
+ "http",
+ "hyper",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sha2",
  "tokio",
  "tracing",
 ]

@@ -12,7 +12,8 @@ Writes:
   `serialize_json` writes, or `str(ValidationError)`;
 * `crates/copilot-graylog/src/model_vectors.json` — every Graylog model on samples of Graylog 6.1
   and 7.0 answers (`tests/e2e/connector_samples.py`) and on mutations of them (a key deleted, or
-  set to a value of another type), likewise.
+  set to a value of another type), likewise;
+* `crates/copilot-influxdb/src/model_vectors.json` — the InfluxDB response models, likewise.
 
 A vector holds the JSON-mode dump's text (`ok`) or its SHA-256 (`ok_sha256`, for mutations of a
 large sample), or the `ValidationError` text (`err`). Re-run after a Pydantic upgrade or a change
@@ -274,6 +275,46 @@ def graylog_cases():
     return cases
 
 
+def influxdb_cases():
+    from app.connectors.influxdb.schema import alerts
+    from app.connectors.influxdb.schema import metrics
+
+    alert = {
+        "time": "2026-10-15T10:00:00Z",
+        "check_name": "CPU CHECK",
+        "sensor_type": "CPU",
+        "severity": "critical",
+        "message": "CPU usage is 97%",
+        "status": "active",
+        "check_id": "0e2b3c4d5f6a7b80",
+    }
+    cases = [
+        ("InfluxDBAlert", alerts.InfluxDBAlert, alert),
+        ("InfluxDBAlert", alerts.InfluxDBAlert, {**alert, "time": "2026-10-15T10:00:00.123456789+02:00", "status": None}),
+        (
+            "InfluxDBAlertResponse",
+            alerts.InfluxDBAlertResponse,
+            {"success": True, "message": "m", "alerts": [alert], "total_count": 1, "filtered_count": 1, "active_alerts_count": 1},
+        ),
+        (
+            "InfluxDBCheckNamesResponse",
+            alerts.InfluxDBCheckNamesResponse,
+            {"success": True, "message": "m", "check_names": ["CPU CHECK", "Disk"], "total_count": 2},
+        ),
+        (
+            "MetricsResponse",
+            metrics.MetricsResponse,
+            {
+                "success": True,
+                "message": "m",
+                "data": {"load": {"load1": [{"time": "2026-10-15T10:00:00+00:00", "value": 0.5}]}, "uptime": 12},
+            },
+        ),
+        ("HostsResponse", metrics.HostsResponse, {"success": True, "message": "m", "hosts": ["a", "b"]}),
+    ]
+    return cases
+
+
 def write(path, doc):
     """One vector per line: diffable, and small enough for the repository."""
     lines = ["{"]
@@ -293,7 +334,10 @@ def main():
     write(ROOT / "copilot-upstream" / "src" / "model_vectors.json", engine)
     graylog = model_vectors(graylog_cases())
     write(ROOT / "copilot-graylog" / "src" / "model_vectors.json", graylog)
+    influxdb = model_vectors(influxdb_cases())
+    write(ROOT / "copilot-influxdb" / "src" / "model_vectors.json", influxdb)
     print(f"engine: {len(engine['vectors'])} vectors; graylog: {len(graylog['bases'])} bases, {len(graylog['vectors'])} mutations")
+    print(f"influxdb: {len(influxdb['bases'])} bases, {len(influxdb['vectors'])} mutations")
     assert not math.isnan(0.0)
 
 

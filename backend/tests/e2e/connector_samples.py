@@ -412,3 +412,280 @@ GRAYLOG_PIPELINE_RULES = [
         "created_at": "2026-01-01T00:00:00.000Z",
     },
 ]
+
+
+# --- InfluxDB 2.7 ----------------------------------------------------------------------------------
+#
+# The `statuses` rows of InfluxDB's `_monitoring` bucket, as three checks of a SOCFortress stack
+# write them, and a stand-in for the query engine: the Flux texts CoPilot sends are recognised (the
+# state query's `last()`, the rows query's level filters / `group()` / `limit`, check-name
+# `distinct`, `schema.tagValues`, the Telegraf metric queries) and answered in annotated CSV the way
+# InfluxDB writes it (one annotation block per schema, table ids running across blocks, CRLF).
+
+INFLUX_START, INFLUX_STOP = "2026-10-08T10:00:00Z", "2026-10-15T10:30:00Z"
+_CPU, _SVC, _DISK = "0c1a2b3c4d5e6f70", "0d1a2b3c4d5e6f71", "0e1a2b3c4d5e6f72"
+
+
+def _status(minute, check_id, check_name, level, message, **tags):
+    return {
+        "_time": f"2026-10-15T10:{minute:02d}:00Z" if minute != 9 else "2026-10-15T10:09:00.123456789Z",
+        "_value": message,
+        "_check_id": check_id,
+        "_check_name": check_name,
+        "_field": "_message",
+        "_level": level,
+        "_measurement": "statuses",
+        "_source_measurement": tags.pop("source", "cpu"),
+        "_type": "threshold",
+        **tags,
+    }
+
+
+INFLUX_STATUSES = [
+    _status(0, _CPU, "CPU CHECK", "crit", "CPU usage is 97% — hot", host="web-01", cpu="cpu-total"),
+    _status(5, _CPU, "CPU CHECK", "ok", "CPU usage is 12%", host="web-01", cpu="cpu-total"),
+    _status(3, _CPU, "CPU CHECK", "warn", 'CPU usage is 81%, "busy"', host="db-01", cpu="cpu-total"),
+    _status(
+        1,
+        _SVC,
+        "CRITICAL SERVICES CHECK",
+        "crit",
+        "wazuh-manager failed",
+        source="systemd_units",
+        host="web-01",
+        name="wazuh-manager.service",
+        active="failed",
+        sub="failed",
+        load="loaded",
+    ),
+    _status(
+        6,
+        _SVC,
+        "CRITICAL SERVICES CHECK",
+        "ok",
+        "wazuh-manager running",
+        source="systemd_units",
+        host="web-01",
+        name="wazuh-manager.service",
+        active="active",
+        sub="running",
+        load="loaded",
+    ),
+    _status(
+        4,
+        _SVC,
+        "CRITICAL SERVICES CHECK",
+        "crit",
+        "graylog-server failed",
+        source="systemd_units",
+        host="web-01",
+        name="graylog-server.service",
+        active="failed",
+        sub="failed",
+        load="loaded",
+    ),
+    _status(
+        9,
+        _SVC,
+        "CRITICAL SERVICES CHECK",
+        "ok",
+        "nginx running",
+        source="systemd_units",
+        host="db-01",
+        name="nginx.service",
+        active="active",
+        sub="running",
+        load="loaded",
+    ),
+    _status(
+        2,
+        _DISK,
+        "Disk Usage",
+        "warn",
+        "/ is 85% full",
+        source="disk",
+        host="web-01",
+        path="/",
+        device="sda1",
+        fstype="ext4",
+        mode="rw",
+    ),
+    _status(7, _DISK, "Disk Usage", "ok", "/ is 40% full", source="disk", host="web-01", path="/", device="sda1", fstype="ext4", mode="rw"),
+    _status(
+        7,
+        _DISK,
+        "Disk Usage",
+        "crit",
+        "/ is read-only",
+        source="disk",
+        host="web-01",
+        path="/",
+        device="sda1",
+        fstype="ext4",
+        mode="ro",
+    ),
+]
+
+_TIME_COLUMNS = ("_start", "_stop", "_time")
+
+
+def flux_csv(blocks):
+    """Annotated CSV: `blocks` is a list of (columns, tables); a column is (name, datatype, group),
+    a table a list of rows (dicts). Table ids run across the blocks."""
+    import csv
+    import io
+
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\r\n")
+    table_id = 0
+    for columns, tables in blocks:
+        writer.writerow(["#group", "false", "false", *("true" if c[2] else "false" for c in columns)])
+        writer.writerow(["#datatype", "string", "long", *(c[1] for c in columns)])
+        writer.writerow(["#default", "_result", "", *("" for _ in columns)])
+        writer.writerow(["", "result", "table", *(c[0] for c in columns)])
+        for rows in tables:
+            for row in rows:
+                writer.writerow(["", "", str(table_id), *(str(row.get(c[0], "")) for c in columns)])
+            table_id += 1
+        out.write("\r\n")
+    return out.getvalue() or "\r\n"
+
+
+def _status_columns(rows, grouped):
+    names = []
+    for row in rows:
+        for key in row:
+            if key not in names:
+                names.append(key)
+    order = ["_start", "_stop", "_time", "_value"] + sorted(n for n in names if n not in ("_start", "_stop", "_time", "_value"))
+    return [(n, "dateTime:RFC3339" if n in _TIME_COLUMNS else "string", grouped and n not in ("_time", "_value")) for n in order]
+
+
+def _flux_unescape(literal):
+    return literal.replace('\\"', '"').replace("\\${", "${").replace("\\\\", "\\")
+
+
+def _series_key(row):
+    return tuple(sorted((k, v) for k, v in row.items() if k not in ("_start", "_stop", "_time", "_value")))
+
+
+def influx_statuses(query, statuses):
+    import re
+
+    rows = [{"_start": INFLUX_START, "_stop": INFLUX_STOP, **r} for r in statuses]
+    for name in ("check_name_pattern", "sensor_type_pattern"):
+        m = re.search(name + r' = regexp\.compile\(v: regexp\.quoteMeta\(v: "((?:[^"\\]|\\.)*)"\)\)', query)
+        if m:
+            needle = _flux_unescape(m.group(1))
+            rows = [r for r in rows if needle in r["_check_name"]]
+    if "|> last()" in query:
+        latest = {}
+        for row in rows:
+            key = _series_key(row)
+            if key not in latest or row["_time"] > latest[key]["_time"]:
+                latest[key] = row
+        blocks = {}
+        for row in latest.values():
+            schema = tuple(sorted(k for k in row))
+            blocks.setdefault(schema, []).append([row])
+        return flux_csv([(_status_columns([t[0] for t in tables], True), tables) for tables in blocks.values()])
+    wanted = re.findall(r'r\._level == "(\w+)"', query)
+    if wanted:
+        rows = [r for r in rows if r["_level"] in wanted]
+    if 'r._level != "ok"' in query:
+        rows = [r for r in rows if r["_level"] != "ok"]
+    rows.sort(key=lambda r: r["_time"], reverse=True)
+    m = re.search(r"limit\(n: (\d+)\)", query)
+    if m:
+        rows = rows[: int(m.group(1))]
+    if not rows:
+        return "\r\n"
+    return flux_csv([(_status_columns(rows, False), [rows])])
+
+
+INFLUX_HOSTS = ["web-01", "db-01", ""]
+_METRIC_TAGS = {
+    "cpu": [{"cpu": "cpu-total"}],
+    "disk": [
+        {"path": "/", "device": "sda1", "fstype": "ext4", "mode": "rw"},
+        {"path": "/boot", "device": "sda2", "fstype": "ext4", "mode": "rw"},
+    ],
+    "diskio": [{"name": "sda"}, {"name": "sdb"}],
+    "net": [{"interface": "eth0"}, {"interface": "lo"}],
+}
+_LONG_FIELDS = {"uptime", "total", "n_cpus", "n_users", "free", "running", "sleeping", "unknown", "zombies", "tcp_established", "used"}
+
+
+def _metric_value(measurement, field, index, point):
+    if field == "total" and measurement == "mem":
+        return 16794951680
+    if field == "uptime":
+        return 1234567
+    if field == "usage_idle":
+        return 1e-7 if index else 97.25
+    if field == "bytes_recv":
+        return 1e16 + point
+    return (
+        round((len(measurement) * 7 + len(field) * 3 + index * 5 + point) / 3, 12) if point % 2 else (len(field) * 10 + index + point) / 3
+    )
+
+
+def influx_metric(query):
+    import re
+
+    m = re.search(r'r\["_measurement"\] == "(\w+)"', query)
+    if not m:
+        return "\r\n"
+    measurement = m.group(1)
+    fields = re.findall(r'r\["_field"\] == "(\w+)"', query)
+    host = re.search(r'r\["host"\] == "(.*)"\)\n', query)
+    host = host.group(1) if host else ""
+    if host not in INFLUX_HOSTS[:2]:
+        return "\r\n"
+    last = query.rstrip().endswith("|> last()")
+    tag_sets = _METRIC_TAGS.get(measurement, [{}])
+    tag_names = sorted({k for t in tag_sets for k in t})
+    columns = [("_start", "dateTime:RFC3339", True), ("_stop", "dateTime:RFC3339", True), ("_time", "dateTime:RFC3339", False)]
+    long_values = last and all(f in _LONG_FIELDS for f in fields) and measurement != "disk"
+    columns.append(("_value", "long" if long_values else "double", False))
+    columns += [("_field", "string", True), ("_measurement", "string", True)]
+    columns += (
+        [(t, "string", True) for t in tag_names if t < "host"]
+        + [("host", "string", True)]
+        + [(t, "string", True) for t in tag_names if t > "host"]
+    )
+    tables = []
+    for field in fields:
+        for index, tags in enumerate(tag_sets):
+            points = [9] if last else [0, 1, 2]
+            rows = []
+            for point in points:
+                value = _metric_value(measurement, field, index, point)
+                if measurement == "disk" and field == "total":
+                    value = float(250059350016 if index == 0 else 1023303680)
+                rows.append(
+                    {
+                        "_start": INFLUX_START,
+                        "_stop": INFLUX_STOP,
+                        "_time": f"2026-10-15T10:{point * 10:02d}:00Z" if point != 9 else "2026-10-15T10:29:59.999999999Z",
+                        "_value": int(value) if long_values else repr(float(value)),
+                        "_field": field,
+                        "_measurement": measurement,
+                        "host": host,
+                        **tags,
+                    },
+                )
+            tables.append(rows)
+    return flux_csv([(columns, tables)])
+
+
+def influx_answer(query, statuses):
+    """The CSV InfluxDB would answer for one of CoPilot's Flux queries."""
+    if 'r._measurement == "statuses"' in query and "distinct(" not in query:
+        return influx_statuses(query, statuses)
+    if 'distinct(column: "_check_name")' in query:
+        names = sorted({r["_check_name"] for r in statuses})
+        return flux_csv([([("_check_name", "string", True)], [[{"_check_name": n}] for n in names])])
+    if "schema.tagValues" in query:
+        return flux_csv([([("_value", "string", False)], [[{"_value": h} for h in INFLUX_HOSTS]])])
+    return influx_metric(query)

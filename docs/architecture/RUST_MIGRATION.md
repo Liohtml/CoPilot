@@ -95,6 +95,7 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-scheduler` | `app/schedulers/` (`scheduler.py`, `routes/scheduler.py`, `utils/universal.py:record_job_success`), `app/audit/services/retention.py` | the job runner (APScheduler's interval semantics on tokio: fixed grid, coalesce, one instance, 1 s misfire grace), the hand-over rule and run lock, `/api/scheduler/*` (reads from APScheduler's `apscheduler_jobs` store through a read-only pickle decoder pinned by `apscheduler_vectors.json`, `scripts/gen-apscheduler-vectors.py`; run/start/pause), `prune_audit_log`; the palace jobs register from `copilot-ai-analyst`; `copilot jobs` and `doctor` list each job's owner |
 | `copilot-upstream` | what the connector helpers did with a tool's answers: `requests`/`niquests` (`PreparedRequest`, urllib3's URL parsing and error texts), CPython's `json` (`dumps`, `JSONDecodeError`), Pydantic models, FastAPI's `serialize_json` | shared by the connector crates: a `requests`-like client (`http.rs`), a Pydantic engine (`model.rs`: lax coercion, smart unions, aliases, defaults, validators, `ValidationError` text, JSON-mode dumps; `model_vectors.json` pins 905 probes, `scripts/gen-connector-model-vectors.py`), Python exceptions as values (`py.rs`: `KeyError`, `TypeError`, … and what the handlers make of them), pydantic-core's JSON writer and FastAPI's 422 (`respond.rs`) |
 | `copilot-graylog` | `app/connectors/graylog/` (routes, services, schema, `utils/universal.py`, `utils/routing.py`), `app/connectors/event_shipper/` and `app/integrations/utils/event_shipper.py` (GELF over TCP) | `/api/graylog/*` (21 routes); `GraylogClient` for later ports: the four helpers with Python's error behaviour, the 6.x/7.x version probe and `EntityKind` (the four wrapped creation endpoints), the URL allowlist fallback |
+| `copilot-influxdb` | `app/connectors/influxdb/` (routes, services, schema, `utils/universal.py`), the Flux side of `influxdb_client` 1.50 (`InfluxDBClientAsync` over aiohttp, `FluxCsvParser`) | `/api/influxdb/*` (10 routes: alerts, check names, hosts, seven metrics views); `InfluxClient` for later ports: Flux queries with the library's request, timeout and error texts, the v2 REST helpers (`_influxdb_request`, the org-id lookup) for the checks provisioning |
 | `copilot-gateway` | — | legacy proxy (its notification bridge sink is no longer wired); deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
 
@@ -480,6 +481,31 @@ is not an error. `rust_parity_graylog_e2e.py` runs both backends against a
 Graylog stand-in with a 6.x and a 7.x personality and a GELF listener, and
 compares status, response bytes and every request sent to Graylog.
 
+**Connectors (InfluxDB).** `copilot-influxdb` answers all ten routes of
+`app/connectors/influxdb/routes/`. Python reaches InfluxDB through
+`influxdb_client`'s async client, so that is what is reproduced: `POST
+{connector_url minus one trailing /}/api/v2/query?org=…` (the org
+`urlencode`d, then requoted as yarl does), `Authorization: Token <key>` only
+for a non-empty key, the library's `User-Agent`, `Accept-Encoding: gzip,
+deflate` (answers decompressed), the `{"extern", "query", "dialect"}` body
+with `json.dumps` spacing, a 10 s whole-request timeout and no certificate
+verification (`verify_ssl=False`, as in Python). The annotated-CSV answer is
+parsed as `FluxCsvParser` does in tables mode (Python's `csv` rules, a table
+per annotation block and per change of the `table` column, `#default`
+values, the typed cells, an `error,reference` table raised as
+`FluxQueryException`). The services keep their texts and their order —
+Flux queries character for character, the alerts' two queries (current state
+by `last()` per series, then the rows; #1118's identity without the
+`STATE_TAGS`), metrics queried one after the other, a failure answered as
+`success: false` with `str(e)`: the library's `ApiException` (status, the
+status line's reason, aiohttp's header repr, the body's `bytes` repr), aiohttp's
+connection, DNS, URL and timeout errors, `KeyError`s for missing columns,
+`ValidationError`s. A body that stalls past the timeout after its headers
+arrived is aiohttp's `CancelledError`, which no `except Exception` catches:
+a bare 500, in both. `rust_parity_graylog_e2e.py` (section `influxdb`) runs
+both backends against an InfluxDB 2.7 stand-in that answers CoPilot's Flux
+queries from sample `statuses` and Telegraf series.
+
 **Connector cache.** The Python backend invalidates its connector cache after
 each write but cannot reach the Rust process, so while a legacy backend is
 configured the Rust TTL is capped at 60 s.
@@ -543,6 +569,11 @@ not provoked.
 | a connector call that cannot connect (`/graylog/*`) | urllib3's text with the address of a Python object (`<urllib3.connection.HTTPConnection object at 0x7f…>`) | the same text with `0x7f0000000000` | the address differs between any two processes; the parity suite masks it |
 | `GET /graylog/metrics` when both Graylog calls fail | the error of whichever `asyncio.gather` call failed first (timing) | the `/api/system/metrics` call's error | deterministic; both are sent, as in Python |
 | `GET /graylog/event/definitions` against a Graylog that never reaches its own `total` | pages for ever | stops after 20,000 pages | a request cannot hold a worker (not provoked) |
+| `/influxdb/*` when InfluxDB answers an error through something other than InfluxDB | aiohttp prints a header it does not know in the case it arrived in | Go's canonical case (`X-Influxdb-Build`; aiohttp's own spelling for the headers it knows) — `http` keeps names lower-cased | identical for InfluxDB, a Go server (not provoked) |
+| `/influxdb/*` with a connector host that resolves to several addresses, all refusing | `Multiple exceptions: …` naming each | `Connect call failed` naming the first | one address is the usual case (not provoked) |
+| `/influxdb/*` with an org name holding `'` | `'` sent as is (yarl) | `%27` (the URL crate's query set) | InfluxDB decodes both to the same org (not provoked) |
+| `/influxdb/*` when a cell holds a date-time InfluxDB never writes (no offset, a date alone) | `datetime.fromisoformat` reads it (a naive datetime) | `Invalid isoformat string: …` | InfluxDB writes RFC 3339 with `Z` (not provoked) |
+| the position in a `UnicodeDecodeError` of an InfluxDB answer longer than one network read | relative to the chunk aiohttp was decoding | relative to the body | not provoked |
 | the GELF `host` of `POST /graylog/receiver` when the host name is only in DNS | `socket.getfqdn()` asks DNS for the canonical name | the host name (`/etc/hosts` is read, DNS is not) | equal in a container, where `/etc/hosts` names the host (not provoked) |
 | an Event Shipper port that is a service name (`http`) | resolved by `getaddrinfo` | not a port: nothing is sent (still answered as forwarded) | only numeric ports are configured (not provoked) |
 
@@ -585,7 +616,7 @@ Python backend today: ~200 k lines in 930 files.
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
 | **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer, MinIO and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (and with them the exclusion draft and dry-run) wait for an indexer port, the DOCX/PDF reports and customer report generation, download and deletion for MinIO and a PDF renderer |
-| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs; `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time — **Graylog done** (`copilot-graylog` on `copilot-upstream`, `rust_parity_graylog_e2e.py`); `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
+| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs; `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time — **Graylog and InfluxDB done** (`copilot-graylog`, `copilot-influxdb` on `copilot-upstream`, `rust_parity_graylog_e2e.py`); `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the

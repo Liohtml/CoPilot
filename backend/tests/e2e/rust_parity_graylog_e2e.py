@@ -4,18 +4,22 @@ NOT collected by pytest (needs a live MySQL and the Rust binary; run by scripts/
 The real FastAPI routers (in-process) and a Rust instance this suite starts (no legacy backend,
 connector cache off, so a connector row changed between checks is seen at once by both) answer
 the same requests on one database. The tools themselves are local stand-ins that record every
-request: Graylog with a 6.x and a 7.x personality, and the Event Shipper's GELF TCP input. For
+request: Graylog with a 6.x and a 7.x personality, the Event Shipper's GELF TCP input, and
+InfluxDB 2.7's query API (annotated CSV from `connector_samples.influx_answer`). For
 each request the suite compares the status, the response **bytes**, and every request each
 backend sent to the tool (method, target, the headers that matter, body bytes). urllib3 prints
 an object's memory address in a connection error, which differs between any two processes; it
 is masked. Deliberate differences are asserted as such (RUST_MIGRATION.md §4).
 
     PARITY_SUITES=tests/e2e/rust_parity_graylog_e2e.py scripts/rust-parity.sh
+
+`CONNECTOR_PARITY_SECTIONS=graylog,influxdb` (the default) picks the connectors to check.
 """
 
 import asyncio
 import copy
 import datetime
+import gzip
 import json
 import os
 import re
@@ -58,9 +62,13 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")
 # Ports: the Rust instance and the stand-ins (5690-5695; 5696-5699 belong to the shared harness).
 RS_PORT = int(os.environ.get("GRAYLOG_PARITY_RUST_PORT", "5695"))
 GRAYLOG_PORT = int(os.environ.get("GRAYLOG_STUB_PORT", "5690"))
+INFLUX_PORT = int(os.environ.get("INFLUX_STUB_PORT", "5691"))
 GELF_PORT = int(os.environ.get("GELF_STUB_PORT", "5694"))
 CLOSED_PORT = 1
-OUR_CONNECTORS = ("Graylog", "Event Shipper")
+OUR_CONNECTORS = ("Graylog", "Event Shipper", "InfluxDB")
+INFLUX_URL = f"http://127.0.0.1:{INFLUX_PORT}"
+INFLUX_TOKEN = "influx-token"
+INFLUX_EXTRA = "SOC FORTRESS,telegraf"
 results = []
 
 
@@ -189,6 +197,91 @@ GRAYLOG = Graylog()
 RECORDER = Recorder()
 
 
+class InfluxRecorder(Recorder):
+    HEADERS = ("authorization", "content-type", "content-length", "accept", "user-agent", "accept-encoding")
+
+
+INFLUX_ERROR_HEADERS = [
+    ("Content-Type", "application/json; charset=utf-8"),
+    ("X-Influxdb-Build", "OSS"),
+    ("X-Influxdb-Version", "v2.7.11"),
+]
+
+
+class InfluxDB:
+    """InfluxDB 2.7's `POST /api/v2/query`, with per-test overrides and two broken modes
+    (`silent`: never answers; `close`: hangs up without an answer)."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.override = None
+        self.csv = None
+        self.csv_for = {}
+        self.gzip = False
+        self.mode = None
+        self.statuses = copy.deepcopy(samples.INFLUX_STATUSES)
+
+    def answer(self, method, target, body, headers):
+        if (method, urlsplit(target).path) != ("POST", "/api/v2/query"):
+            return 404, None, INFLUX_ERROR_HEADERS, _json({"code": "not found", "message": "path not found"})
+        if self.override:
+            return self.override
+        query = json.loads(body)["query"]
+        text = self.csv
+        for needle, csv_text in self.csv_for.items():
+            if needle in query:
+                text = csv_text
+        if text is None:
+            text = samples.influx_answer(query, self.statuses)
+        payload = text.encode() if isinstance(text, str) else text
+        out = [("Content-Type", "text/csv; charset=utf-8"), ("Vary", "Accept-Encoding"), ("X-Influxdb-Build", "OSS")]
+        if self.gzip and "gzip" in (headers.get("accept-encoding") or ""):
+            payload = gzip.compress(payload)
+            out.append(("Content-Encoding", "gzip"))
+        return 200, None, out, payload
+
+
+INFLUX = InfluxDB()
+INFLUX_RECORDER = InfluxRecorder()
+RECORDERS = (RECORDER, INFLUX_RECORDER)
+
+
+def make_influx_handler(tool, recorder):
+    class Handler(BaseHTTPRequestHandler):
+        def _serve(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(length) if length else b""
+            headers = {k.lower(): v for k, v in self.headers.items()}
+            recorder.add(self.command, self.path, headers, body)
+            if tool.mode == "close":
+                return
+            if tool.mode == "silent":
+                time.sleep(12)
+                return
+            status, reason, out, payload = tool.answer(self.command, self.path, body, headers)
+            self.send_response_only(status, reason)
+            for k, v in out:
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        do_GET = do_POST = _serve  # noqa: N815 - http.server API
+
+        def log_message(self, *args):
+            pass
+
+        def handle(self):
+            try:
+                super().handle()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    return Handler
+
+
 def make_handler(tool, recorder):
     class Handler(BaseHTTPRequestHandler):
         def _serve(self):
@@ -212,8 +305,8 @@ def make_handler(tool, recorder):
     return Handler
 
 
-def start_http_stub(port, tool, recorder):
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(tool, recorder))
+def start_http_stub(port, tool, recorder, handler=None):
+    server = ThreadingHTTPServer(("127.0.0.1", port), (handler or make_handler)(tool, recorder))
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
@@ -286,6 +379,7 @@ def seed():
         )
     set_connector("Graylog", f"http://127.0.0.1:{GRAYLOG_PORT}", "admin", "pässword")
     set_connector("Event Shipper", "127.0.0.1", extra=str(GELF_PORT))
+    set_connector("InfluxDB", INFLUX_URL, api_key=INFLUX_TOKEN, extra=INFLUX_EXTRA)
 
 
 def cleanup():
@@ -311,9 +405,11 @@ def build_python_app():
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
     from app.routers import graylog
+    from app.routers import influxdb
 
     api = APIRouter(prefix="/api")
     api.include_router(graylog.router)
+    api.include_router(influxdb.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -367,10 +463,11 @@ class Pair:
         headers = dict(kw.pop("headers", {}))
         if tok:
             headers["Authorization"] = f"Bearer {tok}"
-        RECORDER.take()
+        for recorder in RECORDERS:
+            recorder.take()
         r = await client.request(method, path, headers=headers, **kw)
         await asyncio.sleep(0)
-        return r, RECORDER.take()
+        return r, [request for recorder in RECORDERS for request in recorder.take()]
 
     async def same(self, name, method, path, tok=None, before=None, outbound=True, concurrent=False, **kw):
         """Python, then Rust, with the stand-in reset by `before` for each.
@@ -399,6 +496,8 @@ class Pair:
                 ok = False
                 detail += f"\n        outbound python {o1}\n        outbound rust   {o2}"
         check(f"{name} [{r1.status_code}]", ok, detail)
+        if os.environ.get("PARITY_VERBOSE"):
+            print(f"        {b1[:400]!r}\n        outbound {[(m, t, b[:300]) for m, t, h, b in out1]}")
         return r1, r2
 
     async def close(self):
@@ -765,15 +864,248 @@ async def graylog_checks(p, t_admin, t_analyst, t_portal):
     set_connector("Event Shipper", "127.0.0.1", extra=str(GELF_PORT))
 
 
+async def influxdb_checks(p, t_admin, t_analyst, t_portal):
+    IX = "/api/influxdb"
+    M = IX + "/metrics"
+    metrics = ("/summary", "/cpu", "/memory", "/kernel", "/disks", "/processes", "/network")
+
+    print("\n=== InfluxDB: alerts ===")
+    queries = [
+        {},
+        {"days": "30"},
+        {"severity": ["critical", "ok"]},
+        {"severity": "error"},
+        {"severity": ["warning", "warning"]},
+        {"check_name": "CPU"},
+        {"check_name": 'x" ${a} \\'},
+        {"check_name": ""},
+        {"sensor_type": "Disk"},
+        {"status": "active"},
+        {"status": "cleared"},
+        {"latest_only": "true"},
+        {"latest_only": "1", "status": "active"},
+        {"exclude_ok": "yes"},
+        {"exclude_ok": "on", "latest_only": "t", "severity": "critical"},
+        {"limit": "2"},
+        {"limit": "3", "status": "cleared"},
+        {"days": " 9 ", "limit": "1_0"},
+    ]
+    for params in queries:
+        await p.same(f"GET /alerts {params}", "GET", IX + "/alerts", t_analyst, params=params, before=INFLUX.reset)
+    await p.same("GET /check-names", "GET", IX + "/check-names", t_analyst, before=INFLUX.reset)
+    await p.same("GET /metrics/hosts", "GET", M + "/hosts", t_admin, before=INFLUX.reset)
+
+    print("\n=== InfluxDB: metrics ===")
+    for path in metrics:
+        await p.same(f"GET /metrics{path}", "GET", M + path, t_analyst, params={"host": "web-01"}, before=INFLUX.reset)
+    for params in ({"host": "db-01", "range_h": "72"}, {"host": "db-01", "range_h": "bogus"}, {"host": "nohost", "range_h": "720"}):
+        for path in ("/cpu", "/disks", "/network"):
+            await p.same(f"GET /metrics{path} {params}", "GET", M + path, t_analyst, params=params, before=INFLUX.reset)
+    await p.same(
+        "GET /metrics/summary, injected host",
+        "GET",
+        M + "/summary",
+        t_analyst,
+        params={"host": 'a") or true //'},
+        before=INFLUX.reset,
+    )
+
+    print("\n=== InfluxDB: query parameters and auth ===")
+    bad = [
+        {"days": "0"},
+        {"days": "91"},
+        {"days": "x"},
+        {"days": ""},
+        {"days": "1.0"},
+        {"days": "1.5"},
+        {"days": "99999999999999999999"},
+        {"severity": ["ok", "bad", "CRITICAL"]},
+        {"status": "Active"},
+        {"latest_only": "maybe"},
+        {"exclude_ok": ""},
+        {"limit": "0"},
+        {"limit": "1001"},
+        {"days": "x", "severity": "x", "status": "x", "latest_only": "x", "exclude_ok": "x", "limit": "x"},
+    ]
+    for params in bad:
+        await p.same(f"GET /alerts {params}", "GET", IX + "/alerts", t_analyst, params=params)
+    for path in metrics:
+        await p.same(f"GET /metrics{path}, no host", "GET", M + path, t_analyst, params={"range_h": "1"})
+    for path in ("/alerts", "/check-names", "/metrics/hosts", "/metrics/cpu"):
+        await p.same(f"GET {path}, no token", "GET", IX + path)
+        await p.same(f"GET {path}, bad token", "GET", IX + path, "not-a-jwt")
+        await p.same(f"GET {path}, portal user", "GET", IX + path, t_portal)
+    await p.same("GET /alerts?days=0, no token", "GET", IX + "/alerts", params={"days": "0"})
+
+    print("\n=== InfluxDB: what the tool answers ===")
+    unauthorized = (
+        401,
+        None,
+        [*INFLUX_ERROR_HEADERS, ("X-Platform-Error-Code", "unauthorized")],
+        _json({"code": "unauthorized", "message": "unauthorized access"}),
+    )
+    error_table = '#datatype,string,string\r\n#group,true,true\r\n#default,,\r\n,error,reference\r\n,"failed to execute query: error @1:1-1:5: undefined identifier x",897\r\n\r\n'
+    answers = [
+        ("401", {"override": unauthorized}),
+        ("500 without body", {"override": (500, "Whatever", [], b"")}),
+        ("404 HTML", {"override": (404, None, [("Content-Type", "text/html")], b"<html>\x00'\"</html>")}),
+        ("Flux error table", {"csv": error_table}),
+        ("no annotations", {"csv": ",result,table,_value\r\n,,0,x\r\n"}),
+        ("short rows", {"csv": "#datatype,string\r\nab\r\n"}),
+        (
+            "bad long",
+            {"csv": "#datatype,string,long,string\r\n#group,false,false,false\r\n#default,_result,,\r\n,result,table,_value\r\n,,x,a\r\n"},
+        ),
+        (
+            "bad datetime",
+            {
+                "csv": "#datatype,string,long,dateTime:RFC3339,string\r\n#group,false,false,false,false\r\n#default,_result,,,\r\n,result,table,_time,_value\r\n,,0,yesterday,a\r\n",
+            },
+        ),
+        (
+            "bad double",
+            {
+                "csv": "#datatype,string,long,double\r\n#group,false,false,false\r\n#default,_result,,\r\n,result,table,_value\r\n,,0,1.5x\r\n",
+            },
+        ),
+        ("not UTF-8", {"csv": b"\xff\xfe"}),
+        ("empty", {"csv": ""}),
+        ("gzip", {"gzip": True}),
+    ]
+    for label, setup in answers:
+
+        def before(setup=setup):
+            INFLUX.reset()
+            for k, v in setup.items():
+                setattr(INFLUX, k, v)
+
+        for path, params in (("/alerts", {}), ("/check-names", {}), ("/metrics/hosts", {}), ("/metrics/disks", {"host": "web-01"})):
+            await p.same(f"GET {path} ← {label}", "GET", IX + path, t_analyst, params=params, before=before)
+
+    def statuses(change):
+        def before():
+            INFLUX.reset()
+            change(INFLUX.statuses)
+
+        return before
+
+    def drop(key, index=None):
+        def change(rows):
+            for i, r in enumerate(rows):
+                if index is None or i == index:
+                    r.pop(key, None)
+
+        return change
+
+    def setkey(key, value, index=0):
+        def change(rows):
+            rows[index][key] = value
+
+        return change
+
+    status_cases = [
+        ("no _time", drop("_time")),
+        ("one row without _time", drop("_time", 1)),
+        ("no _value", drop("_value")),
+        ("no _level", drop("_level")),
+        ("no _check_id", drop("_check_id")),
+        ("check name of spaces", setkey("_check_name", "   ")),
+        ("one-word check name", setkey("_check_name", "Uptime")),
+        ("unknown level", setkey("_level", "info")),
+        ("no rows", lambda rows: rows.clear()),
+    ]
+    for label, change in status_cases:
+        for params in ({}, {"latest_only": "true"}):
+            await p.same(f"GET /alerts ({label}) {params}", "GET", IX + "/alerts", t_analyst, params=params, before=statuses(change))
+    await p.same("GET /check-names (no rows)", "GET", IX + "/check-names", t_analyst, before=statuses(lambda rows: rows.clear()))
+
+    def metric_csv(text):
+        def before():
+            INFLUX.reset()
+            INFLUX.csv = text
+
+        return before
+
+    no_time = "#datatype,string,long,double,string\r\n#group,false,false,false,true\r\n#default,_result,,,\r\n,result,table,_value,_field\r\n,,0,1.5,x\r\n\r\n"
+    null_time = "#datatype,string,long,dateTime:RFC3339,double,string\r\n#group,false,false,false,false,true\r\n#default,_result,,,,\r\n,result,table,_time,_value,_field\r\n,,0,,1.5,x\r\n\r\n"
+    string_values = "#datatype,string,long,dateTime:RFC3339,string,string,string\r\n#group,false,false,false,false,true,true\r\n#default,_result,,,,,\r\n,result,table,_time,_value,_field,path\r\n,,0,2026-10-15T10:00:00Z,12,total,/\r\n,,1,2026-10-15T10:00:00Z,x,total,\r\n,,2,2026-10-15T10:00:00Z,,total,/a\r\n\r\n"
+    special = "#datatype,string,long,dateTime:RFC3339,double,string,long\r\n#group,false,false,false,false,true,true\r\n#default,_result,,,,,\r\n,result,table,_time,_value,_field,interface\r\n,,0,2026-10-15T10:00:00+02:00,NaN,x,1\r\n,,1,2026-10-15T10:00:00.5Z,+Inf,x,\r\n,,2,2026-10-15T10:00:00Z,-0,y,1\r\n\r\n"
+    for label, csv_text in (
+        ("no _time", no_time),
+        ("empty _time", null_time),
+        ("string values", string_values),
+        ("NaN and odd labels", special),
+    ):
+        for path in ("/summary", "/disks", "/network", "/hosts"):
+            await p.same(
+                f"GET /metrics{path} ← {label}",
+                "GET",
+                M + path,
+                t_analyst,
+                params={"host": "web-01"},
+                before=metric_csv(csv_text),
+            )
+
+    print("\n=== InfluxDB: connector problems ===")
+    connector_cases = [
+        ("connection refused", f"http://127.0.0.1:{CLOSED_PORT}", INFLUX_TOKEN, INFLUX_EXTRA),
+        ("no scheme", f"127.0.0.1:{INFLUX_PORT}", INFLUX_TOKEN, INFLUX_EXTRA),
+        ("empty URL", "", INFLUX_TOKEN, INFLUX_EXTRA),
+        ("ftp", "ftp://127.0.0.1", INFLUX_TOKEN, INFLUX_EXTRA),
+        ("bad port", "http://127.0.0.1:99999", INFLUX_TOKEN, INFLUX_EXTRA),
+        ("no host", "http://", INFLUX_TOKEN, INFLUX_EXTRA),
+        ("trailing slash", INFLUX_URL + "/", INFLUX_TOKEN, INFLUX_EXTRA),
+        ("credentials in URL", f"http://u:p@127.0.0.1:{INFLUX_PORT}", INFLUX_TOKEN, INFLUX_EXTRA),
+        ("credentials in URL, no token", f"http://u:p%40x@127.0.0.1:{INFLUX_PORT}", None, INFLUX_EXTRA),
+        ("no token", INFLUX_URL, None, INFLUX_EXTRA),
+        ("empty token", INFLUX_URL, "", INFLUX_EXTRA),
+        ("no extra data", INFLUX_URL, INFLUX_TOKEN, None),
+        ("org only", INFLUX_URL, INFLUX_TOKEN, "SOCFORTRESS"),
+        ("empty extra data", INFLUX_URL, INFLUX_TOKEN, ""),
+        ("odd org", INFLUX_URL, INFLUX_TOKEN, "a&b=c+d/é?#%41~*!$()*;:@[] , telegraf "),
+    ]
+    for label, url, key, extra in connector_cases:
+        set_connector("InfluxDB", url, api_key=key, extra=extra)
+        for path, params in (("/alerts", {}), ("/check-names", {}), ("/metrics/hosts", {}), ("/metrics/cpu", {"host": "web-01"})):
+            await p.same(f"GET {path} ({label})", "GET", IX + path, t_analyst, params=params, before=INFLUX.reset)
+    set_connector("InfluxDB", None)
+    for path, params in (("/alerts", {}), ("/check-names", {}), ("/metrics/hosts", {}), ("/metrics/summary", {"host": "web-01"})):
+        await p.same(f"GET {path} (no connector)", "GET", IX + path, t_analyst, params=params)
+    set_connector("InfluxDB", INFLUX_URL, api_key=INFLUX_TOKEN, extra=INFLUX_EXTRA)
+
+    def mode(m):
+        def before():
+            INFLUX.reset()
+            INFLUX.mode = m
+
+        return before
+
+    await p.same("GET /alerts (InfluxDB hangs up)", "GET", IX + "/alerts", t_analyst, before=mode("close"))
+    await p.same(
+        "GET /metrics/memory (InfluxDB hangs up)",
+        "GET",
+        M + "/memory",
+        t_analyst,
+        params={"host": "web-01"},
+        before=mode("close"),
+    )
+    await p.same("GET /alerts (InfluxDB never answers: 10 s timeout)", "GET", IX + "/alerts", t_analyst, before=mode("silent"))
+
+
 async def main():
     graylog_server = start_http_stub(GRAYLOG_PORT, GRAYLOG, RECORDER)
+    influx_server = start_http_stub(INFLUX_PORT, INFLUX, INFLUX_RECORDER, make_influx_handler)
     gelf_server = start_gelf_stub(GELF_PORT)
     seed()
     proc = start_rust()
     p = Pair()
     t_admin, t_analyst, t_portal = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"]), token(PORTAL, ["customer_user"])
     try:
-        await graylog_checks(p, t_admin, t_analyst, t_portal)
+        sections = os.environ.get("CONNECTOR_PARITY_SECTIONS", "graylog,influxdb").split(",")
+        if "graylog" in sections:
+            await graylog_checks(p, t_admin, t_analyst, t_portal)
+        if "influxdb" in sections:
+            await influxdb_checks(p, t_admin, t_analyst, t_portal)
     finally:
         await p.close()
         proc.terminate()
@@ -783,6 +1115,7 @@ async def main():
             proc.kill()
         cleanup()
         graylog_server.shutdown()
+        influx_server.shutdown()
         gelf_server.shutdown()
     failed = [n for n, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")

@@ -1,21 +1,22 @@
-//! End-to-end tests of the Graylog connector port (`copilot-graylog`):
-//! `/api/graylog` through the production router on a real MySQL, Graylog
-//! (6.x and 7.x) and the Event Shipper replaced by local stand-ins.
+//! End-to-end tests of the connector ports (`copilot-graylog`,
+//! `copilot-influxdb`): `/api/graylog` and `/api/influxdb` through the
+//! production router on a real MySQL, Graylog (6.x and 7.x), the Event
+//! Shipper and InfluxDB replaced by local stand-ins.
 //!
 //! ```text
 //! COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13308/copilot \
 //!   cargo test -p copilot --test e2e_graylog -- --test-threads=1
 //! ```
 //!
-//! The `Graylog` and `Event Shipper` connector rows are replaced for each
-//! test and removed again (run single-threaded).
+//! The `Graylog`, `Event Shipper` and `InfluxDB` connector rows are replaced
+//! for each test and removed again (run single-threaded).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use http::StatusCode;
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{body_string_contains, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use copilot_auth::pyvalue::loads;
@@ -487,4 +488,227 @@ async fn the_receiver_ships_one_gelf_frame() {
         body["message"],
         "Failed to initialize GelfLogger: 'NoneType' object is not subscriptable"
     );
+}
+
+async fn set_influx(h: &Harness, url: Option<&str>, key: Option<&str>, extra: Option<&str>) {
+    set_connector(h, "InfluxDB", url, extra).await;
+    sqlx::query("UPDATE connectors SET connector_api_key = ? WHERE connector_name = 'InfluxDB'")
+        .bind(key)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+}
+
+/// `last()` per series: a unit that failed and recovered (two series, the
+/// state tag `active` differs), and one still failed.
+const INFLUX_STATES: &str = "#group,false,false,false,false,true,true,true,true,true\r\n\
+    #datatype,string,long,dateTime:RFC3339,string,string,string,string,string,string\r\n\
+    #default,_result,,,,,,,,\r\n\
+    ,result,table,_time,_value,_check_id,_check_name,_level,host,active\r\n\
+    ,,0,2026-10-15T10:00:00Z,wazuh failed,c1,CRITICAL SERVICES CHECK,crit,h1,failed\r\n\
+    ,,1,2026-10-15T10:05:00Z,wazuh running,c1,CRITICAL SERVICES CHECK,ok,h1,active\r\n\
+    ,,2,2026-10-15T10:04:00.5Z,graylog failed,c1,CRITICAL SERVICES CHECK,crit,h2,failed\r\n\r\n";
+
+/// The rows query's answer (`group()`: one table, newest first).
+const INFLUX_ROWS: &str = "#group,false,false,false,false,false,false,false,false,false\r\n\
+    #datatype,string,long,dateTime:RFC3339,string,string,string,string,string,string\r\n\
+    #default,_result,,,,,,,,\r\n\
+    ,result,table,_time,_value,_check_id,_check_name,_level,host,active\r\n\
+    ,,0,2026-10-15T10:05:00Z,wazuh running,c1,CRITICAL SERVICES CHECK,ok,h1,active\r\n\
+    ,,0,2026-10-15T10:04:00.5Z,graylog failed,c1,CRITICAL SERVICES CHECK,crit,h2,failed\r\n\
+    ,,0,2026-10-15T10:00:00Z,wazuh failed,c1,CRITICAL SERVICES CHECK,crit,h1,failed\r\n\r\n";
+
+#[tokio::test]
+async fn influxdb_alerts_follow_the_current_state() {
+    let h = harness_or_skip!(None);
+    let (_, analyst, portal) = users(&h).await;
+    let influx = MockServer::start().await;
+    set_influx(
+        &h,
+        Some(&influx.uri()),
+        Some("tok"),
+        Some("SOC FORTRESS,telegraf"),
+    )
+    .await;
+    for (needle, csv) in [
+        ("|> last()", INFLUX_STATES),
+        ("|> limit(n: 500)", INFLUX_ROWS),
+    ] {
+        Mock::given(method("POST"))
+            .and(path("/api/v2/query"))
+            .and(query_param("org", "SOC FORTRESS"))
+            .and(header("authorization", "Token tok"))
+            .and(header("user-agent", "influxdb-client-python/1.50.0"))
+            .and(body_string_contains(needle))
+            .respond_with(ResponseTemplate::new(200).set_body_string(csv))
+            .mount(&influx)
+            .await;
+    }
+
+    let (status, body) = h
+        .call("GET", "/api/influxdb/alerts", Some(&analyst), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["success"], true, "{body}");
+    let statuses: Vec<(&str, &str)> = body["alerts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| {
+            (
+                a["message"].as_str().unwrap(),
+                a["status"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        statuses,
+        [
+            ("wazuh running", "cleared"),
+            ("graylog failed", "active"),
+            ("wazuh failed", "cleared"),
+        ],
+        "a failure followed by a recovery is history"
+    );
+    assert_eq!(body["alerts"][1]["time"], "2026-10-15T10:04:00.500000Z");
+    assert_eq!(body["alerts"][1]["sensor_type"], "CRITICAL");
+    assert_eq!(body["alerts"][1]["severity"], "critical");
+    assert_eq!(
+        (&body["active_alerts_count"], &body["cleared_alerts_count"]),
+        (&json!(1), &json!(2))
+    );
+
+    let (_, body) = h
+        .call(
+            "GET",
+            "/api/influxdb/alerts?latest_only=true&status=active",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(body["alerts"].as_array().unwrap().len(), 1, "{body}");
+    assert_eq!(body["alerts"][0]["message"], "graylog failed");
+
+    let requests = influx.received_requests().await.unwrap();
+    let sent: Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(
+        sent["dialect"]["annotations"],
+        json!(["datatype", "group", "default"])
+    );
+    assert!(
+        sent["query"].as_str().unwrap().starts_with(
+            "import \"regexp\"\nfrom(bucket: \"_monitoring\")\n    |> range(start: -7d)"
+        )
+    );
+    assert_eq!(requests[0].url.query(), Some("org=SOC+FORTRESS"));
+
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/influxdb/alerts?days=0&status=x",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, _) = h
+        .call("GET", "/api/influxdb/alerts", Some(&portal), None)
+        .await;
+    assert_ne!(status, StatusCode::OK);
+    set_influx(&h, None, None, None).await;
+}
+
+#[tokio::test]
+async fn influxdb_metrics_and_failures() {
+    let h = harness_or_skip!(None);
+    let (admin, analyst, _) = users(&h).await;
+    let influx = MockServer::start().await;
+    set_influx(&h, Some(&influx.uri()), Some("tok"), Some("SOC,telegraf")).await;
+    Mock::given(method("POST"))
+        .and(path("/api/v2/query"))
+        .and(body_string_contains(
+            "schema.tagValues(bucket: \\\"telegraf\\\", tag: \\\"host\\\")",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "#datatype,string,long,string\r\n#group,false,false,false\r\n#default,_result,,\r\n\
+             ,result,table,_value\r\n,,0,web-01\r\n,,0,\r\n,,0,db-01\r\n\r\n",
+        ))
+        .mount(&influx)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v2/query"))
+        .and(body_string_contains("usage_system"))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .insert_header("x-platform-error-code", "unauthorized")
+                .set_body_string("{\"code\":\"unauthorized\"}"),
+        )
+        .mount(&influx)
+        .await;
+
+    let (status, body) = h
+        .call("GET", "/api/influxdb/metrics/hosts", Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true, "message": "Successfully retrieved hosts", "hosts": ["db-01", "web-01"]})
+    );
+
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/influxdb/metrics/cpu?host=web-01",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let message = body["message"].as_str().unwrap();
+    assert!(
+        message.starts_with("Error fetching CPU metrics: (401)\nReason: Unauthorized\nHTTP response headers: <CIMultiDictProxy("),
+        "{message}"
+    );
+    assert!(
+        message.contains("'X-Platform-Error-Code': 'unauthorized'"),
+        "{message}"
+    );
+    assert!(
+        message.ends_with("HTTP response body: b'{\"code\":\"unauthorized\"}'\n"),
+        "{message}"
+    );
+    assert_eq!(body["data"], json!({}));
+
+    let (status, body) = h
+        .call("GET", "/api/influxdb/metrics/cpu", Some(&analyst), None)
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+
+    set_influx(&h, Some(&influx.uri()), Some("tok"), Some("SOC")).await;
+    let (_, body) = h
+        .call(
+            "GET",
+            "/api/influxdb/metrics/memory?host=x",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        body,
+        json!({"success": false, "message": "Invalid connector_extra_data format for InfluxDB. Expected 'ORG,BUCKET'.", "data": {}})
+    );
+    set_influx(&h, Some(&influx.uri()), Some("tok"), None).await;
+    let (_, body) = h
+        .call("GET", "/api/influxdb/check-names", Some(&analyst), None)
+        .await;
+    assert_eq!(
+        body["message"],
+        "Failed to connect to InfluxDB: 500: Failed to create InfluxDB client: 'NoneType' object has no attribute 'split'"
+    );
+    set_influx(&h, None, None, None).await;
+    let (_, body) = h
+        .call("GET", "/api/influxdb/alerts", Some(&analyst), None)
+        .await;
+    assert_eq!(body["message"], "InfluxDB connector not found");
+    assert_eq!(body["total_count"], 0);
 }

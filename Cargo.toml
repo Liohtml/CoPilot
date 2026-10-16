@@ -35,6 +35,7 @@ copilot-markdown = { path = "crates/copilot-markdown" }
 copilot-notifications = { path = "crates/copilot-notifications" }
 copilot-upstream = { path = "crates/copilot-upstream" }
 copilot-graylog = { path = "crates/copilot-graylog" }
+copilot-influxdb = { path = "crates/copilot-influxdb" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }
@@ -75,6 +76,10 @@ tower-http = { version = "0.6", features = ["trace", "limit", "cors", "timeout",
 url = "2"
 bytes = "1"
 http = "1"
+# `ReasonPhrase`: the status line's own reason, which InfluxDB errors quote.
+hyper = { version = "1", default-features = false }
+# gzip/deflate answers of the InfluxDB query API (aiohttp asks for them).
+flate2 = "1"
 
 # --- text ---
 regex = "1"

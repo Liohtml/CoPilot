@@ -45,6 +45,7 @@ use copilot_db::schema::{self, TableRequirement};
 use copilot_gateway::LegacyProxy;
 use copilot_graylog::{GraylogClient, GraylogState};
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
+use copilot_influxdb::{InfluxClient, InfluxState};
 use copilot_notifications::{Dispatcher, DispatchingSink, NotificationsState};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
@@ -121,6 +122,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/graylog/streams",
     "GET /api/graylog/pipeline",
     "POST /api/graylog/receiver",
+    // The InfluxDB connector (copilot-influxdb): alerts and metrics.
+    "GET /api/influxdb",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -197,6 +200,8 @@ pub struct App {
     pub scheduler: Scheduler,
     /// The Graylog client (`/api/graylog`, and later ports' provisioning).
     pub graylog: GraylogClient,
+    /// The InfluxDB client (`/api/influxdb`, and the checks provisioning).
+    pub influxdb: InfluxClient,
 }
 
 impl App {
@@ -263,6 +268,8 @@ impl App {
         );
         let graylog =
             GraylogClient::new(ctx.connectors.clone()).context("building the Graylog client")?;
+        let influxdb =
+            InfluxClient::new(ctx.connectors.clone()).context("building the InfluxDB client")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -291,6 +298,7 @@ impl App {
             legacy,
             scheduler,
             graylog,
+            influxdb,
         })
     }
 
@@ -375,6 +383,13 @@ impl App {
                 copilot_graylog::router(GraylogState {
                     ctx: self.ctx.clone(),
                     client: self.graylog.clone(),
+                }),
+            )
+            .nest(
+                "/api/influxdb",
+                copilot_influxdb::router(InfluxState {
+                    ctx: self.ctx.clone(),
+                    client: self.influxdb.clone(),
                 }),
             )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
