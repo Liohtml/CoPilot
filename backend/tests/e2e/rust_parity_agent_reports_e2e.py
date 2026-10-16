@@ -1,0 +1,1112 @@
+"""Parity of the agents' report routers (`crates/copilot-agent-reports`: /api/vulnerabilities)
+with this backend —
+NOT collected by pytest (needs a live MySQL and the Rust binary; run by scripts/rust-parity.sh).
+
+The real FastAPI routers (in-process, with copilot.py's GZipMiddleware) and a Rust instance this
+suite starts answer the same requests on one database. Every upstream is a local stand-in that
+records each request whole, every header the client library sends included:
+
+* one HTTP stand-in for the Wazuh indexer (the vulnerability states and their scroll, the package
+  inventory), the Wazuh manager (token flow, SCA, syscollector), the CoPilot-SCA repository on
+  GitHub (`COPILOT_SCA_REPO_URL` for Rust, the patched `COPILOT_SCA_RAW_BASE` here) and
+  api.first.org's EPSS API (`COPILOT_EPSS_URL` for Rust, `invoke_epss_api`'s URL replaced here);
+* MinIO: the objectstore suite's `S3StandIn`, which verifies every SigV4 signature (Python's
+  `create_session()` is pointed at it, Rust through `COPILOT_MINIO_ENDPOINT`);
+* Velociraptor: the agents suite's grpcio stand-in over mutual TLS, recording each
+  `VQLCollectorArgs` byte for byte with its deadline.
+
+For each check: the status, the content type, the body (report ids and times masked), every
+upstream request, the MinIO requests and what they changed, and the rows a write leaves.
+Requests a backend sends concurrently (the SCA collection, 100 at a time) are compared as a set,
+as are the stream's per-agent events. One header is normalised: elasticsearch-py names the full
+Python version in its `User-Agent` (`Python 3.11.17`), the Rust port the minor one.
+
+Deliberate differences (RUST_MIGRATION.md §4), each checked as such: the per-agent vulnerability
+list is the caller's customers' only; a host's sync is refused for another tenant's host.
+
+Ports (all overridable): AGENT_REPORTS_PARITY_RUST_PORT (5740, the Rust instance),
+AGENT_REPORTS_PARITY_STUB_PORT (5741), AGENT_REPORTS_PARITY_S3_PORT (5742),
+AGENT_REPORTS_PARITY_VELO_PORT (5743). Ids are explicit, seven digits, in disjoint ranges.
+
+    PARITY_SUITES=tests/e2e/rust_parity_agent_reports_e2e.py scripts/rust-parity.sh
+"""
+
+import asyncio
+import base64
+import datetime
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
+from urllib.parse import parse_qsl
+from urllib.parse import unquote
+
+os.environ.setdefault("MYSQL_URL", "127.0.0.1:13306")
+os.environ.setdefault("MYSQL_USER", "copilot")
+os.environ.setdefault("MYSQL_PASSWORD", "e2epass")
+os.environ.setdefault("MYSQL_ROOT_PASSWORD", "e2eroot")
+os.environ.setdefault("JWT_SECRET", "e2e-test-secret-not-the-default")
+os.environ.setdefault("VELOCIRAPTOR_QUERY_TIMEOUT", "5")
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import httpx  # noqa: E402
+import jwt  # noqa: E402
+import rust_parity_agents_e2e as agents_parity  # noqa: E402 - the Velociraptor stand-in
+import rust_parity_objectstore_e2e as objectstore_parity  # noqa: E402 - the MinIO stand-in
+from fastapi import APIRouter  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
+from miniopy_async import Minio  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+
+from app.db.db_session import sync_engine  # noqa: E402
+
+SFX = uuid.uuid4().hex[:6]
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+RS_PORT = int(os.environ.get("AGENT_REPORTS_PARITY_RUST_PORT", "5740"))
+STUB_PORT = int(os.environ.get("AGENT_REPORTS_PARITY_STUB_PORT", "5741"))
+S3_PORT = int(os.environ.get("AGENT_REPORTS_PARITY_S3_PORT", "5742"))
+VELO_PORT = int(os.environ.get("AGENT_REPORTS_PARITY_VELO_PORT", "5743"))
+STUB = f"http://127.0.0.1:{STUB_PORT}"
+S3_USER, S3_SECRET = "reports-parity", "reports-parity-secret"
+ES_USER, ES_PASS = "parity-indexer", f"es-{SFX}"
+MGR_USER, MGR_PASS = "parity-wazuh", f"mgr-{SFX}"
+CUST_A, CUST_B = f"RpA{SFX}", f"RpB{SFX}"
+ADMIN, ANALYST, PORTAL, SCHED = f"rp_admin{SFX}", f"rp_analyst{SFX}", f"rp_portal{SFX}", f"rp_sched{SFX}"
+USERS = (ADMIN, ANALYST, PORTAL, SCHED)
+OUR_CONNECTORS = ("Wazuh-Manager", "Wazuh-Indexer", "Velociraptor")
+results = []
+
+
+def check(name, passed, detail=""):
+    results.append((name, passed))
+    print(f"  {'PASS' if passed else 'FAIL'}  {name}" + (f"\n        {detail}" if detail and not passed else ""))
+
+
+def token(username, scopes, **extra):
+    now = datetime.datetime.utcnow()
+    claims = {"exp": now + datetime.timedelta(hours=1), "iat": now, "sub": username, "scopes": scopes, **extra}
+    return jwt.encode(claims, os.environ["JWT_SECRET"], algorithm="HS256")
+
+
+def sql(statement, **params):
+    with sync_engine.begin() as conn:
+        return conn.execute(text(statement), params)
+
+
+def rows(statement, **params):
+    with sync_engine.connect() as conn:
+        return [dict(r._mapping) for r in conn.execute(text(statement), params)]
+
+
+def in_list(values):
+    return "(" + ",".join(repr(str(v)) for v in values) + ")"
+
+
+# --- Seed --------------------------------------------------------------------------------------------
+#: key -> (agent_id, hostname, os, customer, velociraptor_id)
+AGENTS = {
+    "a1": (f"{SFX}a1", f"rp-a1-{SFX}", "Ubuntu 22.04", CUST_A, f"C.{SFX}a1"),
+    "a2": (f"{SFX}a2", f"rp-a2-{SFX}", "Ubuntu 22.04", CUST_A, None),
+    "w1": (f"{SFX}e1", f"rp-w1-{SFX}", "Microsoft Windows 11 Pro", CUST_A, f"C.{SFX}e1"),
+    "b1": (f"{SFX}b1", f"rp-b1-{SFX}", "Ubuntu 22.04", CUST_B, f"C.{SFX}b1"),
+}
+IDS = {}
+
+
+def seed():
+    top = 0
+    for table in ("agents", "vulnerability_reports", "sca_reports", "agent_vulnerabilities", "agent_datastore"):
+        top = max(top, rows(f"SELECT COALESCE(MAX(id), 0) AS n FROM {table}")[0]["n"])
+    base = max(top + 1000, 3_000_000)
+    # Disjoint ranges: agents base.., stored reports base+1000.. (vulnerabilities) and base+2000.. (SCA).
+    IDS.update({"agent": base, "vreport": base + 1000, "sreport": base + 2000})
+    for c in (CUST_A, CUST_B):
+        sql("INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :n, UTC_TIMESTAMP())", c=c, n=f"{c} Corp")
+    for name, role in ((ADMIN, 1), (ANALYST, 2), (PORTAL, 4), (SCHED, 3)):
+        sql(
+            "INSERT INTO `user` (username, password, email, created_at, role_id) VALUES (:n, 'x', :e, UTC_TIMESTAMP(), :r)",
+            n=name,
+            e=f"{name}@parity.test",
+            r=role,
+        )
+    for name in (ANALYST, PORTAL):
+        sql(
+            "INSERT INTO user_customer_access (user_id, customer_code, created_at) SELECT id, :c, UTC_TIMESTAMP() FROM `user` "
+            "WHERE username = :n",
+            c=CUST_A,
+            n=name,
+        )
+    for i, (key, (agent_id, host, os_name, cust, vid)) in enumerate(AGENTS.items()):
+        IDS[key] = base + i
+        sql(
+            "INSERT INTO agents (id, agent_id, ip_address, os, hostname, label, critical_asset, wazuh_last_seen, velociraptor_id, "
+            "wazuh_agent_version, wazuh_agent_status, customer_code, quarantined, velociraptor_org, velociraptor_id_pinned) VALUES "
+            "(:i, :a, '10.0.0.9', :os, :h, 'grp', 0, '2026-10-15 08:00:00', :v, 'Wazuh v4.9.0', 'active', :c, 0, :o, 0)",
+            i=IDS[key],
+            a=agent_id,
+            os=os_name,
+            h=host,
+            v=vid,
+            c=cust,
+            o="root" if vid else None,
+        )
+
+
+def our_agent_ids():
+    return in_list(a[0] for a in AGENTS.values())
+
+
+def reset_vulns():
+    sql("DELETE FROM agent_vulnerabilities WHERE agent_id IN " + our_agent_ids())
+
+
+def vuln_rows():
+    return rows(
+        "SELECT cve_id, severity, title, `references`, status, discovered_at, remediated_at, epss_score, epss_percentile, "
+        "package_name, agent_id, customer_code FROM agent_vulnerabilities WHERE agent_id IN " + our_agent_ids() + " ORDER BY id",
+    )
+
+
+def set_connector(name, url, username=None, password=None, api_key=None):
+    sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
+    sql(
+        "INSERT INTO connectors (connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
+        "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
+        "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
+        "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES "
+        "(:n, '4.8.0', :u, '2026-01-02 03:04:05', :user, :pw, :key, 'Parity connector', 'everything', 1, 1, 0, 0, 1, 0, 0, NULL, 1)",
+        n=name,
+        u=url,
+        user=username,
+        pw=password,
+        key=api_key,
+    )
+
+
+def cleanup():
+    if not IDS:
+        return
+    ours = our_agent_ids()
+    sql("DELETE FROM agent_vulnerabilities WHERE agent_id IN " + ours)
+    sql("DELETE FROM agent_datastore WHERE agent_id IN " + ours)
+    sql("DELETE FROM vulnerability_reports WHERE customer_code IN (:a, :b)", a=CUST_A, b=CUST_B)
+    sql("DELETE FROM sca_reports WHERE customer_code IN (:a, :b)", a=CUST_A, b=CUST_B)
+    sql("DELETE FROM agents WHERE id IN " + in_list(IDS[k] for k in AGENTS))
+    sql("DELETE FROM audit_log WHERE actor_username IN " + in_list(USERS))
+    for name in OUR_CONNECTORS:
+        sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
+    sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username IN " + in_list(USERS) + ")")
+    sql("DELETE FROM log_entries WHERE user_id IN (SELECT id FROM `user` WHERE username IN " + in_list(USERS) + ")")
+    sql("DELETE FROM `user` WHERE username IN " + in_list(USERS))
+    sql("DELETE FROM customers WHERE customer_code IN (:a, :b)", a=CUST_A, b=CUST_B)
+
+
+# --- The upstream stand-in ------------------------------------------------------------------------------
+
+
+def jbody(obj):
+    return json.dumps(obj).encode()
+
+
+def ok(obj):
+    return 200, "application/json", jbody(obj)
+
+
+class Upstream:
+    """One HTTP server for the indexer, the manager, GitHub and EPSS, by path. Every request is
+    recorded whole: method, path with its query, every header, the body."""
+
+    def __init__(self, port):
+        self.captured = []
+        self.mode = {}
+        self.pages = {}
+        self.lock = threading.Lock()
+        upstream = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def _handle(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                body = self.rfile.read(length) if length else b""
+                headers = {k.lower(): v for k, v in self.headers.items()}
+                with upstream.lock:
+                    upstream.captured.append({"method": self.command, "path": self.path, "headers": headers, "body": body})
+                status, ctype, payload = upstream.answer(self.command, self.path, headers, body)
+                self.send_response(status)
+                if ctype:
+                    self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            do_GET = do_POST = do_PUT = do_DELETE = _handle  # noqa: N815 - http.server API
+
+            def log_message(self, *args):
+                pass
+
+        class Server(ThreadingHTTPServer):
+            daemon_threads = True
+            allow_reuse_address = True
+
+        self.server = Server(("127.0.0.1", port), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def take(self):
+        with self.lock:
+            out, self.captured[:] = list(self.captured), []
+        return out
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def answer(self, method, raw_path, headers, body):
+        path, _, query = raw_path.partition("?")
+        if path.startswith("/sca-repo/"):
+            return self.github(path[len("/sca-repo") :])
+        if path == "/data/v1/epss":
+            return self.epss(query)
+        if path == "/security/user/authenticate" or path.startswith("/sca/") or path.startswith("/syscollector/"):
+            return self.manager(method, path, query, headers)
+        return self.indexer(method, path, query, headers, body)
+
+    # The CoPilot-SCA repository.
+    def github(self, path):
+        mode = self.mode
+        if path == "/index.json":
+            if mode.get("index") == "missing":
+                return 404, "text/plain; charset=utf-8", b"404: Not Found"
+            if mode.get("index") == "not_json":
+                return 200, "text/plain; charset=utf-8", b"<html>rate limited</html>"
+            if mode.get("index") == "bad_policy":
+                return ok({"version": "2", "policies": [{"id": "x", "name": "no file"}]})
+            if mode.get("index") == "list":
+                return ok([1, 2])
+            return ok(SCA_INDEX)
+        if path == "/apache/cis_apache_24.yml":
+            return 200, "text/plain; charset=utf-8", 'policy:\n  id: cis_apache_24\n  name: "CIS é"\n'.encode()
+        return 404, "text/plain; charset=utf-8", b"404: Not Found"
+
+    def epss(self, query):
+        params = dict(parse_qsl(query))
+        scores = {"CVE-2026-1001": "0.97341", "CVE-2026-1002": "0.00042"}
+        cve = params.get("cve", "")
+        data = [{"cve": cve, "epss": scores[cve], "percentile": "0.99", "date": "2026-10-15"}] if cve in scores else []
+        return ok({"status": "OK", "status-code": 200, "version": "1.0", "total": len(data), "data": data})
+
+    # The Wazuh manager.
+    def manager(self, method, path, query, headers):
+        mode = self.mode
+        if path == "/security/user/authenticate":
+            expected = "Basic " + base64.b64encode(f"{MGR_USER}:{MGR_PASS}".encode()).decode()
+            if headers.get("authorization") != expected:
+                return 401, "application/json", jbody({"title": "Unauthorized", "error": 401})
+            return ok({"data": {"token": f"tok-{SFX}"}, "error": 0})
+        if headers.get("authorization") != f"Bearer tok-{SFX}":
+            return 401, "application/json", jbody({"title": "Unauthorized", "error": 401})
+        if path.startswith("/syscollector/"):
+            agent = unquote(path.split("/")[2])
+            if mode.get("syscollector") == "fail":
+                return 500, "text/html", b"<html>boom</html>"
+            items = SYSCOLLECTOR.get(agent, [])
+            return ok({"data": {"affected_items": items, "total_affected_items": len(items) + 10, "failed_items": []}, "error": 0})
+        agent = unquote(path.split("/")[2])
+        if agent not in SCA:
+            return 400, "application/problem+json", jbody({"title": "Wazuh Cluster Error", "detail": "Unknown node ID", "error": 3022})
+        return ok({"data": {"affected_items": SCA[agent], "total_affected_items": len(SCA[agent])}, "error": 0})
+
+    # The Wazuh indexer.
+    def indexer(self, method, path, query, headers, body):
+        expected = "Basic " + base64.b64encode(f"{ES_USER}:{ES_PASS}".encode()).decode()
+        if headers.get("authorization") != expected:
+            return 401, "application/json", jbody({"error": "unauthorized", "status": 401})
+        if method == "GET" and path == "/*/_alias":
+            return ok({n: {"aliases": {}} for n in ("wazuh-states-vulnerabilities-node1", "wazuh-alerts-4.x-2026.10.15")})
+        doc = json.loads(body or b"{}")
+        if path == "/_search/scroll":
+            if method == "DELETE":
+                return ok({"succeeded": True, "num_freed": 1})
+            sid = doc.get("scroll_id", "")
+            stem, _, n = sid.rpartition("-")
+            page = int(n) + 1
+            hits = self.pages.get(stem, [])
+            return ok({"_scroll_id": f"{stem}-{page}", "hits": {"hits": hits[page * 2 : page * 2 + 2]}})
+        if path.startswith("/wazuh-states-inventory-packages-"):
+            docs = filter_docs(PACKAGES, doc)
+            return ok({"took": 1, "hits": {"total": {"value": len(docs), "relation": "eq"}, "hits": docs}})
+        docs = filter_docs(VULN_DOCS, doc)
+        if path.endswith("/_count"):
+            return ok({"count": len(docs), "_shards": {"total": 1}})
+        if "aggs" in doc:
+            buckets = {}
+            for d in docs:
+                sev = d["_source"]["vulnerability"]["severity"]
+                buckets[sev] = buckets.get(sev, 0) + 1
+            return ok(
+                {
+                    "hits": {"total": {"value": len(docs)}, "hits": []},
+                    "aggregations": {"severity_counts": {"buckets": [{"key": k, "doc_count": n} for k, n in buckets.items()]}},
+                },
+            )
+        if "scroll=" in query:
+            # The same request gets the same scroll id, whichever backend sends it.
+            stem = "s" + hashlib.sha1(path.encode() + body).hexdigest()[:10]
+            self.pages[stem] = docs
+            return ok({"_scroll_id": f"{stem}-0", "hits": {"total": {"value": len(docs)}, "hits": docs[:2]}})
+        start, size = doc.get("from", 0), doc.get("size", 10)
+        return ok({"hits": {"total": {"value": len(docs)}, "hits": docs[start : start + size]}})
+
+
+def clause_values(query, out):
+    """Every (field, value) a bool query's term/terms/match/wildcard clauses name."""
+    if isinstance(query, dict):
+        for kind in ("term", "terms", "match"):
+            if kind in query and isinstance(query[kind], dict):
+                for k, v in query[kind].items():
+                    out.append((k, v if isinstance(v, list) else [v]))
+        if "wildcard" in query and isinstance(query["wildcard"], dict):
+            for k, v in query["wildcard"].items():
+                pattern = v["value"] if isinstance(v, dict) else v
+                out.append((k, ("wildcard", pattern.strip("*").lower())))
+        for v in query.values():
+            clause_values(v, out)
+    elif isinstance(query, list):
+        for v in query:
+            clause_values(v, out)
+    return out
+
+
+def field_of(doc, dotted):
+    node = doc["_source"]
+    for part in dotted.split("."):
+        node = node.get(part) if isinstance(node, dict) else None
+    return node
+
+
+def filter_docs(docs, request):
+    """The documents a request's `must` (or `should`) clauses select."""
+    query = request.get("query", {})
+    should = query.get("bool", {}).get("should")
+    if should:
+        out = []
+        for d in docs:
+            for _, cond in clause_values(should, []):
+                name = (field_of(d, "package.name") or "").lower()
+                if cond[0] == "wildcard" and cond[1] in name:
+                    out.append(d)
+                    break
+        return out
+    conds = clause_values(query, [])
+    out = []
+    for d in docs:
+        keep = True
+        for field, cond in conds:
+            value = field_of(d, field)
+            if isinstance(cond, tuple):
+                keep = keep and cond[1] in str(value or "").lower()
+            else:
+                keep = keep and value in cond
+        if keep:
+            out.append(d)
+    return out
+
+
+def vuln_doc(doc_id, key, cve, severity, package="openssl", reference=None, base_score=7.5, detected="2026-10-03T11:00:00.000Z"):
+    agent_id, host = AGENTS[key][0], AGENTS[key][1]
+    return {
+        "_index": "wazuh-states-vulnerabilities-node1",
+        "_id": doc_id,
+        "_source": {
+            "agent": {"id": agent_id, "name": host},
+            "package": {"name": package, "version": "3.0.2", "type": "deb", "architecture": "amd64"},
+            "vulnerability": {
+                "id": cve,
+                "severity": severity,
+                "description": f"{cve} description, with a comma",
+                "detected_at": detected,
+                "published_at": "2025-01-01T00:00:00Z",
+                "reference": reference if reference is not None else f"https://nvd.nist.gov/vuln/detail/{cve}",
+                "score": {"base": base_score},
+            },
+        },
+    }
+
+
+VULN_DOCS = []
+PACKAGES = []
+SCA = {}
+SYSCOLLECTOR = {}
+SCA_INDEX = {
+    "version": "1.4",
+    "last_updated": "2026-10-01",
+    "policies": [
+        {
+            "id": "cis_apache_24",
+            "name": "CIS Apache HTTP Server 2.4",
+            "description": "Apache benchmark",
+            "file": "apache/cis_apache_24.yml",
+            "application": "apache",
+            "app_version": "2.4",
+            "platform": "linux",
+            "cis_version": "2.0.0",
+            "extra": "ignored",
+        },
+        {
+            "id": "cis_nginx",
+            "name": "CIS NGINX",
+            "description": "NGINX benchmark",
+            "file": "nginx/cis_nginx.yml",
+            "application": "nginx",
+            "app_version": "1.x",
+            "platform": "linux",
+            "cis_version": "1.0.0",
+        },
+    ],
+}
+
+
+def fill_upstream_data():
+    a1, a2, b1 = (AGENTS[k][0] for k in ("a1", "a2", "b1"))
+    VULN_DOCS[:] = [
+        vuln_doc("v1", "a1", "CVE-2026-1001", "Critical", reference="https://a.example, https://b.example,,  https://c.example"),
+        vuln_doc("v2", "a1", "CVE-2026-1002", "High", package="curl", base_score=0),
+        vuln_doc("v3", "a1", "CVE-2026-1003", "Low", package="zlib", detected="2026-10-01T09:00:00+02:00"),
+        vuln_doc("v4", "a2", "CVE-2026-1004", "Medium", package="bash"),
+        vuln_doc("v5", "b1", "CVE-2026-1005", "High", package="sudo"),
+    ]
+    PACKAGES[:] = [
+        {
+            "_index": "wazuh-states-inventory-packages-node1",
+            "_id": "p1",
+            "_source": {
+                "agent": {"id": a1, "name": AGENTS["a1"][1], "version": "v4.9.0", "groups": ["x"]},
+                "package": {"name": "apache2", "version": "2.4.58", "architecture": "amd64", "type": "deb", "size": 1024},
+            },
+        },
+        {
+            "_index": "wazuh-states-inventory-packages-node1",
+            "_id": "p2",
+            "_source": {"agent": {"id": a1, "name": AGENTS["a1"][1]}, "package": {"name": "apache2-bin", "version": "2.4.58"}},
+        },
+        {
+            "_index": "wazuh-states-inventory-packages-node1",
+            "_id": "p3",
+            "_source": {"agent": {"id": b1, "name": AGENTS["b1"][1]}, "package": {"name": "apache2", "vendor": "Debian"}},
+        },
+        {
+            "_index": "wazuh-states-inventory-packages-node1",
+            "_id": "p4",
+            "_source": {"agent": {"id": a2, "name": AGENTS["a2"][1]}, "package": {"name": "openssl"}},
+        },
+    ]
+
+    def policy(pid, name, score, refs=None):
+        return {
+            "policy_id": pid,
+            "description": f"{name} benchmark",
+            "fail": 10 - score // 10,
+            "start_scan": "2026-10-01T00:00:00Z",
+            "references": refs,
+            "name": name,
+            "pass": score // 10,
+            "score": score,
+            "end_scan": "2026-10-01T00:05:00Z",
+            "total_checks": 10,
+            "hash_file": "abc",
+            "invalid": 0,
+        }
+
+    SCA.clear()
+    SCA[a1] = [policy("cis_ubuntu", "CIS Ubuntu 22.04", 80, "https://www.cisecurity.org/"), policy("cis_ssh", "CIS OpenSSH", 55)]
+    SCA[a2] = [policy("cis_ubuntu", "CIS Ubuntu 22.04", 40)]
+    SCA[b1] = [policy("cis_ubuntu", "CIS Ubuntu 22.04", 90)]
+    SYSCOLLECTOR.clear()
+    SYSCOLLECTOR[a1] = [
+        {
+            "scan": {"id": 0, "time": "2026-10-15T08:00:00Z"},
+            "name": "openssl",
+            "version": "3.0.2",
+            "architecture": "amd64",
+            "format": "deb",
+            "size": 2048,
+            "vendor": "Ubuntu Developers",
+            "agent_id": a1,
+            "install_time": "2026-01-01",
+            "multiarch": None,
+        },
+    ]
+
+
+# --- The two backends ------------------------------------------------------------------------------
+
+
+def build_python_app():
+    from app.middleware.exception_handlers import custom_http_exception_handler
+    from app.middleware.exception_handlers import validation_exception_handler
+    from app.middleware.exception_handlers import value_error_handler
+    from app.routers import agents
+    from app.routers import velociraptor
+
+    api = APIRouter(prefix="/api")
+    api.include_router(agents.router)
+    api.include_router(velociraptor.router)
+    app = FastAPI(redirect_slashes=False)
+    app.include_router(api)
+    # As in copilot.py: it decides how a download (and not the event stream) is encoded.
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+    app.add_exception_handler(HTTPException, custom_http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(ValueError, value_error_handler)
+    return app
+
+
+def patch_python():
+    """Point the Python services at the stand-ins (the one change this suite makes to Python)."""
+    from app.agents.sca.services import sca as sca_module
+    from app.data_store import data_store_operations
+    from app.threat_intel.services import epss as epss_module
+
+    async def create_session():
+        return Minio(f"127.0.0.1:{S3_PORT}", access_key=S3_USER, secret_key=S3_SECRET, secure=False)
+
+    data_store_operations.create_session = create_session
+    sca_module.COPILOT_SCA_RAW_BASE = f"{STUB}/sca-repo"
+    sca_module.COPILOT_SCA_INDEX_URL = f"{STUB}/sca-repo/index.json"
+    original = epss_module.invoke_epss_api
+
+    async def invoke_epss_api(url, request):
+        return await original(f"{STUB}/data/v1/epss", request)
+
+    epss_module.invoke_epss_api = invoke_epss_api
+
+
+def start_rust():
+    binary = os.environ.get("COPILOT_BIN", os.path.join(REPO, "target", "debug", "copilot"))
+    user, password, host = os.environ["MYSQL_USER"], os.environ["MYSQL_PASSWORD"], os.environ["MYSQL_URL"]
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "HOME": os.environ.get("HOME", "/tmp"),
+        "COPILOT_DATABASE_URL": f"mysql://{user}:{password}@{host}/copilot",
+        "JWT_SECRET": os.environ["JWT_SECRET"],
+        "COPILOT_BIND": "127.0.0.1",
+        "COPILOT_PORT": str(RS_PORT),
+        "MINIO_ROOT_USER": S3_USER,
+        "MINIO_ROOT_PASSWORD": S3_SECRET,
+        "COPILOT_MINIO_ENDPOINT": f"127.0.0.1:{S3_PORT}",
+        "COPILOT_SCA_REPO_URL": f"{STUB}/sca-repo",
+        "COPILOT_EPSS_URL": f"{STUB}/data/v1/epss",
+        "VELOCIRAPTOR_QUERY_TIMEOUT": os.environ["VELOCIRAPTOR_QUERY_TIMEOUT"],
+        "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
+    }
+    proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
+    for _ in range(100):
+        try:
+            if httpx.get(f"http://127.0.0.1:{RS_PORT}/_copilot/health", timeout=1).status_code == 200:
+                return proc
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.2)
+    proc.kill()
+    raise RuntimeError("the Rust instance did not start")
+
+
+# --- Normalisation ---------------------------------------------------------------------------------
+
+PY_VERSION = re.compile(r"\(Python 3\.11(\.\d+)?\)")
+DATETIME_REPR = re.compile(r"datetime\.datetime\([0-9, ]+\)")
+VOLATILE = {"id", "report_id", "generated_at", "download_url"}
+
+
+def upstream_view(captures, unordered=False):
+    out = []
+    for c in captures:
+        headers = {k: (PY_VERSION.sub("(Python 3.11)", v) if k == "user-agent" else v) for k, v in c["headers"].items()}
+        out.append(
+            {
+                "method": c["method"],
+                "path": c["path"],
+                "headers": dict(sorted(headers.items())),
+                "body": c["body"].decode("utf-8", "replace"),
+            },
+        )
+    if unordered:
+        out.sort(key=json.dumps)
+    return out
+
+
+def substitute(value, subst):
+    for old, new in subst:
+        value = value.replace(old, new)
+    return value
+
+
+def mask(value, subst=()):
+    if isinstance(value, dict):
+        return {k: ("<v>" if k in VOLATILE and v is not None else mask(v, subst)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [mask(v, subst) for v in value]
+    if isinstance(value, str):
+        return DATETIME_REPR.sub("datetime.datetime(…)", substitute(value, subst))
+    return value
+
+
+def decoded(r):
+    """A body as the client sees it (httpx decodes a gzipped one)."""
+    try:
+        return r.json()
+    except ValueError:
+        return r.text
+
+
+# Headers compared on every answer (the Rust CORS layer adds `Origin` to `Vary`: not this module's).
+ANSWER_HEADERS = ("content-type", "content-disposition", "content-encoding", "cache-control", "x-accel-buffering")
+
+
+def answer_headers(r):
+    out = {k: r.headers.get(k) for k in ANSWER_HEADERS}
+    # Header names are case-insensitive, in `Vary` too (Starlette writes `Accept-Encoding`, tower-http
+    # `accept-encoding`).
+    out["vary"] = [v.strip().lower() for v in (r.headers.get("vary") or "").split(",") if v.strip().lower() == "accept-encoding"]
+    return out
+
+
+S3 = objectstore_parity.S3StandIn(S3_USER, S3_SECRET)
+
+
+class Pair:
+    def __init__(self, upstream, velo):
+        self.py = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False),
+            base_url="http://py",
+            timeout=180,
+        )
+        self.rs = httpx.AsyncClient(base_url=f"http://127.0.0.1:{RS_PORT}", timeout=180)
+        self.up = upstream
+        self.velo = velo
+
+    async def call(self, client, method, path, tok, kw):
+        headers = {"Accept-Encoding": "identity", **dict(kw.get("headers", {}))}
+        if tok:
+            headers["Authorization"] = f"Bearer {tok}"
+        args = {k: v for k, v in kw.items() if k != "headers"}
+        return await client.request(method, path, headers=headers, **args)
+
+    async def same(
+        self,
+        name,
+        method,
+        path,
+        tok=None,
+        before=None,
+        db=None,
+        unordered=False,
+        settle=None,
+        body_view=None,
+        expect_diff=None,
+        **kw,
+    ):
+        """Python, then Rust, from the same state (`before` sets it up for each). `settle(tag)` waits
+        for what a backend does after its answer; `body_view` shapes a body before the comparison;
+        `expect_diff(py, rs)` replaces the equality of the bodies for a deliberate difference."""
+        got = {}
+        start = S3.snapshot()
+        for tag, client in (("py", self.py), ("rs", self.rs)):
+            S3.restore(start)
+            if before:
+                before()
+            self.up.take()
+            S3.take()
+            self.velo.take()
+            r = await self.call(client, method, path, tok, kw)
+            if settle:
+                await settle(tag)
+            else:
+                await asyncio.sleep(0.05)
+            body = decoded(r)
+            got[tag] = {
+                "status": r.status_code,
+                "headers": answer_headers(r),
+                "body": body_view(body) if body_view else body,
+                "upstream": upstream_view(self.up.take(), unordered),
+                "s3": objectstore_parity.outbound(S3.take()),
+                "minio": objectstore_parity.changes(start, S3.snapshot()),
+                "velo": sorted(self.velo.take(), key=json.dumps) if unordered else self.velo.take(),
+                "rows": mask(db()) if db else None,
+            }
+        p, q = got["py"], got["rs"]
+        detail = []
+        for key in ("status", "headers", "upstream", "s3", "minio", "velo", "rows"):
+            if p[key] != q[key]:
+                detail.append(
+                    f"{key}\n          python {json.dumps(p[key], default=str)[:1800]}\n          rust   {json.dumps(q[key], default=str)[:1800]}",
+                )
+        bp, bq = mask(p["body"]), mask(q["body"])
+        if expect_diff:
+            # A deliberate difference: the check names what must hold instead.
+            reason = expect_diff(p, q)
+            detail = [f"by design: {reason}"] if reason else []
+        elif json.dumps(bp, default=str) != json.dumps(bq, default=str):
+            detail.append(
+                f"body\n          python {json.dumps(bp, default=str)[:1800]}\n          rust   {json.dumps(bq, default=str)[:1800]}",
+            )
+        if any(o[-1] != "ok" for o in p["s3"] + q["s3"]):
+            detail.append(f"signatures python {[o[-1] for o in p['s3']]} rust {[o[-1] for o in q['s3']]}")
+        check(f"{name} [{p['status']}]", not detail, "\n        ".join(detail))
+        return p, q
+
+    async def close(self):
+        await self.py.aclose()
+        await self.rs.aclose()
+
+
+async def wait_quiet(recorders, quiet=1.0, limit=30.0):
+    """Until no recorder has seen anything new for `quiet` seconds."""
+    deadline = time.time() + limit
+    last, since = None, time.time()
+    while time.time() < deadline:
+        now = [len(r.captured) for r in recorders]
+        if now != last:
+            last, since = now, time.time()
+        elif time.time() - since >= quiet:
+            return
+        await asyncio.sleep(0.1)
+
+
+# --- Checks: /api/vulnerabilities ---------------------------------------------------------------------
+V = "/api/vulnerabilities"
+
+
+async def vulnerability_checks(p, t):
+    a1, b1 = AGENTS["a1"][0], AGENTS["b1"][0]
+    host_a1, host_a2, host_b1 = AGENTS["a1"][1], AGENTS["a2"][1], AGENTS["b1"][1]
+
+    # The sync: batch and bulk mode, a fresh table and one already holding the rows.
+    await p.same("sync one host (batch)", "POST", f"{V}/sync/agent/{host_a1}", t["analyst"], before=reset_vulns, db=vuln_rows)
+    await p.same(
+        "sync one host (bulk)",
+        "POST",
+        f"{V}/sync/agent/{host_a1}?use_bulk_mode=true",
+        t["analyst"],
+        before=reset_vulns,
+        db=vuln_rows,
+    )
+
+    def seeded():
+        reset_vulns()
+        sql(
+            "INSERT INTO agent_vulnerabilities (cve_id, severity, title, `references`, status, discovered_at, package_name, agent_id, "
+            "customer_code, epss_score) VALUES ('CVE-2026-1001', 'Low', 'old', NULL, 'Active', '2020-01-01 00:00:00', 'openssl', :a, :c, '0.5')",
+            a=a1,
+            c=CUST_A,
+        )
+
+    await p.same("sync updates the rows it finds (batch)", "POST", f"{V}/sync/agent/{host_a1}", t["analyst"], before=seeded, db=vuln_rows)
+    await p.same(
+        "sync updates the rows it finds (bulk)",
+        "POST",
+        f"{V}/sync/agent/{host_a1}?use_bulk_mode=true&batch_size=2",
+        t["analyst"],
+        before=seeded,
+        db=vuln_rows,
+    )
+    await p.same(
+        "sync files the rows under the requested customer",
+        "POST",
+        f"{V}/sync/agent/{host_a2}?customer_code={CUST_A}",
+        t["admin"],
+        before=reset_vulns,
+        db=vuln_rows,
+    )
+    await p.same("sync of an unknown host", "POST", f"{V}/sync/agent/nobody-{SFX}", t["admin"], before=reset_vulns, db=vuln_rows)
+    await p.same(
+        "sync of a customer",
+        "POST",
+        f"{V}/sync/customer/{CUST_A}?use_bulk_mode=true",
+        t["analyst"],
+        before=reset_vulns,
+        db=vuln_rows,
+    )
+    await p.same("sync of another tenant", "POST", f"{V}/sync/customer/{CUST_B}", t["analyst"], before=reset_vulns, db=vuln_rows)
+    await p.same("sync batch size 0", "POST", f"{V}/sync/customer/{CUST_A}?batch_size=0", t["admin"], before=reset_vulns, db=vuln_rows)
+    await p.same("sync with a bad batch size", "POST", f"{V}/sync?batch_size=0", t["admin"])
+    await p.same("sync with a bad body", "POST", f"{V}/sync", t["admin"], json={"force_refresh": "maybe"})
+    await p.same("sync as a portal user", "POST", f"{V}/sync", t["portal"])
+    await p.same("sync of a host with someone else's customer", "POST", f"{V}/sync/agent/{host_a1}?customer_code={CUST_B}", t["analyst"])
+
+    # §4: another tenant's host.
+    def refused(py, rs):
+        if py["status"] != 200 or py["body"].get("success") is not True or not py["upstream"]:
+            return f"python {py['status']} {py['body']}"
+        if rs["status"] != 403 or rs["body"].get("message") != f"Access denied to host {host_b1}" or rs["upstream"]:
+            return f"rust {rs['status']} {rs['body']} {len(rs['upstream'])} upstream requests"
+        return None
+
+    await p.same(
+        "sync of another tenant's host (Rust refuses it)",
+        "POST",
+        f"{V}/sync/agent/{host_b1}",
+        t["analyst"],
+        before=reset_vulns,
+        expect_diff=refused,
+        db=None,
+    )
+
+    def synced():
+        reset_vulns()
+        for key in ("a1", "a2", "b1"):
+            for d in VULN_DOCS:
+                if d["_source"]["agent"]["name"] != AGENTS[key][1]:
+                    continue
+                v = d["_source"]["vulnerability"]
+                sql(
+                    "INSERT INTO agent_vulnerabilities (cve_id, severity, title, `references`, status, discovered_at, package_name, "
+                    "agent_id, customer_code) VALUES (:cve, :sev, :t, NULL, 'Active', '2026-10-03 11:00:00', :pkg, :a, :c)",
+                    cve=v["id"],
+                    sev=v["severity"],
+                    t=d["_source"]["package"]["name"],
+                    pkg=d["_source"]["package"]["name"],
+                    a=AGENTS[key][0],
+                    c=AGENTS[key][3],
+                )
+
+    synced()
+    await p.same("one agent's rows", "GET", f"{V}/agent/{a1}", t["analyst"])
+    await p.same("one agent's rows by severity", "GET", f"{V}/agent/{a1}?severity=Critical&severity=Low", t["analyst"])
+    await p.same("another tenant's agent as admin", "GET", f"{V}/agent/{b1}", t["admin"])
+
+    def narrowed(py, rs):
+        if py["status"] != 200 or rs["status"] != 200 or not py["body"].get("vulnerabilities") or rs["body"].get("vulnerabilities") != []:
+            return f"python {py['status']} {py['body']} rust {rs['status']} {rs['body']}"
+        expected = dict(py["body"], vulnerabilities=[], total_count=0, message=f"Retrieved 0 vulnerabilities for agent {b1}")
+        if rs["body"] != expected:
+            return f"rust {rs['body']} expected {expected}"
+        return None
+
+    await p.same("another tenant's agent's rows (Rust lists none)", "GET", f"{V}/agent/{b1}", t["analyst"], expect_diff=narrowed)
+    await p.same("statistics", "GET", f"{V}/stats", t["analyst"])
+    await p.same("statistics of a customer", "GET", f"{V}/stats?customer_code={CUST_A}", t["admin"])
+    await p.same("statistics of another tenant", "GET", f"{V}/stats?customer_code={CUST_B}", t["analyst"])
+
+    # The indexer search.
+    await p.same("search", "GET", f"{V}/search?include_epss=false", t["analyst"])
+    await p.same("search with EPSS", "GET", f"{V}/search", t["analyst"])
+    await p.same("search as admin, filtered", "GET", f"{V}/search?severity=High&package_name=cur&page_size=1&page=1", t["admin"])
+    await p.same("search a second page", "GET", f"{V}/search?customer_codes={CUST_A}&page_size=2&page=2&include_epss=false", t["admin"])
+    await p.same("search another tenant", "GET", f"{V}/search?customer_codes={CUST_B}", t["analyst"])
+    await p.same("search an unknown host", "GET", f"{V}/search?agent_name=nobody-{SFX}", t["admin"])
+    await p.same("search too deep", "GET", f"{V}/search?agent_name={host_a1}&page=300&page_size=50&include_epss=false", t["admin"])
+    await p.same("search with a bad page", "GET", f"{V}/search?page=0&page_size=2000", t["admin"])
+
+    # The delete.
+    await p.same("delete without a scope", "DELETE", f"{V}/delete", t["admin"])
+    await p.same("delete with two scopes", "DELETE", f"{V}/delete?agent_name={host_a1}&customer_code={CUST_A}", t["admin"])
+    await p.same("delete one host's", "DELETE", f"{V}/delete?agent_name={host_a1}", t["admin"], before=synced, db=vuln_rows)
+    await p.same("delete one customer's", "DELETE", f"{V}/delete?customer_code={CUST_B}", t["admin"], before=synced, db=vuln_rows)
+    await p.same("delete as an analyst", "DELETE", f"{V}/delete?agent_name={host_a1}", t["analyst"])
+
+    # The reports.
+    def no_reports():
+        sql("DELETE FROM vulnerability_reports WHERE customer_code IN (:a, :b)", a=CUST_A, b=CUST_B)
+
+    def report_rows():
+        return rows(
+            "SELECT report_name, customer_code, bucket_name, object_key, file_name, file_size, file_hash, generated_by, filters_json, "
+            "total_vulnerabilities, critical_count, high_count, medium_count, low_count, status, error_message FROM "
+            "vulnerability_reports WHERE customer_code IN (:a, :b) ORDER BY id",
+            a=CUST_A,
+            b=CUST_B,
+        )
+
+    for name, body in (
+        ("report", {"customer_code": CUST_A, "report_name": f"vr-{SFX}"}),
+        (
+            "report with EPSS and filters",
+            {"customer_code": CUST_A, "report_name": f"vr2-{SFX}", "include_epss": True, "severity": "Critical"},
+        ),
+        ("report of one host", {"customer_code": CUST_A, "report_name": f"vr3-{SFX}", "agent_name": host_a2}),
+        ("report without matches", {"customer_code": CUST_A, "report_name": f"vr4-{SFX}", "cve_id": "CVE-1999-0001"}),
+        ("report of another tenant", {"customer_code": CUST_B, "report_name": f"vr5-{SFX}"}),
+        ("report of an unknown customer", {"customer_code": f"nope{SFX}", "report_name": f"vr6-{SFX}"}),
+        ("report with a bad body", {"customer_code": 5, "include_epss": "maybe"}),
+    ):
+        await p.same(
+            name,
+            "POST",
+            f"{V}/reports/generate",
+            t["analyst"] if "unknown" not in name else t["admin"],
+            json=body,
+            before=no_reports,
+            db=report_rows,
+        )
+
+    async def finished(tag):
+        for _ in range(100):
+            if not [r for r in report_rows() if r["status"] == "processing"]:
+                break
+            await asyncio.sleep(0.1)
+        await wait_quiet([p.up])
+
+    await p.same(
+        "background report",
+        "POST",
+        f"{V}/reports/generate/background",
+        t["analyst"],
+        json={"customer_code": CUST_A, "report_name": f"vb-{SFX}"},
+        before=no_reports,
+        db=report_rows,
+        settle=finished,
+    )
+    await p.same(
+        "background report of another tenant",
+        "POST",
+        f"{V}/reports/generate/background",
+        t["analyst"],
+        json={"customer_code": CUST_B, "report_name": f"vb2-{SFX}"},
+        before=no_reports,
+        db=report_rows,
+        settle=finished,
+    )
+    await p.same(
+        "background report of an unknown customer",
+        "POST",
+        f"{V}/reports/generate/background",
+        t["admin"],
+        json={"customer_code": f"nope{SFX}", "report_name": f"vb3-{SFX}"},
+        before=no_reports,
+        db=report_rows,
+    )
+
+    # Stored reports: one per customer, the file in MinIO.
+    csv = b"CVE ID,Severity\r\nCVE-2026-1001,Critical\r\n" * 40
+
+    def stored():
+        no_reports()
+        for i, (cust, name) in enumerate(((CUST_A, f"stored-a-{SFX}"), (CUST_B, f"stored-b-{SFX}"), (CUST_A, f"bad ☃ {SFX}"))):
+            sql(
+                "INSERT INTO vulnerability_reports (id, report_name, customer_code, bucket_name, object_key, file_name, file_size, "
+                "file_hash, generated_at, generated_by, filters_json, total_vulnerabilities, critical_count, high_count, medium_count, "
+                "low_count, status, error_message) VALUES (:i, :n, :c, 'vulnerability-reports', :k, :f, :s, 'h', :g, 1, :fj, 3, 1, 1, 1, "
+                "0, 'completed', NULL)",
+                i=IDS["vreport"] + i,
+                n=name,
+                c=cust,
+                k=f"{cust}/{name}.csv",
+                f=f"{name}.csv",
+                s=len(csv),
+                g=f"2026-10-0{i + 1} 10:00:00",
+                fj=json.dumps({"severity": "High"}) if i == 0 else None,
+            )
+            S3.put("vulnerability-reports", f"{cust}/{name}.csv", csv, "text/csv")
+
+    stored()
+    va, vb, vbad = IDS["vreport"], IDS["vreport"] + 1, IDS["vreport"] + 2
+    await p.same("report list", "GET", f"{V}/reports", t["analyst"])
+    await p.same("report list of a customer", "GET", f"{V}/reports?customer_codes={CUST_B}", t["admin"])
+    await p.same("report list of another tenant", "GET", f"{V}/reports?customer_codes={CUST_B}", t["analyst"])
+    await p.same("report download", "GET", f"{V}/reports/{va}/download", t["analyst"])
+    await p.same("report download, gzipped", "GET", f"{V}/reports/{va}/download", t["analyst"], headers={"Accept-Encoding": "gzip"})
+    await p.same("report download of another tenant", "GET", f"{V}/reports/{vb}/download", t["analyst"])
+    await p.same("report download of an unknown id", "GET", f"{V}/reports/9999999/download", t["analyst"])
+    await p.same("report download of a bad id", "GET", f"{V}/reports/x/download", t["analyst"])
+    await p.same("report download with a non-latin-1 name", "GET", f"{V}/reports/{vbad}/download", t["analyst"])
+
+    def missing_file():
+        stored()
+        S3.drop("vulnerability-reports", f"{CUST_A}/stored-a-{SFX}.csv")
+
+    await p.same("report download of a lost file", "GET", f"{V}/reports/{va}/download", t["analyst"], before=missing_file)
+
+    def all_reports():
+        return report_rows()
+
+    await p.same("report delete", "DELETE", f"{V}/reports/{va}", t["analyst"], before=stored, db=all_reports)
+    await p.same("report delete of another tenant", "DELETE", f"{V}/reports/{vb}", t["analyst"], before=stored, db=all_reports)
+    await p.same("report delete of a lost file", "DELETE", f"{V}/reports/{va}", t["analyst"], before=missing_file, db=all_reports)
+    await p.same("report delete of an unknown id", "DELETE", f"{V}/reports/9999999", t["analyst"])
+    no_reports()
+
+    # The whole deployment's sync, last (it walks every agent in the database).
+    async def all_synced(tag):
+        await wait_quiet([p.up], quiet=1.5, limit=120)
+
+    await p.same("sync of every agent", "POST", f"{V}/sync", t["scheduler"], before=reset_vulns, db=vuln_rows)
+    await p.same(
+        "background sync of every agent",
+        "POST",
+        f"{V}/sync/background",
+        t["analyst"],
+        before=reset_vulns,
+        db=vuln_rows,
+        settle=all_synced,
+    )
+    reset_vulns()
+
+
+# --- Velociraptor (no checks yet) ------------------------------------------------------------------
+
+
+def velo_answer(stand_in, vql, org_id):
+    """No route of these routers asks Velociraptor: every query answers no rows."""
+    return [], None
+
+
+# --- Main --------------------------------------------------------------------------------------------
+
+
+async def main():
+    seed()
+    fill_upstream_data()
+    patch_python()
+    s3_server = S3.serve(S3_PORT)
+    upstream = Upstream(STUB_PORT)
+    velo = agents_parity.VeloStandIn(VELO_PORT, velo_answer)
+    workdir = tempfile.mkdtemp(prefix="agent-reports-parity-")
+    config = agents_parity.api_config(workdir, velo.address)
+    set_connector("Wazuh-Indexer", STUB, ES_USER, ES_PASS)
+    set_connector("Wazuh-Manager", STUB, MGR_USER, MGR_PASS)
+    set_connector("Velociraptor", "https://velociraptor.parity", api_key=config)
+    proc = start_rust()
+    p = Pair(upstream, velo)
+    t = {
+        "admin": token(ADMIN, ["admin"]),
+        "analyst": token(ANALYST, ["analyst"]),
+        "portal": token(PORTAL, ["customer_user"], customer_codes=[CUST_A]),
+        "scheduler": token(SCHED, ["scheduler"]),
+    }
+    try:
+        sections = os.environ.get("AGENT_REPORTS_PARITY_SECTIONS", "vulnerabilities").split(",")
+        if "vulnerabilities" in sections:
+            await vulnerability_checks(p, t)
+    finally:
+        await p.close()
+        proc.terminate()
+        try:
+            proc.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        cleanup()
+        upstream.stop()
+        velo.stop()
+        s3_server.shutdown()
+        shutil.rmtree(workdir, ignore_errors=True)
+    failed = [n for n, passed in results if not passed]
+    print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))

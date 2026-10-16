@@ -187,6 +187,60 @@ pub async fn upload_file_to_datastore(
     })
 }
 
+/// What `store_file_in_minio` reports on success.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stored {
+    /// `bucket_name`.
+    pub bucket_name: String,
+    /// `object_key`.
+    pub object_key: String,
+    /// `file_size`.
+    pub file_size: i64,
+    /// `file_hash` (SHA-256).
+    pub file_hash: String,
+    /// `content_type`.
+    pub content_type: String,
+}
+
+/// `store_file_in_minio(file_content, bucket_name, object_key,
+/// content_type)` — how the agents' CSV reports reach MinIO: a client, the
+/// bucket created if missing (its own client; a failure there escapes, it is
+/// outside the `try`), then `fput_object`. `Ok(Err(str(e)))` is the
+/// `{"success": False, "error": …}` answer of a failed upload.
+pub async fn store_file_in_minio(
+    store: &ObjectStore,
+    data: &[u8],
+    bucket: &str,
+    object: &str,
+    content_type: &str,
+) -> Result<Result<Stored, String>, PyExc> {
+    let client = store.session()?;
+    create_bucket_if_not_exists(store, bucket).await?;
+    tracing::info!("Storing file to bucket {bucket} as {object}");
+    let file_hash = hex::encode(Sha256::digest(data));
+    let file_size = i64::try_from(data.len()).unwrap_or(i64::MAX);
+    match client
+        .fput_object(bucket, object, data, Some(content_type))
+        .await
+    {
+        Ok(()) => {
+            tracing::info!("Successfully stored file ({file_size} bytes) to {bucket}/{object}");
+            Ok(Ok(Stored {
+                bucket_name: bucket.to_string(),
+                object_key: object.to_string(),
+                file_size,
+                file_hash,
+                content_type: content_type.to_string(),
+            }))
+        }
+        Err(e) => {
+            let text = e.into_py().text();
+            tracing::error!("Error storing file in MinIO: {text}");
+            Ok(Err(text))
+        }
+    }
+}
+
 /// `delete_file`: `stat_object`, then `remove_object`; any failure is the
 /// 404 `File {object} not found in bucket {bucket}` (only the client's own
 /// construction escapes as it is).

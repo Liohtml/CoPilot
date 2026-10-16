@@ -23,6 +23,7 @@
 //!                      │                    → copilot-soc-management          │
 //!                      │ /api/agent_data_store/*, the incidents' MinIO routes │
 //!                      │                    → copilot-objectstore ────────────────► MinIO :9000
+//!                      │ /api/vulnerabilities/* → copilot-agent-reports       │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -40,6 +41,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::json;
 
+use copilot_agent_reports::AgentReportsState;
 use copilot_agents::AgentsState;
 use copilot_auth::{Fernet, JwtCodec};
 use copilot_connectors::{ConnectorsState, Verifiers};
@@ -208,6 +210,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The MinIO data store (copilot-objectstore): the upload and the agents'
     // Velociraptor artifact files.
     "/api/agent_data_store",
+    // The agents' reports (copilot-agent-reports): vulnerabilities.
+    "/api/vulnerabilities",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -241,6 +245,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_velociraptor::REQUIREMENTS);
     all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::datastore::REQUIREMENTS);
+    all.extend(copilot_agent_reports::requirements());
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -316,6 +321,8 @@ pub struct App {
     /// The MinIO object store (`/api/agent_data_store`, the incidents'
     /// files).
     pub objectstore: ObjectStore,
+    /// The agents' report routers (`/api/vulnerabilities`).
+    pub agent_reports: AgentReportsState,
 }
 
 impl App {
@@ -422,6 +429,12 @@ impl App {
         };
         let objectstore = ObjectStore::from_env(&cfg.minio)
             .map_err(|e| anyhow::anyhow!("MinIO settings: {e}"))?;
+        let agent_reports = AgentReportsState {
+            ctx: ctx.clone(),
+            wazuh: wazuh.clone(),
+            store: objectstore.clone(),
+            epss: agents.epss.clone(),
+        };
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -463,6 +476,7 @@ impl App {
                 .context("building the provisioning-worker client")?,
             agents,
             objectstore,
+            agent_reports,
         })
     }
 
@@ -659,6 +673,15 @@ impl App {
             .nest(
                 "/api/flows",
                 copilot_velociraptor::flows_router(self.velociraptor_state()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .nest(
+                "/api/vulnerabilities",
+                copilot_agent_reports::vulnerabilities::router(self.agent_reports.clone()).layer(
                     from_fn_with_state(
                         self.wazuh.legacy.clone(),
                         copilot_wazuh::decoded_slash_to_legacy,

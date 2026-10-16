@@ -30,6 +30,8 @@ sqlx = { workspace = true }
 reqwest = { workspace = true }
 regex = { workspace = true }
 url = { workspace = true }
+# httpx decodes the gzip/deflate answers it asks for (the single-CVE EPSS lookup).
+flate2 = { workspace = true }
 
 [lints]
 workspace = true
