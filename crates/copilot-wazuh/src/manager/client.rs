@@ -300,6 +300,20 @@ impl ManagerHttp {
         })
     }
 
+    /// `verify_wazuh_manager_credentials`'s one call: the status of
+    /// `GET /security/user/authenticate`, or the exception's text.
+    pub async fn authenticate(&self, row: &ConnectorRow) -> Result<u16, String> {
+        let auth = rq::basic_auth(
+            row.connector_username.as_deref(),
+            row.connector_password.as_deref(),
+        )
+        .ok_or_else(|| "'latin-1' codec can't encode the credentials".to_string())?;
+        let url = format!("{}/security/user/authenticate", row.connector_url);
+        self.send(Method::GET, &url, &[], &[("authorization", auth)], None)
+            .await
+            .map(|r| r.status)
+    }
+
     /// `create_wazuh_manager_client(name)`: the bearer token, or `None`.
     async fn token(&self, row: Option<&ConnectorRow>) -> Option<String> {
         let row = row?;

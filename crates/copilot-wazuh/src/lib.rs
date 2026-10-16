@@ -10,6 +10,7 @@
 //!   exception texts, for the manager
 //! - [`manager`] — the manager's token flow and `/api/wazuh_manager`
 //! - [`pyops`] — Python's dict/list/str operations and their error texts
+//! - [`verify`] — the two connectors' verification for `/api/connectors`
 //! - [`pymodel`] — Pydantic models over upstream JSON (lax coercion and the
 //!   `ValidationError` texts the routes put into responses)
 //! - [`pyjson_error`] — CPython's `json` error messages
@@ -29,6 +30,7 @@ pub mod pyjson_error;
 pub mod pymodel;
 pub mod pyops;
 pub mod requests;
+pub mod verify;
 
 use std::sync::OnceLock;
 

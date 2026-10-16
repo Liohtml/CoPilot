@@ -110,9 +110,12 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customers/{customer_code}/notification_routes",
     "/api/customers/{customer_code}/notification_dispatch_log",
     "/api/customers/{customer_code}/shuffle_integrations",
-    // The connector list and rows; the YAML upload (a file on the Python
-    // host) stays in Python.
+    // The connector list, rows, updates and verification; a connector whose
+    // tool has no Rust verifier is updated and verified by Python, and the YAML
+    // upload (a file on the Python host) stays there.
     "GET /api/connectors",
+    "PUT /api/connectors",
+    "POST /api/connectors/verify",
     // The Wazuh indexer: every route of its three routers.
     "/api/alerts",
     "/api/wazuh_indexer",
@@ -309,7 +312,7 @@ impl App {
             dispatcher,
             legacy,
             scheduler,
-            verifiers: Verifiers::default(),
+            verifiers: Verifiers::new(copilot_wazuh::verify::verifiers(&wazuh)),
             wazuh,
         })
     }

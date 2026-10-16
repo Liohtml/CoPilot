@@ -94,7 +94,7 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-notifications` | `app/notifications/` (routes, services, channels, schemas); `app/customer_portal/services/branding.py` merge and the report palette (moved here from `copilot-identity`, which re-exports them) | every notification route (customer and internal routes, Shuffle integrations, the dispatch log, channel catalog, Resend quota, named templates and preview, manual send, Talon's dispatch, `POST /notifications/events`); the dispatch pipeline and its log; the webhook, Teams, Resend and Shuffle providers; `DispatchingSink`, the in-process `NotificationSink` |
 | `copilot-markdown` | `app/notifications/utils/markdown_html.py` (markdown-it-py 4.2 `gfm-like`, `html=False`; mdurl; CPython punycode) | Markdown → inline-styled HTML for emails, a line-by-line port pinned by `markdown_vectors.json` (`scripts/gen-markdown-vectors.py`; character tables by `gen-markdown-tables.py`) |
 | `copilot-scheduler` | `app/schedulers/` (`scheduler.py`, `routes/scheduler.py`, `utils/universal.py:record_job_success`), `app/audit/services/retention.py` | the job runner (APScheduler's interval semantics on tokio: fixed grid, coalesce, one instance, 1 s misfire grace), the hand-over rule and run lock, `/api/scheduler/*` (reads from APScheduler's `apscheduler_jobs` store through a read-only pickle decoder pinned by `apscheduler_vectors.json`, `scripts/gen-apscheduler-vectors.py`; run/start/pause), `prune_audit_log`; the palace jobs register from `copilot-ai-analyst`; `copilot jobs` and `doctor` list each job's owner |
-| `copilot-connectors` | `app/connectors/{routes,services,schema,utils,cache}.py` | `/api/connectors` reads (list, one row with `history_logs`); the verifier registry tool crates plug into; the YAML upload (a file on the Python host) stays in Python |
+| `copilot-connectors` | `app/connectors/{routes,services,schema,utils,cache}.py` | `/api/connectors`: the list, one row with `history_logs`, the update (write, verification, `connector.update` audit) and `POST /verify/{id}`; the verifier registry tool crates plug into (`ConnectorVerifier`; today `Wazuh-Indexer` and `Wazuh-Manager` from `copilot-wazuh`) — a connector without a Rust verifier is updated and verified by Python; the YAML upload (a file on the Python host) stays in Python |
 | `copilot-wazuh` | `app/connectors/wazuh_indexer/` and `app/connectors/wazuh_manager/` (routes, services, schema, `utils/universal.py`), the elasticsearch7 7.10.1 and `requests` 2.33 clients | the Wazuh indexer: `/api/alerts` (9 routes), `/api/wazuh_indexer` (7), `/api/snapshots` (10, the schedule CRUD on `index_snapshot_schedules` included); the Wazuh manager: `/api/wazuh_manager` rules, rule files and the rule-file upload, groups and the group configuration, the six MITRE listings, the restart (15 routes; the disabled-rule routes, `/rule/exclude`, the Atomic Red Team routes and the two MITRE alert searches stay in Python); an elasticsearch7-exact HTTP client (`es.rs`), `requests`' URL preparation and texts (`requests.rs`, `requests_vectors.json`), Pydantic-exact response models for upstream data (`pymodel.rs`), Python's dict/list/str semantics on upstream JSON (`pyops.rs`), CPython's `json` error texts (`pyjson_error.rs`) |
 | `copilot-gateway` | — | legacy proxy (its notification bridge sink is no longer wired); deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
@@ -478,7 +478,17 @@ query (`e2e_connectors.rs`, `test_connector_cache.py`, and the parity suite,
 which rotates a row behind each process's back). While a legacy backend is
 configured the Rust TTL stays capped at 60 s as a second bound.
 `copilot-connectors` serves `GET /api/connectors` and `/{id}` (`history_logs`
-read as `selectinload` reads them); the YAML upload writes a file on the
+read as `selectinload` reads them), `PUT /{id}` and `POST /verify/{id}`. An
+update writes the row, answers with it as the ORM held it after the commit
+(the old `connector_verified`, the fresh timestamp with its microseconds),
+then verifies the connector and records `connector.update`, in Python's
+order. Verification needs the tool's client, so a crate registers a
+`ConnectorVerifier` under its connector names (`copilot-wazuh`: the indexer's
+`cluster.health()`, the manager's authenticate call). A connector Python
+verifies and no Rust crate does is handed to Python whole — after the same
+404 and validation checks — and this process forgets its cached row when
+Python has answered; without a legacy backend it is updated here and its
+`connector_verified` left alone. The YAML upload writes a file on the
 Python host and stays there.
 
 **Wazuh indexer.** `copilot-wazuh` answers the three indexer routers
@@ -582,6 +592,7 @@ not provoked.
 | a snapshot index pattern Python's `re` and Rust's `regex` disagree on (a broken one, a look-around, a back-reference) | `re.error`'s text, or a match | `regex`'s text in `Failed to create snapshot: …` | a different regex engine; the `*` patterns operators write match alike (`re.match(f"^{p}$")` is reproduced, alternations included) |
 | the Wazuh manager's token after its connector row changes (URL, user or password) | reused, keyed by the connector name, for up to 10 minutes: sent to a new URL, it is answered 401 and only then replaced | a token is reused only for the row it was issued against: the first call after a change authenticates | a credential is never sent to a host that did not issue it |
 | a raw manager answer whose Content-Type names a charset other than UTF-8 or Latin-1, or none for a type that is neither `text/*` nor JSON | that codec, or charset_normalizer's guess | UTF-8, invalid bytes replaced | Wazuh answers in UTF-8 (not provoked) |
+| `connectors.connector_last_updated` written by an update or a verification | `datetime.now()`: the process's local time (UTC in the image) | UTC | as the agent healthcheck clock; equal in the shipped image (not provoked) |
 | a calendar's timezone name (`PUT /soc_management/calendars`) | whatever `zoneinfo` finds on the host: its zoneinfo files, else the `tzdata` package — a host without the backward links refuses `US/Eastern` or `Asia/Calcutta`, and a file such as `localtime` or `posixrules` passes | the IANA database compiled into chrono-tz 0.10: every canonical and backward name, nothing else (422 `Unknown timezone '…'`) | the same names on every host; rules follow chrono-tz's IANA release, not the host's (only the Rust side is asserted, the Python side depends on the host) |
 
 ---

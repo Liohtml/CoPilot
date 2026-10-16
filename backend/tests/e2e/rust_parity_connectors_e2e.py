@@ -1589,6 +1589,277 @@ async def main():
     )
     await both("restart: no Wazuh-Manager connector", "POST", f"{M}/management/restart", t_admin)
 
+    # ======================================================================
+    print("\n=== E. connector writes and verification ===")
+    es3 = Recorder(es_answer, "e3")
+    mgr3 = Recorder(mgr_answer, "m3")
+    gone = Recorder(es_answer, "gone")
+    gone.stop()
+    START = "2026-01-02 03:04:05"
+    idx_id = await add_connector("Wazuh-Indexer", "https://old-indexer.parity.test:9200", "x", "y")
+    mgr_id = await add_connector("Wazuh-Manager", "https://old-manager.parity.test:55000", "x", "y")
+    other_id = await add_connector(f"Parity-Other-{SFX}", "https://other.parity.test", "u", "p")
+    admin_id = (await rows("SELECT id FROM `user` WHERE username = :n", n=ADMIN))[0]["id"]
+
+    async def reset(conn_id, url, user, pw):
+        await sql(
+            "UPDATE connectors SET connector_url = :u, connector_username = :user, connector_password = :pw, connector_api_key = NULL, "
+            "connector_extra_data = NULL, connector_verified = 0, connector_last_updated = :t WHERE id = :i",
+            u=url,
+            user=user,
+            pw=pw,
+            t=START,
+            i=conn_id,
+        )
+
+    async def row_of(conn_id):
+        found = await rows(
+            "SELECT connector_url, connector_username, connector_password, connector_api_key, connector_extra_data, connector_verified, "
+            "connector_last_updated FROM connectors WHERE id = :i",
+            i=conn_id,
+        )
+        if not found:
+            return None
+        r = dict(found[0])
+        r["connector_last_updated"] = "unchanged" if str(r["connector_last_updated"]) == START else "now"
+        return r
+
+    async def audits_after(conn_id, last_id, want):
+        for _ in range(50):
+            found = await rows(
+                "SELECT id, action, actor_user_id, actor_username, customer_code, entity_type, entity_id, result, old_value, new_value, "
+                "source_ip, details FROM audit_log WHERE entity_type = 'connector' AND entity_id = :e AND id > :l ORDER BY id",
+                e=str(conn_id),
+                l=last_id,
+            )
+            if len(found) >= want:
+                break
+            await asyncio.sleep(0.1)
+        return [{k: v for k, v in a.items() if k != "id"} for a in found]
+
+    async def last_audit_id():
+        return (await rows("SELECT COALESCE(MAX(id), 0) AS m FROM audit_log"))[0]["m"]
+
+    async def write(name, method, path, tok, conn_id, start, body=None, rec=None, audited=0):
+        """One write on each backend from the same starting row: response, outbound requests, row, audit rows."""
+        got = {}
+        for tag, client in (("py", py), ("rs", rs)):
+            await reset(conn_id, *start)
+            if method == "POST":
+                # A verification reads the row by name, through the cache.
+                await settle()
+            if rec is not None:
+                rec.captured.clear()
+            before = await last_audit_id()
+            r = await call(client, method, path, tok, body)
+            got[tag] = {
+                "status": r.status_code,
+                "body": masked(body_of(r)),
+                "outbound": normalised(list(rec.captured)) if rec is not None else [],
+                "row": await row_of(conn_id),
+                "audit": await audits_after(conn_id, before, audited),
+            }
+        same_effects = json.dumps(got["py"], default=str) == json.dumps(got["rs"], default=str)
+        check(
+            f"{name} [{got['py']['status']}]",
+            same_effects and len(got["py"]["audit"]) == audited,
+            f"python {json.dumps(got['py'], default=str)[:2500]}\n        rust   {json.dumps(got['rs'], default=str)[:2500]}",
+        )
+        return got
+
+    good_idx = (es3.url, ES_USER, ES_PASS)
+    good_mgr = (mgr3.url, MGR_USER, MGR_PASS)
+    upd = {
+        "connector_url": es3.url,
+        "connector_username": ES_USER,
+        "connector_password": ES_PASS,
+        "connector_api_key": "k",
+        "connector_extra_data": "ORG,BUCKET",
+    }
+
+    # -- E1. guards and validation --------------------------------------------------
+    await same("update: no token", "PUT", f"/api/connectors/{idx_id}", None, upd)
+    await same("update: analyst", "PUT", f"/api/connectors/{idx_id}", t_analyst, upd)
+    await same("update: malformed JSON before the token", "PUT", f"/api/connectors/{idx_id}", None, raw=b"{bad", ctype="application/json")
+    await same("update: path int", "PUT", "/api/connectors/abc", t_admin, upd)
+    await same("update: connector_url required, username a string", "PUT", f"/api/connectors/{idx_id}", t_admin, {"connector_username": 5})
+    await same("update: no body", "PUT", f"/api/connectors/{idx_id}", t_admin)
+    await same("update: missing connector", "PUT", "/api/connectors/987654321", t_admin, upd)
+    await same("verify: no token", "POST", f"/api/connectors/verify/{idx_id}")
+    await same("verify: portal user", "POST", f"/api/connectors/verify/{idx_id}", t_portal)
+    await same("verify: path int", "POST", "/api/connectors/verify/abc", t_admin)
+    await same("verify: missing connector", "POST", "/api/connectors/verify/987654321", t_analyst)
+
+    # -- E2. the indexer --------------------------------------------------------------
+    first = await write(
+        "update the indexer: verified on the way",
+        "PUT",
+        f"/api/connectors/{idx_id}",
+        t_admin,
+        idx_id,
+        ("https://old-indexer.parity.test:9200", "x", "y"),
+        upd,
+        es3,
+        audited=1,
+    )
+    check(
+        "the update is answered before the verification, the row after it",
+        first["rs"]["body"]["connector"]["connector_verified"] is False
+        and first["rs"]["row"]["connector_verified"] == 1
+        and len(first["rs"]["outbound"]) == 1
+        and first["rs"]["audit"][0]["actor_user_id"] == admin_id,
+        json.dumps(first["rs"], default=str)[:1500],
+    )
+    await write(
+        "update the indexer: credentials refused",
+        "PUT",
+        f"/api/connectors/{idx_id}",
+        t_admin,
+        idx_id,
+        good_idx,
+        {**upd, "connector_password": "wrong"},
+        es3,
+        audited=1,
+    )
+    await write(
+        "update the indexer: only the URL (the rest cleared)",
+        "PUT",
+        f"/api/connectors/{idx_id}",
+        t_admin,
+        idx_id,
+        good_idx,
+        {"connector_url": es3.url},
+        es3,
+        audited=1,
+    )
+    await write("verify the indexer", "POST", f"/api/connectors/verify/{idx_id}", t_analyst, idx_id, good_idx, rec=es3)
+    await write(
+        "verify the indexer: credentials refused",
+        "POST",
+        f"/api/connectors/verify/{idx_id}",
+        t_admin,
+        idx_id,
+        (es3.url, ES_USER, "wrong"),
+        rec=es3,
+    )
+    await write(
+        "verify the indexer: no password",
+        "POST",
+        f"/api/connectors/verify/{idx_id}",
+        t_admin,
+        idx_id,
+        (es3.url, ES_USER, None),
+        rec=es3,
+    )
+    await write(
+        "verify the indexer: an unparsable port",
+        "POST",
+        f"/api/connectors/verify/{idx_id}",
+        t_admin,
+        idx_id,
+        ("http://indexer:port", ES_USER, ES_PASS),
+        rec=es3,
+    )
+    await write(
+        "verify the indexer: refusing connections",
+        "POST",
+        f"/api/connectors/verify/{idx_id}",
+        t_admin,
+        idx_id,
+        (gone.url, ES_USER, ES_PASS),
+    )
+
+    # -- E3. the manager --------------------------------------------------------------
+    mupd = {"connector_url": mgr3.url, "connector_username": MGR_USER, "connector_password": MGR_PASS}
+    await write(
+        "update the manager: verified on the way",
+        "PUT",
+        f"/api/connectors/{mgr_id}",
+        t_admin,
+        mgr_id,
+        ("https://old-manager.parity.test:55000", "x", "y"),
+        mupd,
+        mgr3,
+        audited=1,
+    )
+    await write(
+        "update the manager: credentials refused",
+        "PUT",
+        f"/api/connectors/{mgr_id}",
+        t_admin,
+        mgr_id,
+        good_mgr,
+        {**mupd, "connector_password": "wrong"},
+        mgr3,
+        audited=1,
+    )
+    await write("verify the manager", "POST", f"/api/connectors/verify/{mgr_id}", t_admin, mgr_id, good_mgr, rec=mgr3)
+    await write(
+        "verify the manager: credentials refused",
+        "POST",
+        f"/api/connectors/verify/{mgr_id}",
+        t_admin,
+        mgr_id,
+        (mgr3.url, MGR_USER, "wrong"),
+        rec=mgr3,
+    )
+    await write(
+        "verify the manager: no user",
+        "POST",
+        f"/api/connectors/verify/{mgr_id}",
+        t_admin,
+        mgr_id,
+        (mgr3.url, None, MGR_PASS),
+        rec=mgr3,
+    )
+    await write(
+        "verify the manager: refusing connections",
+        "POST",
+        f"/api/connectors/verify/{mgr_id}",
+        t_admin,
+        mgr_id,
+        (gone.url, MGR_USER, MGR_PASS),
+    )
+    await write(
+        "verify the manager: a password Latin-1 cannot carry",
+        "POST",
+        f"/api/connectors/verify/{mgr_id}",
+        t_admin,
+        mgr_id,
+        (mgr3.url, MGR_USER, "€"),
+        rec=mgr3,
+    )
+
+    # -- E4. a connector neither backend verifies ---------------------------------------
+    await write(
+        "update a connector no service verifies",
+        "PUT",
+        f"/api/connectors/{other_id}",
+        t_admin,
+        other_id,
+        ("https://other.parity.test", "u", "p"),
+        {"connector_url": "https://other2.parity.test", "connector_extra_data": "x"},
+        audited=1,
+    )
+    await write(
+        "verify a connector no service verifies",
+        "POST",
+        f"/api/connectors/verify/{other_id}",
+        t_admin,
+        other_id,
+        ("https://other.parity.test", "u", "p"),
+    )
+
+    for conn_id in (idx_id, mgr_id, other_id):
+        await sql("DELETE FROM connectors WHERE id = :i", i=conn_id)
+    await sql(
+        "DELETE FROM audit_log WHERE entity_type = 'connector' AND entity_id IN (:a, :b, :c)",
+        a=str(idx_id),
+        b=str(mgr_id),
+        c=str(other_id),
+    )
+    await settle()
+
     await py.aclose()
     await rs.aclose()
     failed = [n for n, ok in results if not ok]
