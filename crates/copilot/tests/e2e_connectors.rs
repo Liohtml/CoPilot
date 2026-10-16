@@ -225,3 +225,236 @@ async fn connector_reads_are_admin_only_and_carry_history() {
 
     drop_connector(&h, id).await;
 }
+
+/// Point the deployment's `name` connector at `url` for one test; returns
+/// what to put back (`None`: the row did not exist and is deleted again).
+async fn borrow_connector(
+    h: &Harness,
+    name: &str,
+    url: &str,
+    user: &str,
+    pass: &str,
+) -> (i64, Option<(String, Option<String>, Option<String>)>) {
+    let existing: Option<(i64, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id, connector_url, connector_username, connector_password FROM connectors \
+         WHERE connector_name = ? ORDER BY id LIMIT 1",
+    )
+    .bind(name)
+    .fetch_optional(h.db.pool())
+    .await
+    .unwrap();
+    match existing {
+        Some((id, old_url, old_user, old_pass)) => {
+            sqlx::query(
+                "UPDATE connectors SET connector_url = ?, connector_username = ?, \
+                 connector_password = ? WHERE id = ?",
+            )
+            .bind(url)
+            .bind(user)
+            .bind(pass)
+            .bind(id)
+            .execute(h.db.pool())
+            .await
+            .unwrap();
+            (id, Some((old_url, old_user, old_pass)))
+        }
+        None => (connector(h, name, url, Some(user), Some(pass)).await, None),
+    }
+}
+
+async fn give_back(h: &Harness, id: i64, old: Option<(String, Option<String>, Option<String>)>) {
+    match old {
+        Some((url, user, pass)) => {
+            sqlx::query(
+                "UPDATE connectors SET connector_url = ?, connector_username = ?, \
+                 connector_password = ? WHERE id = ?",
+            )
+            .bind(url)
+            .bind(user)
+            .bind(pass)
+            .bind(id)
+            .execute(h.db.pool())
+            .await
+            .unwrap();
+        }
+        None => drop_connector(h, id).await,
+    }
+}
+
+const BASIC: &str = "Basic aW5kZXhlcjpwdy1lMmU="; // indexer:pw-e2e
+
+#[tokio::test]
+async fn indexer_calls_carry_the_connector_row_and_retry_like_elasticsearch7() {
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let s = &h.suffix;
+    let es = wiremock::MockServer::start().await;
+    let (id, old) = borrow_connector(&h, "Wazuh-Indexer", &es.uri(), "indexer", "pw-e2e").await;
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+
+    Mock::given(method("GET"))
+        .and(path("/_cluster/health"))
+        .and(header("authorization", BASIC))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "cluster_name": "wazuh-cluster", "status": "green", "timed_out": false,
+            "number_of_nodes": 3, "number_of_data_nodes": 3, "discovered_master": true,
+            "discovered_cluster_manager": true, "active_primary_shards": 10, "active_shards": 20,
+            "relocating_shards": 0, "initializing_shards": 0, "unassigned_shards": 1,
+            "delayed_unassigned_shards": 0, "number_of_pending_tasks": 0,
+            "number_of_in_flight_fetch": 0, "task_max_waiting_in_queue_millis": 0,
+            "active_shards_percent_as_number": 95.5
+        })))
+        .expect(1)
+        .mount(&es)
+        .await;
+    let (status, body) = h
+        .call("GET", "/api/wazuh_indexer/health", Some(&analyst), None)
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["cluster_health"]["cluster_name"],
+        json!("wazuh-cluster")
+    );
+    assert_eq!(
+        body["cluster_health"]["active_shards_percent_as_number"],
+        json!(95.5)
+    );
+    assert_eq!(body["success"], json!(true));
+
+    // The portal never reaches the indexer.
+    let (status, _) = h
+        .call("GET", "/api/wazuh_indexer/health", Some(&portal), None)
+        .await;
+    assert_eq!(status, 403);
+
+    // 503 is retried ten times (`max_retries=10`); the shards route lets
+    // the `TransportError` escape, uvicorn's bare 500.
+    Mock::given(method("GET"))
+        .and(path("/_cat/shards"))
+        .respond_with(
+            ResponseTemplate::new(503).set_body_json(json!({"error": "busy", "status": 503})),
+        )
+        .expect(11)
+        .mount(&es)
+        .await;
+    let (status, body) = h
+        .call("GET", "/api/wazuh_indexer/shards", Some(&analyst), None)
+        .await;
+    assert_eq!(status, 500, "{body}");
+    assert_eq!(body, json!("Internal Server Error"));
+    es.verify().await;
+    give_back(&h, id, old).await;
+}
+
+#[tokio::test]
+async fn snapshot_schedules_are_rows_of_index_snapshot_schedules() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let s = &h.suffix;
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let name = format!("nightly {s}");
+
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/snapshots/schedules",
+            Some(&admin),
+            Some(
+                json!({"name": name, "index_pattern": "wazuh-alerts-*", "repository": "backup",
+                        "scheduled_hour": 2, "timezone": "Europe/Berlin"}),
+            ),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let sid = body["schedule"]["id"].as_i64().unwrap();
+    assert_eq!(body["schedule"]["snapshot_prefix"], json!("scheduled"));
+    assert_eq!(body["schedule"]["skip_write_indices"], json!(true));
+    let stored: (String, String, i64, Option<i64>) = sqlx::query_as(
+        "SELECT name, timezone, enabled, scheduled_hour FROM index_snapshot_schedules WHERE id = ?",
+    )
+    .bind(sid)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(stored, (name.clone(), "Europe/Berlin".into(), 1, Some(2)));
+
+    // Admin only, with `get_current_user(scopes=["admin"])`'s text.
+    let (status, body) = h
+        .call("GET", "/api/snapshots/schedules", Some(&analyst), None)
+        .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (
+            403,
+            json!("Insufficient permissions. Required scope: admin")
+        )
+    );
+
+    // An update writes only what it is sent; an explicit null clears.
+    let (status, body) = h
+        .call(
+            "PUT",
+            &format!("/api/snapshots/schedules/{sid}"),
+            Some(&admin),
+            Some(json!({"enabled": false, "scheduled_hour": null, "retention_days": 30})),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let stored: (String, i64, Option<i64>, Option<i64>) = sqlx::query_as(
+        "SELECT name, enabled, scheduled_hour, retention_days FROM index_snapshot_schedules WHERE id = ?",
+    )
+    .bind(sid)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(stored, (name.clone(), 0, None, Some(30)));
+
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/snapshots/schedules?enabled_only=true",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert!(
+        body["schedules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["id"] != json!(sid)),
+        "a disabled schedule is listed as enabled"
+    );
+
+    let (status, _) = h
+        .call(
+            "DELETE",
+            &format!("/api/snapshots/schedules/{sid}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        h.scalar_i64(&format!(
+            "SELECT COUNT(*) FROM index_snapshot_schedules WHERE id = {sid}"
+        ))
+        .await,
+        0
+    );
+    let (status, body) = h
+        .call(
+            "DELETE",
+            &format!("/api/snapshots/schedules/{sid}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, 404, "{body}");
+}

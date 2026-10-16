@@ -1,0 +1,36 @@
+[package]
+name = "copilot-wazuh"
+description = "Wazuh indexer and manager connectors: the elasticsearch-py and requests clients as CoPilot uses them, /api/alerts, /api/wazuh_indexer, /api/snapshots, /api/wazuh_manager"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-connectors = { workspace = true }
+copilot-scheduler = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+reqwest = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+sqlx = { workspace = true }
+regex = { workspace = true }
+base64 = { workspace = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

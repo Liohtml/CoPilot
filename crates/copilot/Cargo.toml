@@ -29,6 +29,7 @@ copilot-incidents = { workspace = true }
 copilot-sla = { workspace = true }
 copilot-scheduler = { workspace = true }
 copilot-connectors = { workspace = true }
+copilot-wazuh = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

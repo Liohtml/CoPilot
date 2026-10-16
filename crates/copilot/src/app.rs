@@ -50,6 +50,7 @@ use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
 use copilot_scheduler::{OptIn, Scheduler, SchedulerState};
 use copilot_talon::{TalonConnector, TalonState};
+use copilot_wazuh::WazuhState;
 use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
 use copilot_web::{ApiError, AppContext, AppDeps};
 use copilot_webauthn::RelyingParty;
@@ -109,6 +110,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The connector list and rows; the YAML upload (a file on the Python
     // host) stays in Python.
     "GET /api/connectors",
+    // The Wazuh indexer: every route of its three routers.
+    "/api/alerts",
+    "/api/wazuh_indexer",
+    "/api/snapshots",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -132,6 +137,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_sla::REQUIREMENTS);
     all.extend_from_slice(copilot_notifications::db::REQUIREMENTS);
     all.extend_from_slice(copilot_connectors::REQUIREMENTS);
+    all.extend_from_slice(copilot_wazuh::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -186,6 +192,8 @@ pub struct App {
     pub scheduler: Scheduler,
     /// The connectors this build verifies itself (`/api/connectors`).
     pub verifiers: Verifiers,
+    /// The Wazuh indexer and manager clients.
+    pub wazuh: WazuhState,
 }
 
 impl App {
@@ -246,6 +254,7 @@ impl App {
             http: reqwest::Client::new(),
             log_handled_errors: true,
         });
+        let wazuh = WazuhState::new(ctx.clone()).context("building the Wazuh clients")?;
         let scheduler = Scheduler::new(
             ctx.db.clone(),
             OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
@@ -279,6 +288,7 @@ impl App {
             legacy,
             scheduler,
             verifiers: Verifiers::default(),
+            wazuh,
         })
     }
 
@@ -356,6 +366,18 @@ impl App {
                 ctx: self.ctx.clone(),
                 dispatcher: self.dispatcher.clone(),
             }))
+            .nest(
+                "/api/alerts",
+                copilot_wazuh::indexer::routes::alerts_router(self.wazuh.clone()),
+            )
+            .nest(
+                "/api/wazuh_indexer",
+                copilot_wazuh::indexer::routes::monitoring_router(self.wazuh.clone()),
+            )
+            .nest(
+                "/api/snapshots",
+                copilot_wazuh::indexer::routes::snapshots_router(self.wazuh.clone()),
+            )
             .nest(
                 "/api/connectors",
                 copilot_connectors::router(ConnectorsState {

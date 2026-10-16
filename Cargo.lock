@@ -479,6 +479,7 @@ dependencies = [
  "copilot-scheduler",
  "copilot-sla",
  "copilot-talon",
+ "copilot-wazuh",
  "copilot-web",
  "copilot-webauthn",
  "http",
@@ -823,6 +824,34 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "copilot-wazuh"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "chrono-tz",
+ "copilot-auth",
+ "copilot-connectors",
+ "copilot-core",
+ "copilot-db",
+ "copilot-scheduler",
+ "copilot-web",
+ "futures",
+ "http",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
  "tokio",
  "tracing",
  "wiremock",

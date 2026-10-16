@@ -94,6 +94,7 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-markdown` | `app/notifications/utils/markdown_html.py` (markdown-it-py 4.2 `gfm-like`, `html=False`; mdurl; CPython punycode) | Markdown → inline-styled HTML for emails, a line-by-line port pinned by `markdown_vectors.json` (`scripts/gen-markdown-vectors.py`; character tables by `gen-markdown-tables.py`) |
 | `copilot-scheduler` | `app/schedulers/` (`scheduler.py`, `routes/scheduler.py`, `utils/universal.py:record_job_success`), `app/audit/services/retention.py` | the job runner (APScheduler's interval semantics on tokio: fixed grid, coalesce, one instance, 1 s misfire grace), the hand-over rule and run lock, `/api/scheduler/*` (reads from APScheduler's `apscheduler_jobs` store through a read-only pickle decoder pinned by `apscheduler_vectors.json`, `scripts/gen-apscheduler-vectors.py`; run/start/pause), `prune_audit_log`; the palace jobs register from `copilot-ai-analyst`; `copilot jobs` and `doctor` list each job's owner |
 | `copilot-connectors` | `app/connectors/{routes,services,schema,utils,cache}.py` | `/api/connectors` reads (list, one row with `history_logs`); the verifier registry tool crates plug into; the YAML upload (a file on the Python host) stays in Python |
+| `copilot-wazuh` | `app/connectors/wazuh_indexer/` (routes, services, schema, `utils/universal.py`), the elasticsearch7 7.10.1 client | the Wazuh indexer: `/api/alerts` (9 routes), `/api/wazuh_indexer` (7), `/api/snapshots` (10, the schedule CRUD on `index_snapshot_schedules` included); an elasticsearch7-exact HTTP client (`es.rs`), Pydantic-exact response models for upstream data (`pymodel.rs`), CPython's `json` error texts (`pyjson_error.rs`) |
 | `copilot-gateway` | — | legacy proxy (its notification bridge sink is no longer wired); deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
 
@@ -458,6 +459,26 @@ configured the Rust TTL stays capped at 60 s as a second bound.
 read as `selectinload` reads them); the YAML upload writes a file on the
 Python host and stays there.
 
+**Wazuh indexer.** `copilot-wazuh` answers the three indexer routers
+(`/api/alerts`, `/api/wazuh_indexer`, `/api/snapshots`) and talks to the
+indexer the way elasticsearch7 7.10.1 does: the same paths (`quote(safe=",*")`),
+query strings, compact JSON bodies, `Basic` auth (latin-1, as urllib3), the
+sync client's headers or `AsyncElasticsearch`'s (`Accept: */*`), ten immediate
+retries on a connection error or a 502/503/504 and none on a timeout, and
+`TransportError`'s classes and texts (`RequestError(400, '…', …)`,
+`ConnectionError(<urllib3…>: Failed to establish a new connection: …)`), so
+the 500 an analyst sees reads the same. Certificates are not verified, as
+Python's `verify_certs=False` (indexers ship self-signed certificates). What
+Python validates upstream answers with (`ClusterHealth`, `SnapshotStatus`, …)
+is validated with the same models and error texts (`pymodel.rs`). The parity
+suite (`rust_parity_connectors_e2e.py`) puts a recording stand-in in front of
+both backends and compares, besides the responses, every request each one
+sends. The tenant rules are Python's: `/indices`, `/indices/size-per-customer`
+and the Graylog alert routes narrow to the caller's customers; the other alert
+routes read every index an analyst names, as in Python (a follow-up for both
+backends: Wazuh alert indices mix tenants, so scoping them means a filter on
+`agent_labels_customer`).
+
 ---
 
 ## 4. Differences by design
@@ -514,6 +535,8 @@ not provoked.
 | a delivery with an invalid header (webhook `headers`, a Shuffle `Org-Id`, an API key) to an unreachable host | h11 checks headers after connecting: the connection error | checked before connecting: the header error | same texts whenever the host answers |
 | a header value with a control character other than tab | sent (h11 allows `\x01`–`\x08`, `\x0e`–`\x1f`) | `LocalProtocolError: Illegal header value …` | the `http` crate cannot carry them |
 | an `xn--` autolink host that decodes to a lone surrogate | the surrogate in the link text | the label left encoded | a Rust string cannot hold one |
+| the indexer refusing connections | `ConnectionError(<urllib3.connection.HTTPConnection object at 0x7f…>: …)` | the same text with `object at 0x0` | there is no Python object; the parity suite masks the address |
+| a snapshot index pattern Python's `re` and Rust's `regex` disagree on (a broken one, a look-around, a back-reference) | `re.error`'s text, or a match | `regex`'s text in `Failed to create snapshot: …` | a different regex engine; the `*` patterns operators write match alike (`re.match(f"^{p}$")` is reproduced, alternations included) |
 
 ---
 
@@ -554,7 +577,7 @@ Python backend today: ~200 k lines in 930 files.
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
 | **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer, MinIO and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (and with them the exclusion draft and dry-run) wait for an indexer port, the DOCX/PDF reports and customer report generation, download and deletion for MinIO and a PDF renderer |
-| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs; `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
+| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs; `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh — the connector reads, the cross-process cache check and the indexer **done** (`copilot-connectors`, `copilot-wazuh`) —, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the
