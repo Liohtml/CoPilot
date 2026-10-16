@@ -16,6 +16,8 @@
 //! - [`templates`]      — case templates applied to cases (selection, snapshot copy)
 //! - [`notify`]         — the incidents' notification events
 //! - [`routes`]         — the HTTP routes
+//! - [`datastore`]      — the MinIO routes (case files, report templates, case deletion,
+//!   customer report files) over `copilot-objectstore`
 //!
 //! SLA bookkeeping (#1187) goes through `copilot_sla::SlaRecorder`, called
 //! where the Python routes call `SlaLifecycleRecorder`.
@@ -28,6 +30,7 @@
 pub mod access;
 pub mod cases;
 pub mod config;
+pub mod datastore;
 pub mod dictionary;
 pub mod events;
 pub mod files;

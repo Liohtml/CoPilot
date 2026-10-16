@@ -84,7 +84,7 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-ai-analyst` | `app/ai_analyst/`, palace drainer/sweeper jobs | `/api/ai_analyst/*` (25 routes), consolidation digest, CPython-exact `difflib` |
 | `copilot-customer-portal` | `app/customer_portal/` (`ai_reports`, `ai_requests`) | `/api/customer_portal/ai_reports/*` (6 routes); every other portal path is still proxied |
 | `copilot-customers` | `app/customers/` (reads) | `GET /api/customers/*` (7 routes); creating, changing and deleting customers provisions Graylog/Grafana/Wazuh and stays in Python |
-| `copilot-incidents` | `app/incidents/` (`routes/db_operations.py` and its services, `services/case_events.py`, `customer_reply.py`, `status_cascade.py`, the template half of `case_tasks.py`, `notification_enrichment.py`, `middleware/tag_access.py`'s single-alert rule, `services/verdict_stats.py`), the incident builders of `notifications/services/event_builders.py` | `/api/incidents/db_operations`: every `GET` (35) and the writes — alert creation, status (one and bulk), verdict, verdict state, escalation, assignment (one and bulk), comments, contexts, assets, IoCs, tags, deletion (one, bulk, by title); case creation (from scratch, from an alert), links, comments, status with the alert cascade, escalation, severity, assignment, customer move; the AI-trigger and Shuffle rows; the field dictionaries; the case-task writes and the manual template apply. `/api/incidents/case_templates`: the template and template-task CRUD. `/api/incidents/tag_access`: settings, user and role tags, `/me`. `/api/incidents/alerts`: the Velociraptor Sigma exclusion rules (create with the link comment, list, read, edit, toggle, delete). `/api/incidents/report`: the CSV case exports. `/api/incidents/customer_reports`: the report list and the visibility switch. Still Python: the three Wazuh-indexer reads, the MinIO routes (case files, report templates, `DELETE /case/{id}`), `POST /case/notification` (Shuffle), the template library and `/case_templates/suggest`, the rest of `/alerts` (creation and Sigma ingest read the indexer or Graylog; the exclusion draft and dry-run share the ingest's event flattening and matcher), the DOCX/PDF case reports and the customer report generation, download and deletion (MinIO, docxtpl, wkhtmltopdf) |
+| `copilot-incidents` | `app/incidents/` (`routes/db_operations.py` and its services, `services/case_events.py`, `customer_reply.py`, `status_cascade.py`, the template half of `case_tasks.py`, `notification_enrichment.py`, `middleware/tag_access.py`'s single-alert rule, `services/verdict_stats.py`), the incident builders of `notifications/services/event_builders.py` | `/api/incidents/db_operations`: every `GET` (35) and the writes — alert creation, status (one and bulk), verdict, verdict state, escalation, assignment (one and bulk), comments, contexts, assets, IoCs, tags, deletion (one, bulk, by title); case creation (from scratch, from an alert), links, comments, status with the alert cascade, escalation, severity, assignment, customer move; the AI-trigger and Shuffle rows; the field dictionaries; the case-task writes and the manual template apply. `/api/incidents/case_templates`: the template and template-task CRUD. `/api/incidents/tag_access`: settings, user and role tags, `/me`. `/api/incidents/alerts`: the Velociraptor Sigma exclusion rules (create with the link comment, list, read, edit, toggle, delete). `/api/incidents/report`: the CSV case exports. `/api/incidents/customer_reports`: the report list, the visibility switch, the download and the delete. The MinIO routes (case files, report templates, `DELETE /case/{id}`, the report download and delete) are the `datastore` module, on `copilot-objectstore`. Still Python: the three Wazuh-indexer reads, `POST /case-report-template/default-template` (files on the Python host), `POST /case/notification` (Shuffle), the template library and `/case_templates/suggest`, the rest of `/alerts` (creation and Sigma ingest read the indexer or Graylog; the exclusion draft and dry-run share the ingest's event flattening and matcher), the DOCX/PDF case reports and the customer report generation (docxtpl, wkhtmltopdf) |
 | `copilot-sla` | `app/soc_management/` (`domain/{lifecycle,policy,calendar,sla}.py`, `services/lifecycle.py`, `services/{policy,calendars}.py`, `retarget_open`), `app/incidents/services/alert_severity.py` | the SLA lifecycle recorder the incidents routes call (#1187): tracking rows opened with snapshotted targets, guarded write-once milestones, pause/resume on `PENDING_CUSTOMER`, re-targeting on case severity and link changes and on a policy or calendar save (`retarget.rs`); SLA evaluation and compliance (`evaluate.rs`); policy and calendar storage, stored rows read with Python's semantics; 24/7 and business-hours clocks (IANA zones via `chrono-tz`) |
 | `copilot-soc-management` | `app/soc_management/` (`routes/`, `schema/`, `domain/{analytics,stats,periods,notices}.py`, `services/{datasets,metrics,policy,calendars,notifier}.py`), `app/customer_portal/{routes,services,schema}/sla.py`, the SLA builder of `notifications/services/event_builders.py` | `/api/soc_management/*` (11 of its 12 routes: dashboard, sources, attention, item clocks, policies and overrides, calendars; not the PDF `GET /report`); `/api/customer_portal/sla/*` (4 routes); the `notify_sla_transitions` job |
 | `copilot-healthchecks` | `app/healthchecks/agents/` (database half) | `GET /api/healthcheck/*` (4 routes); the classification is shared with the customer routes. `POST /logs` (Wazuh indexer) stays in Python |
@@ -97,6 +97,7 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-connectors` | `app/connectors/{routes,services,schema,utils,cache}.py` | `/api/connectors`: the list, one row with `history_logs`, the update (write, verification, `connector.update` audit) and `POST /verify/{id}`; the verifier registry tool crates plug into (`ConnectorVerifier`; today `Wazuh-Indexer` and `Wazuh-Manager` from `copilot-wazuh`, `Velociraptor` from `copilot-velociraptor`) — a connector without a Rust verifier is updated and verified by Python; the YAML upload (a file on the Python host) stays in Python |
 | `copilot-wazuh` | `app/connectors/wazuh_indexer/` and `app/connectors/wazuh_manager/` (routes, services, schema, `utils/universal.py`), the elasticsearch7 7.10.1 and `requests` 2.33 clients | the Wazuh indexer: `/api/alerts` (9 routes), `/api/wazuh_indexer` (7), `/api/snapshots` (10, the schedule CRUD on `index_snapshot_schedules` included); the Wazuh manager: `/api/wazuh_manager` rules, rule files and the rule-file upload, groups and the group configuration, the six MITRE listings, the restart (15 routes; the disabled-rule routes, `/rule/exclude`, the Atomic Red Team routes and the two MITRE alert searches stay in Python); an elasticsearch7-exact HTTP client (`es.rs`), `requests`' URL preparation and texts (`requests.rs`, `requests_vectors.json`), Pydantic-exact response models for upstream data (`pymodel.rs`), Python's dict/list/str semantics on upstream JSON (`pyops.rs`); CPython's `json` error texts and urllib3's object address are `copilot-upstream`'s; the `invoke_snapshot_schedules` and `resize_wazuh_index_fields` jobs; the connector verifiers |
 | `copilot-upstream` | what the connector helpers did with a tool's answers: `requests`/`niquests` (`PreparedRequest`, urllib3's URL parsing and error texts), CPython's `json` (`dumps`, `JSONDecodeError`), Pydantic models, FastAPI's `serialize_json` | shared by the connector crates: a `requests`-like client (`http.rs`), a Pydantic engine (`model.rs`: lax coercion, smart unions, aliases, defaults, validators, `ValidationError` text, JSON-mode dumps; `model_vectors.json` pins 905 probes, `scripts/gen-connector-model-vectors.py`), Python exceptions as values (`py.rs`: `KeyError`, `TypeError`, … and what the handlers make of them), pydantic-core's JSON writer and FastAPI's 422 (`respond.rs`) |
+| `copilot-objectstore` | `app/data_store/` (`data_store_session.py`, `data_store_operations.py`, `data_store_routes.py`), miniopy-async 1.23.5 (`Minio`, `signer.py`, `helpers.py`'s `BaseURL`, `error.py`) over aiohttp 3.13 and `aiohttp_retry`, Starlette's `StreamingResponse` and `GZipMiddleware` | the S3 client (`client.rs`: requests, region discovery, retries, multipart, ListObjectsV2; `sigv4.rs`; `endpoint.rs`; `xml.rs`, the ElementTree subset it reads answers with; `error.rs`, the library's exceptions and texts), `create_session()` from Python's variables (`store.rs`), the data-store operations line by line (`ops.rs`), multipart bodies read before the guard, downloads and path decoding (`web.rs`); `/api/agent_data_store` (5 routes) |
 | `copilot-graylog` | `app/connectors/graylog/` (routes, services, schema, `utils/universal.py`, `utils/routing.py`), `app/connectors/event_shipper/` and `app/integrations/utils/event_shipper.py` (GELF over TCP) | `/api/graylog/*` (21 routes); `GraylogClient` for later ports: the four helpers with Python's error behaviour, the 6.x/7.x version probe and `EntityKind` (the four wrapped creation endpoints), the URL allowlist fallback |
 | `copilot-influxdb` | `app/connectors/influxdb/` (routes, services, schema, `utils/universal.py`), the Flux side of `influxdb_client` 1.50 (`InfluxDBClientAsync` over aiohttp, `FluxCsvParser`) | `/api/influxdb/*` (10 routes: alerts, check names, hosts, seven metrics views); `InfluxClient` for later ports: Flux queries with the library's request, timeout and error texts, the v2 REST helpers (`_influxdb_request`, the org-id lookup) for the checks provisioning |
 | `copilot-grafana` | `app/connectors/grafana/` (`routes/reporting.py` but `/generate-report`, `routes/user.py`, `services/reporting.py`'s reads, `services/user.py`, `schema/reporting.py`, `schema/user.py`, `utils/universal.py`), `grafana_client` 5.1 (`GrafanaApi.from_url`, `GrafanaClient` over niquests) | `/api/reporting/orgs`, `/dashboards/{org_id}`, `/dashboard/{uid}`, `/dashboard_panels/{uid}`, `POST /generate_iframe_links`, `POST /api/user/user/organization/add`; `GrafanaClient` for later ports (organizations, the org switch, search, dashboards, folders). Still Python: `POST /api/reporting/generate-report` (Playwright, the licence check), `POST /api/grafana/dashboards` (its templates live under `backend/`, outside the Rust image) |
@@ -293,11 +294,13 @@ gets the analyst role's tags.
 **Incidents.** `copilot-incidents` answers `/api/incidents/db_operations`
 but for the paths and methods it does not route, which fall through to
 Python: `/available-source/*`, `/available-indices/*` and `/mappings/*` read
-the Wazuh indexer; the case files and report templates (`/case/data-store/*`
-uploads, deletes and downloads, `/case-report-template*`, `DELETE
-/case/{id}`) live in MinIO — and the Python client dials `MINIO_URL:9000`
-whatever the environment, so no MinIO stand-in can sit beside the parity
-harness to prove a port; `POST /case/notification` calls Shuffle.
+the Wazuh indexer; `POST /case-report-template/default-template` uploads the
+templates shipped under `backend/app/incidents/templates` (files on the
+Python host, in the order its directory lists them); `POST
+/case/notification` calls Shuffle. The case files and report templates
+(`/case/data-store/*` uploads, deletes and downloads, `/case-report-template*`,
+`DELETE /case/{id}`) are `copilot-incidents`' `datastore` module over
+`copilot-objectstore` (see **MinIO** below).
 `copilot-incidents` also answers `/api/incidents/case_templates` (the
 template CRUD; the library, fetched from GitHub into that process's cache,
 and `/suggest` stay Python — the binary routes those static paths to the
@@ -369,11 +372,14 @@ after the process's local time like `datetime.now()`) and, of
 `/api/incidents/customer_reports`, the list (CoPilot and the portal: the
 caller's customers narrowed by `customer_codes`, a portal user's own and
 shared reports, `generated_at DESC` issued as SQLAlchemy's statement for the
-same tie order, `filters_json` read with `json.loads`' grammar) and the
-portal-visibility switch. The case DOCX/PDF reports and customer report
-generation, download and deletion stay Python: their templates and files
-live in MinIO (see above), and they render through docxtpl, the Jinja report
-templates and wkhtmltopdf.
+same tie order, `filters_json` read with `json.loads`' grammar), the
+portal-visibility switch and, over MinIO, the download (a portal user only a
+shared report or their own, a report not `completed` the 409, a file MinIO
+cannot give the bare 500 of the `RuntimeError`) and the delete (an admin or
+the creator; a file MinIO cannot remove is logged, the row deleted all the
+same). The case DOCX/PDF reports and customer report generation stay
+Python: they render through docxtpl, the Jinja report templates and
+wkhtmltopdf.
 
 **SLA clocks.** `copilot-sla` is the recorder the routes call where Python
 calls `SlaLifecycleRecorder` — after the change is committed, on its own
@@ -650,6 +656,88 @@ stack-id routes read and write `customersmeta` by customer name
 `NO_PROXY` as both libraries do (`trust_env`); aiohttp (InfluxDB) does not,
 and neither does its port.
 
+**MinIO.** `copilot-objectstore` is miniopy-async 1.23.5 over aiohttp, not a
+generic S3 client. It reads Python's variables — the endpoint
+`{MINIO_URL}:9000` (Python hard-codes the port), `MINIO_ROOT_USER` and
+`MINIO_ROOT_PASSWORD` (an empty user is anonymous), `MINIO_SECURE` with
+environs' boolean spellings (anything else stops the binary, as it stops
+Python's import) — and `COPILOT_MINIO_ENDPOINT`, which replaces the endpoint
+for the e2e and parity suites only. Every operation opens its own client, as
+`create_session()` does, so it starts with the bucket's `GET ?location=`
+(signed for `us-east-1`). The requests are the library's, path-style:
+`Host`, the `User-Agent`, `Content-Length` when there is a body, the body's
+SHA-256 as `x-amz-content-sha256` (`UNSIGNED-PAYLOAD` and `Content-MD5` over
+HTTPS), `x-amz-date`, SigV4 over all but `User-Agent`, then aiohttp's own
+`Accept`, `Accept-Encoding`, `Content-Length: 0` and default
+`Content-Type`. An answer of 500 or more is asked again, five attempts in
+all (`aiohttp_retry`'s `ExponentialRetry`); a transport error is not. A file
+over 5 MiB goes up in parts, three at a time, and the upload is aborted
+when one fails. A listing is ListObjectsV2 with `encoding-type=url`, and
+its later pages carry the token as both `continuation-token` and
+`start-after` (the library reuses its variable). A download is `stat_object`
+then `get_object(bucket, object, session)` — the session lands in `offset`,
+so the request carries `Range: bytes=<aiohttp.client.ClientSession object at
+0x…>-`, which MinIO ignores; it is sent here with `0x7f0000000000`.
+Failures are the library's exceptions with their texts (`S3Error` from an
+XML body, or from the status of a `HEAD`; `InvalidResponseError`;
+`ServerError`; aiohttp's `Cannot connect to host H:P ssl:default [Connect
+call failed ('ip', P)]`; the bucket- and object-name `ValueError`s), and
+`ops.rs` keeps what `data_store_operations.py` makes of them: a download
+that fails lists the bucket (for the log) and is the 404 `File {object} not
+found in bucket {bucket}`, a delete that fails is that 404 too, the report
+helpers return the error text. TLS is verified (against `SSL_CERT_FILE`, else
+the Mozilla roots), and no proxy is used (`trust_env=False`).
+
+The routes read FastAPI's way: the multipart body first (Starlette's 400 for
+a body that does not parse, before the token), then the token, the path (as
+uvicorn decodes it: an invalid escape is U+FFFD, not a 400), the case's,
+report's or agent's owner, the query, the form (`UploadFile` missing, or a
+text field where a file belongs, are Pydantic's 422 texts). A path with an
+encoded `/` is handed to Python, which routes the decoded path.
+`/api/agent_data_store`'s upload writes any bucket and object for any
+admin or analyst — no tenant prefix, as in Python (portal users were shut
+out by GHSA-6j26-wcv6-gp3f); whether it should be admin-only or confined to
+a tenant's prefix is a product decision, not a port's. The artifact routes
+check the agent's owner (`verify_agent_id_access`, fail-closed) and address
+the object as `velociraptor-artifacts/{agent}/{flow}/{file}`, not the row's
+key, as Python does. `DELETE /case/{id}` runs Python's statements in
+Python's order: comments, alert links, tasks and timeline, then per file
+(`delete_file_from_case`) the object, the row and a commit — which also
+commits the earlier deletes — a MinIO failure only logged; then the case. A
+file whose object cannot be removed keeps its row, so the case's foreign key
+fails the last statement: Python's 500 `Failed to delete case:
+(pymysql.err.IntegrityError) (1451, …)` with SQLAlchemy's `[SQL: …]
+[parameters: …]` lines, after the first file's commit took the comments
+with it. An upload answers with the created row in SQLModel's order (the
+given fields, then `id` and `upload_time` with its microseconds).
+
+Downloads are `StreamingResponse(BytesIO(data))` as they leave copilot.py:
+the headers latin-1 (a file name that is not makes Starlette raise
+`UnicodeEncodeError`, the `ValueError` handler's 400), a `text/*` type gains
+`; charset=utf-8`, no `Content-Length` but the artifact's, chunked. Then
+`GZipMiddleware(minimum_size=1000)`, whose streaming branch ignores the
+minimum: a non-empty download gains `Vary: Accept-Encoding` and, when the
+request's `Accept-Encoding` holds `gzip` (a substring test — `gzip;q=0`
+too), is gzipped at level 9 whatever its size or type, images included, its
+`Content-Length` dropped; an empty one and a `text/event-stream` one pass
+untouched. The compression layer's rules (1000 bytes, never images) are not
+these, so a download carries `copilot_web::middleware::Uncompressed` and the
+layer leaves it alone.
+
+Still Python, each for a reason: `POST
+/case-report-template/default-template` (files on the Python host), the
+DOCX/PDF case reports and the customer report generation (docxtpl,
+wkhtmltopdf), `/api/sysmon_config` (with the active-response module),
+Velociraptor's artifact collection (`upload_agent_artifact_file`, after a
+gRPC collection), the agents' vulnerability and SCA report files (with
+`/api/agents`), the `file_analysis` state store, the Copilot Searches custom
+repositories, the sidebar's MinIO indicator and the startup
+`create_buckets()`. The parity suite (`rust_parity_objectstore_e2e.py`)
+points both backends at one recording S3 stand-in, verifies every
+request's signature with the shared secret and compares the canonical
+requests (method, path, query, headers, payload hash) rather than the
+signatures, which carry the time.
+
 ---
 
 ## 4. Differences by design
@@ -730,6 +818,14 @@ not provoked.
 | `str()` of a gRPC error in the Velociraptor connection check | grpc-core prints `debug_error_string`'s two keys in hash order, which varies from one error to the next | `grpc_status` first | Python's text is not reproducible; the parity suite orders Python's |
 | an `api.config.yaml` that is not YAML | `Unable to parse config file from <path>: ` and PyYAML's description (`while parsing a flow sequence\n  in "<unicode string>", line 1, column 17: …`) | the same opening, then libyaml's (`did not find expected ',' or ']' at line 2 column 1, while parsing a flow sequence at line 1 column 17`) | PyYAML's parser is not ported; the check fails alike |
 | the `grpc-timeout` a Velociraptor call carries | grpc-core's encoding of the time left when the call starts, which its clock usually reads a millisecond over the timeout: 300 s goes as `301S`, 5 s as `5010m` | the same encoding of the timeout itself: `5M`, `5S` (what grpcio sends when its clock reads it exactly) | a clock artefact; the server's deadline differs by under a second (the parity stand-in compares deadlines to the nearest 5 s) |
+| a `MINIO_URL` naming Amazon S3 or Aliyun OSS (`*.amazonaws.com`, `*.aliyuncs.com`) | virtual-hosted-style requests, the region taken from the host | every operation refused with a `ValueError` naming the endpoint | CoPilot deploys MinIO; the AWS addressing rules are not ported (not provoked) |
+| a bucket name Python's `re.IGNORECASE` matches through a non-ASCII case fold (U+212A, the Kelvin sign, for `k`; U+017F for `s`) | passes the name check; MinIO refuses it | `invalid bucket name …` before any request | only ASCII names exist (not provoked) |
+| an S3 answer that is not well-formed XML | expat's `ParseError` text | the same exception, its text close to expat's (`not well-formed (invalid token): line L, column C`) | no S3 server sends one (not provoked) |
+| a listing whose server never stops paging | pages for ever | stops after 100,000 pages | a request cannot hold a worker (not provoked) |
+| the download's `Range` | the address of the aiohttp session (`0x7f…`) | `0x7f0000000000` | the address differs between any two processes; MinIO ignores the header; the parity suite masks it |
+| a multipart upload whose part fails | the parts still running finish (`asyncio.gather`), then the abort | the parts still running are dropped, then the abort | same error, same abort; fewer requests (not provoked) |
+| a MinIO answer that times out, or a certificate MinIO's TLS presents that does not verify | aiohttp's and `ssl`'s texts | the same exceptions, texts close to theirs | the libraries' words (not provoked) |
+| `SSL_CERT_FILE` set only in the `.env` file | read: environs' `read_env` puts the file in `os.environ` | not read: the process environment only | compose's `env_file` puts it in the environment (not provoked) |
 
 ---
 
@@ -769,8 +865,8 @@ Python backend today: ~200 k lines in 930 files.
 | **0 — done** | foundation; `ai_analyst` (2.4 k), `connectors/talon` | the Talon integration surface |
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
-| **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer, MinIO and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (and with them the exclusion draft and dry-run) wait for an indexer port, the DOCX/PDF reports and customer report generation, download and deletion for MinIO and a PDF renderer |
-| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs (`invoke_snapshot_schedules`, `resize_wazuh_index_fields` and `agent_sync` **done**); `agents` (9.8 k) — **`/api/agents` done** (`copilot-agents` on `copilot-velociraptor`, the `agent_sync` job; `rust_parity_agents_e2e.py`; `/api/vulnerabilities`, `/api/sca` and `/api/syscollector` still Python) —, `soc_management` (4.4 k) — **done** but its PDF report (`copilot-soc-management`: dashboard, policies, calendars, the portal's SLA page, `notify_sla_transitions`; `rust_parity_soc_e2e.py`), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh — the connector reads, the cross-process cache check, the indexer, the manager routes the UI uses and the two indexer jobs **done** (`copilot-connectors`, `copilot-wazuh`) —, Graylog, Velociraptor — `/api/artifacts` but its two MinIO collections and `/api/flows` **done** (`copilot-velociraptor`) —, …) and `integrations` (37.5 k), one vendor at a time — **Graylog, InfluxDB, Grafana and Portainer done** (`copilot-graylog`, `copilot-influxdb`, `copilot-grafana`, `copilot-portainer` on `copilot-upstream`, `rust_parity_graylog_e2e.py`; Grafana's PDF report and dashboard provisioning and Portainer's stack creation still Python); `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
+| **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (and with them the exclusion draft and dry-run) wait for an indexer port, the DOCX/PDF reports and customer report generation for a PDF renderer (the MinIO routes moved in phase 4) |
+| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes — **done** (`copilot-objectstore`: case files, report templates, `DELETE /case/{id}`, the customer reports' download and delete, `/api/agent_data_store`; `rust_parity_objectstore_e2e.py`; the default-template upload, Sysmon configs, Velociraptor's collection upload, the agents' report files and `file_analysis` still Python) — and DOCX/PDF reports, the connector-bound scheduler jobs (`invoke_snapshot_schedules`, `resize_wazuh_index_fields` and `agent_sync` **done**); `agents` (9.8 k) — **`/api/agents` done** (`copilot-agents` on `copilot-velociraptor`, the `agent_sync` job; `rust_parity_agents_e2e.py`; `/api/vulnerabilities`, `/api/sca` and `/api/syscollector` still Python) —, `soc_management` (4.4 k) — **done** but its PDF report (`copilot-soc-management`: dashboard, policies, calendars, the portal's SLA page, `notify_sla_transitions`; `rust_parity_soc_e2e.py`), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh — the connector reads, the cross-process cache check, the indexer, the manager routes the UI uses and the two indexer jobs **done** (`copilot-connectors`, `copilot-wazuh`) —, Graylog, Velociraptor — `/api/artifacts` but its two MinIO collections and `/api/flows` **done** (`copilot-velociraptor`) —, …) and `integrations` (37.5 k), one vendor at a time — **Graylog, InfluxDB, Grafana and Portainer done** (`copilot-graylog`, `copilot-influxdb`, `copilot-grafana`, `copilot-portainer` on `copilot-upstream`, `rust_parity_graylog_e2e.py`; Grafana's PDF report and dashboard provisioning and Portainer's stack creation still Python); `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the
