@@ -114,6 +114,19 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/alerts",
     "/api/wazuh_indexer",
     "/api/snapshots",
+    // The Wazuh manager: rules and rule files (the upload included), groups,
+    // the six MITRE listings and the restart; /rule/disabled|disable|enable
+    // (no `disabledrule` table), /rule/exclude, the Atomic Red Team routes and
+    // the two MITRE alert searches stay in Python.
+    "/api/wazuh_manager/rules",
+    "/api/wazuh_manager/groups",
+    "GET /api/wazuh_manager/mitre/groups",
+    "GET /api/wazuh_manager/mitre/mitigations",
+    "GET /api/wazuh_manager/mitre/references",
+    "GET /api/wazuh_manager/mitre/software",
+    "GET /api/wazuh_manager/mitre/tactics",
+    "GET /api/wazuh_manager/mitre/techniques",
+    "POST /api/wazuh_manager/management/restart",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -254,7 +267,8 @@ impl App {
             http: reqwest::Client::new(),
             log_handled_errors: true,
         });
-        let wazuh = WazuhState::new(ctx.clone()).context("building the Wazuh clients")?;
+        let wazuh =
+            WazuhState::new(ctx.clone(), legacy.clone()).context("building the Wazuh clients")?;
         let scheduler = Scheduler::new(
             ctx.db.clone(),
             OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
@@ -290,6 +304,14 @@ impl App {
             verifiers: Verifiers::default(),
             wazuh,
         })
+    }
+
+    /// One Wazuh router, with the encoded-slash hand-off to Python.
+    fn wazuh_routes(&self, build: fn(WazuhState) -> Router) -> Router {
+        build(self.wazuh.clone()).layer(axum::middleware::from_fn_with_state(
+            self.wazuh.legacy.clone(),
+            copilot_wazuh::decoded_slash_to_legacy,
+        ))
     }
 
     /// The full router: ported modules, health, and the legacy fallback.
@@ -368,15 +390,19 @@ impl App {
             }))
             .nest(
                 "/api/alerts",
-                copilot_wazuh::indexer::routes::alerts_router(self.wazuh.clone()),
+                self.wazuh_routes(copilot_wazuh::indexer::routes::alerts_router),
             )
             .nest(
                 "/api/wazuh_indexer",
-                copilot_wazuh::indexer::routes::monitoring_router(self.wazuh.clone()),
+                self.wazuh_routes(copilot_wazuh::indexer::routes::monitoring_router),
             )
             .nest(
                 "/api/snapshots",
-                copilot_wazuh::indexer::routes::snapshots_router(self.wazuh.clone()),
+                self.wazuh_routes(copilot_wazuh::indexer::routes::snapshots_router),
+            )
+            .nest(
+                "/api/wazuh_manager",
+                self.wazuh_routes(copilot_wazuh::manager::routes::router),
             )
             .nest(
                 "/api/connectors",

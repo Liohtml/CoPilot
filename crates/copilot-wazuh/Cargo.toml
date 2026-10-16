@@ -12,6 +12,7 @@ copilot-db = { workspace = true }
 copilot-auth = { workspace = true }
 copilot-web = { workspace = true }
 copilot-connectors = { workspace = true }
+copilot-gateway = { workspace = true }
 copilot-scheduler = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -23,11 +24,14 @@ axum = { workspace = true }
 http = { workspace = true }
 bytes = { workspace = true }
 reqwest = { workspace = true }
+hyper = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 sqlx = { workspace = true }
 regex = { workspace = true }
 base64 = { workspace = true }
+idna = { workspace = true }
+url = { workspace = true }
 
 [dev-dependencies]
 wiremock = { workspace = true }

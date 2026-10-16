@@ -22,6 +22,7 @@ import datetime
 import json
 import os
 import re
+import socket
 import sys
 import threading
 import uuid
@@ -82,8 +83,9 @@ TRANSPORT_HEADERS = {
 
 
 class Recorder:
-    def __init__(self, answer):
+    def __init__(self, answer, name="r"):
         self.answer = answer
+        self.name = name
         self.captured = []
         self.mode = {}
         recorder = self
@@ -109,9 +111,28 @@ class Recorder:
             def log_message(self, *args):
                 pass
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class Server(ThreadingHTTPServer):
+            daemon_threads = True
+
+            def process_request(self, request, client_address):
+                recorder.sockets.append(request)
+                super().process_request(request, client_address)
+
+        self.sockets = []
+        self.server = Server(("127.0.0.1", 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def stop(self):
+        """Go away as a crashed service does: no listener, open connections reset."""
+        self.server.shutdown()
+        self.server.server_close()
+        for sock in self.sockets:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
+            except OSError:
+                pass
 
 
 #: A UTC timestamp a backend computed at call time: digits masked, shape kept.
@@ -435,16 +456,262 @@ def es_answer(rec, method, raw_path, headers, body):
     return 404, "text/plain", b"no stub for " + raw_path.encode(), None
 
 
+MGR_USER, MGR_PASS = "parity-wazuh", f"mgr-{SFX}"
+MGR_PASS2 = f"mgr2-{SFX}"
+RULES = [
+    {
+        "filename": "0010-rules_config.xml",
+        "relative_dirname": "ruleset/rules",
+        "id": 1,
+        "level": 0,
+        "status": "enabled",
+        "details": {"category": "syslog", "noalert": "1"},
+        "pci_dss": [],
+        "gpg13": [],
+        "gdpr": [],
+        "hipaa": [],
+        "nist-800-53": ["AU.6"],
+        "tsc": [],
+        "mitre": [],
+        "groups": ["syslog"],
+        "description": "Generic template for all syslog rules.",
+    },
+    {
+        "filename": "local_rules.xml",
+        "relative_dirname": "etc/rules",
+        "id": "100001",
+        "level": 5.0,
+        "status": "enabled",
+        "description": "Local é",
+        "extra": True,
+    },
+]
+MITRE = {
+    "tactics": [
+        {
+            "description": "The adversary is trying to get in.",
+            "name": "Initial Access",
+            "id": "TA0001",
+            "modified_time": "2019-07-19T17:41:41.425000Z",
+            "created_time": "2018-10-17T00:14:20.652000Z",
+            "short_name": "initial-access",
+            "techniques": ["T1078", "T1566"],
+            "references": ["https://attack.mitre.org/tactics/TA0001"],
+            "url": "https://attack.mitre.org/tactics/TA0001",
+            "source": "mitre-attack",
+            "external_id": "TA0001",
+        },
+    ],
+    "techniques": [
+        {
+            "description": "Valid accounts.",
+            "name": "Valid Accounts",
+            "id": "attack-pattern--b17a1a56",
+            "modified_time": "2023-04-03T18:55:00Z",
+            "created_time": "2017-05-31T21:31:00Z",
+            "tactics": ["TA0001", "TA0003"],
+            "url": "https://attack.mitre.org/techniques/T1078",
+            "source": "mitre-attack",
+            "external_id": "T1078",
+            "references": [{"url": "https://example.test/a", "description": "A", "source": "mitre-attack"}, {"url": "u", "source": "s"}],
+            "mitigations": ["M1026"],
+            "mitre_version": "2.6",
+            "deprecated": 0,
+            "platforms": ["Windows"],
+        },
+        {
+            "description": "Domain accounts.",
+            "name": "Domain Accounts",
+            "id": "attack-pattern--c3d4",
+            "modified_time": "2023-04-03T18:55:00Z",
+            "created_time": "2020-03-13T20:21:54Z",
+            "tactics": ["TA0001"],
+            "url": "https://attack.mitre.org/techniques/T1078/002",
+            "source": "mitre-attack",
+            "external_id": "T1078.002",
+            "subtechnique_of": "attack-pattern--b17a1a56",
+            "remote_support": True,
+        },
+    ],
+    "software": [
+        {
+            "mitre_version": "1.0",
+            "description": "Mimikatz.",
+            "name": "Mimikatz",
+            "id": "tool--afc079f3",
+            "modified_time": "2023-03-22T03:43:58Z",
+            "created_time": "2017-05-31T21:32:31Z",
+            "groups": ["G0007"],
+            "techniques": ["T1003"],
+            "url": "https://attack.mitre.org/software/S0002",
+            "source": "mitre-attack",
+            "external_id": "S0002",
+            "type": "tool",
+            "aliases": ["Mimikatz"],
+        },
+    ],
+    "references": [
+        {"url": "https://example.test/r", "description": "R", "source": "mitre-attack", "id": "T1078", "type": "technique"},
+        {"url": "x", "source": "y"},
+    ],
+    "mitigations": [
+        {
+            "description": "Use MFA.",
+            "name": "Multi-factor Authentication",
+            "id": "course-of-action--b5dbb4c5",
+            "modified_time": "2023-03-30T21:01:44Z",
+            "created_time": "2019-06-10T20:53:36Z",
+            "techniques": ["T1078"],
+            "url": "https://attack.mitre.org/mitigations/M1032",
+            "source": "mitre-attack",
+            "external_id": "M1032",
+        },
+    ],
+    "groups": [
+        {
+            "name": "APT28",
+            "id": "intrusion-set--bef4c620",
+            "modified_time": "2024-01-01T00:00:00Z",
+            "created_time": "2017-05-31T21:31:48Z",
+            "software": ["S0002"],
+            "url": "https://attack.mitre.org/groups/G0007",
+            "external_id": "G0007",
+            "source": "mitre-attack",
+            "aliases": ["Sofacy"],
+            "country": None,
+        },
+    ],
+}
+
+
+def wazuh_items(items, **extra):
+    return {
+        "data": {"affected_items": items, "total_affected_items": len(items), "total_failed_items": 0, "failed_items": [], **extra},
+        "message": "All selected items were returned",
+        "error": 0,
+    }
+
+
+def mgr_answer(rec, method, raw_path, headers, body):
+    mode = rec.mode
+    path, _, query = raw_path.partition("?")
+    gen = mode.get("gen", 1)
+    tok = f"tok-{rec.name}-{gen}"
+    ok = lambda obj, ctype="application/json": (200, ctype, jbody(obj), None)  # noqa: E731
+
+    def err(status, title, detail):
+        return status, "application/problem+json; charset=utf-8", jbody({"title": title, "detail": detail, "error": status}), None
+
+    if path == "/security/user/authenticate":
+        accepted = {"Basic " + base64.b64encode(f"{MGR_USER}:{pw}".encode("latin-1")).decode() for pw in (MGR_PASS, MGR_PASS2)}
+        if mode.get("reject_auth") or headers.get("authorization") not in accepted:
+            return err(401, "Unauthorized", "Invalid credentials")
+        return ok({"data": {"token": tok}, "error": 0})
+    if headers.get("authorization") != f"Bearer {tok}":
+        return err(401, "Unauthorized", "The server could not verify that you are authorized to access the URL requested")
+    if mode.get("fail") and path.startswith(mode["fail"]):
+        return 500, "text/html", b"<html>boom</html>", None
+    if method == "GET" and path == "/rules":
+        if mode.get("rules_list"):
+            return ok({"data": [1, 2], "error": 0})
+        rules = RULES + (
+            [{"filename": "x", "relative_dirname": "y", "id": 2, "level": "high", "status": "enabled", "description": "bad"}]
+            if mode.get("bad_rule")
+            else []
+        )
+        return ok(wazuh_items(rules))
+    if method == "GET" and path == "/rules/files":
+        return ok(
+            wazuh_items(
+                [
+                    {"filename": "0010-rules_config.xml", "relative_dirname": "ruleset/rules", "status": "enabled"},
+                    {"filename": "local_rules.xml", "relative_dirname": "etc/rules", "status": "enabled", "x": 1},
+                ],
+            ),
+        )
+    if path.startswith("/rules/files/"):
+        name = unquote(path[len("/rules/files/") :])
+        if method == "PUT":
+            if mode.get("upload_400"):
+                return err(400, "Bad Request", "Invalid XML")
+            return ok(
+                {
+                    "data": {"affected_items": [name], "total_affected_items": 1, "failed_items": []},
+                    "message": "File was successfully updated",
+                    "error": 0,
+                },
+            )
+        if name.startswith("missing"):
+            return err(404, "Not Found", f"File {name} does not exist")
+        if "raw=True" in query:
+            if mode.get("latin1"):
+                return 200, "text/plain", "<group>ä</group>".encode(), None
+            return (
+                200,
+                "application/xml; charset=utf-8",
+                f'<group name="local">\n  <rule id="100001" level="5">é {name}</rule>\n</group>\n'.encode(),
+                None,
+            )
+        if name.startswith("empty"):
+            return ok(wazuh_items([]))
+        return ok(wazuh_items([{"group": {"@name": "local", "rule": [{"@id": "100001", "@level": "5"}]}}]))
+    if method == "GET" and path == "/groups":
+        return ok(
+            wazuh_items(
+                [
+                    {"name": "default", "count": 2, "mergedSum": "abc", "configSum": "def", "x": 1},
+                    {"name": "linux", "count": "0", "configSum": "x"},
+                ],
+            ),
+        )
+    if path.startswith("/groups/"):
+        parts = path.split("/")
+        group = unquote(parts[2])
+        if group.startswith("nogroup"):
+            return err(404, "Not Found", f"Group {group} does not exist")
+        if method == "GET" and len(parts) == 4 and parts[3] == "files":
+            return ok(wazuh_items([{"filename": "agent.conf", "hash": "ab12"}, {"filename": "merged.mg", "hash": "cd34"}]))
+        if method == "GET" and len(parts) == 5:
+            if "raw=True" in query:
+                return 200, "application/xml; charset=utf-8", b"<agent_config>\n  <labels/>\n</agent_config>\n", None
+            return ok(wazuh_items([{"agent_config": [{"labels": {"label": [{"key": "customer", "item": "acme"}]}}]}]))
+        if method == "PUT" and parts[3] == "configuration":
+            if mode.get("config_400"):
+                return err(400, "Bad Request", "Wrong XML syntax")
+            return ok(
+                {
+                    "data": {"affected_items": [group], "total_affected_items": 1},
+                    "message": "Agent configuration was successfully updated",
+                    "error": 0,
+                },
+            )
+    if method == "GET" and path.startswith("/mitre/"):
+        what = path[len("/mitre/") :]
+        items = [dict(i) for i in MITRE.get(what, [])]
+        if mode.get("bad_mitre"):
+            items.append({"name": "broken"})
+        return ok(wazuh_items(items))
+    if method == "GET" and path == "/cluster/status":
+        return ok({"data": {"enabled": mode.get("cluster", "no"), "running": "no"}, "error": 0})
+    if method == "PUT" and path in ("/manager/restart", "/cluster/restart"):
+        if mode.get("restart_400"):
+            return err(400, "Bad Request", "Restart refused")
+        return ok({"data": {"affected_items": ["node01"], "total_affected_items": 1}, "message": "Restart request sent", "error": 0})
+    return 404, "text/plain", b"no stub for " + raw_path.encode(), None
+
+
 def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
     from app.routers import connectors
     from app.routers import wazuh_indexer
+    from app.routers import wazuh_manager
 
     api = APIRouter(prefix="/api")
     api.include_router(connectors.router)
     api.include_router(wazuh_indexer.router)
+    api.include_router(wazuh_manager.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -592,14 +859,26 @@ async def main():
     await sql("DELETE FROM connectorhistory WHERE connector_id = :i", i=probe)
     await sql("DELETE FROM connectors WHERE id = :i", i=probe)
 
-    async def both(name, method, path, tok=None, body=None, rec=None, unordered=False, norm=None, raw=None, ctype="application/json"):
+    async def both(
+        name,
+        method,
+        path,
+        tok=None,
+        body=None,
+        rec=None,
+        unordered=False,
+        norm=None,
+        raw=None,
+        ctype="application/json",
+        files=None,
+    ):
         """The responses, and — with `rec` — what each backend sent to that stand-in."""
         got = {}
         responses = {}
         for tag, client in (("py", py), ("rs", rs)):
             if rec is not None:
                 rec.captured.clear()
-            responses[tag] = await call(client, method, path, tok, body, raw, ctype)
+            responses[tag] = await call(client, method, path, tok, body, raw, ctype, files)
             if rec is not None:
                 got[tag] = normalised(list(rec.captured), unordered)
         r1, r2 = responses["py"], responses["rs"]
@@ -992,6 +1271,323 @@ async def main():
     await both("alerts: no Wazuh-Indexer connector", "POST", "/api/alerts", t_analyst, {})
     await both("graylog: no Wazuh-Indexer connector", "POST", "/api/alerts/alerts/graylog", t_admin, {})
     await settle()
+
+    # ======================================================================
+    print("\n=== D. Wazuh manager ===")
+    from app.connectors.wazuh_manager.utils.universal import (
+        clear_all_wazuh_token_caches,
+    )
+
+    mgr = Recorder(mgr_answer, "m1")
+    mgr2 = Recorder(mgr_answer, "m2")
+    manager_id = await add_connector("Wazuh-Manager", mgr.url, MGR_USER, MGR_PASS)
+    M = "/api/wazuh_manager"
+    XML = b'<group name="local,">\n  <rule id="100001" level="5">\n    <description>Local \xc3\xa9</description>\n  </rule>\n</group>\n'
+
+    # -- D1. guards and validation (nothing reaches the manager) --------------------
+    await both("rules: no token", "GET", f"{M}/rules", rec=mgr)
+    await both("rules: analyst", "GET", f"{M}/rules", t_analyst, rec=mgr)
+    await both("rules: portal user", "GET", f"{M}/rules", t_portal)
+    await both("mitre: portal user", "GET", f"{M}/mitre/tactics", t_portal)
+    await both("mitre: no token", "GET", f"{M}/mitre/tactics")
+    await both("restart: analyst", "POST", f"{M}/management/restart", t_analyst, rec=mgr)
+    await both("rules: limit 0", "GET", f"{M}/rules?limit=0", t_admin, rec=mgr)
+    await both(
+        "rules: offset -1, limit 100001, a bad rule id",
+        "GET",
+        f"{M}/rules?offset=-1&limit=100001&rule_ids=5&rule_ids=x&pretty=maybe",
+        t_admin,
+        rec=mgr,
+    )
+    await both("rule files: empty limit", "GET", f"{M}/rules/files?limit=&distinct=", t_admin)
+    await both("groups: unknown hash", "GET", f"{M}/groups?hash=md4", t_admin, rec=mgr)
+    await both("group file: any type is a TypeError", "GET", f"{M}/groups/default/files/agent.conf?type=conf", t_admin, rec=mgr)
+    await both("mitre: limit not an int", "GET", f"{M}/mitre/techniques?limit=x&offset=1.5", t_analyst, rec=mgr)
+    await both("upload: no file", "PUT", f"{M}/rules/files/local_rules.xml", t_admin, rec=mgr)
+    await both(
+        "upload: a text field, not a file",
+        "PUT",
+        f"{M}/rules/files/local_rules.xml?pretty=x",
+        t_admin,
+        raw=b'--b\r\nContent-Disposition: form-data; name="file"\r\n\r\ntext\r\n--b--\r\n',
+        ctype="multipart/form-data; boundary=b",
+        rec=mgr,
+    )
+    await both(
+        "upload: malformed multipart before the token",
+        "PUT",
+        f"{M}/rules/files/local_rules.xml",
+        None,
+        raw=b"--b\r\nbroken",
+        ctype="multipart/form-data; boundary=b",
+    )
+    await both("upload: no token", "PUT", f"{M}/rules/files/local_rules.xml", None, files={"file": ("r.xml", XML, "application/xml")})
+    await both("an encoded slash is Starlette's 404", "GET", f"{M}/rules/files/a%2Fb.xml", t_admin, rec=mgr)
+
+    # -- D2. the manager answering ---------------------------------------------------
+    await both("rules (first call: a token each)", "GET", f"{M}/rules", t_admin, rec=mgr)
+    await both(
+        "rules: every filter",
+        "GET",
+        f"{M}/rules?rule_ids=1&rule_ids=100001&select=id&select=level&search=a b%26c=d/e~&q=level>5;groups=sysmon&filename=a.xml&filename=%C3%A4.xml&nist_800_53=AU.6&distinct=true&pretty=1&limit=10&offset=5",
+        t_admin,
+        rec=mgr,
+    )
+    mgr.mode["bad_rule"] = True
+    await both("rules: a rule the model refuses", "GET", f"{M}/rules", t_admin, rec=mgr)
+    mgr.mode.clear()
+    mgr.mode["rules_list"] = True
+    await both("rules: data that is a list", "GET", f"{M}/rules", t_admin, rec=mgr)
+    mgr.mode.clear()
+    await both("rule files", "GET", f"{M}/rules/files", t_admin, rec=mgr)
+    await both(
+        "rule files: filters",
+        "GET",
+        f"{M}/rules/files?status=enabled&relative_dirname=etc/rules&select=filename&filename=a&filename=b&sort=-filename",
+        t_admin,
+        rec=mgr,
+    )
+    await both("rule file (raw)", "GET", f"{M}/rules/files/local_rules.xml", t_admin, rec=mgr)
+    await both("rule file (raw, a space and é in the name)", "GET", f"{M}/rules/files/my%20rules%C3%A9.xml?pretty=true", t_admin, rec=mgr)
+    mgr.mode["latin1"] = True
+    await both("rule file (raw, text/plain read as Latin-1)", "GET", f"{M}/rules/files/local_rules.xml", t_admin, rec=mgr)
+    mgr.mode.clear()
+    await both("rule file (structured)", "GET", f"{M}/rules/files/local_rules.xml?raw=false&relative_dirname=etc/rules", t_admin, rec=mgr)
+    await both("rule file: not found (raw)", "GET", f"{M}/rules/files/missing.xml", t_admin, rec=mgr)
+    await both("rule file: not found (structured)", "GET", f"{M}/rules/files/missing.xml?raw=false", t_admin, rec=mgr)
+    await both("rule file: no content", "GET", f"{M}/rules/files/empty.xml?raw=false", t_admin, rec=mgr)
+    await both(
+        "upload",
+        "PUT",
+        f"{M}/rules/files/local_rules.xml",
+        t_admin,
+        files={"file": ("local_rules.xml", XML, "application/xml")},
+        rec=mgr,
+    )
+    await both(
+        "upload: overwrite off, a directory, odd content type",
+        "PUT",
+        f"{M}/rules/files/new.xml?overwrite=false&relative_dirname=etc/rules&pretty=true",
+        t_admin,
+        files={"file": ("new.xml", b"not xml", "image/png")},
+        rec=mgr,
+    )
+    await both(
+        "upload: an empty file",
+        "PUT",
+        f"{M}/rules/files/local_rules.xml",
+        t_admin,
+        files={"file": ("e.xml", b"", "application/xml")},
+        rec=mgr,
+    )
+    mgr.mode["upload_400"] = True
+    await both(
+        "upload: refused by the manager",
+        "PUT",
+        f"{M}/rules/files/local_rules.xml",
+        t_admin,
+        files={"file": ("r.xml", XML, "application/xml")},
+        rec=mgr,
+    )
+    mgr.mode.clear()
+    await both("groups", "GET", f"{M}/groups", t_admin, rec=mgr)
+    await both(
+        "groups: filters",
+        "GET",
+        f"{M}/groups?groups_list=default&groups_list=linux&hash=sha256&search=x&q=count>0&distinct=true",
+        t_admin,
+        rec=mgr,
+    )
+    await both("group files", "GET", f"{M}/groups/default/files?hash=md5", t_admin, rec=mgr)
+    await both("group files: unknown group", "GET", f"{M}/groups/nogroup/files", t_admin, rec=mgr)
+    await both("group file (raw)", "GET", f"{M}/groups/default/files/agent.conf", t_admin, rec=mgr)
+    await both("group file (structured)", "GET", f"{M}/groups/default/files/agent.conf?raw=false", t_admin, rec=mgr)
+    await both("group file: unknown group", "GET", f"{M}/groups/nogroup/files/agent.conf", t_admin, rec=mgr)
+    conf = b'<agent_config>\n  <labels>\n    <label key="customer">acme \xc3\xa9</label>\n  </labels>\n</agent_config>'
+    await both(
+        "group configuration",
+        "PUT",
+        f"{M}/groups/default/configuration?wait_for_complete=true",
+        t_admin,
+        raw=conf,
+        ctype="application/xml",
+        rec=mgr,
+    )
+    await both(
+        "group configuration: empty",
+        "PUT",
+        f"{M}/groups/default/configuration",
+        t_admin,
+        raw=b"  \n",
+        ctype="application/xml",
+        rec=mgr,
+    )
+    await both(
+        "group configuration: not XML",
+        "PUT",
+        f"{M}/groups/default/configuration",
+        t_admin,
+        raw=b"labels: x",
+        ctype="text/plain",
+        rec=mgr,
+    )
+    await both(
+        "group configuration: not UTF-8",
+        "PUT",
+        f"{M}/groups/default/configuration",
+        t_admin,
+        raw=b"<a>\xff</a>",
+        ctype="application/xml",
+        rec=mgr,
+    )
+    await both(
+        "group configuration: unknown group",
+        "PUT",
+        f"{M}/groups/nogroup/configuration",
+        t_admin,
+        raw=conf,
+        ctype="application/xml",
+        rec=mgr,
+    )
+    mgr.mode["config_400"] = True
+    await both(
+        "group configuration: refused",
+        "PUT",
+        f"{M}/groups/default/configuration",
+        t_admin,
+        raw=conf,
+        ctype="application/xml",
+        rec=mgr,
+    )
+    mgr.mode.clear()
+    for what in ("tactics", "techniques", "software", "references", "mitigations", "groups"):
+        await both(f"mitre {what}", "GET", f"{M}/mitre/{what}", t_analyst, rec=mgr)
+    await both(
+        "mitre techniques: every parameter",
+        "GET",
+        f"{M}/mitre/techniques?limit=5&offset=0&select=name&select=id&sort=+name&search=valid&q=name~acc",
+        t_admin,
+        rec=mgr,
+    )
+    await both("mitre references: select is not a parameter", "GET", f"{M}/mitre/references?select=url&limit=2", t_analyst, rec=mgr)
+    await both("mitre groups: an empty select", "GET", f"{M}/mitre/groups?select=", t_analyst, rec=mgr)
+    mgr.mode["bad_mitre"] = True
+    await both("mitre tactics: an item the model refuses", "GET", f"{M}/mitre/tactics", t_analyst, rec=mgr)
+    await both("mitre techniques: an item the model refuses", "GET", f"{M}/mitre/techniques", t_analyst, rec=mgr)
+    mgr.mode.clear()
+    mgr.mode["fail"] = "/mitre/software"
+    await both("mitre software: the manager failing", "GET", f"{M}/mitre/software", t_analyst, rec=mgr)
+    mgr.mode["fail"] = "/rules/files"
+    await both("rule files: the manager failing", "GET", f"{M}/rules/files", t_admin, rec=mgr)
+    mgr.mode.clear()
+    await both("restart (no cluster)", "POST", f"{M}/management/restart", t_admin, rec=mgr)
+    mgr.mode["cluster"] = "yes"
+    await both("restart (cluster)", "POST", f"{M}/management/restart", t_admin, rec=mgr)
+    mgr.mode["restart_400"] = True
+    await both("restart (cluster, refused)", "POST", f"{M}/management/restart", t_admin, rec=mgr)
+    mgr.mode["cluster"] = "maybe"
+    await both("restart (unknown cluster state, refused)", "POST", f"{M}/management/restart", t_admin, rec=mgr)
+    mgr.mode.clear()
+    mgr.mode["fail"] = "/cluster/status"
+    await both("restart: no cluster status", "POST", f"{M}/management/restart", t_admin, rec=mgr)
+    mgr.mode.clear()
+
+    # -- D3. tokens -------------------------------------------------------------------
+    mgr.mode["gen"] = 2
+    await both("an expired token: 401, a new token, the call again", "GET", f"{M}/groups", t_admin, rec=mgr)
+    mgr.mode["gen"] = 3
+    await both("an expired token on a raw read: no second try", "GET", f"{M}/rules/files/local_rules.xml", t_admin, rec=mgr)
+    await both(
+        "an expired token on an upload: no second try",
+        "PUT",
+        f"{M}/rules/files/local_rules.xml",
+        t_admin,
+        files={"file": ("r.xml", XML, "application/xml")},
+        rec=mgr,
+    )
+    mgr.mode["gen"] = 4
+    mgr.mode["reject_auth"] = True
+    await both("an expired token and credentials refused", "GET", f"{M}/rules", t_admin, rec=mgr)
+    await both("restart: credentials refused", "POST", f"{M}/management/restart", t_admin, rec=mgr)
+    mgr.mode.clear()
+    mgr.mode["gen"] = 4
+    await both("tokens again after the refusal", "GET", f"{M}/mitre/tactics", t_analyst, rec=mgr)
+
+    # By design: a token is reused only for the row it was issued against.
+    await sql("UPDATE connectors SET connector_password = :p WHERE id = :i", p=MGR_PASS2, i=manager_id)
+    await settle()
+    mgr.captured.clear()
+    r1 = await call(py, "GET", f"{M}/groups", t_admin)
+    py_calls = [c["path"] for c in mgr.captured]
+    mgr.captured.clear()
+    r2 = await call(rs, "GET", f"{M}/groups", t_admin)
+    rs_calls = [c["path"] for c in mgr.captured]
+    check(
+        "by design: a rotated password gets a new token in Rust (Python reuses the old one)",
+        r1.json() == r2.json()
+        and py_calls == ["/groups?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"]
+        and rs_calls == ["/security/user/authenticate"] + py_calls,
+        f"{py_calls} / {rs_calls}",
+    )
+    await sql("UPDATE connectors SET connector_url = :u WHERE id = :i", u=mgr2.url, i=manager_id)
+    await settle()
+    mgr2.captured.clear()
+    r1 = await call(py, "GET", f"{M}/groups", t_admin)
+    py_sent = [(c["path"].split("?")[0], c["headers"].get("authorization", "")) for c in mgr2.captured]
+    mgr2.captured.clear()
+    r2 = await call(rs, "GET", f"{M}/groups", t_admin)
+    rs_sent = [(c["path"].split("?")[0], c["headers"].get("authorization", "")) for c in mgr2.captured]
+    check(
+        "by design: a new URL is never sent the old host's token (Python sends it, gets a 401, then authenticates)",
+        r1.json() == r2.json()
+        and [p for p, _ in py_sent] == ["/groups", "/security/user/authenticate", "/groups"]
+        and py_sent[0][1] == "Bearer tok-m1-4"
+        and [p for p, _ in rs_sent] == ["/security/user/authenticate", "/groups"]
+        and all("tok-m1" not in a for _, a in rs_sent),
+        f"{py_sent} / {rs_sent}",
+    )
+    await sql("UPDATE connectors SET connector_url = :u, connector_password = :p WHERE id = :i", u=mgr.url, p=MGR_PASS, i=manager_id)
+    await settle()
+    await clear_all_wazuh_token_caches()
+    await both("back on the first manager", "GET", f"{M}/rules/files", t_admin, rec=mgr)
+
+    # -- D4. the manager gone ---------------------------------------------------------
+    mgr.stop()
+    await both("rule files: the manager refusing connections (tokens cached)", "GET", f"{M}/rules/files", t_admin, norm=masked)
+    await both(
+        "upload: the manager refusing connections",
+        "PUT",
+        f"{M}/rules/files/local_rules.xml",
+        t_admin,
+        files={"file": ("r.xml", XML, "application/xml")},
+        norm=masked,
+    )
+    await both("restart: the manager refusing connections", "POST", f"{M}/management/restart", t_admin, norm=masked)
+    await clear_all_wazuh_token_caches()
+    await sql("UPDATE connectors SET connector_password = 'wrong' WHERE id = :i", i=manager_id)
+    await settle()
+    await both("rules: no token to be had", "GET", f"{M}/rules", t_admin)
+    await both("mitre: no token to be had", "GET", f"{M}/mitre/groups", t_analyst)
+    await both(
+        "group configuration: no token to be had",
+        "PUT",
+        f"{M}/groups/default/configuration",
+        t_admin,
+        raw=conf,
+        ctype="application/xml",
+    )
+    await sql("DELETE FROM connectors WHERE id = :i", i=manager_id)
+    await settle()
+    await clear_all_wazuh_token_caches()
+    await both("rule file: no Wazuh-Manager connector", "GET", f"{M}/rules/files/local_rules.xml", t_admin)
+    await both(
+        "upload: no Wazuh-Manager connector",
+        "PUT",
+        f"{M}/rules/files/local_rules.xml",
+        t_admin,
+        files={"file": ("r.xml", XML, "application/xml")},
+    )
+    await both("restart: no Wazuh-Manager connector", "POST", f"{M}/management/restart", t_admin)
 
     await py.aclose()
     await rs.aclose()

@@ -396,7 +396,7 @@ impl Es {
 }
 
 /// The `OSError` text Python's socket layer would report.
-fn os_error_text(e: &reqwest::Error) -> String {
+pub(crate) fn os_error_text(e: &reqwest::Error) -> String {
     let mut source: Option<&(dyn std::error::Error + 'static)> = Some(e);
     while let Some(s) = source {
         if let Some(io) = s.downcast_ref::<std::io::Error>() {

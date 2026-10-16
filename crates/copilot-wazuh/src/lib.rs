@@ -6,6 +6,10 @@
 //!   configures it (paths, query order, bodies, Basic auth, retries, the
 //!   exceptions' texts); TLS unverified as in Python
 //! - [`indexer`] — `/api/alerts`, `/api/wazuh_indexer`, `/api/snapshots`
+//! - [`requests`] — `requests` 2.33's URL preparation, Basic auth and
+//!   exception texts, for the manager
+//! - [`manager`] — the manager's token flow and `/api/wazuh_manager`
+//! - [`pyops`] — Python's dict/list/str operations and their error texts
 //! - [`pymodel`] — Pydantic models over upstream JSON (lax coercion and the
 //!   `ValidationError` texts the routes put into responses)
 //! - [`pyjson_error`] — CPython's `json` error messages
@@ -20,15 +24,21 @@
 pub mod error;
 pub mod es;
 pub mod indexer;
+pub mod manager;
 pub mod pyjson_error;
 pub mod pymodel;
+pub mod pyops;
+pub mod requests;
 
 use std::sync::OnceLock;
 
-use axum::extract::FromRef;
+use axum::extract::{FromRef, OriginalUri, Request, State};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
 use regex::Regex;
 
-use copilot_web::AppContext;
+use copilot_gateway::LegacyProxy;
+use copilot_web::{ApiError, AppContext};
 
 /// State of the Wazuh routes.
 #[derive(Clone, Debug)]
@@ -37,15 +47,47 @@ pub struct WazuhState {
     pub ctx: AppContext,
     /// The indexer's HTTP stack.
     pub es: es::EsHttp,
+    /// The manager's HTTP stack and token cache.
+    pub manager: manager::client::ManagerHttp,
+    /// The Python backend, for the requests these routers must not answer.
+    pub legacy: Option<LegacyProxy>,
 }
 
 impl WazuhState {
     /// Build the clients.
-    pub fn new(ctx: AppContext) -> Result<Self, reqwest::Error> {
+    pub fn new(ctx: AppContext, legacy: Option<LegacyProxy>) -> Result<Self, reqwest::Error> {
         Ok(Self {
             ctx,
             es: es::EsHttp::new()?,
+            manager: manager::client::ManagerHttp::new()?,
+            legacy,
         })
+    }
+}
+
+/// Middleware for the Wazuh routers: a path with an encoded `/` (`%2F`)
+/// is not theirs. Starlette routes the *decoded* path, so `…/files/a%2Fb`
+/// is `…/files/a/b` there — no route of these routers, or another one —
+/// whereas axum would hand `a/b` to the `{filename}` route. Such a request
+/// goes to the Python backend (FastAPI's 404 without one).
+pub async fn decoded_slash_to_legacy(
+    State(legacy): State<Option<LegacyProxy>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let original = req
+        .extensions()
+        .get::<OriginalUri>()
+        .map_or_else(|| req.uri().clone(), |o| o.0.clone());
+    if !original.path().to_ascii_lowercase().contains("%2f") {
+        return next.run(req).await;
+    }
+    match legacy {
+        Some(proxy) => {
+            *req.uri_mut() = original;
+            proxy.forward(req).await
+        }
+        None => ApiError::RouteNotFound.into_response(),
     }
 }
 

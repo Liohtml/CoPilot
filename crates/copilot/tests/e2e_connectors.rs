@@ -458,3 +458,144 @@ async fn snapshot_schedules_are_rows_of_index_snapshot_schedules() {
         .await;
     assert_eq!(status, 404, "{body}");
 }
+
+#[tokio::test]
+async fn manager_tokens_follow_the_row_and_a_401_is_retried_once() {
+    use wiremock::matchers::{body_bytes, header, method, path, query_param};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let s = &h.suffix;
+    let mgr = wiremock::MockServer::start().await;
+    let (id, old) = borrow_connector(&h, "Wazuh-Manager", &mgr.uri(), "wazuh", "pw-1").await;
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    // wazuh:pw-1 and wazuh:pw-2.
+    let (basic1, basic2) = ("Basic d2F6dWg6cHctMQ==", "Basic d2F6dWg6cHctMg==");
+
+    // The first token is refused by the next call (expired server-side).
+    Mock::given(method("GET"))
+        .and(path("/security/user/authenticate"))
+        .and(header("authorization", basic1))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {"token": "t1"}})))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&mgr)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/security/user/authenticate"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {"token": "t2"}})))
+        .with_priority(2)
+        .mount(&mgr)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/groups"))
+        .and(header("authorization", "Bearer t1"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({"title": "Unauthorized"})))
+        .mount(&mgr)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/groups"))
+        .and(header("authorization", "Bearer t2"))
+        .and(query_param("pretty", "False"))
+        .and(query_param("limit", "500"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": {"affected_items": [{"name": "default", "count": "3"}], "total_affected_items": 1}
+        })))
+        .mount(&mgr)
+        .await;
+
+    let (status, body) = h
+        .call("GET", "/api/wazuh_manager/groups", Some(&admin), None)
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["results"],
+        json!([{"name": "default", "count": 3, "mergedSum": null, "configSum": null}])
+    );
+    let paths: Vec<String> = mgr
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| r.url.path().to_string())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "/security/user/authenticate",
+            "/groups",
+            "/security/user/authenticate",
+            "/groups"
+        ]
+    );
+
+    // Admin only, with `get_current_user(scopes=["admin"])`'s text.
+    let (status, body) = h
+        .call("GET", "/api/wazuh_manager/groups", Some(&analyst), None)
+        .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (
+            403,
+            json!("Insufficient permissions. Required scope: admin")
+        )
+    );
+
+    // The cached token serves the next call; a rotated password fetches a new one.
+    mgr.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/security/user/authenticate"))
+        .and(header("authorization", basic2))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {"token": "t3"}})))
+        .expect(1)
+        .mount(&mgr)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/rules/files/local_rules.xml"))
+        .and(header("authorization", "Bearer t3"))
+        .and(header("content-type", "application/octet-stream"))
+        .and(query_param("overwrite", "true"))
+        .and(query_param("pretty", "false"))
+        .and(body_bytes(b"<group/>".to_vec()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": {"affected_items": ["local_rules.xml"], "total_affected_items": 1}
+        })))
+        .expect(1)
+        .mount(&mgr)
+        .await;
+    h.exec(&format!(
+        "UPDATE connectors SET connector_password = 'pw-2' WHERE id = {id}"
+    ))
+    .await;
+    let boundary = "xBOUNDARYx";
+    let multipart = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"local_rules.xml\"\r\n\
+         Content-Type: application/xml\r\n\r\n<group/>\r\n--{boundary}--\r\n"
+    );
+    let req = http::Request::builder()
+        .method("PUT")
+        .uri("/api/wazuh_manager/rules/files/local_rules.xml")
+        .header("authorization", format!("Bearer {admin}"))
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(axum::body::Body::from(multipart))
+        .unwrap();
+    let resp = tower::ServiceExt::oneshot(h.router.clone(), req)
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        body["message"],
+        json!("Successfully uploaded/updated rule file: local_rules.xml")
+    );
+    mgr.verify().await;
+    give_back(&h, id, old).await;
+}

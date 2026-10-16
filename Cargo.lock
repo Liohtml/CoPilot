@@ -843,10 +843,13 @@ dependencies = [
  "copilot-connectors",
  "copilot-core",
  "copilot-db",
+ "copilot-gateway",
  "copilot-scheduler",
  "copilot-web",
  "futures",
  "http",
+ "hyper",
+ "idna",
  "regex",
  "reqwest",
  "serde",
@@ -854,6 +857,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tracing",
+ "url",
  "wiremock",
 ]
 

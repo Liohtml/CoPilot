@@ -441,15 +441,32 @@ fn safe_decode(bytes: &[u8], charset: &str) -> String {
 #[derive(Default)]
 struct Part {
     content_disposition: Option<Vec<u8>>,
+    content_type: Option<Vec<u8>>,
     field_name: String,
     data_len: usize,
     file: Option<String>,
+}
+
+/// A file part's content, for the routes that read an `UploadFile`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadPart {
+    /// The form field (`name`).
+    pub field: String,
+    /// The part's `filename`.
+    pub filename: String,
+    /// `UploadFile.content_type`: the part's first `Content-Type`, as
+    /// latin-1 text.
+    pub content_type: Option<String>,
+    /// The bytes.
+    pub data: Vec<u8>,
 }
 
 /// Starlette's `MultiPartParser` callbacks.
 struct Sink<'a> {
     charset: &'a str,
     items: Vec<(String, FormValue)>,
+    keep_files: bool,
+    uploads: Vec<UploadPart>,
     part: Part,
     header_name: Vec<u8>,
     header_value: Vec<u8>,
@@ -474,8 +491,19 @@ impl Sink<'_> {
     fn part_end(&mut self, data: &[u8]) {
         let value = match self.part.file.take() {
             None => FormValue::Text(safe_decode(data, self.charset)),
-            Some(filename) => FormValue::File { filename },
+            Some(filename) => {
+                if self.keep_files {
+                    self.uploads.push(UploadPart {
+                        field: self.part.field_name.clone(),
+                        filename: filename.clone(),
+                        content_type: self.part.content_type.as_deref().map(latin1),
+                        data: data.to_vec(),
+                    });
+                }
+                FormValue::File { filename }
+            }
         };
+        self.part.content_type = None;
         self.items
             .push((std::mem::take(&mut self.part.field_name), value));
     }
@@ -486,6 +514,10 @@ impl Sink<'_> {
             .eq_ignore_ascii_case(b"content-disposition")
         {
             self.part.content_disposition = Some(std::mem::take(&mut self.header_value));
+        } else if self.header_name.eq_ignore_ascii_case(b"content-type")
+            && self.part.content_type.is_none()
+        {
+            self.part.content_type = Some(std::mem::take(&mut self.header_value));
         }
         self.header_name.clear();
         self.header_value.clear();
@@ -544,12 +576,24 @@ enum Mp {
 
 /// python-multipart's `MultipartParser._internal_write` over the whole body.
 fn parse_multipart(boundary: &[u8], charset: &str, data: &[u8]) -> Result<FormData, FormError> {
+    parse_multipart_parts(boundary, charset, data, false).map(|(form, _)| form)
+}
+
+/// [`parse_multipart`], optionally keeping the file parts' bytes.
+fn parse_multipart_parts(
+    boundary: &[u8],
+    charset: &str,
+    data: &[u8],
+    keep_files: bool,
+) -> Result<(FormData, Vec<UploadPart>), FormError> {
     let boundary: Vec<u8> = [b"\r\n--".as_slice(), boundary].concat();
     let bl = boundary.len();
     let len = data.len();
     let mut sink = Sink {
         charset,
         items: Vec::new(),
+        keep_files,
+        uploads: Vec::new(),
         part: Part::default(),
         header_name: Vec::new(),
         header_value: Vec::new(),
@@ -776,7 +820,23 @@ fn parse_multipart(boundary: &[u8], charset: &str, data: &[u8]) -> Result<FormDa
             sink.part_data(&data[m..end])?;
         }
     }
-    Ok(FormData(sink.items))
+    Ok((FormData(sink.items), sink.uploads))
+}
+
+/// [`read_form`], plus the file parts' content (`UploadFile.read()`).
+pub fn read_form_files(
+    content_type: Option<&str>,
+    body: &[u8],
+) -> Result<(FormData, Vec<UploadPart>), FormError> {
+    let (ctype, options) =
+        parse_options_header(content_type.unwrap_or_default()).ok_or(FormError::Malformed)?;
+    if ctype != "multipart/form-data" {
+        return read_form(content_type, body).map(|form| (form, Vec::new()));
+    }
+    let charset = option(&options, "charset").unwrap_or("utf-8").to_string();
+    let boundary = option(&options, "boundary")
+        .ok_or_else(|| FormError::Rejected("Missing boundary in multipart.".into()))?;
+    parse_multipart_parts(&latin1_bytes(boundary), &charset, body, true)
 }
 
 /// `await request.form()` for a body with this Content-Type.
@@ -892,5 +952,26 @@ mod tests {
         let form = read_form(Some("application/x-www-form-urlencoded"), b"a=1&a=2").unwrap();
         assert_eq!(form.get("a"), Some(&FormValue::Text("2".into())));
         assert_eq!(form.get("b"), None);
+    }
+
+    #[test]
+    fn file_parts_keep_their_bytes() {
+        let body = b"--b\r\nContent-Disposition: form-data; name=\"t\"\r\n\r\nv\r\n\
+--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"r.xml\"\r\n\
+Content-Type: application/xml\r\nContent-Type: text/plain\r\n\r\n<a>\xff</a>\r\n--b--\r\n";
+        let (form, uploads) =
+            read_form_files(Some("multipart/form-data; boundary=b"), body).unwrap();
+        assert_eq!(form.0.len(), 2);
+        assert_eq!(
+            uploads,
+            vec![UploadPart {
+                field: "file".into(),
+                filename: "r.xml".into(),
+                content_type: Some("application/xml".into()),
+                data: b"<a>\xff</a>".to_vec(),
+            }]
+        );
+        let (_, none) = read_form_files(Some("application/x-www-form-urlencoded"), b"a=1").unwrap();
+        assert!(none.is_empty());
     }
 }

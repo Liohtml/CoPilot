@@ -75,6 +75,8 @@ tower-http = { version = "0.6", features = ["trace", "limit", "cors", "timeout",
 url = "2"
 bytes = "1"
 http = "1"
+# Only for `hyper::ext::ReasonPhrase` (the reason phrase `requests` reports); the version reqwest uses.
+hyper = { version = "1", default-features = false, features = ["http1", "client"] }
 
 # --- text ---
 regex = "1"
