@@ -44,6 +44,8 @@ copilot-objectstore = { workspace = true }
 copilot-integrations = { workspace = true }
 copilot-siem = { workspace = true }
 copilot-threat-intel = { workspace = true }
+copilot-response = { workspace = true }
+copilot-shuffle = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

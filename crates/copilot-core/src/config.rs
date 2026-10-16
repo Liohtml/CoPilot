@@ -159,6 +159,9 @@ pub struct CopilotConfig {
     /// `COPILOT_API_KEY`, as set: the licence server's `x-api-key`
     /// (`os.getenv` semantics; `None` is sent as the text `None`).
     pub copilot_api_key: Option<Secret>,
+    /// What the response routes and the Shuffle connector read from the
+    /// environment, as set.
+    pub response: crate::response_env::ResponseEnv,
 }
 
 /// Raw values the WAF and provisioning modules read per call in Python
@@ -382,6 +385,7 @@ impl CopilotConfig {
                 graylog_api_header_value: env.get_raw("GRAYLOG_API_HEADER_VALUE").map(Secret::new),
             },
             copilot_api_key: env.get_raw("COPILOT_API_KEY").map(Secret::new),
+            response: crate::response_env::ResponseEnv::from_env(env),
         })
     }
 }

@@ -485,7 +485,9 @@ dependencies = [
  "copilot-platform",
  "copilot-portainer",
  "copilot-provisioning",
+ "copilot-response",
  "copilot-scheduler",
+ "copilot-shuffle",
  "copilot-siem",
  "copilot-sla",
  "copilot-soc-management",
@@ -1014,6 +1016,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-response"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "copilot-agents",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-ingest",
+ "copilot-objectstore",
+ "copilot-upstream",
+ "copilot-velociraptor",
+ "copilot-wazuh",
+ "copilot-web",
+ "flate2",
+ "hex",
+ "http",
+ "hyper",
+ "pretty_assertions",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "copilot-scheduler"
 version = "0.2.0"
 dependencies = [
@@ -1029,6 +1065,29 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "copilot-shuffle"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "copilot-auth",
+ "copilot-connectors",
+ "copilot-core",
+ "copilot-db",
+ "copilot-incidents",
+ "copilot-upstream",
+ "copilot-web",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
