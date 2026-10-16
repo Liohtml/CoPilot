@@ -195,6 +195,35 @@ mod tests {
 
     use super::*;
 
+    /// `etree_vectors.json` (`scripts/gen-integrations-vectors.py`): what
+    /// CPython 3.11's ElementTree accepts and writes back, and what the
+    /// decommission makes of each document.
+    #[test]
+    fn cpython_vectors() {
+        let vectors: Value = serde_json::from_str(include_str!("etree_vectors.json")).unwrap();
+        for v in vectors.as_array().unwrap() {
+            let doc = v["doc"].as_str().unwrap();
+            let tenant = v["tenant"].as_str().unwrap();
+            let parsed = etree::fromstring(doc);
+            assert_eq!(parsed.is_ok(), v["parsed"].as_bool().unwrap(), "{doc:?}");
+            if let Ok(root) = &parsed {
+                assert_eq!(
+                    etree::tostring(root),
+                    v["tostring"].as_str().unwrap(),
+                    "{doc:?}"
+                );
+            }
+            match (remove_api_auth_block(doc, tenant), &v["removed"]) {
+                (Ok(None), Value::Null) => {}
+                (Ok(Some(text)), Value::String(want)) => assert_eq!(&text, want, "{doc:?}"),
+                (Err(PyExc::Http(status, _)), Value::Object(want)) => {
+                    assert_eq!(Some(u64::from(status)), want["error"].as_u64(), "{doc:?}");
+                }
+                (got, want) => panic!("{doc:?}: {got:?} where CPython gives {want}"),
+            }
+        }
+    }
+
     const TWO: &str = "<ossec_config>\n  <office365>\n    <enabled>yes</enabled>\n    \
                        <api_auth>\n      <tenant_id>tenant-a</tenant_id>\n    </api_auth>\n    \
                        <api_auth>\n      <tenant_id>tenant-b</tenant_id>\n    </api_auth>\n  \
