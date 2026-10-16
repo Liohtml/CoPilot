@@ -6,11 +6,13 @@ from sqlalchemy.future import select
 
 from app.agents.routes.agents import sync_all_agents
 from app.db.db_session import get_db_session
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 
 load_dotenv()
 
 
+@rust_handover("agent_sync")
 async def agent_sync():
     """
     Synchronizes agents by sending a request to the server and updating the job metadata.

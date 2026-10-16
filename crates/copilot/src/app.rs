@@ -40,6 +40,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::json;
 
+use copilot_agents::AgentsState;
 use copilot_auth::{Fernet, JwtCodec};
 use copilot_connectors::{ConnectorsState, Verifiers};
 use copilot_core::config::CopilotConfig;
@@ -61,6 +62,7 @@ use copilot_platform::version::VersionChecker;
 use copilot_portainer::{PortainerClient, PortainerState};
 use copilot_scheduler::{OptIn, Scheduler, SchedulerState};
 use copilot_talon::{TalonConnector, TalonState};
+use copilot_velociraptor::VelociraptorClient;
 use copilot_waf::{WafClient, WafEnv, WafState};
 use copilot_wazuh::WazuhState;
 use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
@@ -196,6 +198,13 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // `POST /provision/dashboards` and `POST /provision/wazuh_worker`
     // (Grafana dashboard and Portainer stack templates), which fall through.
     "/api/customer_provisioning",
+    // The agents router (copilot-agents, on copilot-velociraptor's client).
+    "/api/agents",
+    // The Velociraptor connector (copilot-velociraptor) but `POST
+    // /api/artifacts/collect` and `…/collect/file/agent/{agent_id}` (MinIO),
+    // which no Rust route matches: the binary forwards them.
+    "/api/artifacts",
+    "/api/flows",
     // The MinIO data store (copilot-objectstore): the upload and the agents'
     // Velociraptor artifact files.
     "/api/agent_data_store",
@@ -228,6 +237,8 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_portainer::REQUIREMENTS);
     all.extend_from_slice(copilot_waf::REQUIREMENTS);
     all.extend_from_slice(copilot_provisioning::REQUIREMENTS);
+    all.extend_from_slice(copilot_agents::REQUIREMENTS);
+    all.extend_from_slice(copilot_velociraptor::REQUIREMENTS);
     all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::datastore::REQUIREMENTS);
     all.push(TableRequirement {
@@ -300,6 +311,8 @@ pub struct App {
     pub waf: WafState,
     /// `requests` for the Wazuh worker and HAProxy provisioning services.
     pub worker_http: copilot_provisioning::customer::decommission::WorkerHttp,
+    /// The agents routes' clients (`/api/agents`, `agent_sync`).
+    pub agents: AgentsState,
     /// The MinIO object store (`/api/agent_data_store`, the incidents'
     /// files).
     pub objectstore: ObjectStore,
@@ -373,10 +386,17 @@ impl App {
             legacy.clone(),
         )
         .context("building the ingest clients")?;
+        let agents = AgentsState {
+            ctx: ctx.clone(),
+            wazuh: wazuh.clone(),
+            velociraptor: VelociraptorClient::new(ctx.connectors.clone()),
+            epss: copilot_agents::services::epss::EpssClient::new()
+                .context("building the EPSS client")?,
+        };
         let scheduler = Scheduler::new(
             ctx.db.clone(),
             OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
-            scheduled_jobs(&ctx, &talon, &wazuh, &ingest, cfg),
+            scheduled_jobs(&ctx, &talon, &wazuh, &ingest, &agents, cfg),
         );
         let graylog =
             GraylogClient::new(ctx.connectors.clone()).context("building the Graylog client")?;
@@ -429,7 +449,9 @@ impl App {
             dispatcher,
             legacy,
             scheduler,
-            verifiers: Verifiers::new(copilot_wazuh::verify::verifiers(&wazuh)),
+            verifiers: Verifiers::new(copilot_wazuh::verify::verifiers(&wazuh).into_iter().chain(
+                copilot_velociraptor::verify::verifiers(agents.velociraptor.timeouts()),
+            )),
             wazuh,
             ingest,
             graylog,
@@ -439,6 +461,7 @@ impl App {
             waf,
             worker_http: copilot_provisioning::customer::decommission::worker_http()
                 .context("building the provisioning-worker client")?,
+            agents,
             objectstore,
         })
     }
@@ -449,6 +472,14 @@ impl App {
             self.wazuh.legacy.clone(),
             copilot_wazuh::decoded_slash_to_legacy,
         ))
+    }
+
+    /// The Velociraptor routes' state (the agents routes' client).
+    fn velociraptor_state(&self) -> copilot_velociraptor::VelociraptorState {
+        copilot_velociraptor::VelociraptorState {
+            ctx: self.ctx.clone(),
+            client: self.agents.velociraptor.clone(),
+        }
     }
 
     /// The full router: ported modules, health, and the legacy fallback.
@@ -610,6 +641,31 @@ impl App {
                 },
             ))
             .nest(
+                "/api/agents",
+                copilot_agents::router(self.agents.clone()).layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
+            .nest(
+                "/api/artifacts",
+                copilot_velociraptor::artifacts_router(self.velociraptor_state()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .nest(
+                "/api/flows",
+                copilot_velociraptor::flows_router(self.velociraptor_state()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .nest(
                 "/api/agent_data_store",
                 copilot_objectstore::router(DataStoreState {
                     ctx: self.ctx.clone(),
@@ -683,12 +739,13 @@ impl App {
 /// Every job this build can take over from APScheduler (`handover.py`'s
 /// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`,
 /// `notify_sla_transitions`, `invoke_snapshot_schedules`,
-/// `resize_wazuh_index_fields`, `invoke_alert_creation_collect`.
+/// `resize_wazuh_index_fields`, `invoke_alert_creation_collect`, `agent_sync`.
 pub fn scheduled_jobs(
     ctx: &AppContext,
     talon: &TalonConnector,
     wazuh: &WazuhState,
     ingest: &IngestState,
+    agents: &AgentsState,
     cfg: &CopilotConfig,
 ) -> Vec<copilot_scheduler::JobSpec> {
     let mut jobs = copilot_ai_analyst::palace_jobs::job_specs(ctx, talon);
@@ -699,6 +756,7 @@ pub fn scheduled_jobs(
     jobs.push(copilot_soc_management::notifier_job_spec(ctx));
     jobs.extend(copilot_wazuh::jobs::job_specs(wazuh));
     jobs.push(copilot_ingest::job_spec(ingest));
+    jobs.extend(copilot_agents::jobs::job_specs(agents));
     jobs
 }
 

@@ -194,6 +194,7 @@ async fn delete_agents(st: &WazuhState, code: &str) -> PyResult<Vec<PyValue>> {
         let mut params = vec![("older_than".to_string(), "0s".to_string())];
         param("agents_list", &id, &mut params);
         params.push(("status".into(), "all".into()));
+        let params = strs(params);
         manager::send_delete(st, "/agents", Some(&params))
             .await
             .map_err(|e| PyExc::Other("Exception", format!("{e:?}")))?;
@@ -202,12 +203,23 @@ async fn delete_agents(st: &WazuhState, code: &str) -> PyResult<Vec<PyValue>> {
     Ok(deleted)
 }
 
+/// Query parameters that are all strings, as the manager client takes them.
+fn strs(params: Vec<(String, String)>) -> Vec<(String, manager::Param)> {
+    params
+        .into_iter()
+        .map(|(k, v)| (k, manager::Param::Str(v)))
+        .collect()
+}
+
 /// `delete_wazuh_groups(code)`: the three group codes.
 async fn delete_groups(st: &WazuhState, code: &str) -> PyResult<Vec<PyValue>> {
     let mut deleted = Vec::new();
     for group in WAZUH_GROUPS {
         let group_code = format!("{group}_{code}");
-        let params = [("groups_list".to_string(), group_code.clone())];
+        let params = [(
+            "groups_list".to_string(),
+            manager::Param::Str(group_code.clone()),
+        )];
         manager::send_delete(st, "/groups", Some(&params))
             .await
             .map_err(|e| PyExc::Other("Exception", format!("{e:?}")))?;

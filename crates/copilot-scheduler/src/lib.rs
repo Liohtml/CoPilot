@@ -70,7 +70,7 @@ mod tests {
         // `notify_sla_transitions` registers from `copilot-soc-management`,
         // `invoke_snapshot_schedules` and `resize_wazuh_index_fields` from
         // `copilot-wazuh`, `invoke_alert_creation_collect` from
-        // `copilot-ingest`.
+        // `copilot-ingest`, `agent_sync` from `copilot-agents`.
         let mut rust: Vec<String> = crate::job::PALACE_JOB_IDS
             .iter()
             .chain(
@@ -80,6 +80,7 @@ mod tests {
                     "invoke_snapshot_schedules",
                     "resize_wazuh_index_fields",
                     "invoke_alert_creation_collect",
+                    "agent_sync",
                 ]
                 .iter(),
             )

@@ -38,6 +38,8 @@ copilot-portainer = { workspace = true }
 copilot-waf = { workspace = true }
 copilot-provisioning = { workspace = true }
 copilot-ingest = { workspace = true }
+copilot-velociraptor = { workspace = true }
+copilot-agents = { workspace = true }
 copilot-objectstore = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
@@ -53,6 +55,8 @@ clap = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
+copilot-velociraptor = { workspace = true, features = ["testing"] }
+tempfile = { workspace = true }
 tower = { workspace = true }
 num-bigint-dig = { workspace = true }
 sha2 = { workspace = true }

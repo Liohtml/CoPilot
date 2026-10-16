@@ -19,6 +19,11 @@ services:
         ports:
             - "5000:5000"
         env_file: .env
+        volumes:
+            # The Velociraptor connector's api.config.yaml: its row holds a path in
+            # the backend's data directory (where the connector's YAML upload puts
+            # it), read here at that same path.
+            - ./data/data:/opt/copilot/backend/data:ro
         environment:
             - COPILOT_LEGACY_URL=http://copilot-backend:5000
             # Opt-in: scheduled jobs this service may take over from APScheduler

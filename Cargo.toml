@@ -44,6 +44,8 @@ copilot-portainer = { path = "crates/copilot-portainer" }
 copilot-waf = { path = "crates/copilot-waf" }
 copilot-provisioning = { path = "crates/copilot-provisioning" }
 copilot-ingest = { path = "crates/copilot-ingest" }
+copilot-velociraptor = { path = "crates/copilot-velociraptor" }
+copilot-agents = { path = "crates/copilot-agents" }
 copilot-objectstore = { path = "crates/copilot-objectstore" }
 
 # --- async runtime ---
