@@ -11,10 +11,12 @@
 //! *provisioning* routes (`/api/stack_provisioning/graylog/provision/
 //! {fortinet,sonicwall,sentinelone}`) are not part of this router.
 //!
-//! - [`schema`] — the request models and the response dumps
-//! - [`store`]  — the statements
-//! - [`routes`] — the handlers
+//! - [`schema`]   — the request models and the response dumps
+//! - [`store`]    — the statements
+//! - [`services`] — the flows
+//! - [`routes`]   — the handlers
 
 pub mod routes;
 pub mod schema;
+pub mod services;
 pub mod store;

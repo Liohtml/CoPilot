@@ -9,13 +9,15 @@
 //! `verify_customer_name_access` resolves the name to the first row's code
 //! and fails closed for a scoped caller.
 //!
-//! - [`schema`] — the request models and the response dumps
-//! - [`store`]  — the joined eager load (`event_orders` → `event_configs`)
+//! - [`schema`]   — the request models and the response dumps
+//! - [`store`]    — the joined eager load (`event_orders` → `event_configs`)
 //!   in SQLAlchemy's shape, and the writes
-//! - [`routes`] — the handlers
+//! - [`services`] — the flows
+//! - [`routes`]   — the handlers
 
 pub mod routes;
 pub mod schema;
+pub mod services;
 pub mod store;
 
 /// The `nvd_url` default (the model's and the column's).
