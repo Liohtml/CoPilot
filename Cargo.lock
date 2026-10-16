@@ -478,6 +478,7 @@ dependencies = [
  "copilot-platform",
  "copilot-scheduler",
  "copilot-sla",
+ "copilot-soc-management",
  "copilot-talon",
  "copilot-wazuh",
  "copilot-web",
@@ -798,11 +799,34 @@ version = "0.2.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "copilot-auth",
  "copilot-core",
  "copilot-db",
  "serde_json",
  "sqlx",
  "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-soc-management"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-scheduler",
+ "copilot-sla",
+ "copilot-web",
+ "http",
+ "serde",
+ "serde_json",
+ "speedate",
+ "sqlx",
+ "strum",
  "tokio",
  "tracing",
 ]

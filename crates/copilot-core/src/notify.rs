@@ -445,6 +445,134 @@ pub fn case_task_assigned_event(
     )
 }
 
+/// Inputs of [`sla_event`] (`notify_sla_transitions`).
+#[derive(Debug, Clone)]
+pub struct SlaEventInput<'a> {
+    /// Breached (else at risk).
+    pub breached: bool,
+    /// `alert` | `case`.
+    pub entity_type: &'a str,
+    /// Item id.
+    pub entity_id: i64,
+    /// The item's title (an empty one is left out of the subject).
+    pub title: Option<&'a str>,
+    /// The item's severity (coerced like every builder's).
+    pub severity: Option<&'a str>,
+    /// The item's tenant.
+    pub customer_code: Option<&'a str>,
+    /// The item's assignee.
+    pub assignee: Option<&'a str>,
+    /// `acknowledge` | `resolve`.
+    pub clock: &'a str,
+    /// The clock's due time (naive UTC).
+    pub due_at: chrono::NaiveDateTime,
+    /// The item's opening.
+    pub opened_at: chrono::NaiveDateTime,
+    /// When the notice was raised.
+    pub now: chrono::NaiveDateTime,
+    /// The item's status.
+    pub status: Option<&'a str>,
+}
+
+/// `sla_event`: an SLA clock of an alert or case turned at risk, or
+/// breached. The dedupe key is per clock; the minutes are Python's
+/// `round(abs(now - due) / 60)` (ties to even).
+pub fn sla_event(d: &NotificationDefaults, input: &SlaEventInput<'_>) -> NotificationEvent {
+    let trigger = if input.breached {
+        NotificationTrigger::SlaBreached
+    } else {
+        NotificationTrigger::SlaAtRisk
+    };
+    let what = if input.entity_type == "case" {
+        "Case"
+    } else {
+        "Alert"
+    };
+    let micros = (input.now - input.due_at)
+        .num_microseconds()
+        .unwrap_or(i64::MAX);
+    let minutes = ((micros as f64 / 1e6).abs() / 60.0).round_ties_even() as i64;
+    let timing = if input.breached {
+        format!("{minutes} min overdue")
+    } else {
+        format!("{minutes} min left")
+    };
+    let path = if input.entity_type == "case" {
+        format!("/incident-management/cases/{}", input.entity_id)
+    } else {
+        format!("/incident-management/alerts/{}", input.entity_id)
+    };
+    let title = input.title.filter(|t| !t.is_empty());
+    let mut subject = format!(
+        "SLA {}: {what} #{}",
+        if input.breached {
+            "breached"
+        } else {
+            "at risk"
+        },
+        input.entity_id
+    );
+    if let Some(t) = title {
+        subject.push_str(&format!(" — {t}"));
+    }
+    let due = input.due_at.format("%Y-%m-%d %H:%M").to_string();
+    let mut context = serde_json::Map::new();
+    context.insert("title".into(), opt(input.title));
+    context.insert(
+        "clock".into(),
+        serde_json::Value::String(input.clock.into()),
+    );
+    context.insert("due_at".into(), serde_json::Value::String(due.clone()));
+    context.insert(
+        "opened_at".into(),
+        serde_json::Value::String(input.opened_at.format("%Y-%m-%d %H:%M").to_string()),
+    );
+    let minutes_value = serde_json::Value::from(minutes);
+    context.insert(
+        "remaining_minutes".into(),
+        if input.breached {
+            serde_json::Value::Null
+        } else {
+            minutes_value.clone()
+        },
+    );
+    context.insert(
+        "overdue_minutes".into(),
+        if input.breached {
+            minutes_value
+        } else {
+            serde_json::Value::Null
+        },
+    );
+    context.insert("status".into(), opt(input.status));
+    NotificationEvent {
+        customer_code: Some(input.customer_code.unwrap_or_default().to_string()),
+        trigger,
+        severity: NotificationSeverity::coerce(input.severity, d.default_severity),
+        subject,
+        summary: format!(
+            "The {} target of {} #{} {} at {due} UTC ({timing}).",
+            input.clock,
+            what.to_lowercase(),
+            input.entity_id,
+            if input.breached { "was due" } else { "is due" }
+        ),
+        entity_type: input.entity_type.into(),
+        entity_id: input.entity_id,
+        dedupe_key: format!(
+            "{}:{}:{}:{}",
+            input.entity_type,
+            input.entity_id,
+            trigger.as_str(),
+            input.clock
+        ),
+        link_url: d.link(&path),
+        assignee_username: input.assignee.map(str::to_string),
+        actor_username: None,
+        context,
+    }
+}
+
 /// Where notification events go. `emit` must return immediately: a failure
 /// to notify never fails the operation that triggered it (`emit.py`).
 pub trait NotificationSink: Send + Sync {
@@ -625,6 +753,58 @@ mod tests {
         let e = case_task_assigned_event(3, 9, &a);
         assert_eq!(e.summary, "Task 'Mimikatz' on case #9 was assigned to bob.");
         assert_eq!(e.dedupe_key, "case_task:3:case_task_assigned:bob");
+    }
+
+    #[test]
+    fn sla_event_matches_python_builder() {
+        // `sla_event(breached=False, entity_type="case", entity_id=5, title=None,
+        // severity="Bogus", customer_code=None, …)` in Python:
+        let t = |s: &str| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap();
+        let e = sla_event(
+            &defaults(),
+            &SlaEventInput {
+                breached: false,
+                entity_type: "case",
+                entity_id: 5,
+                title: None,
+                severity: Some("Bogus"),
+                customer_code: None,
+                assignee: None,
+                clock: "resolve",
+                due_at: t("2026-01-01 10:00:00"),
+                opened_at: t("2026-01-01 09:00:00"),
+                now: t("2026-01-01 09:30:30"),
+                status: Some("OPEN"),
+            },
+        );
+        assert_eq!(
+            serde_json::to_string(&e).unwrap(),
+            r#"{"customer_code":"","trigger":"sla_at_risk","severity":"High","subject":"SLA at risk: Case #5","summary":"The resolve target of case #5 is due at 2026-01-01 10:00 UTC (30 min left).","entity_type":"case","entity_id":5,"dedupe_key":"case:5:sla_at_risk:resolve","link_url":"https://copilot.example.com/incident-management/cases/5","assignee_username":null,"actor_username":null,"context":{"title":null,"clock":"resolve","due_at":"2026-01-01 10:00","opened_at":"2026-01-01 09:00","remaining_minutes":30,"overdue_minutes":null,"status":"OPEN"}}"#
+        );
+        let e = sla_event(
+            &defaults(),
+            &SlaEventInput {
+                breached: true,
+                entity_type: "alert",
+                entity_id: 7,
+                title: Some("Mimikatz"),
+                severity: Some("Low"),
+                customer_code: Some("acme"),
+                assignee: Some("bob"),
+                clock: "acknowledge",
+                due_at: t("2026-01-01 10:00:00"),
+                opened_at: t("2026-01-01 09:45:00"),
+                now: t("2026-01-01 10:01:30"),
+                status: None,
+            },
+        );
+        assert_eq!(e.subject, "SLA breached: Alert #7 — Mimikatz");
+        assert_eq!(
+            e.summary,
+            "The acknowledge target of alert #7 was due at 2026-01-01 10:00 UTC (2 min overdue)."
+        );
+        assert_eq!(e.dedupe_key, "alert:7:sla_breached:acknowledge");
+        assert_eq!(e.context["overdue_minutes"], 2);
     }
 
     #[test]

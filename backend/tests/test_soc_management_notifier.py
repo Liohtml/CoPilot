@@ -256,18 +256,20 @@ def test_the_job_logs_what_a_pass_did_and_re_raises_a_failure(monkeypatch):
 
     log = MagicMock()
     monkeypatch.setattr(notifier, "logger", log)
+    # The job body, without the hand-over guard (tests/test_scheduler_handover.py covers it).
+    job = notifier.notify_sla_transitions.__wrapped__
     monkeypatch.setattr(notifier.SlaNotifier, "run", AsyncMock(return_value={"sent": 2, "silenced": 1, "lost_race": 0}))
-    asyncio.run(notifier.notify_sla_transitions())
+    asyncio.run(job())
     assert "2 sent, 1 stale" in log.info.call_args.args[0]
 
     log.reset_mock()
     monkeypatch.setattr(notifier.SlaNotifier, "run", AsyncMock(return_value={"sent": 0, "silenced": 0, "lost_race": 0}))
-    asyncio.run(notifier.notify_sla_transitions())
+    asyncio.run(job())
     assert not log.info.called  # a quiet pass stays quiet
 
     monkeypatch.setattr(notifier.SlaNotifier, "run", AsyncMock(side_effect=RuntimeError("db gone")))
     try:
-        asyncio.run(notifier.notify_sla_transitions())
+        asyncio.run(job())
         raise AssertionError("a failed pass must reach the scheduler as an error")
     except RuntimeError:
         pass

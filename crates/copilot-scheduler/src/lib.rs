@@ -67,9 +67,10 @@ mod tests {
     fn python_guards_exactly_the_jobs_this_crate_can_run() {
         let mut python = python_rust_capable_jobs();
         python.sort();
+        // `notify_sla_transitions` registers from `copilot-soc-management`.
         let mut rust: Vec<String> = crate::job::PALACE_JOB_IDS
             .iter()
-            .chain([crate::jobs::PRUNE_AUDIT_LOG].iter())
+            .chain([crate::jobs::PRUNE_AUDIT_LOG, "notify_sla_transitions"].iter())
             .map(|s| (*s).to_string())
             .collect();
         rust.sort();

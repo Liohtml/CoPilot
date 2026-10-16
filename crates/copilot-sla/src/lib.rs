@@ -9,17 +9,21 @@
 //! - [`policy`]    — targets per entity × severity: customer → global → built-in
 //! - [`lifecycle`] — which actions move which clocks (guarded writes, pauses)
 //! - [`recorder`]  — [`SlaRecorder`], the one entry point the incidents crate calls
+//! - [`evaluate`]  — one clock's state (met, breached, at risk, …) and compliance
+//! - [`retarget`]  — re-targeting open items after a policy or calendar save
 //!
-//! The dashboard, the policy/calendar editors and the notifier
-//! (`notify_sla_transitions`) are still served by the Python backend; they
-//! read the same rows.
+//! This crate is the one Rust definition of the SLA domain: the incidents
+//! recorder and `copilot-soc-management` (dashboard, policy and calendar
+//! editors, the notifier) both go through it.
 
 #![warn(missing_docs)]
 
 pub mod calendar;
+pub mod evaluate;
 pub mod lifecycle;
 pub mod policy;
 pub mod recorder;
+pub mod retarget;
 pub mod severity;
 
 pub use lifecycle::{Actor, LifecycleAction};
@@ -33,12 +37,15 @@ pub enum SlaError {
     /// Query failure.
     #[error("{0}")]
     Db(#[from] sqlx::Error),
-    /// A stored calendar is not valid.
+    /// A calendar is not valid: Python's `ValueError` (its text).
     #[error("{0}")]
     Calendar(String),
-    /// A stored policy row is not valid.
+    /// A stored policy row is not valid: Python's `ValueError` (its text).
     #[error("{0}")]
     Policy(String),
+    /// A stored value Python cannot even read (its `TypeError`): a bare 500.
+    #[error("{0}")]
+    Unreadable(String),
     /// The item does not exist.
     #[error("{0}")]
     Missing(String),
@@ -93,10 +100,20 @@ pub const REQUIREMENTS: &[TableRequirement] = &[
             "ack_minutes",
             "resolve_minutes",
             "business_hours",
+            "updated_at",
+            "updated_by",
         ],
     },
     TableRequirement {
         table: "soc_sla_calendar",
-        columns: &["id", "customer_code", "timezone", "week", "holidays"],
+        columns: &[
+            "id",
+            "customer_code",
+            "timezone",
+            "week",
+            "holidays",
+            "updated_at",
+            "updated_by",
+        ],
     },
 ];
