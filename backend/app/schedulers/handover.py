@@ -39,6 +39,7 @@ from app.db.db_session import async_engine
 # Job ids (== function names) the Rust service can run. Keep in step with the job registry in
 # crates/copilot-scheduler (pinned by a Rust test that parses this tuple).
 RUST_CAPABLE_JOBS = (
+    "invoke_alert_creation_collect",
     "invoke_palace_lesson_drainer",
     "invoke_palace_lesson_sweeper",
     "invoke_snapshot_schedules",

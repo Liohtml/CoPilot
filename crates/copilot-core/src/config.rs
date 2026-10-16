@@ -147,6 +147,8 @@ pub struct CopilotConfig {
     pub webauthn: WebAuthnEnv,
     /// The `SMTP_*` settings, as set.
     pub smtp: SmtpEnv,
+    /// What the alert ingest reads from the environment, as set.
+    pub ingest: crate::ingest_env::IngestEnv,
 }
 
 /// Raw `WEBAUTHN_*` values, read like `os.environ.get` (`None` = unset).
@@ -317,6 +319,7 @@ impl CopilotConfig {
                 from: env.get_raw("SMTP_FROM"),
                 use_tls: env.get_raw("SMTP_USE_TLS"),
             },
+            ingest: crate::ingest_env::IngestEnv::from_env(env),
         })
     }
 }

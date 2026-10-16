@@ -69,7 +69,8 @@ mod tests {
         python.sort();
         // `notify_sla_transitions` registers from `copilot-soc-management`,
         // `invoke_snapshot_schedules` and `resize_wazuh_index_fields` from
-        // `copilot-wazuh`.
+        // `copilot-wazuh`, `invoke_alert_creation_collect` from
+        // `copilot-ingest`.
         let mut rust: Vec<String> = crate::job::PALACE_JOB_IDS
             .iter()
             .chain(
@@ -78,6 +79,7 @@ mod tests {
                     "notify_sla_transitions",
                     "invoke_snapshot_schedules",
                     "resize_wazuh_index_fields",
+                    "invoke_alert_creation_collect",
                 ]
                 .iter(),
             )

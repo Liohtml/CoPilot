@@ -19,6 +19,7 @@ pub mod audit;
 pub mod config;
 pub mod env;
 pub mod error;
+pub mod ingest_env;
 pub mod notify;
 pub mod roles;
 pub mod time;

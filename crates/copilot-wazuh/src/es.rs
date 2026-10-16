@@ -282,12 +282,24 @@ impl Es {
         params: &[(&str, String)],
         body: Option<&Value>,
     ) -> Result<Value, EsError> {
+        let payload = body.map(|b| serde_json::to_vec(b).unwrap_or_default());
+        self.perform_raw(method, path, params, payload).await
+    }
+
+    /// [`Es::perform`] with the body already serialized, for a caller that
+    /// writes `JSONSerializer.dumps`' exact text (Python's float `repr`).
+    pub async fn perform_raw(
+        &self,
+        method: Method,
+        path: &str,
+        params: &[(&str, String)],
+        payload: Option<Vec<u8>>,
+    ) -> Result<Value, EsError> {
         let mut url = format!("{}{path}", self.base);
         if !params.is_empty() {
             url.push('?');
             url.push_str(&urlencode(params));
         }
-        let payload = body.map(|b| serde_json::to_vec(b).unwrap_or_default());
         let mut attempt = 0;
         loop {
             match self.once(&method, &url, payload.as_deref()).await {

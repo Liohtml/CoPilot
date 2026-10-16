@@ -5,9 +5,11 @@ from sqlalchemy.future import select
 
 from app.db.db_session import get_db_session
 from app.incidents.routes.incident_alert import create_alert_auto_route
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 
 
+@rust_handover("invoke_alert_creation_collect")
 async def invoke_alert_creation_collect():
     """
     Synchronizes agents by sending a request to the server and updating the job metadata.
