@@ -776,6 +776,7 @@ version = "0.2.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "copilot-auth",
  "copilot-core",
  "copilot-db",
  "serde_json",
