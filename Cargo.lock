@@ -478,6 +478,7 @@ dependencies = [
  "copilot-incidents",
  "copilot-influxdb",
  "copilot-notifications",
+ "copilot-objectstore",
  "copilot-platform",
  "copilot-portainer",
  "copilot-provisioning",
@@ -749,7 +750,9 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
+ "copilot-objectstore",
  "copilot-sla",
+ "copilot-upstream",
  "copilot-web",
  "http",
  "reqwest",
@@ -827,6 +830,36 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "copilot-objectstore"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-upstream",
+ "copilot-web",
+ "flate2",
+ "futures",
+ "hex",
+ "hmac",
+ "http",
+ "md-5",
+ "pretty_assertions",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
