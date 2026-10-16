@@ -212,6 +212,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // its Graylog webhook.
     "/api/active_response",
     "POST /api/graylog/invoke",
+    // Sysmon configs but `POST /upload` (ElementTree's XML validation).
+    "GET /api/sysmon_config",
+    "POST /api/sysmon_config/deploy",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -320,7 +323,8 @@ pub struct App {
     /// The MinIO object store (`/api/agent_data_store`, the incidents'
     /// files).
     pub objectstore: ObjectStore,
-    /// The response routes (`/api/active_response`, the Graylog webhook).
+    /// The response routes (`/api/active_response`, the Graylog webhook,
+    /// `/api/sysmon_config`).
     pub response: copilot_response::ResponseState,
 }
 
@@ -431,9 +435,13 @@ impl App {
         let response = copilot_response::ResponseState {
             ctx: ctx.clone(),
             wazuh: wazuh.clone(),
-            env: Arc::new(copilot_response::ResponseEnv {
-                graylog_api_header_value: cfg.ingest.graylog_api_header_value.clone(),
-            }),
+            store: objectstore.clone(),
+            worker: copilot_response::sysmon::worker::WorkerHttp::new()
+                .context("building the provisioning-worker client")?,
+            env: Arc::new(copilot_response::ResponseEnv::from_config(
+                &cfg.ingest,
+                &cfg.response,
+            )),
             legacy: legacy.clone(),
         };
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
@@ -708,6 +716,14 @@ impl App {
             )
             // Full path beside the nested Graylog connector.
             .merge(copilot_response::graylog_router(self.response.clone()))
+            // `POST /upload` (ElementTree's XML validation) falls through.
+            .nest(
+                "/api/sysmon_config",
+                copilot_response::sysmon_router(self.response.clone()).layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

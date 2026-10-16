@@ -507,3 +507,314 @@ async fn the_graylog_webhook_forwards_the_event_fields() {
     );
     cleanup(&h).await;
 }
+
+// --- Sysmon configs -----------------------------------------------------------
+
+const LOCATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<LocationConstraint xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"></LocationConstraint>";
+
+/// A MinIO stand-in holding `objects` in the `sysmon-configs` bucket.
+async fn minio(objects: &[(String, &'static [u8])]) -> MockServer {
+    use wiremock::matchers::query_param;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/sysmon-configs"))
+        .and(query_param("location", ""))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(LOCATION, "application/xml"))
+        .mount(&server)
+        .await;
+    Mock::given(method("HEAD"))
+        .and(path("/sysmon-configs"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let mut contents = String::new();
+    for (key, data) in objects {
+        Mock::given(method("HEAD"))
+            .and(path(format!("/sysmon-configs/{key}")))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("etag", "\"abc\"")
+                    .insert_header("content-type", "application/xml")
+                    .insert_header("content-length", data.len().to_string().as_str()),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/sysmon-configs/{key}")))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(*data, "application/xml"))
+            .mount(&server)
+            .await;
+        contents.push_str(&format!(
+            "<Contents><Key>{key}</Key><LastModified>2026-10-15T08:00:00.000Z</LastModified>\
+             <ETag>&quot;abc&quot;</ETag><Size>{}</Size><StorageClass>STANDARD</StorageClass></Contents>",
+            data.len()
+        ));
+    }
+    let listing = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\
+         <Name>sysmon-configs</Name><Prefix></Prefix><KeyCount>{}</KeyCount><MaxKeys>1000</MaxKeys>\
+         <IsTruncated>false</IsTruncated>{contents}</ListBucketResult>",
+        objects.len()
+    );
+    Mock::given(method("GET"))
+        .and(path("/sysmon-configs"))
+        .and(query_param("list-type", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(listing, "application/xml"))
+        .mount(&server)
+        .await;
+    server
+}
+
+fn minio_env(s3: &MockServer, worker: Option<&MockServer>) -> String {
+    let mut env = format!(
+        "COPILOT_MINIO_ENDPOINT={}\nMINIO_ROOT_USER=e2e-minio\nMINIO_ROOT_PASSWORD=e2e-minio-secret\n",
+        s3.address()
+    );
+    if let Some(w) = worker {
+        env.push_str(&format!(
+            "COPILOT_PROVISION_WORKER_PORT={}\n",
+            w.address().port()
+        ));
+    }
+    env
+}
+
+const SYSMON_XML: &[u8] = b"<Sysmon schemaversion=\"4.90\"><EventFiltering><RuleGroup groupRelation=\"or\"/></EventFiltering></Sysmon>\n";
+
+#[tokio::test]
+async fn sysmon_configs_are_read_by_tenant() {
+    let probe = harness_or_skip!(None);
+    let (acme, beta) = (probe.code("acme"), probe.code("beta"));
+    let s3 = minio(&[
+        (format!("{acme}/sysmon_config.xml"), SYSMON_XML),
+        (format!("{beta}/sysmon_config.xml"), b"\xff\xfe"),
+        (format!("{beta}/notes.txt"), b"x"),
+    ])
+    .await;
+    // The same suffix, so the objects above are this harness's customers.
+    let mut h = harness_or_skip!(None, &minio_env(&s3, None));
+    h.suffix = probe.suffix.clone();
+    h.seed().await;
+    let admin = h.token(&format!("admin{}", h.suffix), "admin");
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let responder = h.token(&format!("responder{}", h.suffix), "responder");
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/sysmon_config/content/{acme}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({
+            "success": true,
+            "message": "Successfully retrieved Sysmon config",
+            "customer_code": acme,
+            "config_content": String::from_utf8(SYSMON_XML.to_vec()).unwrap(),
+        })
+    );
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/sysmon_config/content/{beta}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (500, json!("Failed to decode config file as UTF-8"))
+    );
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/sysmon_config/content/{acme}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            403,
+            json!("Insufficient permissions. Required one of: admin, responder")
+        )
+    );
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/sysmon_config/content/{beta}"),
+            Some(&responder),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (403, json!(format!("Access denied to customer {beta}")))
+    );
+    let missing = format!("none{}", h.suffix);
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("/api/sysmon_config/content/{missing}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            404,
+            json!(format!(
+                "File {missing}/sysmon_config.xml not found in bucket sysmon-configs"
+            ))
+        )
+    );
+    let (st, body) = h
+        .call("GET", "/api/sysmon_config", Some(&admin), None)
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(body["customer_codes"], json!([acme, beta]));
+    let (_, body) = h
+        .call("GET", "/api/sysmon_config", Some(&responder), None)
+        .await;
+    assert_eq!(body["customer_codes"], json!([acme]));
+    // The download.
+    let req = http::Request::builder()
+        .uri(format!("/api/sysmon_config/{acme}"))
+        .header("authorization", format!("Bearer {responder}"))
+        .body(axum::body::Body::empty())
+        .unwrap();
+    use tower::ServiceExt;
+    let resp = h.router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers()["content-type"], "application/xml");
+    assert_eq!(
+        resp.headers()["content-disposition"],
+        format!("attachment; filename=sysmon_config_{acme}.xml").as_str()
+    );
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    assert_eq!(&bytes[..], SYSMON_XML);
+}
+
+#[tokio::test]
+async fn sysmon_deploy_posts_the_config_to_the_worker() {
+    let probe = harness_or_skip!(None);
+    let acme = probe.code("acme");
+    let s3 = minio(&[(format!("{acme}/sysmon_config.xml"), SYSMON_XML)]).await;
+    let worker = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/provision_worker/sysmon-config"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"success": true, "message": "Sysmon config deployed"})),
+        )
+        .mount(&worker)
+        .await;
+    let mut h = harness_or_skip!(None, &minio_env(&s3, Some(&worker)));
+    h.suffix = probe.suffix.clone();
+    h.seed().await;
+    cleanup(&h).await;
+    let responder = h.token(&format!("responder{}", h.suffix), "responder");
+    let deploy = |code: String| {
+        let h = &h;
+        let responder = responder.clone();
+        async move {
+            h.call(
+                "POST",
+                &format!("/api/sysmon_config/deploy/{code}"),
+                Some(&responder),
+                None,
+            )
+            .await
+        }
+    };
+    // No manager connector: urlparse(None).
+    let (st, body) = deploy(acme.clone()).await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body,
+        json!({"success": false, "message": "Failed to get Wazuh endpoint", "customer_code": acme,
+            "worker_success": false, "worker_message": null,
+            "error_detail": "a bytes-like object is required, not 'str'"})
+    );
+    connector(
+        &h,
+        "Wazuh-Manager",
+        "https://127.0.0.1:55000",
+        Some("wazuh"),
+        None,
+    )
+    .await;
+    let (st, body) = deploy(acme.clone()).await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true, "message": format!("Sysmon config successfully deployed for {acme}"),
+            "customer_code": acme, "worker_success": true, "worker_message": "Sysmon config deployed",
+            "error_detail": null})
+    );
+    let sent = worker.received_requests().await.unwrap();
+    assert_eq!(sent.len(), 1);
+    let ct = sent[0]
+        .headers
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let boundary = ct.strip_prefix("multipart/form-data; boundary=").unwrap();
+    assert_eq!(boundary.len(), 32);
+    let body = String::from_utf8(sent[0].body.clone()).unwrap();
+    assert!(
+        body.contains(&format!("name=\"customer_code\"\r\n\r\n{acme}\r\n")),
+        "{body}"
+    );
+    assert!(
+        body.contains("filename=\"sysmon_config.xml\"\r\n\r\n<Sysmon"),
+        "{body}"
+    );
+    assert_eq!(
+        sent[0].headers.get("user-agent").unwrap(),
+        "Python/3.11 aiohttp/3.13.5"
+    );
+    // Audited before the deploy.
+    let n = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'response.sysmon_deploy' AND entity_id = '{acme}' \
+             AND entity_type = 'sysmon_config' AND customer_code = '{acme}'"
+        ))
+        .await;
+    assert!(n >= 1);
+    // No config for this customer: the fetch's 404, as a result.
+    let other = h.code("beta");
+    let admin = h.token(&format!("admin{}", h.suffix), "admin");
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("/api/sysmon_config/deploy/{other}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body["message"],
+        json!(format!("Failed to fetch Sysmon config for {other}"))
+    );
+    assert_eq!(
+        body["error_detail"],
+        json!(format!(
+            "404: File {other}/sysmon_config.xml not found in bucket sysmon-configs"
+        ))
+    );
+    // A responder of acme may not deploy beta's.
+    let (st, _) = deploy(other).await;
+    assert_eq!(st, 403);
+    cleanup(&h).await;
+}

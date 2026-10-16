@@ -8,6 +8,10 @@ records each request it receives — method, target, **every header** (Content-L
 the body bytes — and both backends' requests are compared one by one:
 
 * the Wazuh manager (token flow, `PUT /active-response`);
+* MinIO (`rust_parity_objectstore_e2e.S3StandIn`: every request's SigV4 signature verified, the
+  canonical requests compared) holding the Sysmon configs;
+* the Wazuh master's provisioning worker (`POST /provision_worker/sysmon-config`, aiohttp's
+  multipart body; the boundary, a `uuid4().hex`, is masked).
 
 For each request the suite compares the status, the response bytes and the outbound requests.
 urllib3 prints an object's memory address in a connection error, which differs between any two
@@ -16,7 +20,9 @@ processes; it is masked. Deliberate differences are asserted as such (RUST_MIGRA
     PARITY_SUITES=tests/e2e/rust_parity_response_e2e.py scripts/rust-parity.sh
 
 Ports (all overridable): RESPONSE_PARITY_RUST_PORT and RESPONSE_PARITY_RUST_BARE_PORT (a second
-Rust instance without GRAYLOG_API_HEADER_VALUE / COPILOT_API_KEY), RESPONSE_MANAGER_STUB_PORT.
+Rust instance without GRAYLOG_API_HEADER_VALUE / COPILOT_API_KEY), RESPONSE_MANAGER_STUB_PORT,
+RESPONSE_S3_STUB_PORT, RESPONSE_WORKER_STUB_PORT (the worker's port, 5003 in production:
+COPILOT_PROVISION_WORKER_PORT for Rust, `get_wazuh_endpoint` patched here).
 """
 
 import asyncio
@@ -53,11 +59,17 @@ from sqlalchemy import text  # noqa: E402
 
 from app.db.db_session import sync_engine  # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import rust_parity_objectstore_e2e as objstore  # noqa: E402
+
 SFX = uuid.uuid4().hex[:6]
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 RS_PORT = int(os.environ.get("RESPONSE_PARITY_RUST_PORT", "5787"))
 RS_BARE_PORT = int(os.environ.get("RESPONSE_PARITY_RUST_BARE_PORT", "5788"))
 MANAGER_PORT = int(os.environ.get("RESPONSE_MANAGER_STUB_PORT", "5789"))
+S3_PORT = int(os.environ.get("RESPONSE_S3_STUB_PORT", "5790"))
+WORKER_PORT = int(os.environ.get("RESPONSE_WORKER_STUB_PORT", "5791"))
+S3_USER, S3_SECRET = "minio-response", "minio-response-secret"
 CLOSED_PORT = 1
 OUR_CONNECTORS = ("Wazuh-Manager",)
 CUST_A, CUST_B = f"RsA{SFX}", f"RsB{SFX}"
@@ -166,7 +178,35 @@ class Manager:
 
 MANAGER = Manager()
 MANAGER_RECORDER = Recorder()
-RECORDERS = [MANAGER_RECORDER]
+
+
+class Worker:
+    """The provisioning worker: answers per `mode`."""
+
+    def __init__(self):
+        self.mode = "ok"
+
+    def __call__(self, method, target, headers, body):
+        answers = {
+            "ok": (200, "application/json", b'{"success": true, "message": "Sysmon config deployed to the group"}'),
+            "lax": (200, "application/json; charset=utf-8", b'{"success": "yes"}'),
+            "bad-bool": (200, "application/json", b'{"success": "maybe", "message": "x"}'),
+            "bad-message": (200, "application/json", b'{"message": 5}'),
+            "list": (200, "application/json", b"[1, 2]"),
+            "html": (200, "text/html; charset=utf-8", b"<html>up</html>"),
+            "empty": (200, "application/json", b"  "),
+            "broken": (200, "application/json", b'{"success": tru'),
+            "error": (500, "text/plain", b"worker exploded: no such group"),
+            "error-json": (422, "application/json", '{"detail": "groupe inconnu: é"}'.encode()),
+        }
+        return answers[self.mode]
+
+
+WORKER = Worker()
+WORKER_RECORDER = Recorder()
+RECORDERS = [MANAGER_RECORDER, WORKER_RECORDER]
+S3 = objstore.S3StandIn(S3_USER, S3_SECRET)
+BOUNDARY = re.compile(rb"[0-9a-f]{32}")
 
 
 # --- Database -------------------------------------------------------------------------------------
@@ -256,6 +296,25 @@ def cleanup():
 # --- The two backends -----------------------------------------------------------------------------
 
 
+def patch_python():
+    """MinIO and the provisioning worker's port, as the Rust instances are configured."""
+    from miniopy_async import Minio
+
+    from app.active_response.services import sysmon_config
+    from app.data_store import data_store_operations
+
+    async def create_session():
+        return Minio(f"127.0.0.1:{S3_PORT}", access_key=S3_USER, secret_key=S3_SECRET, secure=False)
+
+    data_store_operations.create_session = create_session
+    original = sysmon_config.get_wazuh_endpoint
+
+    async def get_wazuh_endpoint(session):
+        return (await original(session)).replace(":5003/", f":{WORKER_PORT}/")
+
+    sysmon_config.get_wazuh_endpoint = get_wazuh_endpoint
+
+
 def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
@@ -285,6 +344,14 @@ def start_rust(port, bare=False):
         "CONNECTOR_CACHE_TTL_SECONDS": "0",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
     }
+    env.update(
+        {
+            "MINIO_ROOT_USER": S3_USER,
+            "MINIO_ROOT_PASSWORD": S3_SECRET,
+            "COPILOT_MINIO_ENDPOINT": f"127.0.0.1:{S3_PORT}",
+            "COPILOT_PROVISION_WORKER_PORT": str(WORKER_PORT),
+        },
+    )
     if not bare:
         env["GRAYLOG_API_HEADER_VALUE"] = GRAYLOG_HEADER
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
@@ -314,6 +381,20 @@ def reset_python_caches():
     universal._token_cache._cache.clear()
 
 
+RESPONSE_HEADERS = ("content-type", "content-disposition", "content-length")
+
+
+def audit_rows(action):
+    with sync_engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT actor_username, customer_code, action, entity_type, entity_id, result, old_value, new_value, source_ip, details "
+                "FROM audit_log WHERE action = :a AND actor_username IN :users ORDER BY id",
+            ).bindparams(a=action, users=list(USERS)),
+        )
+        return [tuple(r) for r in rows]
+
+
 class Pair:
     def __init__(self, rust_port):
         self.py = httpx.AsyncClient(
@@ -324,35 +405,66 @@ class Pair:
         self.rs = httpx.AsyncClient(base_url=f"http://127.0.0.1:{rust_port}", timeout=120)
 
     async def call(self, client, method, path, tok, **kw):
-        headers = dict(kw.pop("headers", {}))
+        headers = {"Accept-Encoding": "identity", **dict(kw.pop("headers", {}))}
         if tok:
             headers["Authorization"] = f"Bearer {tok}"
         for recorder in RECORDERS:
             recorder.take()
+        S3.take()
         r = await client.request(method, path, headers=headers, **kw)
-        await asyncio.sleep(0)
-        return r, [request for recorder in RECORDERS for request in recorder.take()]
+        await asyncio.sleep(0.05)
+        out = [(m, t, h, BOUNDARY.sub(b"<boundary>", normalize(b))) for recorder in RECORDERS for m, t, h, b in recorder.take()]
+        out = [(m, t, [(k, BOUNDARY.sub(b"<boundary>", v.encode()).decode()) for k, v in h], b) for m, t, h, b in out]
+        return r, out, S3.take()
 
-    async def same(self, name, method, path, tok=None, before=None, outbound=True, expect=None, **kw):
-        """Python, then Rust, with the stand-ins reset by `before` for each. `expect` is a
-        status both must answer."""
+    async def same(self, name, method, path, tok=None, before=None, outbound=True, expect=None, audit=None, canon=None, **kw):
+        """Python, then Rust, with the stand-ins reset by `before` and MinIO restored for each.
+        `expect` is a status both must answer; `audit` an action whose rows both must write alike;
+        `canon` maps both JSON answers before they are compared (a §4 difference)."""
+        S3.faults = []
         if before:
             before()
-        r1, out1 = await self.call(self.py, method, path, tok, **kw)
+        start = S3.snapshot()
+        audit0 = audit_rows(audit) if audit else None
+        r1, out1, s3_1 = await self.call(self.py, method, path, tok, **kw)
+        end1 = S3.snapshot()
+        audit1 = audit_rows(audit)[len(audit0) :] if audit else None
+        S3.restore(start)
         if before:
             before()
-        r2, out2 = await self.call(self.rs, method, path, tok, **kw)
+        r2, out2, s3_2 = await self.call(self.rs, method, path, tok, **kw)
+        end2 = S3.snapshot()
+        audit2 = audit_rows(audit)[len(audit0) + len(audit1) :] if audit else None
         b1, b2 = normalize(r1.content), normalize(r2.content)
+        if canon:
+            b1, b2 = (json.dumps(canon(json.loads(b))).encode() for b in (b1, b2))
         ok = r1.status_code == r2.status_code and b1 == b2
         if expect is not None and r1.status_code != expect:
             ok = False
         detail = f"python {r1.status_code} {b1[:900]!r}\n        rust   {r2.status_code} {b2[:900]!r}"
+        h1 = {k: r1.headers.get(k) for k in RESPONSE_HEADERS}
+        h2 = {k: r2.headers.get(k) for k in RESPONSE_HEADERS}
+        if h1 != h2:
+            ok = False
+            detail += f"\n        headers python {h1}\n        headers rust   {h2}"
         if outbound:
-            o1 = [(m, t, h, normalize(b)) for m, t, h, b in out1]
-            o2 = [(m, t, h, normalize(b)) for m, t, h, b in out2]
+            if out1 != out2:
+                ok = False
+                detail += f"\n        outbound python {out1}\n        outbound rust   {out2}"
+            o1, o2 = objstore.outbound(s3_1), objstore.outbound(s3_2)
             if o1 != o2:
                 ok = False
-                detail += f"\n        outbound python {o1}\n        outbound rust   {o2}"
+                detail += f"\n        minio python {o1}\n        minio rust   {o2}"
+            if any(o[-1] != "ok" for o in o1 + o2):
+                ok = False
+                detail += f"\n        signatures python {[o[-1] for o in o1]} rust {[o[-1] for o in o2]}"
+            c1, c2 = objstore.changes(start, end1), objstore.changes(start, end2)
+            if c1 != c2:
+                ok = False
+                detail += f"\n        minio changes python {c1}\n        minio changes rust   {c2}"
+        if audit and audit1 != audit2:
+            ok = False
+            detail += f"\n        audit python {audit1}\n        audit rust   {audit2}"
         check(f"{name} [{r1.status_code}]", ok, detail)
         if os.environ.get("PARITY_VERBOSE"):
             print(f"        {b1[:400]!r}\n        outbound {[(m, t, b[:300]) for m, t, h, b in out1]}")
@@ -620,20 +732,126 @@ async def graylog_webhook_checks(p, bare):
         os.environ["GRAYLOG_API_HEADER_VALUE"] = GRAYLOG_HEADER
 
 
+SYSMON = "sysmon-configs"
+SYSMON_XML = (
+    b'<?xml version="1.0" encoding="UTF-8"?>\n<Sysmon schemaversion="4.90">\n  <EventFiltering>\n'
+    b'    <RuleGroup name="" groupRelation="or">\n      <ProcessCreate onmatch="exclude"/>\n    </RuleGroup>\n'
+    b"  </EventFiltering>\n</Sysmon>\n" + "<!-- é -->\n".encode()
+)
+ODD_CODE = f"Ā{SFX}"
+
+
+def seed_minio():
+    S3.make_bucket(SYSMON)
+    S3.put(SYSMON, f"{CUST_A}/sysmon_config.xml", SYSMON_XML, "application/xml")
+    S3.put(SYSMON, f"{CUST_B}/sysmon_config.xml", b"<Sysmon>\xff\xfe</Sysmon>", "application/xml")
+    S3.put(SYSMON, f"{CUST_B}/notes.txt", b"not a config", "text/plain")
+    S3.put(SYSMON, f"{ODD_CODE}/sysmon_config.xml", SYSMON_XML, "application/xml")
+    S3.put(SYSMON, "orphan/old_sysmon_config.xml", b"<Sysmon/>", "application/xml")
+
+
+def worker(m):
+    def set_mode():
+        WORKER.mode = m
+
+    return set_mode
+
+
+async def sysmon_checks(p, t_admin, t_analyst, t_portal, t_resp):
+    S = "/api/sysmon_config"
+    print("\n=== Sysmon configs: auth and tenancy ===")
+    for method, path in (("GET", ""), ("GET", f"/content/{CUST_A}"), ("GET", f"/{CUST_A}"), ("POST", f"/deploy/{CUST_A}")):
+        await p.same(f"{method} {path or '/'}, no token", method, S + path)
+        await p.same(f"{method} {path or '/'}, bad token", method, S + path, "not-a-jwt")
+        await p.same(f"{method} {path or '/'}, analyst", method, S + path, t_analyst, expect=403)
+        await p.same(f"{method} {path or '/'}, portal user", method, S + path, t_portal, expect=403)
+    for method, path in (("GET", f"/content/{CUST_B}"), ("GET", f"/{CUST_B}"), ("POST", f"/deploy/{CUST_B}")):
+        await p.same(f"{method} {path}, a responder of another tenant", method, S + path, t_resp, expect=403)
+
+    print("\n=== Sysmon configs: reads ===")
+
+    def sorted_codes(body):
+        return {**body, "customer_codes": sorted(body["customer_codes"])}
+
+    # Python answers `list(set)`: its order follows the strings' hashes (§4).
+    _, rs = await p.same("GET /, admin", "GET", S, t_admin, expect=200, canon=sorted_codes)
+    listed = sorted({k.split("/")[0] for k in S3.buckets[SYSMON] if k.endswith("sysmon_config.xml")}, key=lambda c: c.encode())
+    check("GET /: Rust answers in listing order", rs.json()["customer_codes"] == listed, f"{rs.json()['customer_codes']} != {listed}")
+    await p.same("GET /, responder", "GET", S, t_resp, expect=200)
+    for who, tok in (("admin", t_admin), ("responder", t_resp)):
+        await p.same(f"GET /content/{{A}}, {who}", "GET", f"{S}/content/{CUST_A}", tok, expect=200)
+        await p.same(f"GET /{{A}}, {who}", "GET", f"{S}/{CUST_A}", tok, expect=200)
+    await p.same("GET /content/{B} (not UTF-8), admin", "GET", f"{S}/content/{CUST_B}", t_admin, expect=500)
+    await p.same("GET /{B} (not UTF-8: bytes as they are), admin", "GET", f"{S}/{CUST_B}", t_admin, expect=200)
+    for code in (f"none{SFX}", "x y"):
+        await p.same(f"GET /content/{code!r} (missing), admin", "GET", f"{S}/content/{code}", t_admin, expect=404)
+        await p.same(f"GET /{code!r} (missing), admin", "GET", f"{S}/{code}", t_admin, expect=404)
+    await p.same("GET /{a code that is not latin-1}, admin", "GET", f"{S}/{ODD_CODE}", t_admin, expect=500)
+    await p.same("GET /content/{a code that is not latin-1}, admin", "GET", f"{S}/content/{ODD_CODE}", t_admin, expect=200)
+
+    snap = S3.snapshot()
+
+    def no_bucket():
+        S3.drop(SYSMON)
+
+    await p.same("GET /, no bucket (created)", "GET", S, t_admin, before=no_bucket, expect=200)
+    await p.same("GET /content/{A}, no bucket", "GET", f"{S}/content/{CUST_A}", t_admin, before=no_bucket, expect=500)
+    await p.same("GET /{A}, no bucket", "GET", f"{S}/{CUST_A}", t_admin, before=no_bucket, expect=500)
+    await p.same("POST /deploy/{A}, no bucket", "POST", f"{S}/deploy/{CUST_A}", t_admin, before=no_bucket, expect=200)
+    S3.restore(snap)
+
+    def failing_listing():
+        S3.fault(lambda m, path, q: m == "GET" and "list-type=2" in q, (500, {"Content-Type": "application/xml"}, b"<Error/>"), count=10)
+
+    await p.same("GET /, the listing fails ([])", "GET", S, t_admin, before=failing_listing, expect=200)
+
+    print("\n=== Sysmon configs: deploy ===")
+    for m in ("ok", "lax", "bad-bool", "bad-message", "list", "html", "empty", "broken", "error", "error-json"):
+        await p.same(
+            f"POST /deploy/{{A}}, the worker answers {m}",
+            "POST",
+            f"{S}/deploy/{CUST_A}",
+            t_resp,
+            before=worker(m),
+            expect=200,
+            audit="response.sysmon_deploy",
+        )
+    await p.same("POST /deploy/{none} (no config)", "POST", f"{S}/deploy/none{SFX}", t_admin, before=worker("ok"), expect=200)
+    await p.same("POST /deploy/{B} (bytes as they are)", "POST", f"{S}/deploy/{CUST_B}", t_admin, before=worker("ok"), expect=200)
+    for url, label in (
+        (f"http://127.0.0.2:{MANAGER_PORT}", "worker unreachable"),
+        ("wazuh-manager:55000", "no netloc"),
+        ("https://[::1:55000", "an unclosed IPv6 bracket"),
+        ("https://[1.2.3.4]:55000", "an IPv4 in brackets"),
+        ("https://user:pw@127.0.0.1:55000", "credentials in the URL"),
+        (None, "no manager connector"),
+    ):
+        set_connector("Wazuh-Manager", url, "wazuh", "wazuh-pw")
+        await p.same(f"POST /deploy/{{A}}, {label}", "POST", f"{S}/deploy/{CUST_A}", t_admin, before=worker("ok"), expect=200)
+    set_connector("Wazuh-Manager", f"http://127.0.0.1:{MANAGER_PORT}", "wazuh", "wazuh-pw")
+    reset_python_caches()
+
+
 async def main():
     manager_server = start_http_stub(MANAGER_PORT, MANAGER, MANAGER_RECORDER)
+    worker_server = start_http_stub(WORKER_PORT, WORKER, WORKER_RECORDER)
+    s3_server = S3.serve(S3_PORT)
+    patch_python()
     seed()
+    seed_minio()
     proc = start_rust(RS_PORT)
     bare_proc = start_rust(RS_BARE_PORT, bare=True)
     p, bare = Pair(RS_PORT), Pair(RS_BARE_PORT)
     t_admin, t_analyst = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"])
     t_portal, t_resp = token(PORTAL, ["customer_user"]), token(RESP, ["responder", "analyst"])
     try:
-        sections = os.environ.get("RESPONSE_PARITY_SECTIONS", "active_response,graylog").split(",")
+        sections = os.environ.get("RESPONSE_PARITY_SECTIONS", "active_response,graylog,sysmon").split(",")
         if "active_response" in sections:
             await active_response_checks(p, t_admin, t_analyst, t_portal, t_resp)
         if "graylog" in sections:
             await graylog_webhook_checks(p, bare)
+        if "sysmon" in sections:
+            await sysmon_checks(p, t_admin, t_analyst, t_portal, t_resp)
     finally:
         await p.close()
         await bare.close()
@@ -645,6 +863,8 @@ async def main():
                 proc_.kill()
         cleanup()
         manager_server.shutdown()
+        worker_server.shutdown()
+        s3_server.shutdown()
     failed = [n for n, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
     return 1 if failed else 0
