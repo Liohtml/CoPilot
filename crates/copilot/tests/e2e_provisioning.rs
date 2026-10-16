@@ -38,6 +38,14 @@ fn port(offset: u16) -> u16 {
         + offset
 }
 
+/// Whether the suite runs at all. Checked before binding a stand-in the
+/// harness needs (the legacy backend): without a database every test skips,
+/// and `cargo test --workspace` runs them in parallel, so two of them must
+/// not race for one port only to skip.
+fn configured() -> bool {
+    std::env::var("COPILOT_TEST_DATABASE_URL").is_ok()
+}
+
 /// A stand-in on one of this suite's ports.
 async fn stand_in(offset: u16) -> MockServer {
     let listener = std::net::TcpListener::bind(("127.0.0.1", port(offset))).unwrap();
@@ -579,6 +587,10 @@ async fn forwarding_rolls_back_what_it_created() {
 
 #[tokio::test]
 async fn monitoring_alerts_other_than_the_waf_go_to_python() {
+    if !configured() {
+        eprintln!("COPILOT_TEST_DATABASE_URL not set; skipping");
+        return;
+    }
     let legacy = stand_in(2).await;
     let h = harness_or_skip!(Some(&legacy), &env());
     let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
@@ -1277,6 +1289,10 @@ async fn decommissioning_a_customer_tears_down_every_tool() {
 
 #[tokio::test]
 async fn template_bound_provisioning_stays_in_python() {
+    if !configured() {
+        eprintln!("COPILOT_TEST_DATABASE_URL not set; skipping");
+        return;
+    }
     let legacy = stand_in(2).await;
     let h = harness_or_skip!(Some(&legacy), &env());
     let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
