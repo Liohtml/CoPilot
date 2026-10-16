@@ -27,6 +27,7 @@ copilot-notifications = { workspace = true }
 copilot-webauthn = { workspace = true }
 copilot-incidents = { workspace = true }
 copilot-sla = { workspace = true }
+copilot-soc-management = { workspace = true }
 copilot-scheduler = { workspace = true }
 copilot-graylog = { workspace = true }
 copilot-influxdb = { workspace = true }

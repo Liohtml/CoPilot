@@ -41,6 +41,7 @@ from app.db.db_session import async_engine
 RUST_CAPABLE_JOBS = (
     "invoke_palace_lesson_drainer",
     "invoke_palace_lesson_sweeper",
+    "notify_sla_transitions",
     "prune_audit_log",
 )
 

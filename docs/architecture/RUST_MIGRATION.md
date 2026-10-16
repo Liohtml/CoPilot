@@ -85,7 +85,8 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-customer-portal` | `app/customer_portal/` (`ai_reports`, `ai_requests`) | `/api/customer_portal/ai_reports/*` (6 routes); every other portal path is still proxied |
 | `copilot-customers` | `app/customers/` (reads) | `GET /api/customers/*` (7 routes); creating, changing and deleting customers provisions Graylog/Grafana/Wazuh and stays in Python |
 | `copilot-incidents` | `app/incidents/` (`routes/db_operations.py` and its services, `services/case_events.py`, `customer_reply.py`, `status_cascade.py`, the template half of `case_tasks.py`, `notification_enrichment.py`, `middleware/tag_access.py`'s single-alert rule, `services/verdict_stats.py`), the incident builders of `notifications/services/event_builders.py` | `/api/incidents/db_operations`: every `GET` (35) and the writes — alert creation, status (one and bulk), verdict, verdict state, escalation, assignment (one and bulk), comments, contexts, assets, IoCs, tags, deletion (one, bulk, by title); case creation (from scratch, from an alert), links, comments, status with the alert cascade, escalation, severity, assignment, customer move; the AI-trigger and Shuffle rows; the field dictionaries; the case-task writes and the manual template apply. `/api/incidents/case_templates`: the template and template-task CRUD. `/api/incidents/tag_access`: settings, user and role tags, `/me`. `/api/incidents/alerts`: the Velociraptor Sigma exclusion rules (create with the link comment, list, read, edit, toggle, delete). `/api/incidents/report`: the CSV case exports. `/api/incidents/customer_reports`: the report list and the visibility switch. Still Python: the three Wazuh-indexer reads, the MinIO routes (case files, report templates, `DELETE /case/{id}`), `POST /case/notification` (Shuffle), the template library and `/case_templates/suggest`, the rest of `/alerts` (creation and Sigma ingest read the indexer or Graylog; the exclusion draft and dry-run share the ingest's event flattening and matcher), the DOCX/PDF case reports and the customer report generation, download and deletion (MinIO, docxtpl, wkhtmltopdf) |
-| `copilot-sla` | `app/soc_management/` (`domain/{lifecycle,policy,calendar}.py`, `services/lifecycle.py`, the reads of `services/{policy,calendars}.py`), `app/incidents/services/alert_severity.py` | the SLA lifecycle recorder the incidents routes call (#1187): tracking rows opened with snapshotted targets, guarded write-once milestones, pause/resume on `PENDING_CUSTOMER`, re-targeting on case severity and link changes; 24/7 and business-hours clocks (IANA zones via `chrono-tz`) |
+| `copilot-sla` | `app/soc_management/` (`domain/{lifecycle,policy,calendar,sla}.py`, `services/lifecycle.py`, `services/{policy,calendars}.py`, `retarget_open`), `app/incidents/services/alert_severity.py` | the SLA lifecycle recorder the incidents routes call (#1187): tracking rows opened with snapshotted targets, guarded write-once milestones, pause/resume on `PENDING_CUSTOMER`, re-targeting on case severity and link changes and on a policy or calendar save (`retarget.rs`); SLA evaluation and compliance (`evaluate.rs`); policy and calendar storage, stored rows read with Python's semantics; 24/7 and business-hours clocks (IANA zones via `chrono-tz`) |
+| `copilot-soc-management` | `app/soc_management/` (`routes/`, `schema/`, `domain/{analytics,stats,periods,notices}.py`, `services/{datasets,metrics,policy,calendars,notifier}.py`), `app/customer_portal/{routes,services,schema}/sla.py`, the SLA builder of `notifications/services/event_builders.py` | `/api/soc_management/*` (11 of its 12 routes: dashboard, sources, attention, item clocks, policies and overrides, calendars; not the PDF `GET /report`); `/api/customer_portal/sla/*` (4 routes); the `notify_sla_transitions` job |
 | `copilot-healthchecks` | `app/healthchecks/agents/` (database half) | `GET /api/healthcheck/*` (4 routes); the classification is shared with the customer routes. `POST /logs` (Wazuh indexer) stays in Python |
 | `copilot-platform` | `app/version/`, `app/audit/` (reads) | `GET /api/version/check` (PEP 440 compare; `COPILOT_VERSION_CHECK_URL` points it at a mirror), `GET /api/audit`, `/actions`, `/{id}` |
 | `copilot-identity` | `app/auth/routes/auth.py`, `routes/totp.py`, `routes/customer_users.py`, `routes/sso.py`, `routes/passkey.py`, `routes/security_admin.py`, `services/totp.py`, `services/customer_assignment.py`, `services/sso.py`, `services/passkey.py`, `services/security_admin.py`, `services/temp_password_email.py`; the branding merge of `app/customer_portal/services/branding.py` and the palette of `customer_report_branding.py` | login (`/token`, `/token/customer-portal`, the deprecated JSON `/login`), `/refresh`, the six `/2fa/*` routes, user management (`/register`, `/users`, `/users/{id}`, `/reset-password`, `/reset-password/me`, `/delete/{id}`, `/users/{id}/role/by-name`, `/users/{id}/customers`, `/me/customers`), SSO (`/sso/*`: settings, allowlist, Azure, Google, Cloudflare Access), passkeys (`/passkey/*`), the admin Security tab (`/security/*`: users, SMTP status, 2FA reset, the temporary-password email's templates, preview and send over SMTP); the enrolment QR code, the 2FA brute-force counter |
@@ -378,8 +379,29 @@ by the pause measured on their basis. Business hours follow
 `domain/calendar.py` to the microsecond (`timedelta` rounding, local windows
 converted per day with `zoneinfo`'s fold-0 rules). As in Python, only admins
 and analysts (role ids 1 and 2) acknowledge: a responder's action does not.
-The dashboard, the policy and calendar editors and `notify_sla_transitions`
-stay in Python and read the same rows.
+The dashboard, the policy and calendar editors, the portal's SLA page and
+`notify_sla_transitions` are `copilot-soc-management`'s. Every figure comes
+from one snapshot per request, loaded with SQLAlchemy's statement shapes (no
+`ORDER BY` where Python has none, so MySQL's row order breaks a
+`Counter.most_common` tie the same way), and is rendered with CPython's float
+`repr`; periods stay in Python's `datetime` range (`OverflowError` a bare 500,
+`year 10000 is out of range` the 400). A stored calendar or policy cell the API
+never writes is read with Python's semantics (`dict()`, `iter()`,
+`int()`, `date.fromisoformat`): a `ValueError` is the 400 with its text, a
+`TypeError` a bare 500, and a write whose re-targeting reads it fails inside
+its `try` (the route's 500). `apply_to_open` goes through `copilot_sla::retarget`,
+the definition the recorder uses. The notifier claims a stamp with a guarded
+`UPDATE` and sends only what it won, settles the at-risk stamp on a breach and
+stamps a breach older than 24 h silently; its events are
+`copilot_core::notify::sla_event`'s, emitted through `ctx.notifications`. The
+SOC operations PDF (`GET /report`) and the customer report's SLA section
+(`customer_sla_context`) stay in Python with the rest of the PDF reports:
+matplotlib draws their charts and wkhtmltopdf renders them. The parity suite
+`rust_parity_soc_e2e.py` seeds a month of history (a Rome business-hours
+calendar across both DST changes, paused, breached, at-risk, reopened and
+untracked items, a tag-restricted analyst), freezes Python's clock at the
+instant Rust answered, and compares the writes on twin customers and the
+notifier's stamps, deliveries and dispatch log.
 
 **Talon.** `crates/copilot-talon/src/contract.rs` types every request and
 response of Talon's HTTP channel (`talon-http`): `/investigate`,
@@ -413,7 +435,7 @@ cards by `teams_vectors.json`, Markdown email bodies by `copilot-markdown`
 `rust_parity_notifications_e2e.py` points webhook, Resend and Shuffle at one
 recorder and compares every outbound request, response and dispatch-log row;
 Teams URLs must be `https://`, so its deliveries are compared through their
-failure. The SLA notifier (`notify_sla_transitions`) still runs in Python.
+failure. The SLA notifier (`notify_sla_transitions`) is a hand-over job (below).
 
 **Scheduled jobs.** A job moves to Rust only by explicit hand-over, and never
 runs in both schedulers. Rust runs a job when the operator opted in
@@ -442,7 +464,7 @@ instead of one interval after the process started, so a daily job on a host
 restarted daily still runs. Ported: `prune_audit_log`,
 `invoke_palace_lesson_drainer`, `invoke_palace_lesson_sweeper` (status flips
 guarded on the previous status, so a lesson is never ingested or expired
-twice). Run a single Rust instance with the opt-in.
+twice), `notify_sla_transitions` (every 2 minutes, from `copilot-soc-management`). Run a single Rust instance with the opt-in.
 
 **Connectors (Graylog).** `copilot-graylog` answers every route of
 `app/connectors/graylog/routes/` but `POST /api/graylog/invoke` (the
@@ -576,6 +598,7 @@ not provoked.
 | the position in a `UnicodeDecodeError` of an InfluxDB answer longer than one network read | relative to the chunk aiohttp was decoding | relative to the body | not provoked |
 | the GELF `host` of `POST /graylog/receiver` when the host name is only in DNS | `socket.getfqdn()` asks DNS for the canonical name | the host name (`/etc/hosts` is read, DNS is not) | equal in a container, where `/etc/hosts` names the host (not provoked) |
 | an Event Shipper port that is a service name (`http`) | resolved by `getaddrinfo` | not a port: nothing is sent (still answered as forwarded) | only numeric ports are configured (not provoked) |
+| a calendar's timezone name (`PUT /soc_management/calendars`) | whatever `zoneinfo` finds on the host: its zoneinfo files, else the `tzdata` package — a host without the backward links refuses `US/Eastern` or `Asia/Calcutta`, and a file such as `localtime` or `posixrules` passes | the IANA database compiled into chrono-tz 0.10: every canonical and backward name, nothing else (422 `Unknown timezone '…'`) | the same names on every host; rules follow chrono-tz's IANA release, not the host's (only the Rust side is asserted, the Python side depends on the host) |
 
 ---
 
@@ -616,7 +639,7 @@ Python backend today: ~200 k lines in 930 files.
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
 | **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer, MinIO and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (and with them the exclusion draft and dry-run) wait for an indexer port, the DOCX/PDF reports and customer report generation, download and deletion for MinIO and a PDF renderer |
-| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs; `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time — **Graylog and InfluxDB done** (`copilot-graylog`, `copilot-influxdb` on `copilot-upstream`, `rust_parity_graylog_e2e.py`); `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
+| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs; `agents` (9.8 k), `soc_management` (4.4 k) — **done** but its PDF report (`copilot-soc-management`: dashboard, policies, calendars, the portal's SLA page, `notify_sla_transitions`; `rust_parity_soc_e2e.py`), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time — **Graylog and InfluxDB done** (`copilot-graylog`, `copilot-influxdb` on `copilot-upstream`, `rust_parity_graylog_e2e.py`); `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the

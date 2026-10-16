@@ -18,6 +18,9 @@
 //!                      │ integrations, dispatch log, channel catalog          │
 //!                      │                    → copilot-notifications ───────────► webhook, Teams,
 //!                      │ (every module emits in-process: DispatchingSink)     │   Resend, Shuffle
+//!                      │ /api/soc_management/* (but GET /report),             │
+//!                      │ /api/customer_portal/sla/*                           │
+//!                      │                    → copilot-soc-management          │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -124,6 +127,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/graylog/receiver",
     // The InfluxDB connector (copilot-influxdb): alerts and metrics.
     "GET /api/influxdb",
+    // SOC Management but GET /report (the PDF operations report: matplotlib
+    // charts and wkhtmltopdf), which falls through to the legacy backend.
+    "/api/soc_management",
+    "/api/customer_portal/sla",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -145,6 +152,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::branding::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::REQUIREMENTS);
     all.extend_from_slice(copilot_sla::REQUIREMENTS);
+    all.extend_from_slice(copilot_soc_management::REQUIREMENTS);
     all.extend_from_slice(copilot_notifications::db::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
@@ -392,6 +400,13 @@ impl App {
                     client: self.influxdb.clone(),
                 }),
             )
+            // `/api/soc_management/*` but `GET /report`; the portal's SLA page
+            // with full paths beside the other `/api/customer_portal` routes.
+            .nest(
+                "/api/soc_management",
+                copilot_soc_management::router(self.ctx.clone()),
+            )
+            .merge(copilot_soc_management::portal_router(self.ctx.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
@@ -447,7 +462,8 @@ impl App {
 }
 
 /// Every job this build can take over from APScheduler (`handover.py`'s
-/// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`.
+/// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`,
+/// `notify_sla_transitions`.
 pub fn scheduled_jobs(
     ctx: &AppContext,
     talon: &TalonConnector,
@@ -458,6 +474,7 @@ pub fn scheduled_jobs(
         ctx.db.clone(),
         cfg.audit_log_retention_days.clone(),
     ));
+    jobs.push(copilot_soc_management::notifier_job_spec(ctx));
     jobs
 }
 
