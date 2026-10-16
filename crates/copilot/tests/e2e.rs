@@ -759,8 +759,9 @@ async fn talon_and_ai_analyst_flow() {
 async fn unported_routes_are_proxied_to_the_python_backend() {
     let legacy = MockServer::start().await;
     let h = harness_or_skip!(Some(&legacy));
+    // (`/api/agents` is ported now; its sibling `/api/vulnerabilities` is not.)
     Mock::given(method("GET"))
-        .and(path("/api/agents"))
+        .and(path("/api/vulnerabilities"))
         .and(header("authorization", "Bearer abc"))
         .respond_with(
             ResponseTemplate::new(200)
@@ -771,7 +772,7 @@ async fn unported_routes_are_proxied_to_the_python_backend() {
         .mount(&legacy)
         .await;
     let (st, body) = h
-        .call("GET", "/api/agents?customer_code=x", Some("abc"), None)
+        .call("GET", "/api/vulnerabilities?customer_code=x", Some("abc"), None)
         .await;
     assert_eq!(st, 200);
     assert_eq!(body, json!({"success": true, "agents": []}));
