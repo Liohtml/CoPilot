@@ -2348,6 +2348,22 @@ async def main():  # noqa: C901 - one scenario after the other
         for file_id in ("abc123", "missing", "err", "invalid", "submit", "analyze", "a%20b"):
             await both(f"vt file report {file_id}", "GET", f"{FR}/{file_id}", t_analyst)
 
+        # §4: an id holding a `\` or an encoded dot segment. httpx sends both as they are; Rust's
+        # URL type (`url`, under reqwest) sends the `\` as `/` and resolves the segment.
+        async def vt_paths(client, uri):
+            vt.take()
+            r = await client.get(uri, headers={"Authorization": f"Bearer {t_analyst}"})
+            return r.status_code, [c["path"] for c in vt.take()]
+
+        for uri, py_sent, rs_sent, rs_status in (
+            (f"{FR}/a%5Cb", "/api/v3/files/a\\b", "/api/v3/files/a/b", 200),
+            (f"{AN}/a%5Cb", "/api/v3/analyses/a\\b", "/api/v3/analyses/a/b", 200),
+            (f"{FR}/%252E%252E", "/api/v3/files/%2E%2E", "/api/v3/", 404),
+        ):
+            p, q = await vt_paths(py, uri), await vt_paths(rs, uri)
+            check(f"python: {uri} sends {py_sent}", p == (200, [py_sent]), str(p))
+            check(f"rust: {uri} sends {rs_sent} (§4)", q == (rs_status, [rs_sent]), str(q))
+
         FA = TIP + "/virustotal/file/analyze"
         await both("analyze: no token", "POST", FA, files=sample)
         await both("analyze: portal user", "POST", FA, t_portal, files=sample)
