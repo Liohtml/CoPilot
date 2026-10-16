@@ -41,6 +41,8 @@ copilot-graylog = { path = "crates/copilot-graylog" }
 copilot-influxdb = { path = "crates/copilot-influxdb" }
 copilot-grafana = { path = "crates/copilot-grafana" }
 copilot-portainer = { path = "crates/copilot-portainer" }
+copilot-velociraptor = { path = "crates/copilot-velociraptor" }
+copilot-agents = { path = "crates/copilot-agents" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

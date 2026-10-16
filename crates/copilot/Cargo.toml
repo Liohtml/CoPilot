@@ -35,6 +35,8 @@ copilot-graylog = { workspace = true }
 copilot-influxdb = { workspace = true }
 copilot-grafana = { workspace = true }
 copilot-portainer = { workspace = true }
+copilot-velociraptor = { workspace = true }
+copilot-agents = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
@@ -49,6 +51,8 @@ clap = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
+copilot-velociraptor = { workspace = true, features = ["testing"] }
+tempfile = { workspace = true }
 tower = { workspace = true }
 num-bigint-dig = { workspace = true }
 sha2 = { workspace = true }

@@ -1,0 +1,48 @@
+[package]
+name = "copilot-velociraptor"
+description = "Velociraptor connector: pyvelociraptor's gRPC client as CoPilot uses it (mTLS from api.config.yaml, VQL queries), /api/artifacts, /api/flows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+# A Velociraptor API stand-in (gRPC over mTLS) for this crate's and the
+# binary's tests.
+testing = []
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-connectors = { workspace = true }
+copilot-upstream = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+regex = { workspace = true }
+hyper = { workspace = true, features = ["http2", "server"] }
+# The gRPC transport: HTTP/2 over rustls with the client certificate of the
+# API config (the versions the rest of the workspace already builds).
+hyper-util = { version = "=0.1.21", features = ["tokio"] }
+http-body-util = "=0.1.5"
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pki-types = { version = "=1.15.1", features = ["std"] }
+# `yaml.safe_load` of the API config file.
+yaml_serde = "=0.10.7"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

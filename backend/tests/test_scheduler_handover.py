@@ -207,7 +207,12 @@ def test_startup_keeps_a_handed_over_job_disabled(monkeypatch):
 
     _Session.rows = {
         "prune_audit_log": JobMetadata(job_id="prune_audit_log", time_interval=5, enabled=False, job_description="x"),
-        "agent_sync": JobMetadata(job_id="agent_sync", time_interval=5, enabled=False, job_description="x"),
+        "invoke_alert_creation_collect": JobMetadata(
+            job_id="invoke_alert_creation_collect",
+            time_interval=5,
+            enabled=False,
+            job_description="x",
+        ),
     }
     monkeypatch.setattr(scheduler_module, "AsyncSession", _Session)
     asyncio.run(scheduler_module.initialize_job_metadata())
@@ -215,4 +220,4 @@ def test_startup_keeps_a_handed_over_job_disabled(monkeypatch):
     prune = _Session.rows["prune_audit_log"]
     assert prune.enabled is False, "a handed-over job stays with the Rust service across restarts"
     assert prune.time_interval == 1440, "the interval is still reset as before"
-    assert _Session.rows["agent_sync"].enabled is True, "every other job is re-enabled as before"
+    assert _Session.rows["invoke_alert_creation_collect"].enabled is True, "every other job is re-enabled as before"

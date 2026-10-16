@@ -23,6 +23,11 @@ RELEASE_STUB_PORT="${RELEASE_STUB_PORT:-5198}"
 IDP_STUB_PORT="${IDP_STUB_PORT:-5197}"
 # ... and an SMTP server stand-in here for the temporary-password email.
 SMTP_STUB_PORT="${SMTP_STUB_PORT:-5196}"
+# ... and an api.first.org stand-in here for the EPSS column of the CSV exports.
+EPSS_STUB_PORT="${EPSS_STUB_PORT:-5732}"
+# Both backends read these two.
+: "${GRAFANA_API_HEADER_VALUE:=parity-grafana-header}"
+: "${VELOCIRAPTOR_QUERY_TIMEOUT:=5}"
 
 cargo build -q -p copilot
 env -i PATH="$PATH" HOME="$HOME" \
@@ -33,6 +38,8 @@ env -i PATH="$PATH" HOME="$HOME" \
   SMTP_HOST=127.0.0.1 SMTP_PORT="$SMTP_STUB_PORT" SMTP_USE_TLS=false SMTP_FROM=copilot@parity.test \
   COPILOT_URL=https://copilot.parity.test/ \
   COPILOT_VERSION_CHECK_URL="http://127.0.0.1:${RELEASE_STUB_PORT}/releases/latest" \
+  COPILOT_EPSS_URL="http://127.0.0.1:${EPSS_STUB_PORT}/data/v1/epss" \
+  GRAFANA_API_HEADER_VALUE="$GRAFANA_API_HEADER_VALUE" VELOCIRAPTOR_QUERY_TIMEOUT="$VELOCIRAPTOR_QUERY_TIMEOUT" \
   RUST_LOG="${RUST_LOG:-warn}" ./target/debug/copilot --root /nonexistent serve &
 RS_PID=$!
 trap 'kill $RS_PID 2>/dev/null || true' EXIT
@@ -54,7 +61,8 @@ for suite in $suites; do
   MYSQL_URL="$MYSQL_URL" MYSQL_USER="$MYSQL_USER" MYSQL_PASSWORD="$MYSQL_PASSWORD" \
     MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-unused}" JWT_SECRET="$JWT_SECRET" \
     RUST_BASE_URL="http://127.0.0.1:${PORT}" RELEASE_STUB_PORT="$RELEASE_STUB_PORT" IDP_STUB_PORT="$IDP_STUB_PORT" \
-    SMTP_STUB_PORT="$SMTP_STUB_PORT" PYTHONPATH="$PWD" \
+    SMTP_STUB_PORT="$SMTP_STUB_PORT" EPSS_STUB_PORT="$EPSS_STUB_PORT" GRAFANA_API_HEADER_VALUE="$GRAFANA_API_HEADER_VALUE" \
+    VELOCIRAPTOR_QUERY_TIMEOUT="$VELOCIRAPTOR_QUERY_TIMEOUT" PYTHONPATH="$PWD" \
     "$PY" "$suite" || status=1
 done
 exit $status
