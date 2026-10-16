@@ -35,6 +35,7 @@ copilot-graylog = { workspace = true }
 copilot-influxdb = { workspace = true }
 copilot-grafana = { workspace = true }
 copilot-portainer = { workspace = true }
+copilot-objectstore = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

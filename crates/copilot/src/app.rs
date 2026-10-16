@@ -21,6 +21,8 @@
 //!                      │ /api/soc_management/* (but GET /report),             │
 //!                      │ /api/customer_portal/sla/*                           │
 //!                      │                    → copilot-soc-management          │
+//!                      │ /api/agent_data_store/*, the incidents' MinIO routes │
+//!                      │                    → copilot-objectstore ────────────────► MinIO :9000
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -52,6 +54,7 @@ use copilot_graylog::{GraylogClient, GraylogState};
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
 use copilot_influxdb::{InfluxClient, InfluxState};
 use copilot_notifications::{Dispatcher, DispatchingSink, NotificationsState};
+use copilot_objectstore::{DataStoreState, ObjectStore};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
 use copilot_portainer::{PortainerClient, PortainerState};
@@ -86,9 +89,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/passkey",
     "/api/auth/security",
     // /api/incidents/db_operations but the Wazuh-indexer reads (/available-source,
-    // /available-indices, /mappings), the MinIO routes (case files, report
-    // templates, DELETE /case/{id}) and POST /case/notification (Shuffle):
-    // those fall through to the legacy backend.
+    // /available-indices, /mappings), POST /case-report-template/default-template
+    // (the templates are files on the Python host) and POST /case/notification
+    // (Shuffle): those fall through to the legacy backend. The MinIO routes
+    // (case files, report templates, DELETE /case/{id}) are copilot-objectstore's.
     "/api/incidents/db_operations",
     // The template CRUD; the library and /suggest stay in Python.
     "/api/incidents/case_templates",
@@ -100,10 +104,12 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/incidents/alerts/velo-sigma/exclusion",
     // The CSV case exports; the DOCX and PDF reports stay in Python.
     "POST /api/incidents/report/generate-report-csv",
-    // The report list and the visibility switch (GET "", PATCH /{id}/visibility);
-    // generation, download and delete stay in Python.
+    // The report list, the visibility switch, download and delete (GET "",
+    // PATCH /{id}/visibility, GET /{id}/download, DELETE /{id}); generation
+    // (the PDF renderer) stays in Python.
     "GET /api/incidents/customer_reports",
     "PATCH /api/incidents/customer_reports",
+    "DELETE /api/incidents/customer_reports",
     "GET /api/scheduler",
     "POST /api/scheduler/jobs/run",
     "POST /api/scheduler/start",
@@ -172,6 +178,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // charts and wkhtmltopdf), which falls through to the legacy backend.
     "/api/soc_management",
     "/api/customer_portal/sla",
+    // The MinIO data store (copilot-objectstore): the upload and the agents'
+    // Velociraptor artifact files.
+    "/api/agent_data_store",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -198,6 +207,8 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_connectors::REQUIREMENTS);
     all.extend_from_slice(copilot_wazuh::REQUIREMENTS);
     all.extend_from_slice(copilot_portainer::REQUIREMENTS);
+    all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
+    all.extend_from_slice(copilot_incidents::datastore::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -262,6 +273,9 @@ pub struct App {
     pub grafana: GrafanaClient,
     /// The Portainer client (`/api/portainer`, and provisioning).
     pub portainer: PortainerClient,
+    /// The MinIO object store (`/api/agent_data_store`, the incidents'
+    /// files).
+    pub objectstore: ObjectStore,
 }
 
 impl App {
@@ -337,6 +351,8 @@ impl App {
             GrafanaClient::new(ctx.connectors.clone()).context("building the Grafana client")?;
         let portainer = PortainerClient::new(ctx.connectors.clone())
             .context("building the Portainer client")?;
+        let objectstore = ObjectStore::from_env(&cfg.minio)
+            .map_err(|e| anyhow::anyhow!("MinIO settings: {e}"))?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -370,6 +386,7 @@ impl App {
             influxdb,
             grafana,
             portainer,
+            objectstore,
         })
     }
 
@@ -516,6 +533,23 @@ impl App {
                 copilot_soc_management::router(self.ctx.clone()),
             )
             .merge(copilot_soc_management::portal_router(self.ctx.clone()))
+            .nest(
+                "/api/agent_data_store",
+                copilot_objectstore::router(DataStoreState {
+                    ctx: self.ctx.clone(),
+                    store: self.objectstore.clone(),
+                    legacy: self.legacy.clone(),
+                }),
+            )
+            // Full paths beside the nested incidents routers (methods merge
+            // on a shared path: DELETE /case/{case_id} joins its GET).
+            .merge(copilot_incidents::datastore::router(
+                copilot_incidents::datastore::DatastoreState {
+                    ctx: self.ctx.clone(),
+                    store: self.objectstore.clone(),
+                    legacy: self.legacy.clone(),
+                },
+            ))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
