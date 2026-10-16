@@ -28,6 +28,8 @@
 //! | `COPILOT_MAX_BODY_BYTES` | `268435456` | request body cap (nginx's `client_max_body_size 256m`) |
 //! | `COPILOT_LOG_FORMAT` | `text` | `json` for structured logs |
 //! | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` | *(unset)*, `587`, …, `true` | the temporary-password email; read as set, and parsed per request like Python (a bad `SMTP_PORT` is that request's 400) |
+//! | `MINIO_URL`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_SECURE` | `copilot-minio`, `admin`, `password`, `false` | the MinIO object store, read as `app/data_store/data_store_session.py` reads them (environs: an empty value is a value; `MINIO_SECURE` must be one of marshmallow's boolean spellings, else neither backend starts); the client dials `{MINIO_URL}:9000` |
+//! | `COPILOT_MINIO_ENDPOINT` | *(unset)* | tests only: `host:port` dialled instead of `{MINIO_URL}:9000` (the parity harness's S3 stand-in); never set in production |
 
 use std::fmt;
 use std::net::IpAddr;
@@ -149,6 +151,8 @@ pub struct CopilotConfig {
     pub smtp: SmtpEnv,
     /// What the alert ingest reads from the environment, as set.
     pub ingest: crate::ingest_env::IngestEnv,
+    /// The `MINIO_*` settings, as set.
+    pub minio: MinioEnv,
 }
 
 /// Raw `WEBAUTHN_*` values, read like `os.environ.get` (`None` = unset).
@@ -182,6 +186,24 @@ pub struct SmtpEnv {
     pub from: Option<String>,
     /// `SMTP_USE_TLS` (default `true`).
     pub use_tls: Option<String>,
+}
+
+/// Raw `MINIO_*` values, read like `os.environ.get` (`None` = unset; an
+/// empty value is still a value, as environs reads it). `copilot-objectstore`
+/// applies `data_store_session.py`'s defaults and parsing.
+#[derive(Clone, Debug, Default)]
+pub struct MinioEnv {
+    /// `MINIO_URL` (default `copilot-minio`).
+    pub url: Option<String>,
+    /// `MINIO_ROOT_USER` (default `admin`).
+    pub root_user: Option<String>,
+    /// `MINIO_ROOT_PASSWORD` (default `password`).
+    pub root_password: Option<Secret>,
+    /// `MINIO_SECURE` (default `false`).
+    pub secure: Option<String>,
+    /// `COPILOT_MINIO_ENDPOINT` — tests only: the `host:port` dialled instead
+    /// of `{MINIO_URL}:9000`.
+    pub endpoint_override: Option<String>,
 }
 
 impl CopilotConfig {
@@ -320,6 +342,16 @@ impl CopilotConfig {
                 use_tls: env.get_raw("SMTP_USE_TLS"),
             },
             ingest: crate::ingest_env::IngestEnv::from_env(env),
+            minio: MinioEnv {
+                url: env.get_raw("MINIO_URL"),
+                root_user: env.get_raw("MINIO_ROOT_USER"),
+                root_password: env.get_raw("MINIO_ROOT_PASSWORD").map(Secret::new),
+                secure: env.get_raw("MINIO_SECURE"),
+                endpoint_override: env
+                    .get("COPILOT_MINIO_ENDPOINT")
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty()),
+            },
         })
     }
 }

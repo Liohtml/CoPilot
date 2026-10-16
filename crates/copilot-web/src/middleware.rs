@@ -2,7 +2,8 @@
 //!
 //! - [`cors`] — Starlette's `CORSMiddleware(allow_origins=["*"],
 //!   allow_credentials=True, …)`: mirror the origin, allow credentials.
-//! - [`compression`] — `GZipMiddleware(minimum_size=1000)`; never SSE.
+//! - [`compression`] — `GZipMiddleware(minimum_size=1000)`; never SSE, and
+//!   not for a response marked [`Uncompressed`].
 //! - [`log_handled_errors`] — the `log_entries` row every Python exception
 //!   handler writes, here written in the background so the response is not
 //!   held up.
@@ -27,14 +28,30 @@ pub fn cors() -> CorsLayer {
     CorsLayer::very_permissive()
 }
 
-/// gzip above 1000 bytes, never for event streams or images.
+/// gzip above 1000 bytes, never for event streams or images, nor for a
+/// response marked [`Uncompressed`].
 pub fn compression() -> CompressionLayer<impl Predicate> {
     CompressionLayer::new().compress_when(
         SizeAbove::new(1000)
             .and(NotForContentType::GRPC)
             .and(NotForContentType::IMAGES)
-            .and(NotForContentType::SSE),
+            .and(NotForContentType::SSE)
+            .and(not_marked),
     )
+}
+
+/// A response extension: the route already applied `GZipMiddleware`'s rules
+/// (a `StreamingResponse` download), so [`compression`] leaves it as it is.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Uncompressed;
+
+fn not_marked(
+    _: http::StatusCode,
+    _: http::Version,
+    _: &http::HeaderMap,
+    extensions: &http::Extensions,
+) -> bool {
+    extensions.get::<Uncompressed>().is_none()
 }
 
 /// Defensive headers for API responses.

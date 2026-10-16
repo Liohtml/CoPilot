@@ -42,6 +42,7 @@ copilot-influxdb = { path = "crates/copilot-influxdb" }
 copilot-grafana = { path = "crates/copilot-grafana" }
 copilot-portainer = { path = "crates/copilot-portainer" }
 copilot-ingest = { path = "crates/copilot-ingest" }
+copilot-objectstore = { path = "crates/copilot-objectstore" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }
@@ -97,6 +98,8 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "s
 subtle = "2"
 sha2 = "0.10"
 hmac = "0.12"
+# Content-MD5 of the S3 requests that carry one (miniopy-async's `md5sum_hash`).
+md-5 = "=0.10.6"
 hex = "0.4"
 base64 = "0.22"
 rand = "0.8"

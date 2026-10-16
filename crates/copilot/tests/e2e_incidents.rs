@@ -563,31 +563,28 @@ async fn unported_paths_and_methods_reach_the_legacy_backend() {
     let legacy = MockServer::start().await;
     let h = harness_or_skip!(Some(&legacy));
     h.seed().await;
+    // The MinIO routes are copilot-objectstore's now (e2e_objectstore.rs),
+    // the indexer reads copilot-ingest's (e2e_ingest.rs); the default-template
+    // upload reads files on the Python host.
     Mock::given(method("POST"))
-        .and(path(format!("{P}/case/notification")))
+        .and(path(format!("{P}/case-report-template/default-template")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-post"})))
         .mount(&legacy)
         .await;
-    Mock::given(method("DELETE"))
-        .and(path(format!("{P}/case/12345")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-delete"})))
-        .mount(&legacy)
-        .await;
-    Mock::given(method("GET"))
-        .and(path(format!("{P}/case/data-store/download/1/f.txt")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-dl"})))
+    Mock::given(method("POST"))
+        .and(path(format!("{P}/case/notification")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-shuffle"})))
         .mount(&legacy)
         .await;
     let s = h.suffix.clone();
     let admin = h.token(&format!("admin{s}"), "admin");
     for (m, uri, want) in [
-        ("POST", format!("{P}/case/notification"), "python-post"),
-        ("DELETE", format!("{P}/case/12345"), "python-delete"),
         (
-            "GET",
-            format!("{P}/case/data-store/download/1/f.txt"),
-            "python-dl",
+            "POST",
+            format!("{P}/case-report-template/default-template"),
+            "python-post",
         ),
+        ("POST", format!("{P}/case/notification"), "python-shuffle"),
     ] {
         let (st, body) = h.call(m, &uri, Some(&admin), Some(json!({}))).await;
         assert_eq!(
@@ -1491,8 +1488,6 @@ async fn csv_exports_and_report_list_split_with_python() {
         ("POST", format!("{R}/generate-report-docx")),
         ("POST", format!("{R}/generate-report-pdf")),
         ("POST", format!("{CR}/generate/background")),
-        ("GET", format!("{CR}/{report}/download")),
-        ("DELETE", format!("{CR}/{report}")),
     ] {
         Mock::given(method(m))
             .and(path(p.clone()))
