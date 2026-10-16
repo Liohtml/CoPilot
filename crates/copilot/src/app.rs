@@ -215,6 +215,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // Sysmon configs but `POST /upload` (ElementTree's XML validation).
     "GET /api/sysmon_config",
     "POST /api/sysmon_config/deploy",
+    // CoPilot Actions: the inventory and the invoke.
+    "/api/copilot_action",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -438,6 +440,11 @@ impl App {
             store: objectstore.clone(),
             worker: copilot_response::sysmon::worker::WorkerHttp::new()
                 .context("building the provisioning-worker client")?,
+            action: copilot_response::copilot_action::client::ActionHttp::new(
+                cfg.response.copilot_action_url.clone(),
+            )
+            .context("building the CoPilot Action client")?,
+            velociraptor: agents.velociraptor.clone(),
             env: Arc::new(copilot_response::ResponseEnv::from_config(
                 &cfg.ingest,
                 &cfg.response,
@@ -723,6 +730,15 @@ impl App {
                     self.wazuh.legacy.clone(),
                     copilot_wazuh::decoded_slash_to_legacy,
                 )),
+            )
+            .nest(
+                "/api/copilot_action",
+                copilot_response::copilot_action_router(self.response.clone()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
             )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))

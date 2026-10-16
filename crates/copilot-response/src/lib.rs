@@ -8,6 +8,9 @@
 //! - [`sysmon`] — `/api/sysmon_config` but the upload: customers' Sysmon
 //!   configs in MinIO (`copilot-objectstore`), deployed to the Wazuh master's
 //!   provisioning worker as aiohttp posts them
+//! - [`copilot_action`] — `/api/copilot_action`: the CoPilot Action
+//!   inventory (an httpx client of the SOCFortress service) and the invoke,
+//!   one Velociraptor collection per target
 //!
 //! Each module keeps the backend's `routes / services / schema` split.
 
@@ -21,6 +24,7 @@ use copilot_wazuh::WazuhState;
 use copilot_web::AppContext;
 
 pub mod active_response;
+pub mod copilot_action;
 pub mod sysmon;
 
 /// What the response routes read from the environment, as set.
@@ -32,6 +36,9 @@ pub struct ResponseEnv {
     /// The provisioning worker's port (`5003`; `COPILOT_PROVISION_WORKER_PORT`
     /// for the parity harness only).
     pub provision_worker_port: String,
+    /// `COPILOT_API_KEY` (the CoPilot Action service's license key; unset or
+    /// empty is the inventory routes' 500).
+    pub copilot_api_key: Option<String>,
 }
 
 impl ResponseEnv {
@@ -46,6 +53,10 @@ impl ResponseEnv {
                 .provision_worker_port
                 .clone()
                 .unwrap_or_else(|| sysmon::worker::WORKER_PORT.to_string()),
+            copilot_api_key: response
+                .copilot_api_key
+                .as_ref()
+                .map(|k| k.expose().to_string()),
         }
     }
 }
@@ -61,6 +72,10 @@ pub struct ResponseState {
     pub store: ObjectStore,
     /// The provisioning worker's client (the Sysmon deploy).
     pub worker: sysmon::worker::WorkerHttp,
+    /// The CoPilot Action service's client.
+    pub action: copilot_action::client::ActionHttp,
+    /// The Velociraptor client (the CoPilot Action invoke).
+    pub velociraptor: copilot_velociraptor::VelociraptorClient,
     /// The environment the routes read.
     pub env: Arc<ResponseEnv>,
     /// The Python backend (requests these routers hand over).
@@ -68,4 +83,5 @@ pub struct ResponseState {
 }
 
 pub use active_response::routes::{graylog_router, router as active_response_router};
+pub use copilot_action::routes::router as copilot_action_router;
 pub use sysmon::routes::router as sysmon_router;

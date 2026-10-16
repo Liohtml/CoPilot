@@ -86,6 +86,30 @@ pub enum Ty {
     Nullable(&'static Ty),
     /// `Union[A, B, …]` in smart mode.
     Union(&'static [Ty]),
+    /// A `str`-valued `Enum` (`class E(str, Enum)`): one of its values, as
+    /// the value (`use_enum_values` or a JSON-mode dump).
+    Enum(&'static EnumTy),
+}
+
+/// A `str`-valued `Enum`: its class name and values in declaration order.
+#[derive(Debug)]
+pub struct EnumTy {
+    /// The class name (a union member's label).
+    pub name: &'static str,
+    /// The values, in declaration order.
+    pub values: &'static [&'static str],
+}
+
+impl EnumTy {
+    /// Pydantic's `Input should be 'a', 'b' or 'c'`.
+    pub fn expected(&self) -> String {
+        let quoted: Vec<String> = self.values.iter().map(|v| format!("'{v}'")).collect();
+        match quoted.split_last() {
+            None => String::new(),
+            Some((last, [])) => last.clone(),
+            Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+        }
+    }
 }
 
 /// A field's default when the key is absent.
@@ -379,6 +403,21 @@ fn check(ty: &Ty, input: &PyValue, loc: &mut Vec<Loc>, ctx: &mut Ctx) -> Option<
             _ => check(inner, input, loc, ctx),
         },
         Ty::Union(members) => check_union(members, input, loc, ctx),
+        Ty::Enum(e) => match input {
+            PyValue::Str(s) if e.values.contains(&s.as_str()) => {
+                ctx.floor(Exactness::Lax);
+                Some(PyValue::Str(s.clone()))
+            }
+            _ => {
+                ctx.push(
+                    loc,
+                    "enum",
+                    format!("Input should be {}", e.expected()),
+                    input,
+                );
+                None
+            }
+        },
     }
 }
 
@@ -490,6 +529,7 @@ fn label(ty: &Ty) -> String {
             "union[{}]",
             members.iter().map(label).collect::<Vec<_>>().join(",")
         ),
+        Ty::Enum(e) => e.name.into(),
     }
 }
 
@@ -964,6 +1004,37 @@ mod tests {
             Field::opt("children", Ty::Nullable(&Ty::List(&Ty::Model(&LEAF)))),
         ],
     );
+
+    static COLOR: EnumTy = EnumTy {
+        name: "Color",
+        values: &["red", "Green", "b"],
+    };
+    static PAINT: Model = Model::new(
+        "M",
+        &[
+            Field::req("c", Ty::Enum(&COLOR)),
+            Field::opt("d", Ty::Nullable(&Ty::Enum(&COLOR))),
+        ],
+    );
+
+    #[test]
+    fn str_enums_take_their_values_only() {
+        let Err(Invalid::Errors(errs)) =
+            validate(&PAINT, &loads(r#"{"c": "RED", "d": 5}"#).unwrap())
+        else {
+            panic!("expected errors")
+        };
+        assert_eq!(
+            format_validation_error("M", &errs),
+            "2 validation errors for M\nc\n  Input should be 'red', 'Green' or 'b' [type=enum, \
+             input_value='RED', input_type=str]\n    For further information visit \
+             https://errors.pydantic.dev/2.13/v/enum\nd\n  Input should be 'red', 'Green' or 'b' \
+             [type=enum, input_value=5, input_type=int]\n    For further information visit \
+             https://errors.pydantic.dev/2.13/v/enum"
+        );
+        let ok = validate(&PAINT, &loads(r#"{"c": "red"}"#).unwrap()).unwrap();
+        assert_eq!(ok.py_repr(), "{'c': 'red', 'd': None}");
+    }
 
     #[test]
     fn recursive_models_and_errors() {

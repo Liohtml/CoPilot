@@ -11,7 +11,11 @@ the body bytes — and both backends' requests are compared one by one:
 * MinIO (`rust_parity_objectstore_e2e.S3StandIn`: every request's SigV4 signature verified, the
   canonical requests compared) holding the Sysmon configs;
 * the Wazuh master's provisioning worker (`POST /provision_worker/sysmon-config`, aiohttp's
-  multipart body; the boundary, a `uuid4().hex`, is masked).
+  multipart body; the boundary, a `uuid4().hex`, is masked);
+* the CoPilot Action service (`/inventory`, `/metrics`, httpx's requests;
+  `CopilotActionService.BASE_URL` patched here, COPILOT_ACTION_URL for Rust);
+* Velociraptor's gRPC API (`rust_parity_agents_e2e.VeloStandIn`, grpcio over mutual TLS: each
+  `VQLCollectorArgs` and its deadline) for the CoPilot Action invoke.
 
 For each request the suite compares the status, the response bytes and the outbound requests.
 urllib3 prints an object's memory address in a connection error, which differs between any two
@@ -22,16 +26,20 @@ processes; it is masked. Deliberate differences are asserted as such (RUST_MIGRA
 Ports (all overridable): RESPONSE_PARITY_RUST_PORT and RESPONSE_PARITY_RUST_BARE_PORT (a second
 Rust instance without GRAYLOG_API_HEADER_VALUE / COPILOT_API_KEY), RESPONSE_MANAGER_STUB_PORT,
 RESPONSE_S3_STUB_PORT, RESPONSE_WORKER_STUB_PORT (the worker's port, 5003 in production:
-COPILOT_PROVISION_WORKER_PORT for Rust, `get_wazuh_endpoint` patched here).
+COPILOT_PROVISION_WORKER_PORT for Rust, `get_wazuh_endpoint` patched here),
+RESPONSE_ACTION_STUB_PORT, RESPONSE_VELO_STUB_PORT.
 """
 
 import asyncio
+import base64
 import datetime
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -48,6 +56,8 @@ os.environ.setdefault("JWT_SECRET", "e2e-test-secret-not-the-default")
 os.environ["CONNECTOR_CACHE_TTL_SECONDS"] = "0"
 GRAYLOG_HEADER = "parity-response-graylog-header"
 os.environ["GRAYLOG_API_HEADER_VALUE"] = GRAYLOG_HEADER
+ACTION_KEY = "parity-copilot-action-key"
+os.environ["COPILOT_API_KEY"] = ACTION_KEY
 
 import httpx  # noqa: E402
 import jwt  # noqa: E402
@@ -60,6 +70,7 @@ from sqlalchemy import text  # noqa: E402
 from app.db.db_session import sync_engine  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import rust_parity_agents_e2e as agents_parity  # noqa: E402
 import rust_parity_objectstore_e2e as objstore  # noqa: E402
 
 SFX = uuid.uuid4().hex[:6]
@@ -69,9 +80,11 @@ RS_BARE_PORT = int(os.environ.get("RESPONSE_PARITY_RUST_BARE_PORT", "5788"))
 MANAGER_PORT = int(os.environ.get("RESPONSE_MANAGER_STUB_PORT", "5789"))
 S3_PORT = int(os.environ.get("RESPONSE_S3_STUB_PORT", "5790"))
 WORKER_PORT = int(os.environ.get("RESPONSE_WORKER_STUB_PORT", "5791"))
+ACTION_PORT = int(os.environ.get("RESPONSE_ACTION_STUB_PORT", "5792"))
+VELO_PORT = int(os.environ.get("RESPONSE_VELO_STUB_PORT", "5793"))
 S3_USER, S3_SECRET = "minio-response", "minio-response-secret"
 CLOSED_PORT = 1
-OUR_CONNECTORS = ("Wazuh-Manager",)
+OUR_CONNECTORS = ("Wazuh-Manager", "Velociraptor")
 CUST_A, CUST_B = f"RsA{SFX}", f"RsB{SFX}"
 ADMIN, ANALYST, PORTAL, RESP = f"rs_admin{SFX}", f"rs_analyst{SFX}", f"rs_portal{SFX}", f"rs_resp{SFX}"
 USERS = (ADMIN, ANALYST, PORTAL, RESP)
@@ -130,10 +143,12 @@ def start_http_stub(port, answer, recorder):
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
             recorder.add(self.command, self.path, self.headers, body)
-            status, ctype, payload = answer(self.command, self.path, self.headers, body)
+            status, ctype, payload, *extra = answer(self.command, self.path, self.headers, body)
             self.send_response(status)
             if ctype:
                 self.send_header("Content-Type", ctype)
+            for name, value in (extra[0] if extra else {}).items():
+                self.send_header(name, value)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -204,7 +219,163 @@ class Worker:
 
 WORKER = Worker()
 WORKER_RECORDER = Recorder()
-RECORDERS = [MANAGER_RECORDER, WORKER_RECORDER]
+
+
+def action_item(name, technology="Linux", **extra):
+    return {
+        "copilot_action_name": name,
+        "description": "Kill a process",
+        "technology": technology,
+        "script_parameters": [
+            {"name": "Target", "type": "string", "required": True, "arg_position": "1", "description": "pid"},
+            {"name": "Mode", "type": "enum", "required": False, "enum": ["soft", "hard"], "default": "soft"},
+        ],
+        "repo_url": "https://raw.example/kill.sh",
+        "version": "1.2",
+        "last_updated": "2026-10-01T08:00:00Z",
+        "tags": ["process"],
+        **extra,
+    }
+
+
+class ActionService:
+    """The CoPilot Action service: `/inventory` and `/metrics` per `mode`, an action's detail per
+    its name."""
+
+    def __init__(self):
+        self.mode = "ok"
+
+    @staticmethod
+    def js(value, status=200, ctype="application/json"):
+        return status, ctype, json.dumps(value).encode()
+
+    def inventory(self):
+        items = [action_item("kill-process"), action_item("win-kill", "Windows", icon="custom")]
+        m = self.mode
+        if m == "ok":
+            return self.js({"copilot_actions": items, "message": "Returned 2 of 44 matching items", "success": True})
+        if m == "total":
+            return self.js({"copilot_actions": items, "message": "x", "success": True, "total": 7})
+        if m == "showing":
+            return self.js({"copilot_actions": items, "message": "Showing 2 of 3"})
+        if m == "no-message":
+            return self.js({"copilot_actions": items})
+        if m == "total-str":
+            return self.js({"copilot_actions": items, "total": "7"})
+        if m == "total-float":
+            return self.js({"copilot_actions": items, "total": 7.5})
+        if m == "total-bool":
+            return self.js({"copilot_actions": items, "total": True})
+        if m == "message-int":
+            return self.js({"copilot_actions": items, "message": 5})
+        if m == "message-null":
+            return self.js({"copilot_actions": items, "total": 2, "message": None})
+        if m == "bad-item":
+            return self.js({"copilot_actions": [action_item("x", "Solaris"), {"copilot_action_name": 1}], "total": 2})
+        if m == "bad-type":
+            item = action_item("x")
+            item["script_parameters"][0]["type"] = "blob"
+            return self.js({"copilot_actions": [item], "total": 1})
+        if m == "list":
+            return self.js([1, 2])
+        if m == "actions-null":
+            return self.js({"copilot_actions": None})
+        if m == "actions-str":
+            return self.js({"copilot_actions": "abc", "total": 0})
+        if m == "html":
+            return 200, "text/html", b"<html>maintenance</html>"
+        if m == "error":
+            return self.js({"detail": "license invalid"}, status=403)
+        if m == "server-error":
+            return 502, "text/plain", b"bad gateway"
+        if m == "redirect":
+            return 302, "text/plain", b"", {"Location": "https://elsewhere.example/inventory"}
+        if m == "gzip":
+            import gzip
+
+            body = gzip.compress(json.dumps({"copilot_actions": items, "message": "1/2 items"}).encode())
+            return 200, "application/json", body, {"Content-Encoding": "gzip"}
+        if m == "not-found-message":
+            return self.js({"copilot_actions": [], "message": "license expired", "success": False})
+        raise AssertionError(m)
+
+    def detail(self, name):
+        if name == "kill-process":
+            return self.js({"copilot_action": action_item(name), "message": "ok", "success": True})
+        if name == "win-kill":
+            return self.js({"copilot_action": action_item(name, "Windows"), "message": "ok", "success": True})
+        if name == "no-url":
+            return self.js({"copilot_action": action_item(name, repo_url=""), "message": "ok", "success": True})
+        if name == "gone":
+            return self.js({"copilot_action": action_item(name), "message": "Action gone: NOT FOUND", "success": False})
+        if name == "fails":
+            return self.js({"copilot_action": action_item(name), "message": "quota exceeded", "success": False})
+        if name == "bad":
+            return self.js({"copilot_action": {"copilot_action_name": name}, "message": "ok", "success": True})
+        if name == "list":
+            return self.js([1])
+        if name == "html":
+            return 200, "text/html", b"<html/>"
+        if name == "broken":
+            return 500, "text/plain", b"boom"
+        return self.js({"detail": "Not Found"}, status=404)
+
+    def metrics(self):
+        m = self.mode
+        if m in ("ok", "total"):
+            return self.js({"status": "healthy", "metrics": {"actions": 44, "nested": {"a": [1, 2.5, None]}}, "x": 1})
+        if m == "no-message":
+            return self.js({})
+        if m == "list":
+            return self.js([1])
+        if m == "message-int":
+            return self.js({"status": 5, "metrics": {}})
+        if m == "actions-null":
+            return self.js({"status": "ok", "metrics": None})
+        if m == "html":
+            return 200, "text/html", b"<html/>"
+        if m == "server-error":
+            return 502, "text/plain", b"bad gateway"
+        return self.js({"detail": "nope"}, status=404)
+
+    def __call__(self, method, target, headers, body):
+        path = target.split("?")[0]
+        if path == "/inventory":
+            return self.inventory()
+        if path == "/metrics":
+            return self.metrics()
+        if path.startswith("/inventory/"):
+            from urllib.parse import unquote
+
+            return self.detail(unquote(path[len("/inventory/") :]))
+        return self.js({"detail": "Not Found"}, status=404)
+
+
+ACTION = ActionService()
+ACTION_RECORDER = Recorder()
+
+
+class VeloRecorder:
+    """The Velociraptor stand-in's requests as outbound records: the serialized
+    `VQLCollectorArgs` and its deadline (to the nearest 5 s)."""
+
+    def __init__(self):
+        self.stand_in = None
+
+    def take(self):
+        if self.stand_in is None:
+            return []
+        out = []
+        for r in self.stand_in.take():
+            raw = bytes.fromhex(r["request"])
+            args = agents_parity.api_pb2.VQLCollectorArgs.FromString(raw)
+            text_ = f"org={args.org_id} max_wait={args.max_wait} {[(q.Name, q.VQL) for q in args.Query]} {base64.b64encode(raw).decode()}"
+            out.append(("GRPC", "/proto.API/Query", [("deadline", str(r["deadline"]))], text_.encode()))
+        return out
+
+
+VELO_RECORDER = VeloRecorder()
+RECORDERS = [MANAGER_RECORDER, WORKER_RECORDER, ACTION_RECORDER, VELO_RECORDER]
 S3 = objstore.S3StandIn(S3_USER, S3_SECRET)
 BOUNDARY = re.compile(rb"[0-9a-f]{32}")
 
@@ -278,6 +449,11 @@ def seed():
 
 
 def cleanup():
+    sql(
+        "DELETE FROM agent_datastore WHERE agent_id IN (SELECT agent_id FROM agents WHERE id BETWEEN :lo AND :hi)",
+        lo=AGENT_ID_BASE,
+        hi=AGENT_ID_BASE + 9999,
+    )
     sql("DELETE FROM agents WHERE id BETWEEN :lo AND :hi", lo=AGENT_ID_BASE, hi=AGENT_ID_BASE + 9999)
     for name in OUR_CONNECTORS:
         sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
@@ -307,6 +483,11 @@ def patch_python():
         return Minio(f"127.0.0.1:{S3_PORT}", access_key=S3_USER, secret_key=S3_SECRET, secure=False)
 
     data_store_operations.create_session = create_session
+    from app.integrations.copilot_action.services.copilot_action import (
+        CopilotActionService,
+    )
+
+    CopilotActionService.BASE_URL = f"http://127.0.0.1:{ACTION_PORT}"
     original = sysmon_config.get_wazuh_endpoint
 
     async def get_wazuh_endpoint(session):
@@ -320,9 +501,11 @@ def build_python_app():
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
     from app.routers import active_response
+    from app.routers import copilot_action
 
     api = APIRouter(prefix="/api")
     api.include_router(active_response.router)
+    api.include_router(copilot_action.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -350,10 +533,15 @@ def start_rust(port, bare=False):
             "MINIO_ROOT_PASSWORD": S3_SECRET,
             "COPILOT_MINIO_ENDPOINT": f"127.0.0.1:{S3_PORT}",
             "COPILOT_PROVISION_WORKER_PORT": str(WORKER_PORT),
+            "COPILOT_ACTION_URL": f"http://127.0.0.1:{ACTION_PORT}",
         },
     )
+    for name in ("VELOCIRAPTOR_QUERY_TIMEOUT", "VELOCIRAPTOR_FLOW_TIMEOUT"):
+        if name in os.environ:
+            env[name] = os.environ[name]
     if not bare:
         env["GRAYLOG_API_HEADER_VALUE"] = GRAYLOG_HEADER
+        env["COPILOT_API_KEY"] = ACTION_KEY
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
     for _ in range(100):
         try:
@@ -417,24 +605,34 @@ class Pair:
         out = [(m, t, [(k, BOUNDARY.sub(b"<boundary>", v.encode()).decode()) for k, v in h], b) for m, t, h, b in out]
         return r, out, S3.take()
 
-    async def same(self, name, method, path, tok=None, before=None, outbound=True, expect=None, audit=None, canon=None, **kw):
+    async def same(self, name, method, path, tok=None, before=None, outbound=True, expect=None, audit=None, canon=None, table=None, **kw):
         """Python, then Rust, with the stand-ins reset by `before` and MinIO restored for each.
         `expect` is a status both must answer; `audit` an action whose rows both must write alike;
-        `canon` maps both JSON answers before they are compared (a §4 difference)."""
+        `canon` maps both JSON answers before they are compared (a §4 difference); `table` returns
+        the rows of a table both must write alike."""
         S3.faults = []
         if before:
             before()
         start = S3.snapshot()
         audit0 = audit_rows(audit) if audit else None
+        rows0 = table() if table else None
         r1, out1, s3_1 = await self.call(self.py, method, path, tok, **kw)
         end1 = S3.snapshot()
         audit1 = audit_rows(audit)[len(audit0) :] if audit else None
+        rows1 = table()[len(rows0) :] if table else None
         S3.restore(start)
         if before:
             before()
         r2, out2, s3_2 = await self.call(self.rs, method, path, tok, **kw)
         end2 = S3.snapshot()
         audit2 = audit_rows(audit)[len(audit0) + len(audit1) :] if audit else None
+        # Python awaits its audit row; the Rust sink writes it on a task of its own, which can
+        # land after the answer: wait for as many rows as Python wrote (3 s at most).
+        deadline = time.time() + 3
+        while audit and len(audit2) < len(audit1) and time.time() < deadline:
+            await asyncio.sleep(0.05)
+            audit2 = audit_rows(audit)[len(audit0) + len(audit1) :]
+        rows2 = table()[len(rows0) + len(rows1) :] if table else None
         b1, b2 = normalize(r1.content), normalize(r2.content)
         if canon:
             b1, b2 = (json.dumps(canon(json.loads(b))).encode() for b in (b1, b2))
@@ -465,6 +663,9 @@ class Pair:
         if audit and audit1 != audit2:
             ok = False
             detail += f"\n        audit python {audit1}\n        audit rust   {audit2}"
+        if table and rows1 != rows2:
+            ok = False
+            detail += f"\n        rows python {rows1}\n        rows rust   {rows2}"
         check(f"{name} [{r1.status_code}]", ok, detail)
         if os.environ.get("PARITY_VERBOSE"):
             print(f"        {b1[:400]!r}\n        outbound {[(m, t, b[:300]) for m, t, h, b in out1]}")
@@ -732,6 +933,10 @@ async def graylog_webhook_checks(p, bare):
         os.environ["GRAYLOG_API_HEADER_VALUE"] = GRAYLOG_HEADER
 
 
+ACTION_KEY = "parity-copilot-action-key"
+os.environ["COPILOT_API_KEY"] = ACTION_KEY
+
+
 SYSMON = "sysmon-configs"
 SYSMON_XML = (
     b'<?xml version="1.0" encoding="UTF-8"?>\n<Sysmon schemaversion="4.90">\n  <EventFiltering>\n'
@@ -832,30 +1037,497 @@ async def sysmon_checks(p, t_admin, t_analyst, t_portal, t_resp):
     reset_python_caches()
 
 
+# --- CoPilot Actions ------------------------------------------------------------------------------
+
+#: (row offset, agent_id, hostname, os, customer, velociraptor_id) — right after `AGENTS`: the
+#: suite's explicit ids stay one block, below whatever MySQL's auto-increment hands out next.
+ACTION_AGENTS = [
+    (4, f"a{SFX}x1", f"act-a-{SFX}", "Ubuntu 24.04 LTS", CUST_A, f"C.{SFX}0a1"),
+    (5, f"a{SFX}x2", f"act-w-{SFX}", "Microsoft Windows 11 Pro", CUST_A, f"C.{SFX}0a2"),
+    (6, f"a{SFX}x3", f"act-s-{SFX}", "Solaris 11", CUST_A, f"C.{SFX}0a3"),
+    (7, f"a{SFX}x4", f"act-n-{SFX}", "Ubuntu 22.04", CUST_A, None),
+    (8, f"a{SFX}x5", f"act-d-{SFX}", "Debian 12", CUST_A, f"C.{SFX}0a5"),
+    (9, f"b{SFX}x5", f"act-d-{SFX}", "Debian 12", CUST_B, f"C.{SFX}0b5"),
+    (10, f"b{SFX}x6", f"act-b-{SFX}", "Ubuntu 22.04", CUST_B, f"C.{SFX}0b6"),
+]
+HOST_A, HOST_W, HOST_S, HOST_N, HOST_D, HOST_B = (a[2] for a in ACTION_AGENTS if a[0] != 9)
+
+
+def seed_action_agents():
+    for offset, agent_id, hostname, os_name, customer, client_id in ACTION_AGENTS:
+        sql(
+            "INSERT INTO agents (id, agent_id, ip_address, os, hostname, label, critical_asset, wazuh_last_seen, "
+            "velociraptor_id, velociraptor_last_seen, wazuh_agent_version, wazuh_agent_status, velociraptor_agent_version, "
+            "customer_code, quarantined, velociraptor_org, velociraptor_id_pinned) VALUES (:id, :a, '10.0.0.1', :os, :h, "
+            "'grp', 0, '2026-10-15 08:00:00', :v, NULL, 'Wazuh v4.9.0', 'active', NULL, :c, 0, 'root', 0)",
+            id=AGENT_ID_BASE + offset,
+            a=agent_id,
+            os=os_name,
+            h=hostname,
+            v=client_id,
+            c=customer,
+        )
+
+
+def datastore_rows():
+    """The `agent_datastore` rows of this suite's agents, without the id and the time."""
+    with sync_engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT agent_id, velociraptor_id, artifact_name, flow_id, bucket_name, object_key, file_name, content_type, "
+                "file_size, file_hash, uploaded_by, notes, status, error_message FROM agent_datastore WHERE agent_id IN :ids "
+                "ORDER BY id",
+            ).bindparams(ids=[a[1] for a in ACTION_AGENTS]),
+        )
+        return [tuple(r) for r in rows]
+
+
+BIG = bytes(range(256)) * 4096 + b"tail"
+
+
+class Velo:
+    """What Velociraptor answers the invoke's queries with, per `mode`."""
+
+    def __init__(self):
+        self.mode = "ok"
+
+    def __call__(self, stand_in, vql, org_id):
+        import grpc
+
+        m = self.mode
+        if vql.startswith("SELECT collect_client("):
+            if m == "denied":
+                return [], (grpc.StatusCode.PERMISSION_DENIED, f"Permission denied: COLLECT_CLIENT in {org_id}")
+            if m == "unavailable":
+                return [], (grpc.StatusCode.UNAVAILABLE, "datastore is restarting é")
+            if m == "no-flow":
+                return [[{"collect_client": {"request": 1}}, {"x": {"flow_id": "F.LATER"}}]], None
+            if m == "no-rows":
+                return [[]], None
+            if m == "row-list":
+                return [[[1]]], None
+            if m == "bad-flow":
+                return [[{"collect_client": {"flow_id": "F.bad id"}}]], None
+            if m == "flow-int":
+                return [[{"collect_client": {"flow_id": 5}}]], None
+            if m == "results-not-dicts":
+                return [[{"collect_client": {"flow_id": "F.PAR"}}]], None
+            return [[{"collect_client": {"flow_id": "F.PAR", "request": {"artifacts": ["x"]}}}]], None
+        if vql.startswith("SELECT * FROM watch_monitoring("):
+            return [[{"FlowId": "F.PAR", "ClientId": "x"}]], None
+        if vql.startswith("SELECT * FROM source("):
+            if m == "source-error":
+                return [], (grpc.StatusCode.UNAVAILABLE, "no such flow")
+            if m == "results-not-dicts":
+                return [[1, "two"]], None
+            return [[{"Stdout": "killed é", "ReturnCode": 0}]], None
+        if vql.startswith("SELECT os_info.hostname AS Hostname"):
+            if m == "no-hostname":
+                return [[]], None
+            if m == "hostname-absent":
+                return [[{"Other": 1}]], None
+            if m == "hostname-null":
+                return [[{"Hostname": None}]], None
+            if m == "hostname-int":
+                return [[{"Hostname": 42}]], None
+            if m == "hostname-list":
+                return [[[1]]], None
+            return [[{"Hostname": "velo-host"}]], None
+        if vql.startswith("SELECT create_flow_download("):
+            if m == "download-error":
+                return [], (grpc.StatusCode.INTERNAL, "download failed")
+            return [[{"create_flow_download": "downloads/x.zip"}]], None
+        if vql.startswith("SELECT base64encode("):
+            offset = int(re.search(r"offset=(\d+)", vql).group(1))
+            if m == "data-bad":
+                return [[{"Data": "@@@"}]], None
+            if m == "data-padding":
+                return [[{"Data": "UEsDBA="}]], None
+            if m == "data-int":
+                return [[{"Data": 5}]], None
+            if m == "data-empty":
+                return [[]], None
+            if m == "data-non-ascii":
+                return [[{"Data": "UEsDBA==é"}]], None
+            if m == "data-big":
+                return [[{"Data": base64.b64encode(BIG[offset : offset + 1048576]).decode()}]], None
+            return [[{"Data": "UEsDBA==" if offset == 0 else ""}]], None
+        return [], (grpc.StatusCode.INVALID_ARGUMENT, f"unexpected VQL: {vql}")
+
+
+VELO = Velo()
+
+
+def velo(m):
+    def set_mode():
+        VELO.mode = m
+        ACTION.mode = "ok"
+
+    return set_mode
+
+
+def action(m):
+    def set_mode():
+        ACTION.mode = m
+
+    return set_mode
+
+
+def no_key():
+    os.environ.pop("COPILOT_API_KEY", None)
+    ACTION.mode = "ok"
+
+
+def sorted_lists(body):
+    """Python lists a set in the message (`list(set)`: the strings' hash order, §4)."""
+    if isinstance(body, dict) and isinstance(body.get("message"), str):
+
+        def sort(m):
+            items = re.findall(r"'([^']*)'", m.group(0))
+            return "[" + ", ".join(f"'{i}'" for i in sorted(items)) + "]"
+
+        body = {**body, "message": re.sub(r"\[(?:'[^']*'(?:, )?)+\]", sort, body["message"])}
+    return body
+
+
+INVALID_INVOKES = [
+    {},
+    {"copilot_action_name": 1, "agent_names": "x"},
+    {"copilot_action_name": "kill-process", "agent_names": [1, None]},
+    {"copilot_action_name": "kill-process", "agent_names": ["h"], "parameters": {"a": 1}},
+    {"copilot_action_name": "kill-process", "agent_names": ["h"], "parameters": {"a": [{"key": "k"}]}},
+    {"copilot_action_name": "kill-process", "agent_names": ["h"], "parameters": {"a": [{"key": "k", "value": 2}, "x"]}},
+    {"copilot_action_name": "kill-process", "agent_names": ["h"], "parameters": "x"},
+    {"copilot_action_name": "kill-process", "agent_names": ["h"], "artifact_name": 5},
+    [],
+    "str",
+]
+
+
+async def copilot_action_checks(p, bare, t_admin, t_analyst, t_portal, t_resp):
+    C = "/api/copilot_action"
+    print("\n=== CoPilot Actions: auth ===")
+    routes = (
+        ("GET", "/inventory"),
+        ("GET", "/inventory/count"),
+        ("GET", "/inventory/kill-process"),
+        ("GET", "/metrics"),
+        ("GET", "/technologies"),
+        ("POST", "/invoke"),
+    )
+    for method, path in routes:
+        await p.same(f"{method} {path}, no token", method, C + path, before=action("ok"))
+        await p.same(f"{method} {path}, bad token", method, C + path, "not-a-jwt")
+        for who, tok in (("analyst", t_analyst), ("portal user", t_portal)):
+            await p.same(f"{method} {path}, {who}", method, C + path, tok, expect=403, json={})
+
+    print("\n=== CoPilot Actions: the inventory ===")
+    await p.same("GET /technologies", "GET", f"{C}/technologies", t_resp, expect=200)
+    for m in (
+        "ok",
+        "total",
+        "showing",
+        "no-message",
+        "total-str",
+        "total-float",
+        "total-bool",
+        "message-int",
+        "message-null",
+        "bad-item",
+        "bad-type",
+        "list",
+        "actions-null",
+        "actions-str",
+        "html",
+        "error",
+        "server-error",
+        "redirect",
+        "gzip",
+        "not-found-message",
+    ):
+        await p.same(f"GET /inventory, the service answers {m}", "GET", f"{C}/inventory", t_resp, before=action(m), expect=200)
+        await p.same(f"GET /inventory/count, the service answers {m}", "GET", f"{C}/inventory/count", t_admin, before=action(m))
+    for query in (
+        "?technology=Windows&category=c&tag=t&q=kill%20it&limit=5&offset=10&refresh=true&include=a,b",
+        "?limit=1000&offset=0&refresh=false&technology=Velociraptor",
+        "?category=&tag=&q=&include=",
+        "?q=%C3%A9+x&q=last&offset=3",
+        "?refresh=1&limit=7&offset=7",
+        "?technology=",
+        "?technology=windows",
+        "?limit=0",
+        "?limit=1001",
+        "?limit=x&offset=-1&refresh=maybe",
+        "?limit=1.5",
+        "?technology=Linux&limit=0&offset=x",
+    ):
+        await p.same(f"GET /inventory{query}", "GET", f"{C}/inventory{query}", t_resp, before=action("ok"))
+        await p.same(f"GET /inventory/count{query}", "GET", f"{C}/inventory/count{query}", t_resp, before=action("ok"))
+    for name in (
+        "kill-process",
+        "win-kill",
+        "gone",
+        "fails",
+        "bad",
+        "list",
+        "html",
+        "broken",
+        "missing",
+        "a%20b",
+        "%C3%A9",
+        "a|b^[c]",
+        "x%3Fy",
+        "%2E%2E",
+        "it's",
+    ):
+        await p.same(f"GET /inventory/{name}", "GET", f"{C}/inventory/{name}", t_resp)
+    for m in ("ok", "no-message", "list", "message-int", "actions-null", "html", "server-error", "error"):
+        await p.same(f"GET /metrics, the service answers {m}", "GET", f"{C}/metrics", t_admin, before=action(m), expect=200)
+
+    print("\n=== CoPilot Actions: without COPILOT_API_KEY ===")
+    try:
+        for path in ("/inventory", "/inventory/count", "/inventory/kill-process", "/metrics", "/technologies", "/inventory?limit=0"):
+            await bare.same(f"GET {path}, no key", "GET", C + path, t_admin, before=no_key)
+        await bare.same(
+            "POST /invoke, no key",
+            "POST",
+            f"{C}/invoke",
+            t_admin,
+            before=no_key,
+            json={"copilot_action_name": "kill-process", "agent_names": [HOST_A], "parameters": {"Target": "1"}},
+            audit="response.copilot_action_invoke",
+        )
+    finally:
+        os.environ["COPILOT_API_KEY"] = ACTION_KEY
+
+    print("\n=== CoPilot Actions: invoke, the body and the targets ===")
+    for body in INVALID_INVOKES:
+        await p.same(f"POST /invoke {json.dumps(body)[:90]}", "POST", f"{C}/invoke", t_resp, json=body, expect=422)
+    await p.same("POST /invoke, not JSON", "POST", f"{C}/invoke", t_resp, content=b"{", headers={"Content-Type": "application/json"})
+
+    def invoke(hosts, params=None, name="kill-process", **extra):
+        return {"copilot_action_name": name, "agent_names": hosts, "parameters": params, **extra}
+
+    au = "response.copilot_action_invoke"
+    await p.same("POST /invoke, no agent", "POST", f"{C}/invoke", t_resp, json=invoke([]), expect=400, audit=au)
+    await p.same("POST /invoke, another tenant's host", "POST", f"{C}/invoke", t_resp, json=invoke([HOST_A, HOST_B]), expect=403, audit=au)
+    await p.same(
+        "POST /invoke, an unknown host (responder)",
+        "POST",
+        f"{C}/invoke",
+        t_resp,
+        json=invoke([f"nohost-{SFX}"]),
+        expect=403,
+        audit=au,
+    )
+    await p.same(
+        "POST /invoke, an unknown host (admin)",
+        "POST",
+        f"{C}/invoke",
+        t_admin,
+        json=invoke([f"nohost-{SFX}"]),
+        expect=404,
+        audit=au,
+    )
+    await p.same(
+        "POST /invoke, a known and an unknown host (admin)",
+        "POST",
+        f"{C}/invoke",
+        t_admin,
+        json=invoke([HOST_A, f"nohost-{SFX}", HOST_A]),
+        expect=404,
+        audit=au,
+    )
+    for name in ("missing", "gone", "fails", "broken", "bad"):
+        await p.same(
+            f"POST /invoke, the action {name}",
+            "POST",
+            f"{C}/invoke",
+            t_resp,
+            json=invoke([HOST_A], {"Target": "1"}, name=name),
+            before=velo("ok"),
+            audit=au,
+        )
+    for label, name, params in (
+        ("an unknown parameter", "kill-process", {"Target": "1", "Other": "x"}),
+        ("two unknown parameters", "kill-process", {"Other": "x", "Else": "y", "Target": "1"}),
+        ("no Target", "kill-process", {"Mode": "soft"}),
+        ("no parameters", "kill-process", None),
+        ("no ScriptURL", "no-url", {"Target": "1"}),
+        ("no ScriptURL nor Target", "no-url", {}),
+    ):
+        await p.same(
+            f"POST /invoke, {label}",
+            "POST",
+            f"{C}/invoke",
+            t_resp,
+            json=invoke([HOST_A], params, name=name),
+            before=velo("ok"),
+            expect=400,
+            audit=au,
+            canon=sorted_lists,
+        )
+
+    print("\n=== CoPilot Actions: invoke, the collections ===")
+    ok_params = {"Mode": "it's", "Target": "1234"}
+    for label, hosts, params, name, tok in (
+        ("a Linux host", [HOST_A], ok_params, "kill-process", t_resp),
+        ("a Windows host", [HOST_W], {"Target": "1"}, "win-kill", t_resp),
+        ("two hosts", [HOST_W, HOST_A], {"Target": "1"}, "kill-process", t_admin),
+        ("an OS without an artifact", [HOST_S], {"Target": "1"}, "kill-process", t_resp),
+        ("a host without a client id", [HOST_N], {"Target": "1"}, "kill-process", t_resp),
+        ("one of two failing", [HOST_A, HOST_S], {"Target": "1"}, "kill-process", t_resp),
+        (
+            "ScriptURL as pairs",
+            [HOST_A],
+            {"Target": "1", "ScriptURL": [{"key": "k", "value": "v'"}]},
+            "no-url",
+            t_resp,
+        ),
+        ("ScriptURL replaced", [HOST_A], {"ScriptURL": "https://evil.example/x", "Target": "1"}, "kill-process", t_resp),
+        ("the same host twice", [HOST_A, HOST_A], {"Target": "1"}, "kill-process", t_resp),
+        ("a host of two tenants (admin)", [HOST_D], {"Target": "1"}, "kill-process", t_admin),
+    ):
+        await p.same(
+            f"POST /invoke, {label}",
+            "POST",
+            f"{C}/invoke",
+            tok,
+            json=invoke(hosts, params, name=name),
+            before=velo("ok"),
+            expect=200,
+            audit=au,
+            table=datastore_rows,
+        )
+    for m in (
+        "denied",
+        "unavailable",
+        "no-flow",
+        "no-rows",
+        "row-list",
+        "bad-flow",
+        "flow-int",
+        "results-not-dicts",
+        "source-error",
+        "no-hostname",
+        "hostname-absent",
+        "hostname-null",
+        "hostname-int",
+        "hostname-list",
+        "download-error",
+        "data-bad",
+        "data-padding",
+        "data-int",
+        "data-empty",
+        "data-non-ascii",
+        "data-big",
+    ):
+        await p.same(
+            f"POST /invoke, Velociraptor answers {m}",
+            "POST",
+            f"{C}/invoke",
+            t_resp,
+            json=invoke([HOST_A], {"Target": "1"}),
+            before=velo(m),
+            expect=200,
+            audit=au,
+            table=datastore_rows,
+        )
+
+    def upload_fails():
+        velo("ok")()
+        S3.fault(
+            lambda m, path, q: m == "PUT" and path.startswith("/velociraptor-artifacts/"),
+            (500, {"Content-Type": "application/xml"}, b"<Error/>"),
+            count=10,
+        )
+
+    await p.same(
+        "POST /invoke, MinIO refuses the upload",
+        "POST",
+        f"{C}/invoke",
+        t_resp,
+        json=invoke([HOST_A], {"Target": "1"}),
+        before=upload_fails,
+        expect=200,
+        audit=au,
+        table=datastore_rows,
+    )
+
+    # §4: a hostname is no tenant key. Python ran the action on every agent of that name; Rust
+    # only on the caller's.
+    S3.faults = []
+    velo("ok")()
+    for recorder in RECORDERS:
+        recorder.take()
+    py, _, _ = await p.call(p.py, "POST", f"{C}/invoke", t_resp, json=invoke([HOST_D], {"Target": "1"}))
+    velo("ok")()
+    rs, out, _ = await p.call(p.rs, "POST", f"{C}/invoke", t_resp, json=invoke([HOST_D], {"Target": "1"}))
+    a_id, b_client = ACTION_AGENTS[4][1], ACTION_AGENTS[5][5]
+    py_body, rs_body = py.json(), rs.json()
+    mine = [r for r in py_body.get("responses", []) if (r.get("file_info") or {}).get("object_key", "").startswith(f"{a_id}/")]
+    check(
+        "§4 POST /invoke, a host of two tenants (responder): Python runs on both, Rust on the caller's",
+        py.status_code == 200
+        and len(py_body["responses"]) == 2
+        and rs.status_code == 200
+        and rs_body
+        == {
+            "responses": mine,
+            "message": "Successfully invoked action on all 1 agent(s). Check the appropriate Grafana dashboard for results.",
+            "success": True,
+        }
+        and all(b_client.encode() not in b for _, _, _, b in out),
+        f"python {py.status_code} {py.content[:600]!r}\n        rust   {rs.status_code} {rs.content[:600]!r}",
+    )
+
+
 async def main():
     manager_server = start_http_stub(MANAGER_PORT, MANAGER, MANAGER_RECORDER)
     worker_server = start_http_stub(WORKER_PORT, WORKER, WORKER_RECORDER)
     s3_server = S3.serve(S3_PORT)
+    action_server = start_http_stub(ACTION_PORT, ACTION, ACTION_RECORDER)
+    velo_stand_in = agents_parity.VeloStandIn(VELO_PORT, VELO)
+    VELO_RECORDER.stand_in = velo_stand_in
+    workdir = tempfile.mkdtemp(prefix="response-parity-")
     patch_python()
-    seed()
-    seed_minio()
-    proc = start_rust(RS_PORT)
-    bare_proc = start_rust(RS_BARE_PORT, bare=True)
+    procs = []
+    try:
+        seed()
+        seed_action_agents()
+        set_connector("Velociraptor", "https://velo", api_key=agents_parity.api_config(workdir, velo_stand_in.address))
+        seed_minio()
+        procs.append(start_rust(RS_PORT))
+        procs.append(start_rust(RS_BARE_PORT, bare=True))
+    except BaseException:
+        for proc_ in procs:
+            proc_.kill()
+        cleanup()
+        raise
     p, bare = Pair(RS_PORT), Pair(RS_BARE_PORT)
     t_admin, t_analyst = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"])
     t_portal, t_resp = token(PORTAL, ["customer_user"]), token(RESP, ["responder", "analyst"])
     try:
-        sections = os.environ.get("RESPONSE_PARITY_SECTIONS", "active_response,graylog,sysmon").split(",")
+        sections = os.environ.get("RESPONSE_PARITY_SECTIONS", "active_response,graylog,sysmon,copilot_action").split(",")
         if "active_response" in sections:
             await active_response_checks(p, t_admin, t_analyst, t_portal, t_resp)
         if "graylog" in sections:
             await graylog_webhook_checks(p, bare)
         if "sysmon" in sections:
             await sysmon_checks(p, t_admin, t_analyst, t_portal, t_resp)
+        if "copilot_action" in sections:
+            # `fetch_file_from_filestore` writes the pack into the working directory and leaves
+            # it there when the upload fails.
+            here = os.getcwd()
+            os.chdir(workdir)
+            try:
+                await copilot_action_checks(p, bare, t_admin, t_analyst, t_portal, t_resp)
+            finally:
+                os.chdir(here)
     finally:
         await p.close()
         await bare.close()
-        for proc_ in (proc, bare_proc):
+        for proc_ in procs:
             proc_.terminate()
             try:
                 proc_.wait(timeout=20)
@@ -865,6 +1537,9 @@ async def main():
         manager_server.shutdown()
         worker_server.shutdown()
         s3_server.shutdown()
+        action_server.shutdown()
+        velo_stand_in.stop()
+        shutil.rmtree(workdir, ignore_errors=True)
     failed = [n for n, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
     return 1 if failed else 0

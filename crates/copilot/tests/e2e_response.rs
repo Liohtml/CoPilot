@@ -63,8 +63,10 @@ async fn connector(h: &Harness, name: &str, url: &str, user: Option<&str>, key: 
 async fn cleanup(h: &Harness) {
     let s = &h.suffix;
     for sql in [
+        format!("DELETE FROM agent_datastore WHERE agent_id LIKE '{s}%'"),
         format!("DELETE FROM agents WHERE agent_id LIKE '{s}%'"),
-        "DELETE FROM connectors WHERE connector_name IN ('Wazuh-Manager')".to_string(),
+        "DELETE FROM connectors WHERE connector_name IN ('Wazuh-Manager', 'Velociraptor')"
+            .to_string(),
     ] {
         h.exec(&sql).await;
     }
@@ -816,5 +818,560 @@ async fn sysmon_deploy_posts_the_config_to_the_worker() {
     // A responder of acme may not deploy beta's.
     let (st, _) = deploy(other).await;
     assert_eq!(st, 403);
+    cleanup(&h).await;
+}
+
+// --- /api/copilot_action -------------------------------------------------------
+
+const ACTION_KEY: &str = "e2e-action-key";
+
+fn action_env(service: &MockServer, extra: &str) -> String {
+    format!(
+        "COPILOT_ACTION_URL={}\nCOPILOT_API_KEY={ACTION_KEY}\n{extra}",
+        service.uri()
+    )
+}
+
+fn action_item(name: &str) -> Value {
+    json!({
+        "copilot_action_name": name,
+        "description": "Kill a process",
+        "technology": "Linux",
+        "script_parameters": [
+            {"name": "Target", "type": "string", "required": true, "arg_position": "1"},
+            {"name": "Mode", "type": "enum", "required": false, "enum": ["soft", "hard"]},
+        ],
+        "repo_url": "https://raw.example/kill.sh",
+        "version": "1.2",
+        "last_updated": "2026-10-01T08:00:00Z",
+        "tags": ["process"],
+    })
+}
+
+/// The CoPilot Action service: `/inventory`, `/metrics` and the detail of
+/// `kill-process` (`missing` is a 404, `broken` a 500, `gone` a
+/// `success: false`).
+async fn action_service() -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/inventory"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "copilot_actions": [action_item("kill-process")],
+            "message": "Returned 1 of 44 matching items",
+            "success": true,
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/inventory/kill-process"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "copilot_action": action_item("kill-process"),
+            "message": "ok",
+            "success": true,
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/inventory/missing"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({"detail": "nope"})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/inventory/broken"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("boom"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/inventory/gone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "copilot_action": action_item("gone"),
+            "message": "Action gone was Not Found upstream",
+            "success": false,
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/metrics"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "status": "ok", "metrics": {"actions": 44}, "extra": 1,
+        })))
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn copilot_action_inventory_is_the_services() {
+    let service = action_service().await;
+    let h = harness_or_skip!(None, &action_env(&service, ""));
+    h.seed().await;
+    let responder = h.token(&format!("responder{}", h.suffix), "responder");
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let get = |url: &'static str| {
+        let h = &h;
+        let responder = responder.clone();
+        async move { h.call("GET", url, Some(&responder), None).await }
+    };
+
+    let (st, body) = h
+        .call(
+            "GET",
+            "/api/copilot_action/technologies",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 403);
+    assert_eq!(
+        body["message"],
+        json!("Insufficient permissions. Required one of: admin, responder")
+    );
+    let (st, body) = get("/api/copilot_action/technologies").await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body,
+        json!({"technologies": ["Wazuh", "Linux", "Windows", "macOS", "Network", "Cloud", "Velociraptor"],
+            "total": 7, "message": "Successfully retrieved available technologies", "success": true})
+    );
+
+    // The query is validated before anything is asked.
+    let (st, body) = get("/api/copilot_action/inventory?technology=Solaris&limit=0").await;
+    assert_eq!(st, 422);
+    assert_eq!(
+        body["details"],
+        json!([
+            {"field": "technology", "error_type": "enum", "message": "Value is not a valid enumeration member."},
+            {"field": "limit", "error_type": "greater_than_equal", "message": "Value is too small."},
+        ])
+    );
+    assert!(service.received_requests().await.unwrap().is_empty());
+
+    let (st, body) = get("/api/copilot_action/inventory").await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({
+            "copilot_actions": [{
+                "copilot_action_name": "kill-process", "description": "Kill a process",
+                "technology": "Linux", "icon": "linux",
+                "script_parameters": [
+                    {"name": "Target", "type": "string", "required": true, "description": null,
+                        "default": null, "enum": null, "arg_position": "1"},
+                    {"name": "Mode", "type": "enum", "required": false, "description": null,
+                        "default": null, "enum": ["soft", "hard"], "arg_position": null},
+                ],
+                "repo_url": "https://raw.example/kill.sh", "script_name": null, "version": "1.2",
+                "last_updated": "2026-10-01T08:00:00Z", "category": null, "tags": ["process"],
+            }],
+            "message": "Returned 1 of 44 matching items", "success": true, "total": 44,
+            "count": 1, "limit": 100, "offset": 0, "has_more": true, "next_offset": 100,
+            "prev_offset": null,
+        })
+    );
+    let (st, body) =
+        get("/api/copilot_action/inventory?technology=Linux&q=kill&limit=5&offset=10&refresh=true")
+            .await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        (body["limit"].clone(), body["prev_offset"].clone()),
+        (json!(5), json!(5))
+    );
+    let (st, body) = get("/api/copilot_action/inventory/count?tag=process").await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body,
+        json!({"total": 44, "message": "Successfully retrieved inventory count", "success": true,
+            "current_page": 1, "total_pages": 1, "has_next": false, "has_prev": false,
+            "items_per_page": 100, "total_items": 44})
+    );
+    let sent = service.received_requests().await.unwrap();
+    let queries: Vec<Option<String>> = sent
+        .iter()
+        .map(|r| r.url.query().map(str::to_string))
+        .collect();
+    assert_eq!(
+        queries,
+        vec![
+            None,
+            Some("technology=Linux&q=kill&limit=5&offset=10&refresh=true".into()),
+            Some("tag=process&limit=1".into()),
+        ]
+    );
+    for (name, value) in [
+        ("x-api-key", ACTION_KEY),
+        ("module-version", "1.0.0"),
+        ("accept", "application/json"),
+        ("accept-encoding", "gzip, deflate"),
+        ("user-agent", "python-httpx/0.28.1"),
+        ("connection", "keep-alive"),
+    ] {
+        assert_eq!(sent[0].headers.get(name).unwrap(), value, "{name}");
+    }
+
+    let (st, body) = get("/api/copilot_action/inventory/kill-process").await;
+    assert_eq!(st, 200);
+    assert_eq!(body["copilot_action"]["icon"], json!("linux"));
+    assert_eq!(body["message"], json!("ok"));
+    let (st, body) = get("/api/copilot_action/inventory/missing").await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (404, json!("Action 'missing' not found"))
+    );
+    let (st, body) = get("/api/copilot_action/inventory/gone").await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (404, json!("Action gone was Not Found upstream"))
+    );
+    let (st, body) = get("/api/copilot_action/inventory/broken").await;
+    assert_eq!(st, 500);
+    let message = body["message"].as_str().unwrap();
+    assert!(
+        message.starts_with(
+            "Error fetching action details: 1 validation error for ActionDetailResponse\ncopilot_action\n  \
+             Input should be a valid dictionary or instance of ActiveResponseItem [type=model_type, \
+             input_value=None, input_type=NoneType]"
+        ),
+        "{message}"
+    );
+    let (st, body) = get("/api/copilot_action/metrics").await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body,
+        json!({"status": "ok", "metrics": {"actions": 44},
+            "message": "Successfully retrieved inventory metrics", "success": true})
+    );
+}
+
+#[tokio::test]
+async fn copilot_action_without_a_license_key_is_a_500() {
+    let service = action_service().await;
+    let h = harness_or_skip!(None, &format!("COPILOT_ACTION_URL={}\n", service.uri()));
+    h.seed().await;
+    let admin = h.token(&format!("admin{}", h.suffix), "admin");
+    for url in [
+        "/api/copilot_action/inventory",
+        "/api/copilot_action/inventory/count",
+        "/api/copilot_action/inventory/kill-process",
+        "/api/copilot_action/metrics",
+    ] {
+        let (st, body) = h.call("GET", url, Some(&admin), None).await;
+        assert_eq!(
+            (st.as_u16(), body),
+            (
+                500,
+                json!({"success": false, "message": "COPILOT_API_KEY environment variable not configured"})
+            ),
+            "{url}"
+        );
+    }
+    // Validated first.
+    let (st, _) = h
+        .call(
+            "GET",
+            "/api/copilot_action/inventory?offset=-1",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 422);
+    // The service is unreachable: its failure is the answer.
+    let h = harness_or_skip!(
+        None,
+        "COPILOT_ACTION_URL=http://127.0.0.1:9\nCOPILOT_API_KEY=k\n"
+    );
+    h.seed().await;
+    let admin = h.token(&format!("admin{}", h.suffix), "admin");
+    let (st, body) = h
+        .call("GET", "/api/copilot_action/inventory", Some(&admin), None)
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body,
+        json!({"copilot_actions": [], "message": "HTTP error fetching inventory: All connection attempts failed",
+            "success": false, "total": 0, "count": 0, "limit": 100, "offset": 0, "has_more": false,
+            "next_offset": null, "prev_offset": null})
+    );
+    let (st, body) = h
+        .call("GET", "/api/copilot_action/metrics", Some(&admin), None)
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body["message"],
+        json!("HTTP error fetching metrics: All connection attempts failed")
+    );
+}
+
+/// MinIO with the `velociraptor-artifacts` bucket taking any object.
+async fn artifacts_minio() -> MockServer {
+    use wiremock::matchers::{path_regex, query_param};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/velociraptor-artifacts"))
+        .and(query_param("location", ""))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(LOCATION, "application/xml"))
+        .mount(&server)
+        .await;
+    Mock::given(method("HEAD"))
+        .and(path("/velociraptor-artifacts"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path_regex("^/velociraptor-artifacts/.+"))
+        .respond_with(ResponseTemplate::new(200).insert_header("etag", "\"e\""))
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn copilot_action_invoke_runs_on_the_callers_hosts_only() {
+    use copilot_velociraptor::testing::{Answer, StandIn};
+    let probe = harness_or_skip!(None);
+    let s = probe.suffix.clone();
+    let host = format!("act-{s}");
+    let host_b = format!("actb-{s}");
+    let service = action_service().await;
+    let s3 = artifacts_minio().await;
+    let velo = StandIn::start(move |args| {
+        let vql = args.query[0].vql.clone();
+        if vql.starts_with("SELECT base64encode(") {
+            Answer::rows(&[r#"[{"Data": "UEsDBA=="}]"#])
+        } else if vql.starts_with("SELECT os_info.hostname AS Hostname") {
+            Answer::rows(&[r#"[{"Hostname": "velo-host"}]"#])
+        } else if vql.starts_with("SELECT * FROM watch_monitoring") {
+            Answer::rows(&[r#"[{"FlowId": "F.ABC"}]"#])
+        } else if vql.starts_with("SELECT * FROM source(") {
+            Answer::rows(&[r#"[{"Stdout": "killed"}]"#])
+        } else if let Some(call) = vql
+            .strip_prefix("SELECT ")
+            .and_then(|v| v.strip_suffix(" FROM scope()"))
+        {
+            let row = json!([{ call: {"flow_id": "F.ABC"} }]).to_string();
+            Answer::rows(&[&row])
+        } else {
+            Answer::rows(&["[]"])
+        }
+    })
+    .await;
+    let mut h = harness_or_skip!(None, &action_env(&service, &minio_env(&s3, None)));
+    h.suffix = s.clone();
+    h.seed().await;
+    cleanup(&h).await;
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let a1 = agent(&h, "a1", &host, &acme, "Ubuntu 24.04").await;
+    let b1 = agent(&h, "b1", &host, &beta, "Ubuntu 22.04").await;
+    agent(&h, "b2", &host_b, &beta, "Ubuntu 22.04").await;
+    h.exec(&format!(
+        "UPDATE agents SET velociraptor_org = 'root', velociraptor_id = CONCAT('C.', agent_id) \
+         WHERE agent_id LIKE '{s}%'"
+    ))
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = velo.write_api_config(dir.path());
+    connector(&h, "Velociraptor", "https://velo", None, Some(&config)).await;
+    let responder = h.token(&format!("responder{s}"), "responder");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let invoke = |token: String, body: Value| {
+        let h = &h;
+        async move {
+            h.call(
+                "POST",
+                "/api/copilot_action/invoke",
+                Some(&token),
+                Some(body),
+            )
+            .await
+        }
+    };
+    let body = |hosts: Value, params: Value| json!({"copilot_action_name": "kill-process", "agent_names": hosts, "parameters": params});
+
+    let (st, _) = invoke(analyst.clone(), body(json!([host]), json!({"Target": "1"}))).await;
+    assert_eq!(st, 403);
+    // The body as Pydantic reads it.
+    let (st, resp) = invoke(
+        responder.clone(),
+        json!({"copilot_action_name": "kill-process", "parameters": {"Target": 1}}),
+    )
+    .await;
+    assert_eq!(st, 422);
+    assert_eq!(
+        resp["details"],
+        json!([
+            {"field": "agent_names", "error_type": "missing", "message": "Missing data for required field."},
+            {"field": "str", "error_type": "value_error",
+                "message": "parameters.Target.str: Input should be a valid string"},
+            {"field": "list[ParameterKeyValue]", "error_type": "value_error",
+                "message": "parameters.Target.list[ParameterKeyValue]: Input should be a valid list"},
+        ])
+    );
+    let (st, resp) = invoke(responder.clone(), body(json!([]), json!(null))).await;
+    assert_eq!(
+        (st.as_u16(), resp["message"].clone()),
+        (
+            400,
+            json!("Name at least one agent to invoke the action on")
+        )
+    );
+    // One foreign host refuses the request, before anything runs.
+    let (st, resp) = invoke(
+        responder.clone(),
+        body(json!([host, host_b]), json!({"Target": "1"})),
+    )
+    .await;
+    assert_eq!(
+        (st.as_u16(), resp["message"].clone()),
+        (403, json!(format!("Access denied to host {host_b}")))
+    );
+    let (st, resp) = invoke(
+        responder.clone(),
+        body(json!([format!("nohost-{s}")]), json!({"Target": "1"})),
+    )
+    .await;
+    assert_eq!(st, 403, "an unknown host is nobody's: {resp}");
+    let (st, resp) = invoke(
+        admin.clone(),
+        body(json!([format!("nohost-{s}")]), json!({"Target": "1"})),
+    )
+    .await;
+    assert_eq!(
+        (st.as_u16(), resp["message"].clone()),
+        (
+            404,
+            json!(format!("Agents with hostnames ['nohost-{s}'] not found"))
+        )
+    );
+    assert!(velo.messages().is_empty());
+    let audits = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'response.copilot_action_invoke' \
+             AND entity_type = 'copilot_action' AND entity_id = 'kill-process' AND actor_username = 'responder{s}'"
+        ))
+        .await;
+    assert_eq!(audits, 0, "refused before the audit row");
+
+    // The parameters are checked against the action's.
+    let (st, resp) = invoke(
+        responder.clone(),
+        body(json!([host]), json!({"Target": "1", "Other": "x"})),
+    )
+    .await;
+    assert_eq!(
+        (st.as_u16(), resp["message"].clone()),
+        (
+            400,
+            json!(
+                "Invalid parameters provided: ['Other']. Valid parameters are: ['Target', 'Mode', 'ScriptURL']"
+            )
+        )
+    );
+    let (st, resp) = invoke(
+        responder.clone(),
+        body(json!([host]), json!({"Mode": "soft"})),
+    )
+    .await;
+    assert_eq!(
+        (st.as_u16(), resp["message"].clone()),
+        (400, json!("Missing required parameters: ['Target']"))
+    );
+
+    // The responder's host only: beta's agent of the same name is not touched.
+    let (st, resp) = invoke(
+        responder.clone(),
+        body(json!([host]), json!({"Mode": "it's", "Target": "1234"})),
+    )
+    .await;
+    assert_eq!(st, 200, "{resp}");
+    let client_a = format!("C.{a1}");
+    let zip = format!("velo-host-{client_a}-F.ABC.zip");
+    assert_eq!(
+        resp,
+        json!({
+            "responses": [{
+                "message": "Successfully executed query", "success": true,
+                "results": [{"Stdout": "killed"}],
+                "file_info": {
+                    "success": true,
+                    "message": "Successfully fetched file from Velociraptor and uploaded to MinIO",
+                    "bucket_name": "velociraptor-artifacts",
+                    "object_key": format!("{a1}/F.ABC/{zip}"),
+                    "file_name": zip,
+                    "file_size": 4,
+                    "file_hash": "8dcc7e601606217f3b754766511182a916b17e9a26a94c9d887104eba92e9bb2",
+                },
+            }],
+            "message": "Successfully invoked action on all 1 agent(s). Check the appropriate Grafana dashboard for results.",
+            "success": true,
+        })
+    );
+    let vql = velo.vql();
+    assert_eq!(
+        vql[0],
+        format!(
+            "SELECT collect_client(org_id='root', client_id='{client_a}', \
+             artifacts=['Linux.Execute.RemoteBashScript'], env=dict(`ScriptURL`='https://raw.example/kill.sh', \
+             `Arg1`='1234', `Mode`='it\\'s')) FROM scope()"
+        )
+    );
+    assert!(
+        vql.iter().all(|q| !q.contains(&format!("C.{b1}"))),
+        "{vql:?}"
+    );
+    let rows = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM agent_datastore WHERE agent_id = '{a1}' AND flow_id = 'F.ABC' \
+             AND object_key = '{a1}/F.ABC/{zip}' AND file_size = 4 AND status = 'completed'"
+        ))
+        .await;
+    assert_eq!(rows, 1);
+    let puts: Vec<String> = s3
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == "PUT")
+        .map(|r| r.url.path().to_string())
+        .collect();
+    assert_eq!(
+        puts,
+        vec![format!("/velociraptor-artifacts/{a1}/F.ABC/{zip}")]
+    );
+    let audits = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'response.copilot_action_invoke' \
+             AND entity_id = 'kill-process' AND actor_username = 'responder{s}'"
+        ))
+        .await;
+    assert_eq!(
+        audits, 3,
+        "the parameter checks run after the audit row, as in Python"
+    );
+
+    // An admin reaches every agent of that name; an OS without an artifact
+    // fails on its own.
+    h.exec(&format!(
+        "UPDATE agents SET os = 'Solaris 11' WHERE agent_id = '{b1}'"
+    ))
+    .await;
+    let (st, resp) = invoke(admin.clone(), body(json!([host]), json!({"Target": "1"}))).await;
+    assert_eq!(st, 200, "{resp}");
+    assert_eq!(
+        resp["message"],
+        json!("Partially successful: 1 succeeded, 1 failed")
+    );
+    let failed: Vec<&Value> = resp["responses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["success"] == json!(false))
+        .collect();
+    assert_eq!(
+        failed,
+        vec![&json!({
+            "message": format!("Failed to invoke action on {host}: 500: Error invoking action on agent {host}: 400: Unsupported OS: Solaris 11"),
+            "success": false, "results": [], "file_info": null,
+        })]
+    );
     cleanup(&h).await;
 }
