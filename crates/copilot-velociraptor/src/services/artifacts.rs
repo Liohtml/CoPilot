@@ -3,7 +3,8 @@
 //! a remote command and a quarantine.
 //!
 //! The artifact collections that store their files in MinIO
-//! (`run_artifact_collection`, `run_file_collection`) stay in Python.
+//! (`run_artifact_collection`, `run_file_collection`) are
+//! [`super::collections`].
 
 use copilot_auth::pyvalue::PyValue;
 use copilot_upstream::model;

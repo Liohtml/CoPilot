@@ -10,6 +10,8 @@
 //!   exception texts, for the manager
 //! - [`manager`] — the manager's token flow and `/api/wazuh_manager`
 //! - [`pyops`] — Python's dict/list/str operations and their error texts
+//! - `urllib3` — the sync indexer client's wire (urllib3 2.x through
+//!   `http.client`: no `Accept`, `Accept-Encoding: identity`)
 //! - [`verify`] — the two connectors' verification for `/api/connectors`
 //! - [`jobs`] — `invoke_snapshot_schedules` and `resize_wazuh_index_fields`,
 //!   taken over from APScheduler by the hand-over
@@ -35,6 +37,8 @@ pub mod pymodel;
 pub mod pyops;
 pub mod requests;
 pub mod verify;
+
+mod urllib3;
 
 use std::sync::OnceLock;
 

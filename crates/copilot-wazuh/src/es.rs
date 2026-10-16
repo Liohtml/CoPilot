@@ -37,8 +37,10 @@ const RETRY_ON_STATUS: [u16; 3] = [502, 503, 504];
 const TIMEOUT: Duration = Duration::from_secs(15);
 const USER_AGENT: &str = "elasticsearch-py/7.10.1 (Python 3.11)";
 
-/// The sync client (`run_blocking(es.search, …)`) or `AsyncElasticsearch`
-/// (aiohttp, which also sends `Accept: */*`).
+/// The sync client (`run_blocking(es.search, …)`; urllib3 sends
+/// `Accept-Encoding: identity` and no `Accept`) or `AsyncElasticsearch`
+/// (aiohttp, which also sends `Accept: */*` and `Accept-Encoding: gzip, deflate`,
+/// and decodes such an answer).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flavor {
     /// `Elasticsearch` over urllib3.
@@ -56,7 +58,8 @@ pub struct EsHttp {
 impl EsHttp {
     /// Build the client: no certificate verification, HTTP/1.1, no
     /// redirects followed (urllib3's `Retry(False)` returns them), 15 s to
-    /// connect and per read.
+    /// connect and per read. (The sync flavor sends its requests itself,
+    /// [`crate::urllib3`].)
     pub fn new() -> Result<Self, reqwest::Error> {
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
@@ -325,64 +328,9 @@ impl Es {
         url: &str,
         body: Option<&[u8]>,
     ) -> Result<Value, EsError> {
-        let mut req = self
-            .http
-            .client
-            .request(method.clone(), url)
-            .header("connection", "keep-alive")
-            .header("content-type", "application/json")
-            .header("user-agent", USER_AGENT)
-            .header("authorization", &self.authorization);
-        if self.flavor == Flavor::Async {
-            // aiohttp's defaults; it decompresses what it asked for.
-            req = req
-                .header("accept", "*/*")
-                .header("accept-encoding", "gzip, deflate");
-        }
-        match body {
-            Some(b) => req = req.body(b.to_vec()),
-            // `Content-Length: 0` on a body-less request: urllib3 sends it for
-            // the methods that expect a body, aiohttp for every method but
-            // GET, HEAD, OPTIONS and TRACE (hyper writes none on its own).
-            None if self.sends_zero_length(method) => {
-                req = req.header("content-length", "0").body(Vec::new());
-            }
-            None => {}
-        }
-        let resp = match req.send().await {
-            Ok(r) => r,
-            Err(e) => return Err(self.transport_failure(&e).await),
-        };
-        let status = resp.status().as_u16();
-        let headers = resp.headers().clone();
-        let ctype = headers
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_string);
-        let bytes = match resp.bytes().await {
-            Ok(b) => b,
-            Err(e) => return Err(self.transport_failure(&e).await),
-        };
-        let bytes = if self.flavor == Flavor::Async {
-            match copilot_upstream::http::decode_content(&headers, bytes) {
-                Ok(b) => b,
-                Err(e) => {
-                    let error = format!(
-                        "400, message='Can not decode content-encoding: {}'",
-                        headers
-                            .get(reqwest::header::CONTENT_ENCODING)
-                            .and_then(|v| v.to_str().ok())
-                            .unwrap_or_default()
-                    );
-                    tracing::debug!("indexer answer not decodable: {}", e.text());
-                    return Err(EsError::Connection {
-                        error,
-                        cause: "ClientPayloadError",
-                    });
-                }
-            }
-        } else {
-            bytes
+        let (status, ctype, bytes) = match self.flavor {
+            Flavor::Sync => self.via_urllib3(method, url, body).await?,
+            Flavor::Async => self.via_aiohttp(method, url, body).await?,
         };
         let raw = String::from_utf8_lossy(&bytes).into_owned();
         if !(200..300).contains(&status) {
@@ -413,41 +361,137 @@ impl Es {
         }
     }
 
-    /// Whether a body-less `method` carries `Content-Length: 0`.
+    /// Whether aiohttp sends `Content-Length: 0` for a body-less `method` (the
+    /// sync flavor's rule is urllib3's, in `crate::urllib3`).
     fn sends_zero_length(&self, method: &Method) -> bool {
-        match self.flavor {
-            Flavor::Sync => [Method::POST, Method::PUT, Method::PATCH].contains(method),
-            Flavor::Async => {
-                ![Method::GET, Method::HEAD, Method::OPTIONS, Method::TRACE].contains(method)
-            }
-        }
+        ![Method::GET, Method::HEAD, Method::OPTIONS, Method::TRACE].contains(method)
     }
 
-    /// A connection-level failure as elasticsearch-py words it: over urllib3
-    /// (the sync client) or aiohttp (`AsyncElasticsearch`).
-    async fn transport_failure(&self, e: &reqwest::Error) -> EsError {
-        if self.flavor == Flavor::Async {
-            return self.aiohttp_failure(e).await;
-        }
-        if e.is_timeout() && !e.is_connect() {
-            return EsError::Timeout {
+    /// `Urllib3HttpConnection.perform_request`'s exchange.
+    async fn via_urllib3(
+        &self,
+        method: &Method,
+        url: &str,
+        body: Option<&[u8]>,
+    ) -> Result<(u16, Option<String>, Vec<u8>), EsError> {
+        let after_scheme = url.find("://").map_or(0, |i| i + 3);
+        let rest = &url[after_scheme..];
+        let path_and_query = rest.find('/').map_or("/", |i| &rest[i..]);
+        let headers = [
+            ("connection", "keep-alive"),
+            ("content-type", "application/json"),
+            ("user-agent", USER_AGENT),
+            ("authorization", self.authorization.as_str()),
+        ];
+        let conn = format!(
+            "<urllib3.connection.{}Connection object at {OBJECT_ADDRESS}>",
+            if self.tls { "HTTPS" } else { "HTTP" }
+        );
+        match crate::urllib3::send(
+            method,
+            self.tls,
+            &self.host,
+            self.port,
+            path_and_query,
+            &headers,
+            body,
+            TIMEOUT,
+        )
+        .await
+        {
+            Ok(a) => Ok((a.status, a.content_type, a.body.to_vec())),
+            Err(crate::urllib3::Failure::ReadTimeout) => Err(EsError::Timeout {
                 cause: format!(
                     "{}ConnectionPool(host={}, port={}): Read timed out. (read timeout=15)",
                     if self.tls { "HTTPS" } else { "HTTP" },
                     str_repr(&self.host),
                     self.port
                 ),
-            };
+            }),
+            Err(crate::urllib3::Failure::Io(e)) if e.kind() == std::io::ErrorKind::TimedOut => {
+                Err(EsError::Connection {
+                    error: format!(
+                        "{conn}: Connection to {} timed out. (connect timeout=15)",
+                        self.host
+                    ),
+                    cause: "ConnectTimeoutError",
+                })
+            }
+            Err(crate::urllib3::Failure::Io(e)) => Err(EsError::Connection {
+                error: format!(
+                    "{conn}: Failed to establish a new connection: {}",
+                    io_text(&e)
+                ),
+                cause: "NewConnectionError",
+            }),
+            Err(crate::urllib3::Failure::Other(text)) => Err(EsError::Connection {
+                error: format!("{conn}: {text}"),
+                cause: "ProtocolError",
+            }),
         }
-        let conn = format!(
-            "<urllib3.connection.{}Connection object at {OBJECT_ADDRESS}>",
-            if self.tls { "HTTPS" } else { "HTTP" }
-        );
-        let detail = os_error_text(e);
-        EsError::Connection {
-            error: format!("{conn}: Failed to establish a new connection: {detail}"),
-            cause: "NewConnectionError",
+    }
+
+    /// `AIOHttpConnection.perform_request`'s exchange: aiohttp's default
+    /// headers, its `Content-Length: 0`, and the gzip or deflate answer it
+    /// asked for decoded.
+    async fn via_aiohttp(
+        &self,
+        method: &Method,
+        url: &str,
+        body: Option<&[u8]>,
+    ) -> Result<(u16, Option<String>, Vec<u8>), EsError> {
+        let mut req = self
+            .http
+            .client
+            .request(method.clone(), url)
+            .header("connection", "keep-alive")
+            .header("content-type", "application/json")
+            .header("user-agent", USER_AGENT)
+            .header("authorization", &self.authorization)
+            // aiohttp's `DEFAULT_HEADERS` (brotli and zstandard are not installed).
+            .header("accept", "*/*")
+            .header("accept-encoding", "gzip, deflate");
+        match body {
+            Some(b) => req = req.body(b.to_vec()),
+            // aiohttp sends `Content-Length: 0` for every body-less method but
+            // GET, HEAD, OPTIONS and TRACE (hyper writes none on its own).
+            None if self.sends_zero_length(method) => {
+                req = req.header("content-length", "0").body(Vec::new());
+            }
+            None => {}
         }
+        let resp = match req.send().await {
+            Ok(r) => r,
+            Err(e) => return Err(self.aiohttp_failure(&e).await),
+        };
+        let status = resp.status().as_u16();
+        let headers = resp.headers().clone();
+        let ctype = headers
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => return Err(self.aiohttp_failure(&e).await),
+        };
+        let bytes = match copilot_upstream::http::decode_content(&headers, bytes) {
+            Ok(b) => b,
+            Err(e) => {
+                let error = format!(
+                    "400, message='Can not decode content-encoding: {}'",
+                    headers
+                        .get(reqwest::header::CONTENT_ENCODING)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or_default()
+                );
+                tracing::debug!("indexer answer not decodable: {}", e.text());
+                return Err(EsError::Connection {
+                    error,
+                    cause: "ClientPayloadError",
+                });
+            }
+        };
+        Ok((status, ctype, bytes.to_vec()))
     }
 }
 
@@ -515,18 +559,7 @@ pub(crate) fn os_error_text(e: &reqwest::Error) -> String {
     let mut source: Option<&(dyn std::error::Error + 'static)> = Some(e);
     while let Some(s) = source {
         if let Some(io) = s.downcast_ref::<std::io::Error>() {
-            return match io.kind() {
-                std::io::ErrorKind::ConnectionRefused => "[Errno 111] Connection refused".into(),
-                std::io::ErrorKind::ConnectionReset => {
-                    "[Errno 104] Connection reset by peer".into()
-                }
-                std::io::ErrorKind::HostUnreachable => "[Errno 113] No route to host".into(),
-                std::io::ErrorKind::NetworkUnreachable => {
-                    "[Errno 101] Network is unreachable".into()
-                }
-                std::io::ErrorKind::TimedOut => "timed out".into(),
-                _ => io.to_string(),
-            };
+            return io_text(io);
         }
         let text = s.to_string();
         if text.contains("dns error") || text.contains("failed to lookup address") {
@@ -535,6 +568,21 @@ pub(crate) fn os_error_text(e: &reqwest::Error) -> String {
         source = s.source();
     }
     e.to_string()
+}
+
+/// The `OSError` text of one socket error.
+pub(crate) fn io_text(io: &std::io::Error) -> String {
+    match io.kind() {
+        std::io::ErrorKind::ConnectionRefused => "[Errno 111] Connection refused".into(),
+        std::io::ErrorKind::ConnectionReset => "[Errno 104] Connection reset by peer".into(),
+        std::io::ErrorKind::HostUnreachable => "[Errno 113] No route to host".into(),
+        std::io::ErrorKind::NetworkUnreachable => "[Errno 101] Network is unreachable".into(),
+        std::io::ErrorKind::TimedOut => "timed out".into(),
+        _ if io.to_string().contains("failed to lookup address") => {
+            "[Errno -2] Name or service not known".into()
+        }
+        _ => io.to_string(),
+    }
 }
 
 /// `Connection._raise_error(status_code, raw_data)`.

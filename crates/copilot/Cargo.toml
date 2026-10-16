@@ -46,6 +46,7 @@ copilot-siem = { workspace = true }
 copilot-threat-intel = { workspace = true }
 copilot-response = { workspace = true }
 copilot-shuffle = { workspace = true }
+copilot-agent-reports = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

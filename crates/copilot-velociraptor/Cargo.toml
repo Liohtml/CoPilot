@@ -18,6 +18,8 @@ copilot-auth = { workspace = true }
 copilot-web = { workspace = true }
 copilot-connectors = { workspace = true }
 copilot-upstream = { workspace = true }
+# The collections' download packs go to MinIO (`velociraptor-artifacts`).
+copilot-objectstore = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

@@ -154,6 +154,148 @@ impl EpssClient {
     }
 }
 
+/// httpx's own `User-Agent`.
+const HTTPX_USER_AGENT: &str = "python-httpx/0.28.1";
+/// `httpx.AsyncClient()`'s default timeout.
+const HTTPX_DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
+
+impl EpssClient {
+    /// `get_epss_score_for_cve(cve)` of the vulnerability search and its CSV
+    /// report: `collect_epss_score` over `invoke_epss_api`, one request per
+    /// CVE — `GET {EPSS_URL}?cve=…` from a fresh `httpx.AsyncClient()` (5 s,
+    /// httpx's headers and a `content-type: application/json`), no
+    /// `raise_for_status()`. `(epss, percentile)` of the answer's first row
+    /// when it is a dict with `status-code` 200 whose `data` rows all validate
+    /// as `EpssData`; `(None, None)` for anything else, as every exception is
+    /// swallowed there.
+    pub async fn score_for_cve(&self, cve: &str) -> (Option<String>, Option<String>) {
+        let url = format!("{}?cve={}", self.url, quote_plus(cve));
+        tracing::info!(
+            "Invoking EPSS with params: {{'cve': '{cve}'}} and headers: {{'content-type': \
+             'application/json'}} and url: {}",
+            self.url
+        );
+        let body = match self.fetch_any_status(&url).await {
+            Ok(body) => body,
+            Err(kind) => {
+                tracing::warn!("Error fetching EPSS score for CVE {cve}: {kind}");
+                return (None, None);
+            }
+        };
+        let doc = match copilot_auth::pyvalue::loads_bytes(&body) {
+            Ok(doc) => doc,
+            Err(_) => {
+                tracing::warn!("Error fetching EPSS score for CVE {cve}: JSONDecodeError");
+                return (None, None);
+            }
+        };
+        match first_epss_row(&doc) {
+            Some(pair) => (Some(pair.0), Some(pair.1)),
+            None => {
+                tracing::debug!("No EPSS data found for CVE: {cve}");
+                (None, None)
+            }
+        }
+    }
+
+    /// One GET as `httpx.AsyncClient().get(url, headers=…)` sends it; the
+    /// body whatever the status (gzip and deflate decoded as httpx does).
+    async fn fetch_any_status(&self, url: &str) -> Result<Vec<u8>, &'static str> {
+        let resp = self
+            .http
+            .get(url)
+            .timeout(HTTPX_DEFAULT_TIMEOUT)
+            .header("accept", "*/*")
+            .header("accept-encoding", "gzip, deflate")
+            .header("connection", "keep-alive")
+            .header("user-agent", HTTPX_USER_AGENT)
+            .header("content-type", "application/json")
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    "ReadTimeout"
+                } else {
+                    "ConnectError"
+                }
+            })?;
+        let encoding = resp
+            .headers()
+            .get(reqwest::header::CONTENT_ENCODING)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        let raw = resp.bytes().await.map_err(|_| "ReadError")?;
+        decode_body(&encoding, &raw).ok_or("DecodingError")
+    }
+}
+
+/// httpx's `gzip` / `deflate` decoders (`None` is its `DecodingError`).
+fn decode_body(encoding: &str, raw: &[u8]) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    let mut out = Vec::new();
+    match encoding {
+        "gzip" | "x-gzip" => {
+            flate2::read::MultiGzDecoder::new(raw)
+                .read_to_end(&mut out)
+                .ok()?;
+        }
+        "deflate" => {
+            if flate2::read::ZlibDecoder::new(raw)
+                .read_to_end(&mut out)
+                .is_err()
+            {
+                out.clear();
+                flate2::read::DeflateDecoder::new(raw)
+                    .read_to_end(&mut out)
+                    .ok()?;
+            }
+        }
+        _ => return Some(raw.to_vec()),
+    }
+    Some(out)
+}
+
+/// `collect_epss_score`'s checks on `response.json()`: a dict whose
+/// `status-code` equals 200, `data` (default `[]`) a list of dicts that all
+/// validate as `EpssData` (`cve`, `epss`, `percentile`, `date`: `str`), and
+/// at least one of them. Anything else raised there and was swallowed.
+fn first_epss_row(doc: &PyValue) -> Option<(String, String)> {
+    let PyValue::Dict(_) = doc else {
+        return None;
+    };
+    let ok = match doc.get("status-code") {
+        Some(PyValue::Int(i)) => i == "200",
+        Some(PyValue::Float(f)) => *f == 200.0,
+        _ => false,
+    };
+    if !ok {
+        return None;
+    }
+    let rows = match doc.get("data") {
+        None => return None,
+        Some(PyValue::List(items)) => items,
+        Some(_) => return None,
+    };
+    let mut first = None;
+    for row in rows {
+        let PyValue::Dict(_) = row else {
+            return None;
+        };
+        let text = |k: &str| match row.get(k) {
+            Some(PyValue::Str(s)) => Some(s.clone()),
+            _ => None,
+        };
+        let (Some(_), Some(epss), Some(percentile), Some(_)) =
+            (text("cve"), text("epss"), text("percentile"), text("date"))
+        else {
+            return None;
+        };
+        first.get_or_insert((epss, percentile));
+    }
+    first
+}
+
 /// `epss_scores.get(cve or "", "")`.
 pub fn score_of(scores: &[(String, PyValue)], cve: &str) -> String {
     scores
@@ -166,6 +308,26 @@ pub fn score_of(scores: &[(String, PyValue)], cve: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_single_cve_answer_is_read_as_collect_epss_score_reads_it() {
+        let row = |extra: &str| {
+            copilot_auth::pyvalue::loads(&format!(
+                r#"{{"status-code": 200, "data": [{{"cve": "CVE-1", "epss": "0.5", "percentile": "0.9", "date": "2026-01-01"}}{extra}]}}"#
+            ))
+            .unwrap()
+        };
+        assert_eq!(
+            first_epss_row(&row("")),
+            Some(("0.5".to_string(), "0.9".to_string()))
+        );
+        assert_eq!(first_epss_row(&row(", 5")), None);
+        assert_eq!(first_epss_row(&row(r#", {"cve": "x"}"#)), None);
+        let empty = copilot_auth::pyvalue::loads(r#"{"status-code": 200.0, "data": []}"#).unwrap();
+        assert_eq!(first_epss_row(&empty), None);
+        let refused = copilot_auth::pyvalue::loads(r#"{"status-code": 429}"#).unwrap();
+        assert_eq!(first_epss_row(&refused), None);
+    }
 
     #[test]
     fn query_values_are_quoted_as_httpx_does() {

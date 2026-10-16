@@ -79,8 +79,28 @@ impl StandIn {
     pub async fn start(
         answer: impl Fn(&VqlCollectorArgs) -> Answer + Send + Sync + 'static,
     ) -> Self {
+        Self::start_at(0, answer).await
+    }
+
+    /// Start one on `127.0.0.1:port` (a suite's assigned port; `0` picks a
+    /// free one). A port the previous test's stand-in is still releasing is
+    /// retried for up to five seconds.
+    pub async fn start_at(
+        port: u16,
+        answer: impl Fn(&VqlCollectorArgs) -> Answer + Send + Sync + 'static,
+    ) -> Self {
         let answer: Arc<Handler> = Arc::new(answer);
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut tries = 0;
+        let listener = loop {
+            match TcpListener::bind(("127.0.0.1", port)).await {
+                Ok(l) => break l,
+                Err(_) if tries < 50 => {
+                    tries += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                Err(e) => panic!("bind 127.0.0.1:{port}: {e}"),
+            }
+        };
         let addr = listener.local_addr().unwrap();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let provider = Arc::new(rustls::crypto::ring::default_provider());

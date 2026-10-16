@@ -28,6 +28,8 @@
 //!                      │ /api/threat_intel/*                                  │
 //!                      │                    → copilot-threat-intel ───────────► SOCFortress, VirusTotal,
 //!                      │                                                      │   api.first.org
+//!                      │ /api/vulnerabilities/*, /api/sca/*,                  │
+//!                      │ /api/syscollector/* → copilot-agent-reports          │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -45,6 +47,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::json;
 
+use copilot_agent_reports::AgentReportsState;
 use copilot_agents::AgentsState;
 use copilot_auth::{Fernet, JwtCodec};
 use copilot_connectors::{ConnectorsState, Verifiers};
@@ -205,9 +208,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customer_provisioning",
     // The agents router (copilot-agents, on copilot-velociraptor's client).
     "/api/agents",
-    // The Velociraptor connector (copilot-velociraptor) but `POST
-    // /api/artifacts/collect` and `…/collect/file/agent/{agent_id}` (MinIO),
-    // which no Rust route matches: the binary forwards them.
+    // The Velociraptor connector (copilot-velociraptor), its MinIO collections
+    // (`POST /api/artifacts/collect`, `…/collect/file/agent/{agent_id}`) included.
     "/api/artifacts",
     "/api/flows",
     // The MinIO data store (copilot-objectstore): the upload and the agents'
@@ -250,6 +252,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/workflows",
     "/api/shuffle",
     "POST /api/incidents/db_operations/case/notification",
+    // The agents' reports (copilot-agent-reports): vulnerabilities, SCA and
+    // the syscollector packages.
+    "/api/vulnerabilities",
+    "/api/sca",
+    "/api/syscollector",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -286,6 +293,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_integrations::REQUIREMENTS);
     all.extend_from_slice(copilot_siem::REQUIREMENTS);
     all.extend_from_slice(copilot_threat_intel::REQUIREMENTS);
+    all.extend(copilot_agent_reports::requirements());
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -369,6 +377,9 @@ pub struct App {
     /// The Shuffle connector's client (its routes, the case notification
     /// and its verification).
     pub shuffle: copilot_shuffle::ShuffleClient,
+    /// The agents' report routers (`/api/vulnerabilities`, `/api/sca`,
+    /// `/api/syscollector`).
+    pub agent_reports: AgentReportsState,
 }
 
 impl App {
@@ -501,6 +512,14 @@ impl App {
         };
         let shuffle = copilot_shuffle::ShuffleClient::new(ctx.connectors.clone())
             .context("building the Shuffle client")?;
+        let agent_reports = AgentReportsState {
+            ctx: ctx.clone(),
+            wazuh: wazuh.clone(),
+            store: objectstore.clone(),
+            epss: agents.epss.clone(),
+            sca_repo: copilot_agent_reports::sca::policies::ScaRepo::from_env()
+                .context("building the CoPilot-SCA client")?,
+        };
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -550,6 +569,7 @@ impl App {
             threat_intel,
             response,
             shuffle,
+            agent_reports,
         })
     }
 
@@ -573,6 +593,7 @@ impl App {
         copilot_velociraptor::VelociraptorState {
             ctx: self.ctx.clone(),
             client: self.agents.velociraptor.clone(),
+            store: self.objectstore.clone(),
         }
     }
 
@@ -753,6 +774,33 @@ impl App {
             .nest(
                 "/api/flows",
                 copilot_velociraptor::flows_router(self.velociraptor_state()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .nest(
+                "/api/vulnerabilities",
+                copilot_agent_reports::vulnerabilities::router(self.agent_reports.clone()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .nest(
+                "/api/sca",
+                copilot_agent_reports::sca::router(self.agent_reports.clone()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .nest(
+                "/api/syscollector",
+                copilot_agent_reports::syscollector::router(self.agent_reports.clone()).layer(
                     from_fn_with_state(
                         self.wazuh.legacy.clone(),
                         copilot_wazuh::decoded_slash_to_legacy,

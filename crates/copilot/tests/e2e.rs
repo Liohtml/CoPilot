@@ -759,9 +759,10 @@ async fn talon_and_ai_analyst_flow() {
 async fn unported_routes_are_proxied_to_the_python_backend() {
     let legacy = MockServer::start().await;
     let h = harness_or_skip!(Some(&legacy));
-    // (`/api/agents` is ported now; its sibling `/api/vulnerabilities` is not.)
+    // (`/api/agents`, its report routers and `GET /api/sysmon_config` are
+    // ported now; the Sublime connector is not.)
     Mock::given(method("GET"))
-        .and(path("/api/vulnerabilities"))
+        .and(path("/api/sublime/alerts"))
         .and(header("authorization", "Bearer abc"))
         .respond_with(
             ResponseTemplate::new(200)
@@ -774,7 +775,7 @@ async fn unported_routes_are_proxied_to_the_python_backend() {
     let (st, body) = h
         .call(
             "GET",
-            "/api/vulnerabilities?customer_code=x",
+            "/api/sublime/alerts?customer_code=x",
             Some("abc"),
             None,
         )

@@ -689,12 +689,16 @@ class Pair:
         await asyncio.sleep(0)
         return r, [request for recorder in RECORDERS for request in recorder.take()]
 
-    async def same(self, name, method, path, tok=None, before=None, outbound=True, concurrent=False, clock=False, **kw):
+    async def same(self, name, method, path, tok=None, before=None, outbound=True, concurrent=False, clock=False, nan_order=False, **kw):
         """Python, then Rust, with the stand-in reset by `before` for each.
 
         `concurrent`: the route sends its requests at once (`asyncio.gather`), so their order
         is not compared, and when both fail Python reports whichever failed first — the
-        other request's error is accepted too (RUST_MIGRATION.md §4)."""
+        other request's error is accepted too (RUST_MIGRATION.md §4).
+
+        `nan_order`: Python's `sorted(set)` of a NaN and an infinity — NaN hashes by identity,
+        so the set's order changes from one process to the next and `sorted` cannot move a NaN:
+        the two values are accepted in either order (RUST_MIGRATION.md §4)."""
         if before:
             before()
         r1, out1 = await self.call(self.py, method, path, tok, **kw)
@@ -707,6 +711,13 @@ class Pair:
         ok = r1.status_code == r2.status_code and b1 == b2
         if concurrent and not ok and r1.status_code == r2.status_code:
             swapped = b1.replace(b"/journal", b"/__swap__").replace(b"/metrics", b"/journal").replace(b"/__swap__", b"/metrics")
+            ok = swapped == b2
+        if nan_order and not ok and r1.status_code == r2.status_code:
+            swapped = (
+                b1.replace(b"input_value=nan", b"__nan__")
+                .replace(b"input_value=inf", b"input_value=nan")
+                .replace(b"__nan__", b"input_value=inf")
+            )
             ok = swapped == b2
         detail = f"python {r1.status_code} {b1[:900]!r}\n        rust   {r2.status_code} {b2[:900]!r}"
         if outbound:
@@ -1275,6 +1286,7 @@ async def influxdb_checks(p, t_admin, t_analyst, t_portal):
                 t_analyst,
                 params={"host": "web-01"},
                 before=metric_csv(csv_text),
+                nan_order=path == "/hosts",
             )
 
     print("\n=== InfluxDB: connector problems ===")
