@@ -18,6 +18,9 @@
 //!                      │ integrations, dispatch log, channel catalog          │
 //!                      │                    → copilot-notifications ───────────► webhook, Teams,
 //!                      │ (every module emits in-process: DispatchingSink)     │   Resend, Shuffle
+//!                      │ /api/soc_management/* (but GET /report),             │
+//!                      │ /api/customer_portal/sla/*                           │
+//!                      │                    → copilot-soc-management          │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -105,6 +108,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customers/{customer_code}/notification_routes",
     "/api/customers/{customer_code}/notification_dispatch_log",
     "/api/customers/{customer_code}/shuffle_integrations",
+    // SOC Management but GET /report (the PDF operations report: matplotlib
+    // charts and wkhtmltopdf), which falls through to the legacy backend.
+    "/api/soc_management",
+    "/api/customer_portal/sla",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -126,6 +133,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::branding::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::REQUIREMENTS);
     all.extend_from_slice(copilot_sla::REQUIREMENTS);
+    all.extend_from_slice(copilot_soc_management::REQUIREMENTS);
     all.extend_from_slice(copilot_notifications::db::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
@@ -347,6 +355,13 @@ impl App {
                 ctx: self.ctx.clone(),
                 dispatcher: self.dispatcher.clone(),
             }))
+            // `/api/soc_management/*` but `GET /report`; the portal's SLA page
+            // with full paths beside the other `/api/customer_portal` routes.
+            .nest(
+                "/api/soc_management",
+                copilot_soc_management::router(self.ctx.clone()),
+            )
+            .merge(copilot_soc_management::portal_router(self.ctx.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
