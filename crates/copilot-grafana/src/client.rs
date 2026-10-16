@@ -500,11 +500,7 @@ mod tests {
         if let Some(ct) = ct {
             headers.insert(http::header::CONTENT_TYPE, ct.parse().unwrap());
         }
-        PyResponse {
-            status,
-            headers,
-            body: bytes::Bytes::from(body.to_string()),
-        }
+        PyResponse::new(status, headers, body.to_string())
     }
 
     #[test]
