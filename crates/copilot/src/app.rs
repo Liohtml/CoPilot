@@ -176,6 +176,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customer_portal/sla",
     // The agents router (copilot-agents, on copilot-velociraptor's client).
     "/api/agents",
+    // The Velociraptor connector (copilot-velociraptor) but `POST
+    // /api/artifacts/collect` and `…/collect/file/agent/{agent_id}` (MinIO),
+    // which no Rust route matches: the binary forwards them.
+    "/api/artifacts",
+    "/api/flows",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -203,6 +208,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_wazuh::REQUIREMENTS);
     all.extend_from_slice(copilot_portainer::REQUIREMENTS);
     all.extend_from_slice(copilot_agents::REQUIREMENTS);
+    all.extend_from_slice(copilot_velociraptor::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -398,6 +404,14 @@ impl App {
         ))
     }
 
+    /// The Velociraptor routes' state (the agents routes' client).
+    fn velociraptor_state(&self) -> copilot_velociraptor::VelociraptorState {
+        copilot_velociraptor::VelociraptorState {
+            ctx: self.ctx.clone(),
+            client: self.agents.velociraptor.clone(),
+        }
+    }
+
     /// The full router: ported modules, health, and the legacy fallback.
     pub fn router(&self, max_body_bytes: usize) -> Router {
         let state = TalonState {
@@ -539,6 +553,24 @@ impl App {
                     self.wazuh.legacy.clone(),
                     copilot_wazuh::decoded_slash_to_legacy,
                 )),
+            )
+            .nest(
+                "/api/artifacts",
+                copilot_velociraptor::artifacts_router(self.velociraptor_state()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .nest(
+                "/api/flows",
+                copilot_velociraptor::flows_router(self.velociraptor_state()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
             )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))

@@ -539,7 +539,7 @@ async fn the_velociraptor_connector_is_verified_in_rust() {
     let timeout = velo.requests.lock().unwrap()[0].1.clone();
     assert_eq!(
         timeout.as_deref(),
-        Some("30000m"),
+        Some("30S"),
         "VELOCIRAPTOR_QUERY_TIMEOUT's default"
     );
 
@@ -770,5 +770,214 @@ async fn validation_and_guards_keep_pythons_texts() {
         )
         .await;
     assert_eq!(status, 403);
+    cleanup(&h).await;
+}
+
+#[tokio::test]
+async fn velociraptor_responses_run_on_the_callers_hosts_only() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    cleanup(&h).await;
+    let s = h.suffix.clone();
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let client_id = format!("C.{s}");
+    let host = format!("cmd-{s}");
+    agent(&h, "c1", &host, &acme, Some(&client_id)).await;
+    agent(
+        &h,
+        "c2",
+        &format!("other-{s}"),
+        &beta,
+        Some(&format!("C.{s}b")),
+    )
+    .await;
+    h.exec(&format!(
+        "UPDATE agents SET velociraptor_org = 'root' WHERE agent_id LIKE '{s}%'"
+    ))
+    .await;
+    let definitions = r#"[{"name": "Linux.Sys.BashShell", "description": "bash"},
+        {"name": "Linux.Remediation.Quarantine", "description": "q"},
+        {"name": "Windows.System.CmdShell", "description": "cmd"}]"#
+        .to_string();
+    let velo = StandIn::start(move |args| {
+        let vql = args.query[0].vql.clone();
+        if vql.starts_with("SELECT name,description,parameters FROM artifact_definitions()") {
+            Answer::rows(&[&definitions])
+        } else if let Some(call) = vql
+            .strip_prefix("SELECT ")
+            .and_then(|v| v.strip_suffix(" FROM scope()"))
+        {
+            let row = json!([{ call: {"flow_id": "F.ABC"} }]).to_string();
+            Answer::rows(&[&row])
+        } else if vql.starts_with("SELECT * FROM watch_monitoring") {
+            Answer::rows(&[r#"[{"FlowId": "F.ABC"}]"#])
+        } else if vql.starts_with("SELECT * FROM source(") {
+            Answer::rows(&[r#"[{"Stdout": "uid=0(root)"}]"#])
+        } else if vql.starts_with("SELECT * FROM flows(") {
+            Answer::rows(&[r#"[{"session_id": "F.ABC", "request": {"specs": [{"artifact": "X"}, 1]}}, "junk"]"#])
+        } else {
+            Answer::rows(&["[]"])
+        }
+    })
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = velo.write_api_config(dir.path());
+    connector(
+        &h,
+        "Velociraptor",
+        "https://velo",
+        None,
+        None,
+        Some(&config),
+    )
+    .await;
+    let responder = h.token(&format!("responder{s}"), "responder");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+
+    let body = json!({"hostname": host, "artifact_name": "Linux.Sys.BashShell", "command": "id"});
+    let (status, _) = h
+        .call(
+            "POST",
+            "/api/artifacts/command",
+            Some(&analyst),
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(status, 403, "a command is admin's or a responder's");
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/artifacts/command",
+            Some(&responder),
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(status, 200, "{resp}");
+    assert_eq!(
+        resp,
+        json!({"message": "Successfully executed query", "success": true, "results": [{"Stdout": "uid=0(root)"}]})
+    );
+    let vql = velo.vql();
+    assert_eq!(
+        vql[1],
+        format!(
+            "SELECT collect_client(org_id='root', client_id='{client_id}', urgent=true, artifacts=['Linux.Sys.BashShell'], env=dict(Command='id')) FROM scope()"
+        )
+    );
+    assert!(vql[2].ends_with("WHERE FlowId='F.ABC' LIMIT 1"), "{vql:?}");
+    assert_eq!(
+        vql[3],
+        format!(
+            "SELECT * FROM source(client_id='{client_id}', flow_id='F.ABC', artifact='Linux.Sys.BashShell')"
+        )
+    );
+    let deadlines: Vec<Option<String>> = velo
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(_, t)| t.clone())
+        .collect();
+    assert_eq!(
+        deadlines[2].as_deref(),
+        Some("5M"),
+        "the flow wait's deadline (VELOCIRAPTOR_FLOW_TIMEOUT)"
+    );
+
+    // Another tenant's host: refused before Velociraptor is asked anything.
+    let before = velo.messages().len();
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/artifacts/command",
+            Some(&responder),
+            Some(json!({"hostname": format!("other-{s}"), "artifact_name": "Linux.Sys.BashShell"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (403, json!(format!("Access denied to host other-{s}")))
+    );
+    assert_eq!(velo.messages().len(), before);
+
+    // Quarantine: the flag follows, and both responses are audited.
+    let q = json!({"hostname": host, "action": "quarantine", "artifact_name": "Linux.Remediation.Quarantine"});
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/artifacts/quarantine",
+            Some(&responder),
+            Some(q),
+        )
+        .await;
+    assert_eq!(status, 200, "{resp}");
+    assert!(
+        velo.vql().iter().any(|v| v
+            == &format!(
+                "SELECT collect_client(org_id=\"root\", client_id=\"{client_id}\", artifacts=[\"Linux.Remediation.Quarantine\"], spec=dict(`Linux.Remediation.Quarantine`=dict())) FROM scope()"
+            )),
+        "{:?}",
+        velo.vql()
+    );
+    let flagged = h
+        .scalar_i64(&format!(
+            "SELECT quarantined FROM agents WHERE hostname = '{host}'"
+        ))
+        .await;
+    assert_eq!(flagged, 1);
+    let mut audited = 0;
+    for _ in 0..50 {
+        audited = h
+            .scalar_i64(&format!(
+                "SELECT COUNT(*) FROM audit_log WHERE entity_type = 'agent' AND entity_id = '{host}' \
+                 AND action IN ('response.command_execute', 'response.quarantine')"
+            ))
+            .await;
+        if audited == 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(audited, 2);
+
+    // Flows: the malformed spec and row are dropped, not fatal.
+    let (status, resp) = h
+        .call("GET", &format!("/api/flows/{host}"), Some(&analyst), None)
+        .await;
+    assert_eq!(status, 200, "{resp}");
+    assert_eq!(resp["results"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        resp["results"][0]["request"]["specs"],
+        json!([{"artifact": "X", "parameters": null}])
+    );
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/flows/retrieve",
+            Some(&analyst),
+            Some(json!({"client_id": format!("C.{s}b"), "session_id": "F.1"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (403, json!(format!("Access denied to client C.{s}b")))
+    );
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/flows/retrieve",
+            Some(&analyst),
+            Some(json!({"client_id": "x", "session_id": ""})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (400, json!("The session_id cannot be an empty string"))
+    );
+
+    h.exec(&format!(
+        "DELETE FROM audit_log WHERE entity_type = 'agent' AND entity_id = '{host}'"
+    ))
+    .await;
     cleanup(&h).await;
 }

@@ -272,7 +272,7 @@ mod tests {
         let (msg, timeout) = stand_in.requests.lock().unwrap()[0].clone();
         assert_eq!(msg.org_id, "O1");
         assert_eq!(msg.max_wait, 1);
-        assert_eq!(timeout.as_deref(), Some("2000m"));
+        assert_eq!(timeout.as_deref(), Some("2S"));
         let denied = svc
             .execute_query("deny", crate::client::ROOT, None)
             .await

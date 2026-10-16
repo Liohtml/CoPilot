@@ -449,12 +449,69 @@ async fn connect(
     }))
 }
 
+/// `ceil(a / b)` for positive values.
+fn div_up(a: u64, b: u64) -> u64 {
+    a.div_ceil(b)
+}
+
+/// The `grpc-timeout` header as grpc-core writes it (`Timeout::FromMillis`
+/// and `Encode`): the remaining time rounded *up* to the coarsest unit that
+/// keeps three significant digits, and a whole number of minutes or hours
+/// written as such (`5S`, `5010m`, `30S`, `30100m`, `1M`, `301S`, `1H`).
+/// grpc-core reads the remaining time off its clock when the call starts,
+/// usually a millisecond over the timeout Python asked for; this encodes the
+/// timeout itself.
 fn grpc_timeout(timeout: Duration) -> String {
-    let ms = timeout.as_millis();
-    if ms <= 99_999_999 {
-        format!("{ms}m")
+    let millis = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+    if millis == 0 {
+        return "1n".into();
+    }
+    if millis < 1000 {
+        return format!("{millis}m");
+    }
+    if millis < 10_000 {
+        let value = div_up(millis, 10);
+        if value % 100 != 0 {
+            return format!("{value}0m");
+        }
+    } else if millis < 100_000 {
+        let value = div_up(millis, 100);
+        if value % 10 != 0 {
+            return format!("{value}00m");
+        }
+    }
+    let seconds = div_up(millis, 1000);
+    if seconds < 1000 {
+        if seconds % 60 != 0 {
+            return format!("{seconds}S");
+        }
+    } else if seconds < 10_000 {
+        let value = div_up(seconds, 10);
+        if (value * 10) % 60 != 0 {
+            return format!("{value}0S");
+        }
+    } else if seconds < 100_000 {
+        let value = div_up(seconds, 100);
+        if (value * 100) % 60 != 0 {
+            return format!("{value}00S");
+        }
+    }
+    let minutes = div_up(seconds, 60);
+    if minutes < 1000 {
+        if minutes % 60 != 0 {
+            return format!("{minutes}M");
+        }
+    } else if minutes < 10_000 {
+        let value = div_up(minutes, 10);
+        if (value * 10) % 60 != 0 {
+            return format!("{value}0M");
+        }
+    }
+    let hours = div_up(minutes, 60);
+    if hours < 10_000 {
+        format!("{hours}H")
     } else {
-        format!("{}S", timeout.as_secs().min(99_999_999))
+        format!("{}0H", div_up(hours, 10).min(9_999))
     }
 }
 
@@ -664,7 +721,24 @@ mod tests {
     fn messages_and_statuses() {
         assert_eq!(percent_decode("a%20b%zz%"), "a b%zz%");
         assert_eq!(percent_decode("caf%C3%A9"), "café");
-        assert_eq!(grpc_timeout(Duration::from_secs(30)), "30000m");
+        // What grpcio sends for these timeouts when its clock reads them
+        // exactly (`context.time_remaining()` on a grpcio server).
+        for (ms, header) in [
+            (999, "999m"),
+            (1000, "1S"),
+            (5000, "5S"),
+            (5001, "5010m"),
+            (30_000, "30S"),
+            (30_001, "30100m"),
+            (60_000, "1M"),
+            (100_001, "101S"),
+            (300_000, "5M"),
+            (300_001, "301S"),
+            (1_000_001, "1010S"),
+            (3_600_000, "1H"),
+        ] {
+            assert_eq!(grpc_timeout(Duration::from_millis(ms)), header, "{ms}");
+        }
         assert_eq!(Code::from_i32(14), Code::Unavailable);
         assert_eq!(Code::from_i32(99), Code::Unknown);
         let e = RpcError::local(Code::Unavailable, "x");

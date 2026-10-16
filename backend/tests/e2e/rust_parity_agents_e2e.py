@@ -84,6 +84,8 @@ CERTS = os.path.join(REPO, "crates", "copilot-velociraptor", "src", "testing")
 SFX = uuid.uuid4().hex[:6]
 CUST_A, CUST_B = f"AgA{SFX}", f"AgB{SFX}"
 ADMIN, ANALYST, PORTAL, SCHED = f"ag_admin{SFX}", f"ag_analyst{SFX}", f"ag_portal{SFX}", f"ag_sched{SFX}"
+RESP = f"ag_resp{SFX}"
+USERS = (ADMIN, ANALYST, PORTAL, SCHED, RESP)
 OUR_CONNECTORS = ("Wazuh-Manager", "Wazuh-Indexer", "Velociraptor", "Event Shipper")
 results = []
 
@@ -597,8 +599,12 @@ class VeloStandIn:
     def query(self, raw, context):
         req = api_pb2.VQLCollectorArgs.FromString(raw)
         remaining = context.time_remaining()
+        # The deadline to the nearest 5 s: grpc-core reads the remaining time off its
+        # clock when the call starts, usually a millisecond over what Python asked
+        # for, and rounds it up to its header's unit (300 s goes as `301S`, or as
+        # `5M` when the clock reads it exactly, which is what Rust sends).
         with self.lock:
-            self.captured.append({"request": raw.hex(), "deadline": None if remaining is None else round(remaining)})
+            self.captured.append({"request": raw.hex(), "deadline": None if remaining is None else 5 * round(remaining / 5)})
         chunks, error = self.answer(self, req.Query[0].VQL, req.org_id)
         yield api_pb2.VQLResponse(log="query started").SerializeToString()
         for chunk in chunks:
@@ -678,11 +684,92 @@ def velo_answer(stand_in, vql, org_id):
         if mode.get("no_version"):
             return [[]], None
         return [[{"version": {"name": "velociraptor", "version": mode.get("server_version", "0.7.1"), "commit": "abc"}}]], None
+    if vql.startswith("SELECT name,description,parameters FROM artifact_definitions()"):
+        rows = list(ARTIFACT_DEFS)
+        if mode.get("bad_artifact"):
+            rows.append({"name": "Linux.Broken", "parameters": [{"default": 3}]})
+        if mode.get("artifact_str"):
+            rows.append("Linux.Plain")
+        m = re.fullmatch(r".* WHERE name = '(.*)'", vql)
+        if m:
+            rows = [r for r in rows if isinstance(r, dict) and r.get("name") == m.group(1)]
+        return [rows[:3], rows[3:]], None
+    if vql.startswith("SELECT collect_client(org_id="):
+        if mode.get("deny_collect"):
+            return [], (grpc.StatusCode.PERMISSION_DENIED, f"Permission denied: COLLECT_CLIENT in {org_id}")
+        call = vql[len("SELECT ") : -len(" FROM scope()")]
+        flow = 7 if mode.get("flow_id_int") else "F.CL" + SFX.upper()
+        return [[{call: {"flow_id": flow, "request": {"creator": "api", "artifacts": ["x"]}}}]], None
+    if vql.startswith("SELECT * FROM watch_monitoring(artifact='System.Flow.Completion') WHERE FlowId="):
+        return [[{"FlowId": vql.split("FlowId='")[1].split("'")[0], "ClientId": "C.x"}]], None
+    if vql.startswith("SELECT * FROM source(") or vql.startswith("SELECT * FROM flow_results("):
+        if mode.get("rows_not_dicts"):
+            return [[1, "two"]], None
+        return [[{"Stdout": "uid=0(root) gid=0(root) é", "Stderr": "", "ReturnCode": 0}], [{"Stdout": "", "Complete": True}]], None
+    if vql.startswith("SELECT * FROM flows(client_id="):
+        return [FLOW_ROWS[:2], FLOW_ROWS[2:]], None
     if vql == "SELECT * FROM info()":
         return [[{"Hostname": "velo-server", "Uptime": 1}], {"not": "a list"}] if mode.get("dict_chunk") else [
             [{"Hostname": "velo-server"}],
         ], None
     return [], (grpc.StatusCode.INVALID_ARGUMENT, f"unexpected VQL: {vql}")
+
+
+ARTIFACT_DEFS = [
+    {
+        "name": "Linux.Sys.BashShell",
+        "description": "Run a bash command.",
+        "parameters": [{"name": "Command", "default": "ls -l /", "type": "", "description": "The command"}],
+        "author": "Mike",
+        "column_types": [],
+    },
+    {
+        "name": "Linux.Remediation.Quarantine",
+        "description": "Quarantine a Linux host.",
+        "parameters": [{"name": "RemovePolicy", "type": "bool"}],
+    },
+    {"name": "Custom.Linux.Remediation.Quarantine", "description": "Without the connection test.", "precondition": "SELECT OS From info()"},
+    {"name": "Windows.System.PowerShell", "description": "PowerShell", "parameters": [{"name": "Command", "default": True}]},
+    {"name": "Windows.System.CmdShell", "description": "cmd"},
+    {"name": "Windows.Remediation.Quarantine", "description": "Quarantine a Windows host.", "parameters": None},
+    {
+        "name": "Windows.AttackSimulation.AtomicRedTeam",
+        "description": "Atomic Red Team",
+        "parameters": [
+            {"name": "T1552.001 - 4", "description": "Access unattend.xml", "type": "bool"},
+            {"name": "InstallART", "default": "N"},
+            {"name": "T1552.001 - 3", "description": "findstr", "type": "bool", "default": "Y"},
+            {"name": "T1003 - 1", "type": "bool", "friendly_name": "x"},
+        ],
+    },
+    {"name": "MacOS.Applications.Chrome.History", "description": "Chrome", "author": None},
+    {"name": "Generic.Client.Info", "description": "Client info"},
+    {"name": "LinuxStray.Thing", "description": "starts with Linux, not Linux."},
+]
+FLOW_ROWS = [
+    {
+        "session_id": "F.ONE",
+        "client_id": "C.x",
+        "request": {
+            "creator": "admin",
+            "artifacts": ["Linux.Sys.BashShell"],
+            "specs": [{"artifact": "Linux.Sys.BashShell", "parameters": {"env": [{"key": "Command", "value": "id"}]}}, "junk"],
+            "urgent": True,
+            "timeout": "600",
+        },
+        "create_time": 1760600000123456,
+        "state": "FINISHED",
+        "query_stats": [{"status": "OK", "duration": 12, "names_with_response": ["Linux.Sys.BashShell"], "extra": 1}],
+        "uploaded_files": [],
+        "new_field": {"ignored": True},
+    },
+    {"session_id": "F.TWO", "request": {"specs": [{"artifact": "A", "parameters": [{"key": "k", "value": "v", "comment": None}]}]}},
+    "not a flow",
+    {"session_id": "F.BAD", "create_time": "yesterday"},
+    {"session_id": "F.SPECS", "request": {"specs": 5}},
+    {"session_id": "F.NOREQ", "request": None},
+    {},
+]
 
 
 def api_config(directory, address, ca="ca.pem", name="api.config.yaml", raw=None):
@@ -711,10 +798,12 @@ def build_python_app():
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
     from app.routers import connectors
+    from app.routers import velociraptor
 
     api = APIRouter(prefix="/api")
     api.include_router(agents_router, prefix="/agents")
     api.include_router(connectors.router)
+    api.include_router(velociraptor.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -771,7 +860,12 @@ AGENTS = {
     "b1": (f"{SFX}11", f"b1-{SFX}", CUST_B, f"C.{SFX}b1", "active", "2026-10-15 08:00:00", "Wazuh v4.7.2", "0.7.1", 0),
     "b2": (f"{SFX}12", f"dup-{SFX}", CUST_B, None, "disconnected", "2020-01-01 00:00:00", "Wazuh v4.9.0", None, 0),
     "n1": (f"{SFX}21", f"null-{SFX}", None, None, "active", "2026-10-15 08:00:00", "Wazuh v4.9.0", None, 0),
+    "w1": (f"{SFX}05", f"win-{SFX}", CUST_A, f"C.{SFX}e1-{SFX.upper()}", "active", "2026-10-15 08:00:00", "Wazuh v4.9.0", "0.7.1", 0),
+    "x1": (f"{SFX}06", f"deb-{SFX}", CUST_A, f"C.{SFX}f1", "active", "2026-10-15 08:00:00", "Wazuh v4.9.0", "0.7.1", 0),
+    "na": (f"{SFX}07", f"na-{SFX}", CUST_A, "n/a", "active", "2026-10-15 08:00:00", "Wazuh v4.9.0", None, 0),
 }
+#: The `os` of the agents that are not Ubuntu.
+AGENT_OS = {"w1": "Microsoft Windows 11 Pro", "x1": "FreeBSD 14.1"}
 IDS = {}
 
 
@@ -780,9 +874,10 @@ async def insert_agent(key):
     await sql(
         "INSERT INTO agents (id, agent_id, ip_address, os, hostname, label, critical_asset, wazuh_last_seen, velociraptor_id, "
         "velociraptor_last_seen, wazuh_agent_version, wazuh_agent_status, velociraptor_agent_version, customer_code, quarantined, "
-        "velociraptor_org, velociraptor_id_pinned) VALUES (:i, :a, '10.0.0.7', 'Ubuntu 22.04', :h, :l, 0, :s, :v, :vs, :wv, :st, "
+        "velociraptor_org, velociraptor_id_pinned) VALUES (:i, :a, '10.0.0.7', :os, :h, :l, 0, :s, :v, :vs, :wv, :st, "
         ":vv, :c, 0, :o, :p)",
         i=IDS[key],
+        os=AGENT_OS.get(key, "Ubuntu 22.04"),
         a=agent_id,
         h=host,
         l=f"grp_{cust}" if cust else "default",
@@ -793,7 +888,7 @@ async def insert_agent(key):
         st=status,
         vv=vversion,
         c=cust,
-        o="root" if vid else None,
+        o=(ORG2 if key == "w1" else "root") if vid else None,
         p=pinned,
     )
 
@@ -827,6 +922,8 @@ def in_list(values):
 
 
 async def agent_rows():
+    # The Rust audit sink spawns its write after the answer: give it a moment.
+    await asyncio.sleep(0.3)
     found = await rows("SELECT * FROM agents WHERE id IN " + in_list(IDS.values()) + " ORDER BY id")
     vulns = await rows(
         "SELECT agent_id, cve_id FROM agent_vulnerabilities WHERE agent_id IN " + in_list(a[0] for a in AGENTS.values()) + " ORDER BY id",
@@ -841,17 +938,35 @@ async def agent_rows():
     return {"agents": found, "vulnerabilities": vulns, "datastore": store, "audit": audit}
 
 
+async def velo_rows():
+    """The quarantine flags and the response audit rows (by hostname)."""
+    await asyncio.sleep(0.3)  # the Rust audit sink writes on a task of its own
+    hosts = sorted({v[1] for v in AGENTS.values()})
+    return {
+        "agents": await rows("SELECT hostname, quarantined FROM agents WHERE id IN " + in_list(IDS[k] for k in AGENTS) + " ORDER BY id"),
+        "audit": await rows(
+            "SELECT actor_username, customer_code, action, entity_type, entity_id, result, old_value, new_value, details "
+            "FROM audit_log WHERE entity_type = 'agent' AND entity_id IN " + in_list(hosts) + " ORDER BY id",
+        ),
+    }
+
+
+async def reset_velo():
+    await reset_agents()
+    await sql("DELETE FROM audit_log WHERE entity_type = 'agent' AND entity_id IN " + in_list(sorted({v[1] for v in AGENTS.values()})))
+
+
 async def seed():
     for c in (CUST_A, CUST_B):
         await sql("INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :n, UTC_TIMESTAMP())", c=c, n=f"{c} Corp")
-    for name, role in ((ADMIN, 1), (ANALYST, 2), (PORTAL, 4), (SCHED, 3)):
+    for name, role in ((ADMIN, 1), (ANALYST, 2), (PORTAL, 4), (SCHED, 3), (RESP, 5)):
         await sql(
             "INSERT INTO `user` (username, password, email, created_at, role_id) VALUES (:n, 'x', :e, UTC_TIMESTAMP(), :r)",
             n=name,
             e=f"{name}@parity.test",
             r=role,
         )
-    for name in (ANALYST, PORTAL):
+    for name in (ANALYST, PORTAL, RESP):
         await sql(
             "INSERT INTO user_customer_access (user_id, customer_code, created_at) "
             "SELECT id, :c, UTC_TIMESTAMP() FROM `user` WHERE username = :n",
@@ -920,18 +1035,12 @@ async def cleanup():
     await sql("DELETE FROM agents WHERE id IN " + in_list(IDS[k] for k in AGENTS if k in IDS))
     await sql("DELETE FROM agents WHERE hostname LIKE :h", h=f"%{SFX}%")
     await sql("DELETE FROM agents WHERE agent_id = '000' AND hostname = :h", h=f"manager-{SFX}")
-    await sql("DELETE FROM audit_log WHERE actor_username IN (:a, :b, :c, :d)", a=ADMIN, b=ANALYST, c=PORTAL, d=SCHED)
+    await sql("DELETE FROM audit_log WHERE actor_username IN " + in_list(USERS))
     await sql("DELETE FROM scheduled_job_metadata WHERE job_id = 'agent_sync' AND job_description = 'parity'")
     for name in OUR_CONNECTORS:
         await sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
-    await sql(
-        "DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username IN (:a, :b, :c, :d))",
-        a=ADMIN,
-        b=ANALYST,
-        c=PORTAL,
-        d=SCHED,
-    )
-    await sql("DELETE FROM `user` WHERE username IN (:a, :b, :c, :d)", a=ADMIN, b=ANALYST, c=PORTAL, d=SCHED)
+    await sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username IN " + in_list(USERS) + ")")
+    await sql("DELETE FROM `user` WHERE username IN " + in_list(USERS))
     await sql("DELETE FROM customers WHERE customer_code IN (:a, :b)", a=CUST_A, b=CUST_B)
 
 
@@ -1659,6 +1768,8 @@ async def main():  # noqa: C901 - one scenario after the other
             "COPILOT_BIND": "127.0.0.1",
             "COPILOT_PORT": str(JOBS_PORT),
             "COPILOT_RS_JOBS": "agent_sync",
+            # #913's override, for the quarantine check below.
+            "VELOCIRAPTOR_LINUX_QUARANTINE_ARTIFACT": " Custom.Linux.Remediation.Quarantine ",
             "VELOCIRAPTOR_QUERY_TIMEOUT": str(QUERY_TIMEOUT),
             "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
         }
@@ -1734,6 +1845,28 @@ async def main():  # noqa: C901 - one scenario after the other
             mgr.take()
             skipped = await agent_sync()
             check("python: a handed-over agent_sync tick is skipped", repr(skipped) == "JOB_SKIPPED" and not mgr.take(), repr(skipped))
+
+            # The quarantine artifact override (VELOCIRAPTOR_LINUX_QUARANTINE_ARTIFACT, #913).
+            got = {}
+            for tag, client in (("py", py), ("rs", rs2)):
+                await reset_velo()
+                velo.take()
+                os.environ["VELOCIRAPTOR_LINUX_QUARANTINE_ARTIFACT"] = " Custom.Linux.Remediation.Quarantine "
+                try:
+                    r = await client.post(
+                        "/api/artifacts/quarantine",
+                        headers={"Authorization": f"Bearer {t_admin}"},
+                        json={"hostname": host["a1"], "action": "quarantine", "artifact_name": "Linux.Remediation.Quarantine"},
+                    )
+                finally:
+                    os.environ.pop("VELOCIRAPTOR_LINUX_QUARANTINE_ARTIFACT", None)
+                await asyncio.sleep(0.5)
+                got[tag] = (r.status_code, r.json(), velo.take(), await velo_rows())
+            check(
+                f"quarantine with a configured custom artifact [{got['py'][0]}]",
+                json.dumps(got["py"], default=str) == json.dumps(got["rs"], default=str) and "Custom.Linux" in json.dumps(got["rs"][3]),
+                f"python {json.dumps(got['py'], default=str)[:2500]}\n        rust   {json.dumps(got['rs'], default=str)[:2500]}",
+            )
         finally:
             aps.remove_job("agent_sync")
             aps.shutdown(wait=False)
@@ -1743,6 +1876,164 @@ async def main():  # noqa: C901 - one scenario after the other
                 rs2_proc.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 rs2_proc.kill()
+
+        # ==================================================================
+        print("\n=== H. Velociraptor: /api/artifacts and /api/flows ===")
+        t_resp = token(RESP, ["responder", "analyst"])
+        await reset_agents()
+        AR, FL = "/api/artifacts", "/api/flows"
+        VO = (velo,)
+        await both("artifacts: no token", "GET", AR)
+        await both("artifacts: portal user", "GET", AR, t_portal, recs=VO)
+        await both("artifacts", "GET", AR, t_analyst, recs=VO)
+        await both("artifacts: responder", "GET", AR, t_resp, recs=VO)
+        velo.mode["bad_artifact"] = True
+        await both("artifacts: an invalid definition", "GET", AR, t_analyst, recs=VO)
+        velo.mode = {"artifact_str": True}
+        await both("artifacts: a definition that is no mapping", "GET", AR, t_analyst, recs=VO)
+        velo.mode = {"deny": True}
+        await both("artifacts: the server refuses", "GET", AR, t_analyst, recs=VO)
+        velo.mode = {}
+        for prefix in ("linux", "WINDOWS", "MacOS", "solaris", "collect"):
+            await both(f"artifacts for OS prefix {prefix}", "GET", AR + f"/{prefix}", t_analyst, recs=VO)
+        await both("artifact by name", "GET", AR + "/artifact/Linux.Sys.BashShell", t_analyst, recs=VO)
+        await both("artifact by name: unknown", "GET", AR + "/artifact/Linux.Nothing", t_analyst, recs=VO)
+        await both("artifact by name: not a name", "GET", AR + "/artifact/x'%20OR%20'1", t_analyst, recs=VO)
+        velo.mode = {"bad_artifact": True}
+        await both("artifact by name: an invalid definition", "GET", AR + "/artifact/Linux.Broken", t_analyst, recs=VO)
+        velo.mode = {}
+        ART = AR + "/artifact/Windows.AttackSimulation.AtomicRedTeam/parameters"
+        for prefix in ("T1552.001", "T1003", "zzz", "%20"):
+            await both(f"parameters with prefix {prefix!r}", "GET", ART + f"/{prefix}", t_analyst, recs=VO)
+        await both(
+            "parameters: an artifact without parameters",
+            "GET",
+            AR + "/artifact/Generic.Client.Info/parameters/x",
+            t_analyst,
+            recs=VO,
+        )
+        await both("parameters: unknown artifact", "GET", AR + "/artifact/Nope/parameters/x", t_analyst, recs=VO)
+        await both("parameters: not a name", "GET", AR + "/artifact/a'b/parameters/x", t_analyst, recs=VO)
+        velo.mode = {"deny": True}
+        await both("parameters: the server refuses", "GET", ART + "/T1", t_analyst, recs=VO)
+        velo.mode = {}
+        await both("host artifacts: Linux", "GET", AR + f"/hostname/{host['a1']}", t_analyst, recs=VO)
+        await both("host artifacts: Windows", "GET", AR + f"/hostname/{host['w1']}", t_resp, recs=VO)
+        await both("host artifacts: an OS without a prefix", "GET", AR + f"/hostname/{host['x1']}", t_analyst, recs=VO)
+        await both("host artifacts: another tenant's host", "GET", AR + f"/hostname/{host['b1']}", t_analyst, recs=VO)
+        await both("host artifacts: unknown host (scoped)", "GET", AR + "/hostname/nobody", t_analyst, recs=VO)
+        await both("host artifacts: unknown host (admin)", "GET", AR + "/hostname/nobody", t_admin, recs=VO)
+        await both("host artifacts: a host held without a customer first", "GET", AR + f"/hostname/{host['n1']}", t_analyst, recs=VO)
+
+        CMD = AR + "/command"
+        W = {"recs": VO, "reset": reset_velo, "snapshot": velo_rows}
+        bash = {"hostname": host["a1"], "artifact_name": "Linux.Sys.BashShell", "command": "id; echo 'it''s' \"q\"\n"}
+        await both("command: no token", "POST", CMD, body=bash)
+        await both("command: malformed JSON before the token", "POST", CMD, raw=b"{")
+        await both("command: an analyst", "POST", CMD, t_analyst, bash, **W)
+        await both("command: hostname required", "POST", CMD, t_resp, {"artifact_name": 5, "command": 1})
+        await both("command: not one of the command artifacts", "POST", CMD, t_resp, {"hostname": "h", "artifact_name": "Linux.Sys.Ls"})
+        await both("command: artifact null", "POST", CMD, t_resp, {"hostname": "h", "artifact_name": None})
+        await both("command (responder)", "POST", CMD, t_resp, bash, **W)
+        await both(
+            "command (admin, Windows)",
+            "POST",
+            CMD,
+            t_admin,
+            {**bash, "hostname": host["w1"], "artifact_name": "Windows.System.CmdShell"},
+            **W,
+        )
+        await both("command: another tenant's host", "POST", CMD, t_resp, {**bash, "hostname": host["b1"]}, **W)
+        await both("command: no artifact named", "POST", CMD, t_resp, {"hostname": host["a1"], "command": "id"}, **W)
+        await both("command: an artifact of another OS", "POST", CMD, t_resp, {**bash, "artifact_name": "Windows.System.PowerShell"}, **W)
+        await both("command: no command (the flow is looked up under another key)", "POST", CMD, t_resp, {**bash, "command": None}, **W)
+        await both("command: client id n/a", "POST", CMD, t_admin, {**bash, "hostname": host["na"]}, **W)
+        await both("command: no org", "POST", CMD, t_resp, {**bash, "hostname": host["a2"]}, **W)
+        await both("command: client id Unknown", "POST", CMD, t_resp, {**bash, "hostname": host["a3"]}, **W)
+        await both("command: unknown host (admin)", "POST", CMD, t_admin, {**bash, "hostname": "nobody"}, **W)
+        await both("command: an OS without a prefix", "POST", CMD, t_admin, {**bash, "hostname": host["x1"]}, **W)
+        for mode in ("flow_id_int", "rows_not_dicts", "deny", "deny_collect", "not_json"):
+            velo.mode = {mode: True}
+            await both(f"command: {mode}", "POST", CMD, t_resp, bash, **W)
+        velo.mode = {}
+
+        QUA = AR + "/quarantine"
+        q = {"hostname": host["a1"], "action": "quarantine", "artifact_name": "Linux.Remediation.Quarantine"}
+        await both("quarantine: an analyst", "POST", QUA, t_analyst, q, **W)
+        await both("quarantine: action required", "POST", QUA, t_resp, {"hostname": host["a1"]})
+        await both("quarantine: bad action and artifact", "POST", QUA, t_resp, {"hostname": 1, "action": "isolate", "artifact_name": "x"})
+        await both("quarantine (responder)", "POST", QUA, t_resp, q, **W)
+        await both("quarantine: release", "POST", QUA, t_resp, {**q, "action": "remove_quarantine"}, **W)
+        await both(
+            "quarantine (admin, Windows)",
+            "POST",
+            QUA,
+            t_admin,
+            {**q, "hostname": host["w1"], "artifact_name": "Windows.Remediation.Quarantine"},
+            **W,
+        )
+        await both("quarantine: another tenant's host", "POST", QUA, t_resp, {**q, "hostname": host["b1"]}, **W)
+        await both("quarantine: no artifact named", "POST", QUA, t_resp, {"hostname": host["a1"], "action": "quarantine"}, **W)
+        await both(
+            "quarantine: an artifact of another OS",
+            "POST",
+            QUA,
+            t_resp,
+            {**q, "artifact_name": "Windows.Remediation.Quarantine"},
+            **W,
+        )
+        await both("quarantine: no org", "POST", QUA, t_resp, {**q, "hostname": host["a2"]}, **W)
+        await both("quarantine: client id n/a", "POST", QUA, t_admin, {**q, "hostname": host["na"]}, **W)
+        for mode in ("deny", "deny_collect", "flow_id_int", "rows_not_dicts"):
+            velo.mode = {mode: True}
+            await both(f"quarantine: {mode}", "POST", QUA, t_resp, q, **W)
+        velo.mode = {}
+        await both("collect: still Python's", "GET", AR + "/collect", t_analyst, recs=VO)
+
+        await both("flows: no token", "GET", FL + f"/{host['a1']}")
+        await both("flows: portal user", "GET", FL + f"/{host['a1']}", t_portal, recs=VO)
+        await both("flows", "GET", FL + f"/{host['a1']}", t_analyst, recs=VO)
+        await both("flows: an org-suffixed client", "GET", FL + f"/{host['w1']}", t_resp, recs=VO)
+        await both("flows: another tenant's host", "GET", FL + f"/{host['b1']}", t_analyst, recs=VO)
+        await both("flows: unknown host (admin)", "GET", FL + "/nobody", t_admin, recs=VO)
+        await both("flows: client id n/a", "GET", FL + f"/{host['na']}", t_admin, recs=VO)
+        await both("flows: no org", "GET", FL + f"/{host['a2']}", t_admin, recs=VO)
+        await both("flows: client id Unknown", "GET", FL + f"/{host['a3']}", t_admin, recs=VO)
+        velo.mode = {"deny": True}
+        await both("flows: the server refuses", "GET", FL + f"/{host['a1']}", t_analyst, recs=VO)
+        velo.mode = {}
+        RET = FL + "/retrieve"
+        flow = {"client_id": AGENTS["a1"][3], "session_id": "F.ONE"}
+        await both("retrieve: no token", "POST", RET, body=flow)
+        await both("retrieve", "POST", RET, t_analyst, flow, recs=VO)
+        await both(
+            "retrieve: an org-suffixed client",
+            "POST",
+            RET,
+            t_analyst,
+            {"client_id": AGENTS["w1"][3], "session_id": "F.X1"},
+            recs=VO,
+        )
+        await both("retrieve: empty session", "POST", RET, t_analyst, {"session_id": "", "client_id": 1}, recs=VO)
+        await both("retrieve: fields required", "POST", RET, t_analyst, {"session_id": None}, recs=VO)
+        await both("retrieve: another tenant's client", "POST", RET, t_analyst, {**flow, "client_id": AGENTS["b1"][3]}, recs=VO)
+        await both("retrieve: unknown client (scoped)", "POST", RET, t_analyst, {**flow, "client_id": "C.0"}, recs=VO)
+        await both("retrieve: unknown client (admin)", "POST", RET, t_admin, {**flow, "client_id": "C.0"}, recs=VO)
+        await both("retrieve: not a flow id", "POST", RET, t_admin, {**flow, "session_id": "F.1'2"}, recs=VO)
+        for label, raw in (
+            ("a list naming session_id", b'["session_id"]'),
+            ("a list", b"[1]"),
+            ("a string naming it", b'"x session_id"'),
+            ("a number", b"5"),
+            ("null", b"null"),
+        ):
+            await both(f"retrieve: the body is {label}", "POST", RET, t_analyst, raw=raw, recs=VO)
+        velo.mode = {"rows_not_dicts": True}
+        await both("retrieve: rows that are no mappings", "POST", RET, t_analyst, flow, recs=VO)
+        velo.mode = {"deny": True}
+        await both("retrieve: the server refuses", "POST", RET, t_analyst, flow, recs=VO)
+        velo.mode = {}
+        await reset_velo()
 
         order_ok = bool(rust_orders) and all(o == AGENT_FIELDS for o in rust_orders)
         check(f"rust: every agent row in declaration order ({len(rust_orders)} rows)", order_ok, str(rust_orders[:1]))
