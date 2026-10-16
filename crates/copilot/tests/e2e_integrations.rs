@@ -602,11 +602,15 @@ async fn office365_instances_are_told_apart_by_name() {
         .await,
         1
     );
+    // By the instance, not the seeded id range: tenant-b's keys were created
+    // through the API and take AUTO_INCREMENT ids, which fall inside that
+    // range on a database whose counter is still below it.
     assert_eq!(
-        count(
-            &h,
-            "integration_auth_keys WHERE id BETWEEN 7521400 AND 7521499 AND auth_value = 'rotated'"
-        )
+        count(&h, &format!(
+            "integration_auth_keys k JOIN integration_subscriptions s ON s.id = k.subscription_id JOIN \
+             customer_integrations c ON c.id = s.customer_id WHERE c.customer_code = '{acme}' AND \
+             k.auth_value = 'rotated' AND c.instance_name IS NULL"
+        ))
         .await,
         0,
         "the unnamed instance's secret was left alone"
