@@ -662,12 +662,13 @@ def seed():
 
 
 def cleanup():
-    sql(
-        "DELETE FROM agent_datastore WHERE agent_id IN (SELECT agent_id FROM agents WHERE id BETWEEN :lo AND :hi)",
-        lo=AGENT_ID_BASE,
-        hi=AGENT_ID_BASE + 9999,
-    )
-    sql("DELETE FROM agents WHERE id BETWEEN :lo AND :hi", lo=AGENT_ID_BASE, hi=AGENT_ID_BASE + 9999)
+    # By exact ids: other suites' rows may hold ids above this suite's block.
+    ids = [AGENT_ID_BASE + a[0] for a in AGENTS] + [AGENT_ID_BASE + a[0] for a in ACTION_AGENTS]
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text("DELETE FROM agent_datastore WHERE agent_id IN (SELECT agent_id FROM agents WHERE id IN :ids)").bindparams(ids=ids),
+        )
+        conn.execute(text("DELETE FROM agents WHERE id IN :ids").bindparams(ids=ids))
     for name in OUR_CONNECTORS:
         sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
     for row in SAVED_CONNECTORS:
@@ -1785,15 +1786,23 @@ def seed_incidents():
 
 
 def cleanup_incidents():
-    lo, hi = INC, INC + 999
-    sql("DELETE FROM incident_management_casealertlink WHERE case_id BETWEEN :lo AND :hi", lo=lo, hi=hi)
-    sql("DELETE FROM incident_management_case WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
-    sql("DELETE FROM incident_management_alert_to_ioc WHERE alert_id BETWEEN :lo AND :hi", lo=lo, hi=hi)
-    sql("DELETE FROM incident_management_ioc WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
-    sql("DELETE FROM incident_management_asset WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
-    sql("DELETE FROM incident_management_alert WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
-    sql("DELETE FROM incident_management_alertcontext WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
-    sql("DELETE FROM incident_management_notification WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
+    """This suite's rows by their exact ids: other suites' rows may hold ids above them (MySQL's
+    auto-increment continues after an explicit id)."""
+    cases = [INC + c[0] for c in CASES.values()]
+    alerts = [INC + a[0] for a in ALERTS.values()]
+    by_id = {
+        "incident_management_casealertlink": ("case_id", cases),
+        "incident_management_case": ("id", cases),
+        "incident_management_alert_to_ioc": ("alert_id", alerts),
+        "incident_management_ioc": ("id", [INC + i for i in range(3)]),
+        "incident_management_asset": ("id", [INC + a[0] for a in ALERTS.values() if a[2] is not None]),
+        "incident_management_alert": ("id", alerts),
+        "incident_management_alertcontext": ("id", [INC + i for i in range(len(CTX))]),
+        "incident_management_notification": ("id", [INC, INC + 1]),
+    }
+    for table, (column, ids) in by_id.items():
+        with sync_engine.begin() as conn:
+            conn.execute(text(f"DELETE FROM {table} WHERE {column} IN :ids").bindparams(ids=ids))
 
 
 def notified(key):
