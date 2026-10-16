@@ -148,7 +148,7 @@ pub fn loads(text: &str) -> Result<Value, String> {
     if let Ok(v) = serde_json::from_str::<Value>(text) {
         return Ok(v);
     }
-    if let Some(msg) = crate::pyjson_error::decode_error(text) {
+    if let Some(msg) = copilot_upstream::json::decode_error(text) {
         return Err(msg);
     }
     copilot_auth::pyvalue::loads(text)

@@ -471,11 +471,15 @@ dependencies = [
  "copilot-customers",
  "copilot-db",
  "copilot-gateway",
+ "copilot-grafana",
+ "copilot-graylog",
  "copilot-healthchecks",
  "copilot-identity",
  "copilot-incidents",
+ "copilot-influxdb",
  "copilot-notifications",
  "copilot-platform",
+ "copilot-portainer",
  "copilot-scheduler",
  "copilot-sla",
  "copilot-soc-management",
@@ -643,6 +647,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-grafana"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-upstream",
+ "copilot-web",
+ "hex",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-graylog"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-upstream",
+ "copilot-web",
+ "hex",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "copilot-healthchecks"
 version = "0.2.0"
 dependencies = [
@@ -713,6 +759,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-influxdb"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-upstream",
+ "copilot-web",
+ "flate2",
+ "hex",
+ "http",
+ "hyper",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "copilot-jinja"
 version = "0.2.0"
 dependencies = [
@@ -773,6 +843,27 @@ dependencies = [
  "tokio",
  "tracing",
  "wiremock",
+]
+
+[[package]]
+name = "copilot-portainer"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-upstream",
+ "copilot-web",
+ "hex",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -854,6 +945,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-upstream"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "copilot-auth",
+ "copilot-web",
+ "flate2",
+ "http",
+ "hyper",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "speedate",
+ "strum",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "copilot-wazuh"
 version = "0.2.0"
 dependencies = [
@@ -869,6 +983,7 @@ dependencies = [
  "copilot-db",
  "copilot-gateway",
  "copilot-scheduler",
+ "copilot-upstream",
  "copilot-web",
  "futures",
  "http",

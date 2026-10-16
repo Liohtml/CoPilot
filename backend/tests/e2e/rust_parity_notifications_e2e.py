@@ -222,28 +222,35 @@ async def seed():
             c=CUST_A,
             n=name,
         )
+    # Every id the checks substitute (alert, case, report) is explicit, at least seven
+    # digits and in its own range, so substituting it never touches another number in a
+    # message: an HTTP status ("Webhook returned 404"), a stub's port or another id.
+    top = 0
+    for table in ("incident_management_alert", "incident_management_case", "ai_analyst_report"):
+        top = max(top, (await rows(f"SELECT COALESCE(MAX(id), 0) AS n FROM {table}"))[0]["n"])
+    base = max(top + 100, 1_000_000)
     alerts = {}
-    for key, code, severity in (
-        ("py", CUST_A, "High"),
-        ("rs", CUST_A, "High"),
-        ("b", CUST_B, "Low"),
-        ("odd_py", CUST_A, "critical "),
-        ("odd_rs", CUST_A, "critical "),
+    for i, (key, code, severity) in enumerate(
+        (
+            ("py", CUST_A, "High"),
+            ("rs", CUST_A, "High"),
+            ("b", CUST_B, "Low"),
+            ("odd_py", CUST_A, "critical "),
+            ("odd_rs", CUST_A, "critical "),
+        ),
     ):
-        r = await sql(
-            "INSERT INTO incident_management_alert (alert_name, alert_description, status, alert_creation_time, "
-            "customer_code, source, escalated, severity) VALUES (:n, 'd', 'OPEN', '2026-01-02 03:04:05', :c, 'wazuh', 0, :s)",
+        alerts[key] = base + i
+        await sql(
+            "INSERT INTO incident_management_alert (id, alert_name, alert_description, status, alert_creation_time, "
+            "customer_code, source, escalated, severity) VALUES (:i, :n, 'd', 'OPEN', '2026-01-02 03:04:05', :c, 'wazuh', 0, :s)",
+            i=alerts[key],
             n="Mimikatz <on> dc01 & é" if code == CUST_A else "Beta alert",
             c=code,
             s=severity,
         )
-        alerts[key] = r.lastrowid
-    # Case ids well clear of every other number in a message, so substituting them
-    # never touches anything else.
-    top = (await rows("SELECT COALESCE(MAX(id), 0) AS n FROM incident_management_case"))[0]["n"]
     cases = {}
     for i, (key, code) in enumerate((("py", CUST_A), ("rs", CUST_A), ("b", CUST_B))):
-        cases[key] = top + 50000 + i
+        cases[key] = base + 20 + i
         await sql(
             "INSERT INTO incident_management_case (id, case_name, case_description, case_creation_time, case_status, "
             "customer_code, escalated) VALUES (:i, 'Case \"quoted\"', 'd', '2026-01-02 03:04:05', 'OPEN', :c, 0)",
@@ -251,7 +258,7 @@ async def seed():
             c=code,
         )
     # An AI report per backend alert: a GFM table, an IOC, a newline-heavy summary.
-    for key in ("py", "rs"):
+    for i, key in enumerate(("py", "rs")):
         job = f"copilot-inv-{alerts[key]}-not{SFX}"
         await sql(
             "INSERT INTO ai_analyst_job (id, alert_id, customer_code, status, triggered_by, created_at) "
@@ -260,10 +267,12 @@ async def seed():
             a=alerts[key],
             c=CUST_A,
         )
-        r = report = await sql(
-            "INSERT INTO ai_analyst_report (job_id, alert_id, customer_code, severity_assessment, summary, report_markdown, "
-            "recommended_actions, created_at) VALUES (:j, :a, :c, 'High', 'Dumped creds.\nTwice.', :m, 'Isolate', "
+        alerts["report_" + key] = base + 40 + i
+        await sql(
+            "INSERT INTO ai_analyst_report (id, job_id, alert_id, customer_code, severity_assessment, summary, report_markdown, "
+            "recommended_actions, created_at) VALUES (:i, :j, :a, :c, 'High', 'Dumped creds.\nTwice.', :m, 'Isolate', "
             "'2026-01-02 03:04:05')",
+            i=alerts["report_" + key],
             j=job,
             a=alerts[key],
             c=CUST_A,
@@ -272,11 +281,10 @@ async def seed():
         await sql(
             "INSERT INTO ai_analyst_ioc (report_id, alert_id, customer_code, ioc_value, ioc_type, vt_verdict, vt_score, "
             "details, created_at) VALUES (:r, :a, :c, '203.0.113.7', 'ip', 'malicious', '12/90', NULL, '2026-01-02 03:04:05')",
-            r=r.lastrowid,
+            r=alerts["report_" + key],
             a=alerts[key],
             c=CUST_A,
         )
-        alerts["report_" + key] = report.lastrowid
     # The Resend and Shuffle connectors are global: absent until section E, before
     # either backend has read them (misses are never cached, hits are).
     await sql("DELETE FROM connectors WHERE connector_name IN ('Resend', 'Shuffle')")
@@ -377,10 +385,14 @@ async def main():
                 v = subst(v, subs[tag])
             b[tag] = mask(v, extra)
         ok = out["py"].status_code == out["rs"].status_code and b["py"] == b["rs"]
+        py_text, rs_text = json.dumps(b["py"]), json.dumps(b["rs"])
+        # Show the texts from just before where they first differ, not their (shared) heads.
+        at = next((i for i, (x, y) in enumerate(zip(py_text, rs_text)) if x != y), min(len(py_text), len(rs_text)))
+        start = max(0, at - 300)
         check(
             f"{name} [{out['py'].status_code}]",
             ok,
-            f"python {out['py'].status_code} {json.dumps(b['py'])[:900]}\n        rust   {out['rs'].status_code} {json.dumps(b['rs'])[:900]}",
+            f"python {out['py'].status_code} …{py_text[start:start + 900]}\n        rust   {out['rs'].status_code} …{rs_text[start:start + 900]}",
         )
 
     def sub_text(s, subs):

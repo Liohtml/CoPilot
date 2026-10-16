@@ -47,10 +47,14 @@ use copilot_db::audit::DbAuditSink;
 use copilot_db::connectors::ConnectorCache;
 use copilot_db::schema::{self, TableRequirement};
 use copilot_gateway::LegacyProxy;
+use copilot_grafana::{GrafanaClient, GrafanaState};
+use copilot_graylog::{GraylogClient, GraylogState};
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
+use copilot_influxdb::{InfluxClient, InfluxState};
 use copilot_notifications::{Dispatcher, DispatchingSink, NotificationsState};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
+use copilot_portainer::{PortainerClient, PortainerState};
 use copilot_scheduler::{OptIn, Scheduler, SchedulerState};
 use copilot_talon::{TalonConnector, TalonState};
 use copilot_wazuh::WazuhState;
@@ -133,6 +137,37 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/wazuh_manager/mitre/tactics",
     "GET /api/wazuh_manager/mitre/techniques",
     "POST /api/wazuh_manager/management/restart",
+    // The Graylog connector (copilot-graylog); `POST /api/graylog/invoke`,
+    // the active-response webhook, is not part of it and stays in Python.
+    "GET /api/graylog/indices",
+    "GET /api/graylog/inputs",
+    "/api/graylog/event",
+    "GET /api/graylog/url_whitelist",
+    "DELETE /api/graylog/index",
+    "POST /api/graylog/input",
+    "POST /api/graylog/stream",
+    "GET /api/graylog/messages",
+    "GET /api/graylog/metrics",
+    "GET /api/graylog/event_notifications",
+    "GET /api/graylog/streams",
+    "GET /api/graylog/pipeline",
+    "POST /api/graylog/receiver",
+    // The InfluxDB connector (copilot-influxdb): alerts and metrics.
+    "GET /api/influxdb",
+    // The Grafana connector (copilot-grafana): the reporting reads and iframe
+    // links, adding a user to an org. `POST /api/reporting/generate-report`
+    // (Playwright) and `POST /api/grafana/dashboards` (the templates live in
+    // backend/) stay in Python.
+    "GET /api/reporting",
+    "POST /api/reporting/generate_iframe_links",
+    "POST /api/user/user/organization/add",
+    // The Portainer connector (copilot-portainer) but
+    // `POST /api/portainer/create-wazuh-customer-stack` (Wazuh, provisioning).
+    "GET /api/portainer",
+    "POST /api/portainer/start-wazuh-customer-stack",
+    "POST /api/portainer/stop-wazuh-customer-stack",
+    "POST /api/portainer/update-customer-stack-id",
+    "DELETE /api/portainer/delete-wazuh-customer-stack",
     // SOC Management but GET /report (the PDF operations report: matplotlib
     // charts and wkhtmltopdf), which falls through to the legacy backend.
     "/api/soc_management",
@@ -162,6 +197,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_notifications::db::REQUIREMENTS);
     all.extend_from_slice(copilot_connectors::REQUIREMENTS);
     all.extend_from_slice(copilot_wazuh::REQUIREMENTS);
+    all.extend_from_slice(copilot_portainer::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -218,6 +254,14 @@ pub struct App {
     pub verifiers: Verifiers,
     /// The Wazuh indexer and manager clients.
     pub wazuh: WazuhState,
+    /// The Graylog client (`/api/graylog`, and later ports' provisioning).
+    pub graylog: GraylogClient,
+    /// The InfluxDB client (`/api/influxdb`, and the checks provisioning).
+    pub influxdb: InfluxClient,
+    /// The Grafana client (`/api/reporting`, `/api/user`, and provisioning).
+    pub grafana: GrafanaClient,
+    /// The Portainer client (`/api/portainer`, and provisioning).
+    pub portainer: PortainerClient,
 }
 
 impl App {
@@ -285,6 +329,14 @@ impl App {
             OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
             scheduled_jobs(&ctx, &talon, &wazuh, cfg),
         );
+        let graylog =
+            GraylogClient::new(ctx.connectors.clone()).context("building the Graylog client")?;
+        let influxdb =
+            InfluxClient::new(ctx.connectors.clone()).context("building the InfluxDB client")?;
+        let grafana =
+            GrafanaClient::new(ctx.connectors.clone()).context("building the Grafana client")?;
+        let portainer = PortainerClient::new(ctx.connectors.clone())
+            .context("building the Portainer client")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -314,6 +366,10 @@ impl App {
             scheduler,
             verifiers: Verifiers::new(copilot_wazuh::verify::verifiers(&wazuh)),
             wazuh,
+            graylog,
+            influxdb,
+            grafana,
+            portainer,
         })
     }
 
@@ -421,6 +477,36 @@ impl App {
                     ctx: self.ctx.clone(),
                     verifiers: self.verifiers.clone(),
                     legacy: self.legacy.clone(),
+                }),
+            )
+            // Only the Graylog connector's routes; `POST /invoke` (active
+            // response) falls through to the legacy backend.
+            .nest(
+                "/api/graylog",
+                copilot_graylog::router(GraylogState {
+                    ctx: self.ctx.clone(),
+                    client: self.graylog.clone(),
+                }),
+            )
+            .nest(
+                "/api/influxdb",
+                copilot_influxdb::router(InfluxState {
+                    ctx: self.ctx.clone(),
+                    client: self.influxdb.clone(),
+                }),
+            )
+            // Full paths: `/api/reporting/*` but `POST /generate-report`, and
+            // `/api/user/user/organization/add`.
+            .merge(copilot_grafana::router(GrafanaState {
+                ctx: self.ctx.clone(),
+                client: self.grafana.clone(),
+            }))
+            // All but `POST /create-wazuh-customer-stack`, which falls through.
+            .nest(
+                "/api/portainer",
+                copilot_portainer::router(PortainerState {
+                    ctx: self.ctx.clone(),
+                    client: self.portainer.clone(),
                 }),
             )
             // `/api/soc_management/*` but `GET /report`; the portal's SLA page

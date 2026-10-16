@@ -11,8 +11,9 @@
 //! password becoming the text `None`. The exceptions' `str()` is what the
 //! services put into their messages: `HTTPError` (`404 Client Error: Not
 //! Found for url: …`), `ConnectionError` (urllib3's `Max retries exceeded`
-//! sentence; the connection object's address is `0x0`, there being no
-//! Python object), and the JSON decoder's (`Expecting value: line 1 column
+//! sentence; the connection object's address is
+//! `copilot_upstream::http::OBJECT_ADDRESS`, there being no Python object),
+//! and the JSON decoder's (`Expecting value: line 1 column
 //! 1 (char 0)`). `requests_vectors.json` (`scripts/gen-requests-vectors.py`)
 //! pins the URL preparation.
 
@@ -22,6 +23,7 @@ use base64::Engine;
 use regex::Regex;
 
 use copilot_auth::pyvalue::str_repr;
+use copilot_upstream::http::OBJECT_ADDRESS;
 use copilot_web::pyurl::{quote, quote_plus};
 
 /// `requests.utils.default_user_agent()` of the venv.
@@ -496,7 +498,7 @@ pub enum ConnectFailure {
 /// (or `ConnectTimeout`).
 pub fn connection_error(origin: &Origin, failure: &ConnectFailure) -> String {
     let kind = if origin.tls { "HTTPS" } else { "HTTP" };
-    let conn = format!("<urllib3.connection.{kind}Connection object at 0x0>");
+    let conn = format!("<urllib3.connection.{kind}Connection object at {OBJECT_ADDRESS}>");
     let cause = match failure {
         ConnectFailure::Refused(os) => format!(
             "NewConnectionError({})",
@@ -620,7 +622,7 @@ mod tests {
                 &ConnectFailure::Refused("[Errno 111] Connection refused".into())
             ),
             "HTTPConnectionPool(host='127.0.0.1', port=1): Max retries exceeded with url: /x?a=1 \
-             (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0>: \
+             (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f0000000000>: \
              Failed to establish a new connection: [Errno 111] Connection refused'))"
         );
         assert_eq!(

@@ -25,9 +25,8 @@ use serde_json::Value;
 
 use copilot_auth::pyvalue::{self, PyValue, str_repr};
 use copilot_db::connectors::{ConnectorCache, ConnectorRow};
+use copilot_upstream::http::OBJECT_ADDRESS;
 use copilot_web::pyurl::{quote, urlencode};
-
-use crate::pyjson_error;
 
 /// The connector row the indexer client reads.
 pub const CONNECTOR: &str = "Wazuh-Indexer";
@@ -357,7 +356,7 @@ impl Es {
             .unwrap_or_else(|| "application/json".into());
         match mimetype.as_str() {
             "application/json" => serde_json::from_str(&raw).map_err(|_| {
-                let msg = pyjson_error::decode_error(&raw).unwrap_or_default();
+                let msg = copilot_upstream::json::decode_error(&raw).unwrap_or_default();
                 EsError::Serialization(format!(
                     "({}, JSONDecodeError({}))",
                     str_repr(&raw),
@@ -384,7 +383,7 @@ impl Es {
             };
         }
         let conn = format!(
-            "<urllib3.connection.{}Connection object at 0x0>",
+            "<urllib3.connection.{}Connection object at {OBJECT_ADDRESS}>",
             if self.tls { "HTTPS" } else { "HTTP" }
         );
         let detail = os_error_text(e);

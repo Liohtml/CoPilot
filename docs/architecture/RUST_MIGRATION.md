@@ -95,7 +95,12 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-markdown` | `app/notifications/utils/markdown_html.py` (markdown-it-py 4.2 `gfm-like`, `html=False`; mdurl; CPython punycode) | Markdown → inline-styled HTML for emails, a line-by-line port pinned by `markdown_vectors.json` (`scripts/gen-markdown-vectors.py`; character tables by `gen-markdown-tables.py`) |
 | `copilot-scheduler` | `app/schedulers/` (`scheduler.py`, `routes/scheduler.py`, `utils/universal.py:record_job_success`), `app/audit/services/retention.py` | the job runner (APScheduler's interval semantics on tokio: fixed grid, coalesce, one instance, 1 s misfire grace), the hand-over rule and run lock, `/api/scheduler/*` (reads from APScheduler's `apscheduler_jobs` store through a read-only pickle decoder pinned by `apscheduler_vectors.json`, `scripts/gen-apscheduler-vectors.py`; run/start/pause), `prune_audit_log`; the palace jobs register from `copilot-ai-analyst`; `copilot jobs` and `doctor` list each job's owner |
 | `copilot-connectors` | `app/connectors/{routes,services,schema,utils,cache}.py` | `/api/connectors`: the list, one row with `history_logs`, the update (write, verification, `connector.update` audit) and `POST /verify/{id}`; the verifier registry tool crates plug into (`ConnectorVerifier`; today `Wazuh-Indexer` and `Wazuh-Manager` from `copilot-wazuh`) — a connector without a Rust verifier is updated and verified by Python; the YAML upload (a file on the Python host) stays in Python |
-| `copilot-wazuh` | `app/connectors/wazuh_indexer/` and `app/connectors/wazuh_manager/` (routes, services, schema, `utils/universal.py`), the elasticsearch7 7.10.1 and `requests` 2.33 clients | the Wazuh indexer: `/api/alerts` (9 routes), `/api/wazuh_indexer` (7), `/api/snapshots` (10, the schedule CRUD on `index_snapshot_schedules` included); the Wazuh manager: `/api/wazuh_manager` rules, rule files and the rule-file upload, groups and the group configuration, the six MITRE listings, the restart (15 routes; the disabled-rule routes, `/rule/exclude`, the Atomic Red Team routes and the two MITRE alert searches stay in Python); an elasticsearch7-exact HTTP client (`es.rs`), `requests`' URL preparation and texts (`requests.rs`, `requests_vectors.json`), Pydantic-exact response models for upstream data (`pymodel.rs`), Python's dict/list/str semantics on upstream JSON (`pyops.rs`), CPython's `json` error texts (`pyjson_error.rs`); the `invoke_snapshot_schedules` and `resize_wazuh_index_fields` jobs; the connector verifiers |
+| `copilot-wazuh` | `app/connectors/wazuh_indexer/` and `app/connectors/wazuh_manager/` (routes, services, schema, `utils/universal.py`), the elasticsearch7 7.10.1 and `requests` 2.33 clients | the Wazuh indexer: `/api/alerts` (9 routes), `/api/wazuh_indexer` (7), `/api/snapshots` (10, the schedule CRUD on `index_snapshot_schedules` included); the Wazuh manager: `/api/wazuh_manager` rules, rule files and the rule-file upload, groups and the group configuration, the six MITRE listings, the restart (15 routes; the disabled-rule routes, `/rule/exclude`, the Atomic Red Team routes and the two MITRE alert searches stay in Python); an elasticsearch7-exact HTTP client (`es.rs`), `requests`' URL preparation and texts (`requests.rs`, `requests_vectors.json`), Pydantic-exact response models for upstream data (`pymodel.rs`), Python's dict/list/str semantics on upstream JSON (`pyops.rs`); CPython's `json` error texts and urllib3's object address are `copilot-upstream`'s; the `invoke_snapshot_schedules` and `resize_wazuh_index_fields` jobs; the connector verifiers |
+| `copilot-upstream` | what the connector helpers did with a tool's answers: `requests`/`niquests` (`PreparedRequest`, urllib3's URL parsing and error texts), CPython's `json` (`dumps`, `JSONDecodeError`), Pydantic models, FastAPI's `serialize_json` | shared by the connector crates: a `requests`-like client (`http.rs`), a Pydantic engine (`model.rs`: lax coercion, smart unions, aliases, defaults, validators, `ValidationError` text, JSON-mode dumps; `model_vectors.json` pins 905 probes, `scripts/gen-connector-model-vectors.py`), Python exceptions as values (`py.rs`: `KeyError`, `TypeError`, … and what the handlers make of them), pydantic-core's JSON writer and FastAPI's 422 (`respond.rs`) |
+| `copilot-graylog` | `app/connectors/graylog/` (routes, services, schema, `utils/universal.py`, `utils/routing.py`), `app/connectors/event_shipper/` and `app/integrations/utils/event_shipper.py` (GELF over TCP) | `/api/graylog/*` (21 routes); `GraylogClient` for later ports: the four helpers with Python's error behaviour, the 6.x/7.x version probe and `EntityKind` (the four wrapped creation endpoints), the URL allowlist fallback |
+| `copilot-influxdb` | `app/connectors/influxdb/` (routes, services, schema, `utils/universal.py`), the Flux side of `influxdb_client` 1.50 (`InfluxDBClientAsync` over aiohttp, `FluxCsvParser`) | `/api/influxdb/*` (10 routes: alerts, check names, hosts, seven metrics views); `InfluxClient` for later ports: Flux queries with the library's request, timeout and error texts, the v2 REST helpers (`_influxdb_request`, the org-id lookup) for the checks provisioning |
+| `copilot-grafana` | `app/connectors/grafana/` (`routes/reporting.py` but `/generate-report`, `routes/user.py`, `services/reporting.py`'s reads, `services/user.py`, `schema/reporting.py`, `schema/user.py`, `utils/universal.py`), `grafana_client` 5.1 (`GrafanaApi.from_url`, `GrafanaClient` over niquests) | `/api/reporting/orgs`, `/dashboards/{org_id}`, `/dashboard/{uid}`, `/dashboard_panels/{uid}`, `POST /generate_iframe_links`, `POST /api/user/user/organization/add`; `GrafanaClient` for later ports (organizations, the org switch, search, dashboards, folders). Still Python: `POST /api/reporting/generate-report` (Playwright, the licence check), `POST /api/grafana/dashboards` (its templates live under `backend/`, outside the Rust image) |
+| `copilot-portainer` | `app/connectors/portainer/` (routes, services but the stack creation, schema, `utils/universal.py`) | `/api/portainer/node-details`, `/stacks`, `/stack-details`, `/get-customer-stack-id`, `POST /start-wazuh-customer-stack`, `/stop-…`, `/update-customer-stack-id`, `DELETE /delete-wazuh-customer-stack`; `PortainerClient` for later ports (the JWT login and the GET/POST/DELETE helpers). Still Python: `POST /create-wazuh-customer-stack` (the Wazuh manager's version, the provisioning schema) |
 | `copilot-gateway` | — | legacy proxy (its notification bridge sink is no longer wired); deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
 
@@ -541,6 +546,108 @@ alert searches. A request whose path carries an encoded `/` goes to Python
 from every Wazuh router: Starlette routes the decoded path, axum would
 not.
 
+**Connectors (Graylog).** `copilot-graylog` answers every route of
+`app/connectors/graylog/routes/` but `POST /api/graylog/invoke` (the
+active-response webhook, another module). A connector route is a call to the
+tool, subscripts into its JSON, Pydantic models and an answer, and each of
+those is reproduced rather than approximated: the request is `requests`'
+(`f"{connector_url}{endpoint}"`, urllib3's URL normalisation, `params=`
+appended with `urlencode`, HTTP Basic over latin-1 with `None` sent as
+`"None"`, `X-Requested-By: CoPilot`, `Content-Length: 0` on a bodiless
+non-GET, `json=` as `json.dumps`), certificates are not verified (Python's
+`verify=False`: Graylog in a SOCFortress stack serves a self-signed
+certificate), and every failure is worded as the library words it — URL
+errors (`MissingSchema`, `InvalidSchema`, `InvalidURL`), urllib3's
+connection errors, CPython's `JSONDecodeError`, a subscript's `KeyError` /
+`TypeError`, a model's `ValidationError` — and handled where Python catches it
+(a helper's `HTTPException`, a service's `except KeyError` then `except
+Exception`, or nobody: the `ValueError` handler's 400 or a bare 500). The
+models (`copilot_upstream::model`) follow Pydantic 2's lax mode and smart
+unions and are serialized as FastAPI 0.136 does it, through pydantic-core's
+`serialize_json` (its float format is `serde_json`'s, `NaN` is `null`); 33
+samples of Graylog 6.1 and 7.0 answers and 1,440 mutations of them pin each
+model (`copilot-graylog/src/model_vectors.json`). One Python quirk the models
+keep: `typing` caches `Dict[str, Union[…]]` by set equality, so the member
+order of a union — and the order of its errors in a 422 — is whatever the
+first importing module spelled; Rust follows `copilot.py`'s import order
+(`AlertQuery.filter`: `str` before `list[str]`). Graylog 7.0 is handled as
+in Python: `EntityKind` names the four creation endpoints 7.0 wraps in a
+`CreateEntityRequest` (`/api/streams`, `/api/events/definitions`,
+`/api/events/notifications`, content-pack installation), wrapped only when
+`GET /api/system` reports 7 or more (cached five minutes per connector; a
+failed probe counts as 6, cached too), and the URL allowlist is read from
+`/api/system/urlallowlist`, else `/urlwhitelist`. The receiver ships one GELF
+frame per request to the Event Shipper exactly as asyncgelf builds it
+(`socket.getfqdn()` as the host); as in asyncgelf, an unreachable shipper
+is not an error. `rust_parity_graylog_e2e.py` runs both backends against a
+Graylog stand-in with a 6.x and a 7.x personality and a GELF listener, and
+compares status, response bytes and every request sent to Graylog.
+
+**Connectors (InfluxDB).** `copilot-influxdb` answers all ten routes of
+`app/connectors/influxdb/routes/`. Python reaches InfluxDB through
+`influxdb_client`'s async client, so that is what is reproduced: `POST
+{connector_url minus one trailing /}/api/v2/query?org=…` (the org
+`urlencode`d, then requoted as yarl does), `Authorization: Token <key>` only
+for a non-empty key, the library's `User-Agent`, `Accept-Encoding: gzip,
+deflate` (answers decompressed), the `{"extern", "query", "dialect"}` body
+with `json.dumps` spacing, a 10 s whole-request timeout and no certificate
+verification (`verify_ssl=False`, as in Python). The annotated-CSV answer is
+parsed as `FluxCsvParser` does in tables mode (Python's `csv` rules, a table
+per annotation block and per change of the `table` column, `#default`
+values, the typed cells, an `error,reference` table raised as
+`FluxQueryException`). The services keep their texts and their order —
+Flux queries character for character, the alerts' two queries (current state
+by `last()` per series, then the rows; #1118's identity without the
+`STATE_TAGS`), metrics queried one after the other, a failure answered as
+`success: false` with `str(e)`: the library's `ApiException` (status, the
+status line's reason, aiohttp's header repr, the body's `bytes` repr), aiohttp's
+connection, DNS, URL and timeout errors, `KeyError`s for missing columns,
+`ValidationError`s. A body that stalls past the timeout after its headers
+arrived is aiohttp's `CancelledError`, which no `except Exception` catches:
+a bare 500, in both. `rust_parity_graylog_e2e.py` (section `influxdb`) runs
+both backends against an InfluxDB 2.7 stand-in that answers CoPilot's Flux
+queries from sample `statuses` and Telegraf series.
+
+**Connectors (Grafana).** `copilot-grafana` answers the reporting reads, the
+iframe links and adding a user to an organization. Python reaches Grafana
+through `grafana_client` over niquests, which `copilot-upstream`'s client
+reproduces as a second flavour (`Flavor::Niquests`: `json=` sent as
+`application/json;charset=utf-8`, Basic credentials over UTF-8; both
+libraries run on the urllib3-future the backend installs, so they fail with
+the same texts). `create_grafana_client` is kept to the letter: the
+credentials spliced into every `http://` of the URL (`None` printed as
+`None`), `?verify=false` appended — so certificates are **not verified**, as
+in Python, and a URL with a query of its own turns verification back on —
+and `urlparse` reading it back (the API root is `{scheme}://{host}[:{port}]/
+{path}api`, so `/grafana` gives `/grafanaapi`; an empty user name sends no
+credentials). The answers are read as `_extract_from_response` does (`Server
+Error N`, ``Bad Input: `…` ``, `Unauthorized`, `Client Error N`, `text/*`
+as text, JSON otherwise), wrapped by each service (`Failed to collect …: …`)
+and then validated by the route's response model, whose `ValidationError` is
+the `ValueError` handler's 400 — as is the one `POST
+/user/user/organization/add` raises after Grafana added the user (its
+response model requires a `success` the route never passes: a 500, in both).
+FastAPI validates request bodies with `from_attributes=True`, so a nested
+model given a non-object is `model_attributes_type`
+(`copilot_upstream::model::validate_body`). The iframe links count back from
+`datetime.now()` in local time through `time.mktime`; `generate-report`
+(Playwright) and `POST /api/grafana/dashboards` stay in Python.
+
+**Connectors (Portainer).** `copilot-portainer` answers every route of
+`routes/portainer.py` but the stack creation. Each helper logs in first
+(`POST urljoin(connector_url, "/api/auth")`, `raise_for_status` — its
+`HTTPError` text, reason phrase and final URL included — then `["jwt"]`),
+then sends the request with the JWT, TLS unverified as in Python; the
+helpers keep their quirks: a GET's answer is data whatever its status, a
+POST that fails in transit is the `UnboundLocalError` of its own `except`
+clause (a bare 500), a DELETE with a blank body has succeeded. `int(Id)` of
+the `local`/`primary` environment is CPython's (`ValueError` → 400). The
+stack-id routes read and write `customersmeta` by customer name
+(`scalar_one_or_none`: two rows of one name are a 500). The `requests` and
+`niquests` flavours of `copilot-upstream`'s client honour `HTTP(S)_PROXY` /
+`NO_PROXY` as both libraries do (`trust_env`); aiohttp (InfluxDB) does not,
+and neither does its port.
+
 ---
 
 ## 4. Differences by design
@@ -598,12 +705,23 @@ not provoked.
 | a header value with a control character other than tab | sent (h11 allows `\x01`–`\x08`, `\x0e`–`\x1f`) | `LocalProtocolError: Illegal header value …` | the `http` crate cannot carry them |
 | an `xn--` autolink host that decodes to a lone surrogate | the surrogate in the link text | the label left encoded | a Rust string cannot hold one |
 | `POST /alerts`, `/alerts/host`, `/alerts/hosts/all`, `/alerts/rules/all`, `/alerts/rules/hosts/all`, `/alerts/index`, `/alerts/by-id` for a scoped caller | every managed index is searched: any analyst reads every tenant's Wazuh alerts, and any index or document they name | only the indices named after one of the caller's customers (the `/wazuh_indexer/indices` rule); another tenant's index is the 400 of an unmanaged one, another tenant's alert the not-found answer, without asking the indexer; admins unchanged | tenant leak |
-| the indexer refusing connections | `ConnectionError(<urllib3.connection.HTTPConnection object at 0x7f…>: …)` | the same text with `object at 0x0` | there is no Python object; the parity suite masks the address |
 | a snapshot index pattern Python's `re` and Rust's `regex` disagree on (a broken one, a look-around, a back-reference) | `re.error`'s text, or a match | `regex`'s text in `Failed to create snapshot: …` | a different regex engine; the `*` patterns operators write match alike (`re.match(f"^{p}$")` is reproduced, alternations included) |
 | the Wazuh manager's token after its connector row changes (URL, user or password) | reused, keyed by the connector name, for up to 10 minutes: sent to a new URL, it is answered 401 and only then replaced | a token is reused only for the row it was issued against: the first call after a change authenticates | a credential is never sent to a host that did not issue it |
 | a raw manager answer whose Content-Type names a charset other than UTF-8 or Latin-1, or none for a type that is neither `text/*` nor JSON | that codec, or charset_normalizer's guess | UTF-8, invalid bytes replaced | Wazuh answers in UTF-8 (not provoked) |
 | `connectors.connector_last_updated` written by an update or a verification | `datetime.now()`: the process's local time (UTC in the image) | UTC | as the agent healthcheck clock; equal in the shipped image (not provoked) |
 | a snapshot schedule's timezone the zone database does not know | `ZoneInfo` on the host: an unknown name falls back to UTC, a malformed key (`../x`) is a `ValueError` and the schedule `FAILED` | the IANA database compiled into chrono-tz: anything it does not know falls back to UTC | as the SOC calendars' row above; names the API accepts read alike (not provoked) |
+| a connector call that cannot connect (`/graylog/*`, the Wazuh indexer and manager) | urllib3's text with the address of a Python object (`<urllib3.connection.HTTPConnection object at 0x7f…>`) | the same text with `0x7f0000000000` | the address differs between any two processes; the parity suite masks it |
+| `GET /graylog/metrics` when both Graylog calls fail | the error of whichever `asyncio.gather` call failed first (timing) | the `/api/system/metrics` call's error | deterministic; both are sent, as in Python |
+| `GET /graylog/event/definitions` against a Graylog that never reaches its own `total` | pages for ever | stops after 20,000 pages | a request cannot hold a worker (not provoked) |
+| `/influxdb/*` when InfluxDB answers an error through something other than InfluxDB | aiohttp prints a header it does not know in the case it arrived in | Go's canonical case (`X-Influxdb-Build`; aiohttp's own spelling for the headers it knows) — `http` keeps names lower-cased | identical for InfluxDB, a Go server (not provoked) |
+| `/influxdb/*` with a connector host that resolves to several addresses, all refusing | `Multiple exceptions: …` naming each | `Connect call failed` naming the first | one address is the usual case (not provoked) |
+| `/influxdb/*` with an org name holding `'` | `'` sent as is (yarl) | `%27` (the URL crate's query set) | InfluxDB decodes both to the same org (not provoked) |
+| `/influxdb/*` when a cell holds a date-time InfluxDB never writes (no offset, a date alone) | `datetime.fromisoformat` reads it (a naive datetime) | `Invalid isoformat string: …` | InfluxDB writes RFC 3339 with `Z` (not provoked) |
+| a Grafana `text/*` answer without a charset that is not ASCII | niquests guesses the charset (charset_normalizer) | ISO-8859-1, `requests`' rule | Grafana names its charset (not provoked) |
+| `POST /reporting/generate_iframe_links` in a local time zone, in the hour a DST change repeats | `time.mktime` picks per platform | the earlier of the two instants | containers run in UTC (not provoked) |
+| the position in a `UnicodeDecodeError` of an InfluxDB answer longer than one network read | relative to the chunk aiohttp was decoding | relative to the body | not provoked |
+| the GELF `host` of `POST /graylog/receiver` when the host name is only in DNS | `socket.getfqdn()` asks DNS for the canonical name | the host name (`/etc/hosts` is read, DNS is not) | equal in a container, where `/etc/hosts` names the host (not provoked) |
+| an Event Shipper port that is a service name (`http`) | resolved by `getaddrinfo` | not a port: nothing is sent (still answered as forwarded) | only numeric ports are configured (not provoked) |
 | a calendar's timezone name (`PUT /soc_management/calendars`) | whatever `zoneinfo` finds on the host: its zoneinfo files, else the `tzdata` package — a host without the backward links refuses `US/Eastern` or `Asia/Calcutta`, and a file such as `localtime` or `posixrules` passes | the IANA database compiled into chrono-tz 0.10: every canonical and backward name, nothing else (422 `Unknown timezone '…'`) | the same names on every host; rules follow chrono-tz's IANA release, not the host's (only the Rust side is asserted, the Python side depends on the host) |
 
 ---
@@ -645,7 +763,7 @@ Python backend today: ~200 k lines in 930 files.
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
 | **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer, MinIO and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (and with them the exclusion draft and dry-run) wait for an indexer port, the DOCX/PDF reports and customer report generation, download and deletion for MinIO and a PDF renderer |
-| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs (`invoke_snapshot_schedules` and `resize_wazuh_index_fields` **done**); `agents` (9.8 k), `soc_management` (4.4 k) — **done** but its PDF report (`copilot-soc-management`: dashboard, policies, calendars, the portal's SLA page, `notify_sla_transitions`; `rust_parity_soc_e2e.py`), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh — the connector reads, the cross-process cache check, the indexer, the manager routes the UI uses and the two indexer jobs **done** (`copilot-connectors`, `copilot-wazuh`) —, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
+| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs (`invoke_snapshot_schedules` and `resize_wazuh_index_fields` **done**); `agents` (9.8 k), `soc_management` (4.4 k) — **done** but its PDF report (`copilot-soc-management`: dashboard, policies, calendars, the portal's SLA page, `notify_sla_transitions`; `rust_parity_soc_e2e.py`), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh — the connector reads, the cross-process cache check, the indexer, the manager routes the UI uses and the two indexer jobs **done** (`copilot-connectors`, `copilot-wazuh`) —, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time — **Graylog, InfluxDB, Grafana and Portainer done** (`copilot-graylog`, `copilot-influxdb`, `copilot-grafana`, `copilot-portainer` on `copilot-upstream`, `rust_parity_graylog_e2e.py`; Grafana's PDF report and dashboard provisioning and Portainer's stack creation still Python); `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the

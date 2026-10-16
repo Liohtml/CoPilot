@@ -15,8 +15,10 @@
 //!   taken over from APScheduler by the hand-over
 //! - [`pymodel`] — Pydantic models over upstream JSON (lax coercion and the
 //!   `ValidationError` texts the routes put into responses)
-//! - [`pyjson_error`] — CPython's `json` error messages
 //! - [`error`] — the Python exception kinds the services raise
+//!
+//! CPython's `JSONDecodeError` texts and urllib3's object address come from
+//! `copilot-upstream`, which the other connector crates share.
 //!
 //! The connector rows (`Wazuh-Indexer`, `Wazuh-Manager`) are read through
 //! the process's `ConnectorCache`, whose change check bounds how long a
@@ -29,7 +31,6 @@ pub mod es;
 pub mod indexer;
 pub mod jobs;
 pub mod manager;
-pub mod pyjson_error;
 pub mod pymodel;
 pub mod pyops;
 pub mod requests;
@@ -116,4 +117,62 @@ pub(crate) fn regex(
     pattern: &str,
 ) -> Option<&'static Regex> {
     slot.get_or_init(|| Regex::new(pattern).ok()).as_ref()
+}
+
+#[cfg(test)]
+mod tests {
+    /// The `JSONDecodeError` texts the indexer and manager failures quote
+    /// (`copilot_upstream::json`), recorded with CPython 3.11's `json.loads`.
+    #[test]
+    fn json_decode_errors_read_like_cpython() {
+        let cases = [
+            ("", "Expecting value: line 1 column 1 (char 0)"),
+            ("<html>", "Expecting value: line 1 column 1 (char 0)"),
+            ("  \n x", "Expecting value: line 2 column 2 (char 4)"),
+            ("{\"a\": 1} x", "Extra data: line 1 column 10 (char 9)"),
+            (
+                "{a: 1}",
+                "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+            ),
+            (
+                "{\"a\" 1}",
+                "Expecting ':' delimiter: line 1 column 6 (char 5)",
+            ),
+            (
+                "{\"a\": 1 \"b\"}",
+                "Expecting ',' delimiter: line 1 column 9 (char 8)",
+            ),
+            (
+                "{\"a\": 1,}",
+                "Expecting property name enclosed in double quotes: line 1 column 9 (char 8)",
+            ),
+            ("[1, 2", "Expecting ',' delimiter: line 1 column 6 (char 5)"),
+            ("[1,]", "Expecting value: line 1 column 4 (char 3)"),
+            (
+                "\"abc",
+                "Unterminated string starting at: line 1 column 1 (char 0)",
+            ),
+            (
+                "\"a\tb\"",
+                "Invalid control character at: line 1 column 3 (char 2)",
+            ),
+            ("\"\\x\"", "Invalid \\escape: line 1 column 2 (char 1)"),
+            (
+                "\"\\u12\"",
+                "Invalid \\uXXXX escape: line 1 column 3 (char 2)",
+            ),
+        ];
+        for (text, want) in cases {
+            assert_eq!(
+                copilot_upstream::json::decode_error(text).as_deref(),
+                Some(want),
+                "{text:?}"
+            );
+        }
+        assert_eq!(
+            copilot_upstream::json::decode_error("{\"a\": [1, 2.5e3, null]}"),
+            None
+        );
+        assert_eq!(copilot_upstream::json::decode_error(" NaN "), None);
+    }
 }

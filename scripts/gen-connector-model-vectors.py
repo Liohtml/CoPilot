@@ -1,0 +1,429 @@
+"""Regenerate the vectors that pin the Pydantic models of the ported connectors (and the
+model engine they run on) to pydantic.
+
+    cd backend && PYTHONPATH=.:tests/e2e MYSQL_URL=x MYSQL_USER=x MYSQL_PASSWORD=x \\
+        MYSQL_ROOT_PASSWORD=x JWT_SECRET=x python ../scripts/gen-connector-model-vectors.py
+
+Writes:
+
+* `crates/copilot-upstream/src/model_vectors.json` — the lax rules: every probe value through
+  every field type of a test model (`int`, `float`, `bool`, `str`, `None`, `datetime`, lists,
+  dicts, `Any`, optional fields, smart unions with and without models), as the JSON FastAPI's
+  `serialize_json` writes, or `str(ValidationError)`;
+* `crates/copilot-graylog/src/model_vectors.json` — every Graylog model on samples of Graylog 6.1
+  and 7.0 answers (`tests/e2e/connector_samples.py`) and on mutations of them (a key deleted, or
+  set to a value of another type), likewise;
+* `crates/copilot-influxdb/src/model_vectors.json` — the InfluxDB response models, likewise;
+* `crates/copilot-grafana/src/model_vectors.json` — the Grafana reporting and user models on
+  samples of Grafana 11 answers, likewise;
+* `crates/copilot-portainer/src/model_vectors.json` — the Portainer node and stack models on
+  samples of Portainer 2.21 / Docker swarm answers, likewise.
+
+A vector holds the JSON-mode dump's text (`ok`) or its SHA-256 (`ok_sha256`, for mutations of a
+large sample), or the `ValidationError` text (`err`). Re-run after a Pydantic upgrade or a change
+to one of these models.
+"""
+
+import hashlib
+import json
+import math
+import pathlib
+from datetime import datetime
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Union
+
+import connector_samples as samples
+from pydantic import BaseModel
+from pydantic import TypeAdapter
+from pydantic import ValidationError
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent / "crates"
+
+
+def dump(model, instance):
+    return TypeAdapter(model).dump_json(instance, by_alias=True).decode()
+
+
+def run(model, value):
+    """`Model(**value)` (or `model_validate` for a non-dict): the dump, or the error text (an
+    `HTTPException` a validator raises as `abort <status> <detail>`)."""
+    from fastapi import HTTPException
+
+    try:
+        instance = model(**value) if isinstance(value, dict) else model.model_validate(value)
+    except ValidationError as e:
+        return {"err": str(e)}
+    except HTTPException as e:
+        return {"err": f"abort {e.status_code} {e.detail}"}
+    return {"ok": dump(model, instance)}
+
+
+def text(value):
+    return json.dumps(value, allow_nan=True, ensure_ascii=False)
+
+
+# --- the engine's own vectors ------------------------------------------------------------------
+
+
+class Sub(BaseModel):
+    x: int
+    y: Optional[str] = None
+
+
+class Lax(BaseModel):
+    i: int = 0
+    f: float = 0.0
+    b: bool = False
+    s: str = ""
+    n: Optional[None] = None
+    oi: Optional[int] = None
+    li: List[int] = []
+    ld: List[Optional[str]] = []
+    ds: Dict[str, str] = {}
+    da: dict = {}
+    la: list = []
+    a: Any = None
+    dt: Optional[datetime] = None
+    m: Optional[Sub] = None
+    u_str_model: Optional[Union[str, Sub]] = None
+    u_int_str: Optional[Union[int, str]] = None
+    u_str_list: Optional[Union[str, List[Sub]]] = None
+    u_dict: Optional[Dict[str, Union[str, List[str]]]] = None
+
+
+PROBES = [
+    None,
+    True,
+    False,
+    0,
+    1,
+    2,
+    -1,
+    12345678901234567890123,
+    1.0,
+    1.5,
+    0.0,
+    -0.0,
+    1e20,
+    2.5e-5,
+    float("nan"),
+    float("inf"),
+    "",
+    "x",
+    " 12 ",
+    "1_000",
+    "1.0",
+    "1.00",
+    "1.5",
+    "+5",
+    "-0",
+    "0x10",
+    "1e3",
+    " 1.5 ",
+    "inf",
+    "nan",
+    "true",
+    "YES",
+    "off",
+    " t ",
+    "2026-01-02",
+    "2026-01-02T03:04:05Z",
+    "2026-01-02T03:04:05.123456789+05:30",
+    "2026-01-02 03:04:05",
+    "2026-13-02",
+    "1700000000",
+    "1700000000123",
+    [],
+    [1],
+    ["1", None],
+    [{"x": "1"}],
+    {},
+    {"a": 1},
+    {"x": "1"},
+    {"x": 1, "y": 2},
+    {"k": ["a", 1]},
+]
+
+
+def engine_vectors():
+    out = []
+    for field in Lax.model_fields:
+        for probe in PROBES:
+            value = {field: probe}
+            out.append({"field": field, "input": text(value), **run(Lax, value)})
+    for value in ([], "x", 5, None):
+        out.append({"field": "", "input": text(value), **run(Lax, value)})
+    out.append({"field": "", "input": text({"m": {}}), **run(Lax, {"m": {}})})
+    return out
+
+
+# --- per-connector model vectors ----------------------------------------------------------------
+
+MUTATIONS = [None, "x", "12", 1.5, True, [], {}]
+
+
+def mutations(sample, depth=2, path=()):
+    """(path, op, value) patches: delete each key, or set it to each mutation value."""
+    if not isinstance(sample, dict) or depth == 0:
+        return
+    for key, value in sample.items():
+        yield (path + (key,), "del", None)
+        for m in MUTATIONS:
+            if m != value:
+                yield (path + (key,), "set", m)
+        if isinstance(value, dict):
+            yield from mutations(value, depth - 1, path + (key,))
+        elif isinstance(value, list) and value and isinstance(value[0], dict):
+            yield from mutations(value[0], depth - 1, path + (key, 0))
+
+
+def apply(sample, path, op, value):
+    data = json.loads(json.dumps(sample))
+    target = data
+    for part in path[:-1]:
+        target = target[part]
+    if op == "del":
+        del target[path[-1]]
+    else:
+        target[path[-1]] = value
+    return data
+
+
+def model_vectors(cases):
+    bases, vectors, mutated = [], [], set()
+    for name, model, sample in cases:
+        idx = len(bases)
+        base = run(model, sample)
+        bases.append({"model": name, "input": text(sample), **base})
+        if name in mutated:
+            continue
+        mutated.add(name)
+        for path, op, value in mutations(sample):
+            result = run(model, apply(sample, path, op, value))
+            entry = {"base": idx, "path": list(path), "op": op}
+            if op == "set":
+                entry["value"] = text(value)
+            if "ok" in result:
+                entry["ok_sha256"] = hashlib.sha256(result["ok"].encode()).hexdigest()
+            else:
+                entry["err"] = result["err"]
+            vectors.append(entry)
+    return {"bases": bases, "vectors": vectors}
+
+
+def graylog_cases():
+    from app.connectors.graylog.schema import collector
+    from app.connectors.graylog.schema import events
+    from app.connectors.graylog.schema import management
+    from app.connectors.graylog.schema import monitoring
+    from app.connectors.graylog.schema import pipelines
+    from app.connectors.graylog.schema import streams
+    from app.integrations.utils.schema import EventShipperPayload
+
+    cases = []
+    for name, info in samples.GRAYLOG_INDICES["all"]["indices"].items():
+        cases.append(("GraylogIndexItem", collector.GraylogIndexItem, {"index_name": name, "index_info": info}))
+        break
+    for version in (6, 7):
+        for inp in samples.graylog_inputs(version)["inputs"]:
+            cases.append(("ConfiguredInput", collector.ConfiguredInput, inp))
+        for state in samples.graylog_input_states(version)["states"]:
+            cases.append(("RunningInput", collector.RunningInput, state))
+    for definition in samples.GRAYLOG_EVENT_DEFINITIONS:
+        cases.append(("EventDefinition", events.EventDefinition, definition))
+    cases.append(("AlertQuery", events.AlertQuery, {}))
+    cases.append(
+        (
+            "AlertQuery",
+            events.AlertQuery,
+            {
+                "query": "x",
+                "page": 2,
+                "per_page": "50",
+                "filter": {"alerts": "include", "event_definitions": ["a"]},
+                "timerange": {"range": 3600, "type": "relative"},
+            },
+        ),
+    )
+    cases.append(("AlertEvent", events.AlertEvent, samples.GRAYLOG_ALERT_EVENT))
+    cases.append(("Context", events.Context, samples.GRAYLOG_EVENTS_SEARCH["context"]))
+    cases.append(("Parameters", events.Parameters, samples.GRAYLOG_EVENTS_SEARCH["parameters"]))
+    cases.append(("DeletedIndexBody", management.DeletedIndexBody, {"index_name": " x "}))
+    cases.append(("StopInputBody", management.StopInputBody, {"input_id": "a"}))
+    cases.append(("StopStreamBody", management.StopStreamBody, {"stream_id": "a"}))
+    cases.append(
+        (
+            "UrlWhitelistEntryResponse",
+            management.UrlWhitelistEntryResponse,
+            {"url_whitelist_entries": samples.GRAYLOG_URL_ALLOWLIST, "success": True, "message": "m"},
+        ),
+    )
+    cases.append(("GraylogMessages", monitoring.GraylogMessages, samples.GRAYLOG_MESSAGES["messages"][1]))
+    cases.append(("GraylogThroughputMetrics", monitoring.GraylogThroughputMetrics, {"metric": "m", "value": 7}))
+    cases.append(("GraylogUncommittedJournalEntries", monitoring.GraylogUncommittedJournalEntries, {"uncommitted_journal_entries": 3}))
+    cases.append(
+        (
+            "GraylogEventNotificationsResponse",
+            monitoring.GraylogEventNotificationsResponse,
+            {"event_notifications": samples.GRAYLOG_EVENT_NOTIFICATIONS, "success": True, "message": "m"},
+        ),
+    )
+    for pipeline in samples.GRAYLOG_PIPELINES:
+        cases.append(("Pipeline", pipelines.Pipeline, pipeline))
+    cases.append(
+        ("StageWithRuleID", pipelines.StageWithRuleID, {"match": "EITHER", "rules": ["a", "b"], "stage": 0, "rule_ids": ["1", None]}),
+    )
+    for rule in samples.GRAYLOG_PIPELINE_RULES:
+        cases.append(("PipelineRule", pipelines.PipelineRule, rule))
+    for stream in samples.GRAYLOG_STREAMS["streams"]:
+        cases.append(("Stream", streams.Stream, stream))
+    cases.append(("EventShipperPayload", EventShipperPayload, {"integration": "x", "customer_code": "c", "z": None, "a": [1]}))
+    return cases
+
+
+def influxdb_cases():
+    from app.connectors.influxdb.schema import alerts
+    from app.connectors.influxdb.schema import metrics
+
+    alert = {
+        "time": "2026-10-15T10:00:00Z",
+        "check_name": "CPU CHECK",
+        "sensor_type": "CPU",
+        "severity": "critical",
+        "message": "CPU usage is 97%",
+        "status": "active",
+        "check_id": "0e2b3c4d5f6a7b80",
+    }
+    cases = [
+        ("InfluxDBAlert", alerts.InfluxDBAlert, alert),
+        ("InfluxDBAlert", alerts.InfluxDBAlert, {**alert, "time": "2026-10-15T10:00:00.123456789+02:00", "status": None}),
+        (
+            "InfluxDBAlertResponse",
+            alerts.InfluxDBAlertResponse,
+            {"success": True, "message": "m", "alerts": [alert], "total_count": 1, "filtered_count": 1, "active_alerts_count": 1},
+        ),
+        (
+            "InfluxDBCheckNamesResponse",
+            alerts.InfluxDBCheckNamesResponse,
+            {"success": True, "message": "m", "check_names": ["CPU CHECK", "Disk"], "total_count": 2},
+        ),
+        (
+            "MetricsResponse",
+            metrics.MetricsResponse,
+            {
+                "success": True,
+                "message": "m",
+                "data": {"load": {"load1": [{"time": "2026-10-15T10:00:00+00:00", "value": 0.5}]}, "uptime": 12},
+            },
+        ),
+        ("HostsResponse", metrics.HostsResponse, {"success": True, "message": "m", "hosts": ["a", "b"]}),
+    ]
+    return cases
+
+
+def grafana_cases():
+    from app.connectors.grafana.schema import reporting
+    from app.connectors.grafana.schema import user
+
+    hit = samples.GRAFANA_SEARCH[44][1]
+    return [
+        ("GrafanaOrganizations", reporting.GrafanaOrganizations, samples.GRAFANA_ORGS[1]),
+        (
+            "GrafanaOrganizationsResponse",
+            reporting.GrafanaOrganizationsResponse,
+            {"message": "m", "orgs": samples.GRAFANA_ORGS, "success": True},
+        ),
+        ("GrafanaOrganizationDashboards", reporting.GrafanaOrganizationDashboards, hit),
+        ("GrafanaOrganizationDashboards", reporting.GrafanaOrganizationDashboards, samples.GRAFANA_SEARCH[44][0]),
+        ("GrafanaDashboardResponse", reporting.GrafanaDashboardResponse, {"message": "m", "dashboards": [hit], "success": True}),
+        ("Panel", reporting.Panel, samples.GRAFANA_DASHBOARD["dashboard"]["panels"][0]),
+        ("Panel", reporting.Panel, samples.GRAFANA_DASHBOARD["dashboard"]["panels"][1]),
+        ("Panel", reporting.Panel, samples.GRAFANA_DASHBOARD["dashboard"]["panels"][2]),
+        ("MetaDetails", reporting.MetaDetails, samples.GRAFANA_DASHBOARD["meta"]),
+        ("DashboardDetails", reporting.DashboardDetails, samples.GRAFANA_DASHBOARD["dashboard"]),
+        ("GrafanaDashboardDetails", reporting.GrafanaDashboardDetails, samples.GRAFANA_DASHBOARD),
+        (
+            "GrafanaDashboardPanelsResponse",
+            reporting.GrafanaDashboardPanelsResponse,
+            {"message": "m", "panels": [{"id": 1, "title": "t"}], "success": True},
+        ),
+        ("TimeRange", reporting.TimeRange, {"value": 7, "unit": "d"}),
+        (
+            "GrafanaGenerateIframeLinksRequest",
+            reporting.GrafanaGenerateIframeLinksRequest,
+            {
+                "org_id": 44,
+                "dashboard_title": "huntress-summary",
+                "dashboard_uid": "ab9b",
+                "panel_id": 5,
+                "time_range": {"value": 1, "unit": "h"},
+                "theme": "light",
+            },
+        ),
+        (
+            "GrafanaGenerateIframeLinksResponse",
+            reporting.GrafanaGenerateIframeLinksResponse,
+            {"message": "m", "links": [{"panel_id": 5, "panel_url": "http://g/d-solo/x"}], "success": True},
+        ),
+        (
+            "UserOrganizationAddRequest",
+            user.UserOrganizationAddRequest,
+            {"loginorEmail": "a@b.c", "role": "Editor", "organizationId": "44"},
+        ),
+        ("UserOrganizationAddResponse", user.UserOrganizationAddResponse, {"success": True, "message": "m"}),
+    ]
+
+
+def portainer_cases():
+    from app.connectors.portainer.schema import nodes
+    from app.connectors.portainer.schema import stack
+
+    return [
+        ("Node", nodes.Node, samples.PORTAINER_NODES[0]),
+        ("Node", nodes.Node, samples.PORTAINER_NODES[1]),
+        ("NodesResponse", nodes.NodesResponse, {"nodes": samples.PORTAINER_NODES, "success": True, "message": "m"}),
+        ("StackData", stack.StackData, samples.PORTAINER_STACKS[0]),
+        ("StackResponse", stack.StackResponse, {"data": samples.PORTAINER_STACKS[1], "success": True, "message": "m"}),
+        ("StacksResponse", stack.StacksResponse, {"data": samples.PORTAINER_STACKS, "success": True, "message": "m"}),
+        ("DeleteStackResponse", stack.DeleteStackResponse, {"data": None, "success": True, "message": "m"}),
+        ("StackIDResponse", stack.StackIDResponse, {"stack_id": 5, "success": True, "message": "m"}),
+    ]
+
+
+def write(path, doc):
+    """One vector per line: diffable, and small enough for the repository."""
+    lines = ["{"]
+    keys = list(doc)
+    for k_i, key in enumerate(keys):
+        items = doc[key]
+        lines.append(f"{json.dumps(key)}: [")
+        for i, item in enumerate(items):
+            lines.append(json.dumps(item, ensure_ascii=False) + ("," if i + 1 < len(items) else ""))
+        lines.append("]" + ("," if k_i + 1 < len(keys) else ""))
+    lines.append("}")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def main():
+    engine = {"vectors": engine_vectors()}
+    write(ROOT / "copilot-upstream" / "src" / "model_vectors.json", engine)
+    graylog = model_vectors(graylog_cases())
+    write(ROOT / "copilot-graylog" / "src" / "model_vectors.json", graylog)
+    influxdb = model_vectors(influxdb_cases())
+    write(ROOT / "copilot-influxdb" / "src" / "model_vectors.json", influxdb)
+    print(f"engine: {len(engine['vectors'])} vectors; graylog: {len(graylog['bases'])} bases, {len(graylog['vectors'])} mutations")
+    print(f"influxdb: {len(influxdb['bases'])} bases, {len(influxdb['vectors'])} mutations")
+    grafana = model_vectors(grafana_cases())
+    write(ROOT / "copilot-grafana" / "src" / "model_vectors.json", grafana)
+    print(f"grafana: {len(grafana['bases'])} bases, {len(grafana['vectors'])} mutations")
+    portainer = model_vectors(portainer_cases())
+    write(ROOT / "copilot-portainer" / "src" / "model_vectors.json", portainer)
+    print(f"portainer: {len(portainer['bases'])} bases, {len(portainer['vectors'])} mutations")
+    assert not math.isnan(0.0)
+
+
+if __name__ == "__main__":
+    main()

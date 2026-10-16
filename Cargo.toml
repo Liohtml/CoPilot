@@ -36,6 +36,11 @@ copilot-markdown = { path = "crates/copilot-markdown" }
 copilot-notifications = { path = "crates/copilot-notifications" }
 copilot-connectors = { path = "crates/copilot-connectors" }
 copilot-wazuh = { path = "crates/copilot-wazuh" }
+copilot-upstream = { path = "crates/copilot-upstream" }
+copilot-graylog = { path = "crates/copilot-graylog" }
+copilot-influxdb = { path = "crates/copilot-influxdb" }
+copilot-grafana = { path = "crates/copilot-grafana" }
+copilot-portainer = { path = "crates/copilot-portainer" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }
@@ -76,8 +81,11 @@ tower-http = { version = "0.6", features = ["trace", "limit", "cors", "timeout",
 url = "2"
 bytes = "1"
 http = "1"
-# Only for `hyper::ext::ReasonPhrase` (the reason phrase `requests` reports); the version reqwest uses.
+# `ReasonPhrase`: the status line's own reason, which `requests`' HTTPError
+# and InfluxDB errors quote (the version reqwest uses).
 hyper = { version = "1", default-features = false, features = ["http1", "client"] }
+# gzip/deflate answers of the InfluxDB query API (aiohttp asks for them).
+flate2 = "1"
 
 # --- text ---
 regex = "1"
