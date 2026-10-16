@@ -1,5 +1,5 @@
-//! The settings the response routes and the Shuffle connector read from the
-//! environment (`copilot-response`, `copilot-shuffle`), raw as `os.getenv`
+//! The settings the response routes read from the environment
+//! (`copilot-response`), raw as `os.getenv`
 //! returns them: the Python routes read them on every call, so an unset value
 //! and an empty one are kept apart and nothing is parsed at startup.
 

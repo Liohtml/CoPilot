@@ -1375,3 +1375,500 @@ async fn copilot_action_invoke_runs_on_the_callers_hosts_only() {
     );
     cleanup(&h).await;
 }
+
+// --- Shuffle (copilot-shuffle) ------------------------------------------------------
+
+const SHUFFLE_KEY: &str = "e2e-shuffle-key";
+const EXEC_ID: &str = "4f1c0a9e-2b6d-4c3a-9e8f-1a2b3c4d5e6f";
+const AUTH_ID: &str = "8d7e6f5a-4b3c-4d2e-a1f0-9e8d7c6b5a4f";
+
+/// Shuffle: two workflows, their executions, an execution that finishes at
+/// once, an app-category run, the organizations and the verification.
+async fn shuffle_service() -> MockServer {
+    use wiremock::matchers::path_regex;
+    let server = MockServer::start().await;
+    let ok = |v: Value| ResponseTemplate::new(200).set_body_json(v);
+    let mounts = [
+        (
+            "GET",
+            "/api/v1/workflows",
+            ok(json!([
+                {"id": "wf-1", "name": "Notify", "actions": [{"name": "a", "large_image": "x"}]},
+                {"id": "wf-2", "name": "Other"},
+            ])),
+        ),
+        (
+            "GET",
+            "/api/v1/workflows/wf-1/executions",
+            ok(json!([{"status": "FINISHED"}])),
+        ),
+        ("GET", "/api/v1/workflows/wf-2/executions", ok(json!([]))),
+        (
+            "POST",
+            "/api/v1/workflows/wf-1/execute",
+            ok(
+                json!({"success": true, "execution_id": EXEC_ID.to_uppercase(), "authorization": AUTH_ID}),
+            ),
+        ),
+        (
+            "POST",
+            "/api/v1/workflows/wf-bad/execute",
+            ok(json!({"success": false, "reason": "Workflow not found in this region"})),
+        ),
+        (
+            "POST",
+            "/api/v1/streams/results",
+            ok(json!({"status": "FINISHED", "result": "done"})),
+        ),
+        (
+            "POST",
+            "/api/v1/apps/categories/run",
+            ok(json!({"success": false, "reason": "no app", "_sa_x": 1})),
+        ),
+        (
+            "GET",
+            "/api/v1/orgs",
+            ok(json!([{"name": "Acme", "id": "o1", "manager_orgs": ["m"]}, {"id": 5}, "x"])),
+        ),
+        (
+            "GET",
+            "/api/v1/orgs/o1",
+            ok(json!({"name": "Acme", "id": "o1", "manager_orgs": 5, "extra": 1})),
+        ),
+        ("GET", "/api/v1/orgs/o-empty", ok(json!({}))),
+        ("GET", "/api/v1/apps/authentication", ok(json!([]))),
+    ];
+    for (m, p, answer) in mounts {
+        Mock::given(method(m))
+            .and(path(p))
+            .respond_with(answer)
+            .mount(&server)
+            .await;
+    }
+    Mock::given(method("POST"))
+        .and(path_regex("^/api/v1/workflows/wf-case-.*/execute$"))
+        .respond_with(ok(json!({"success": true, "execution_id": EXEC_ID})))
+        .mount(&server)
+        .await;
+    server
+}
+
+async fn shuffle_connector(h: &Harness, url: &str) -> i64 {
+    h.exec("DELETE FROM connectors WHERE connector_name = 'Shuffle'")
+        .await;
+    connector(h, "Shuffle", url, None, Some(SHUFFLE_KEY)).await;
+    h.scalar_i64("SELECT id FROM connectors WHERE connector_name = 'Shuffle'")
+        .await
+}
+
+async fn shuffle_requests(server: &MockServer, p: &str) -> Vec<Request> {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.url.path() == p)
+        .collect()
+}
+
+#[tokio::test]
+async fn shuffle_workflows_and_integrations() {
+    let service = shuffle_service().await;
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    shuffle_connector(&h, &service.uri()).await;
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let portal = h.token(&format!("portal{}", h.suffix), "customer_user");
+    let (st, _) = h.call("GET", "/api/workflows", Some(&portal), None).await;
+    assert_eq!(st, 403);
+    let (st, body) = h.call("GET", "/api/workflows", Some(&analyst), None).await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body,
+        json!({"message": "Successfully fetched workflows", "success": true, "workflows": [
+            {"id": "wf-1", "name": "Notify", "actions": [{"name": "a"}]},
+            {"id": "wf-2", "name": "Other"},
+        ]})
+    );
+    let sent = shuffle_requests(&service, "/api/v1/workflows").await;
+    assert_eq!(
+        sent[0].headers.get("authorization").unwrap(),
+        &format!("Bearer {SHUFFLE_KEY}")
+    );
+    assert_eq!(sent[0].headers.get("connection").unwrap(), "keep-alive");
+    let (st, body) = h
+        .call("GET", "/api/workflows/executions", Some(&analyst), None)
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body["workflows"],
+        json!([
+            {"status": {"last_run": "FINISHED"}, "workflow_id": "wf-1", "workflow_name": "Notify"},
+            {"status": {"last_run": "No executions found"}, "workflow_id": "wf-2", "workflow_name": "Other"},
+        ])
+    );
+    // An execution: the id is checked against the listing, the results
+    // asked for with the canonical UUIDs.
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/workflows/execute",
+            Some(&analyst),
+            Some(json!({"workflow_id": "nope", "execution_argument": "x"})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (404, json!("Workflow not found"))
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/workflows/execute",
+            Some(&analyst),
+            Some(json!({"workflow_id": "wf-1", "execution_argument": "arg"})),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"message": "Successfully executed workflow", "success": true,
+            "data": {"status": "FINISHED", "result": "done"}})
+    );
+    let results = shuffle_requests(&service, "/api/v1/streams/results").await;
+    assert_eq!(results.len(), 2);
+    assert_eq!(
+        String::from_utf8(results[0].body.clone()).unwrap(),
+        format!("{{\"execution_id\": \"{EXEC_ID}\", \"authorization\": \"{AUTH_ID}\"}}")
+    );
+
+    // Integrations.
+    let (st, body) = h
+        .call(
+            "GET",
+            "/api/shuffle/integrations/credentials",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(body["api_key"], json!(SHUFFLE_KEY));
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/shuffle/integrations/execute",
+            Some(&analyst),
+            Some(json!({"app_name": "PagerDuty", "category": "cases", "label": "create_ticket"})),
+        )
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body,
+        json!({"data": {"success": false, "reason": "no app"}, "success": false,
+            "message": "Shuffle returned success=false: no app"})
+    );
+    let run = shuffle_requests(&service, "/api/v1/apps/categories/run").await;
+    assert_eq!(
+        String::from_utf8(run[0].body.clone()).unwrap(),
+        "{\"app_name\": \"PagerDuty\", \"category\": \"cases\", \"label\": \"create_ticket\", \
+         \"fields\": [], \"skip_workflow\": false}"
+    );
+    let invoke = |code: Value, wf: &str| json!({"workflow_id": wf, "execution_arguments": {"customer_code": code}});
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/shuffle/integrations/invoke-workflow",
+            Some(&analyst),
+            Some(json!({"workflow_id": "wf-1"})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (400, json!("customer_code is required"))
+    );
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/shuffle/integrations/invoke-workflow",
+            Some(&analyst),
+            Some(invoke(json!(beta), "wf-1")),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (403, json!(format!("Access denied to customer {beta}"))),
+        "§4: another tenant's workflow"
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/shuffle/integrations/invoke-workflow",
+            Some(&analyst),
+            Some(invoke(json!(acme), "wf-bad")),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            502,
+            json!("Shuffle returned success=false: Workflow not found in this region")
+        )
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/shuffle/integrations/invoke-workflow",
+            Some(&analyst),
+            Some(invoke(json!(acme), "wf-1")),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["success"], json!(true));
+
+    // Singul: validated, then Python's `exit(0)`.
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/shuffle/singul/execute",
+            Some(&analyst),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(st, 422);
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/shuffle/singul/execute",
+            Some(&analyst),
+            Some(json!({"app": "x"})),
+        )
+        .await;
+    assert_eq!(st, 500);
+    h.exec("DELETE FROM connectors WHERE connector_name = 'Shuffle'")
+        .await;
+}
+
+#[tokio::test]
+async fn shuffle_organizations_and_verification() {
+    let service = shuffle_service().await;
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let id = shuffle_connector(&h, &service.uri()).await;
+    let admin = h.token(&format!("admin{}", h.suffix), "admin");
+    let o = "/api/shuffle/organizations/organizations";
+    let (st, body) = h.call("GET", o, Some(&admin), None).await;
+    assert_eq!(st, 200);
+    assert_eq!(body["total_count"], json!(1));
+    assert_eq!(
+        body["data"][0]["org_auth"],
+        json!({"token": "", "expires": null})
+    );
+    assert_eq!(body["data"][0]["manager_orgs"], json!(["m"]));
+    let (st, body) = h.call("GET", &format!("{o}/o1"), Some(&admin), None).await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        body["message"],
+        json!("Successfully retrieved organization: Acme")
+    );
+    assert_eq!(body["data"]["manager_orgs"], json!(["5"]));
+    let (st, body) = h
+        .call("GET", &format!("{o}/o-empty"), Some(&admin), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (404, json!("Organization with ID o-empty not found"))
+    );
+    let (st, body) = h
+        .call("GET", &format!("{o}/name/ACME"), Some(&admin), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["data"]["id"].clone()),
+        (200, json!("o1"))
+    );
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("{o}?connector_name=Nope"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            500,
+            json!(
+                "Unexpected error while fetching organizations: 'NoneType' object has no attribute 'get'"
+            )
+        )
+    );
+    // The connector is verified in Rust.
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("/api/connectors/verify/{id}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"connectionSuccessful": true, "message": "Shuffle connection successful"})
+    );
+    h.exec("DELETE FROM connectors WHERE connector_name = 'Shuffle'")
+        .await;
+}
+
+#[tokio::test]
+async fn the_case_notification_runs_the_customers_workflow() {
+    let service = shuffle_service().await;
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    shuffle_connector(&h, &service.uri()).await;
+    let s = h.suffix.clone();
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let ctx = h
+        .exec(
+            "INSERT INTO incident_management_alertcontext (source, context) VALUES \
+             ('wazuh', '{\"rule_level\": \"12\", \"rule_mitre_id\": \"T1059\"}')",
+        )
+        .await;
+    let mut alerts = Vec::new();
+    for cust in [&acme, &beta] {
+        let alert = h
+            .exec(&format!(
+                "INSERT INTO incident_management_alert (alert_name, alert_description, status, \
+                 alert_creation_time, customer_code, source, escalated) VALUES \
+                 ('Alert {s}', 'd', 'OPEN', '2026-10-01 10:00:00', '{cust}', 'wazuh', 0)"
+            ))
+            .await;
+        h.exec(&format!(
+            "INSERT INTO incident_management_asset (alert_linked, asset_name, alert_context_id, \
+             customer_code, index_name, index_id, agent_id) VALUES ({alert}, 'host-{s}', {ctx}, \
+             '{cust}', 'wazuh-alerts-1', 'doc', '007')"
+        ))
+        .await;
+        alerts.push(alert);
+    }
+    let mut cases = Vec::new();
+    for (cust, alert) in [(&acme, alerts[0]), (&beta, alerts[1])] {
+        let case = h
+            .exec(&format!(
+                "INSERT INTO incident_management_case (case_name, case_description, \
+                 case_creation_time, case_status, customer_code, notification_invoked_number, \
+                 escalated) VALUES ('Case {s}', 'cd', '2026-10-02 09:00:00', 'OPEN', '{cust}', NULL, 0)"
+            ))
+            .await;
+        h.exec(&format!(
+            "INSERT INTO incident_management_casealertlink (case_id, alert_id) VALUES ({case}, {alert})"
+        ))
+        .await;
+        cases.push(case);
+    }
+    h.exec(&format!(
+        "INSERT INTO incident_management_notification (customer_code, shuffle_workflow_id, enabled) \
+         VALUES ('{acme}', 'wf-case-{s}', 1)"
+    ))
+    .await;
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let n = "/api/incidents/db_operations/case/notification";
+    let (st, body) = h
+        .call(
+            "POST",
+            n,
+            Some(&analyst),
+            Some(json!({"case_id": cases[1]})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            403,
+            json!(format!(
+                "Access denied to case {} - insufficient customer permissions",
+                cases[1]
+            ))
+        )
+    );
+    let (st, body) = h
+        .call("POST", n, Some(&admin), Some(json!({"case_id": cases[1]})))
+        .await;
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            400,
+            json!(format!(
+                "No enabled customer notification workflow is configured for customer '{beta}'."
+            ))
+        )
+    );
+    let (st, body) = h
+        .call(
+            "POST",
+            n,
+            Some(&analyst),
+            Some(json!({"case_id": cases[0]})),
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true, "message": "Case notification created successfully"})
+    );
+    let sent = shuffle_requests(&service, &format!("/api/v1/workflows/wf-case-{s}/execute")).await;
+    assert_eq!(sent.len(), 1);
+    let posted: Value = serde_json::from_slice(&sent[0].body).unwrap();
+    let args = &posted["execution_arguments"];
+    assert_eq!(
+        (
+            args["type"].clone(),
+            args["customer_code"].clone(),
+            args["primary_mitre_id"].clone(),
+            args["rule_level"].clone(),
+            args["severity"].clone(),
+            args["primary_timefield"].clone(),
+        ),
+        (
+            json!("case"),
+            json!(acme),
+            json!("T1059"),
+            json!(12),
+            json!("Critical"),
+            json!("2026-10-01T10:00:00.000Z"),
+        )
+    );
+    assert_eq!(args["alerts"][0]["alert_id"], json!(alerts[0]));
+    let count = h
+        .scalar_i64(&format!(
+            "SELECT notification_invoked_number FROM incident_management_case WHERE id = {}",
+            cases[0]
+        ))
+        .await;
+    assert_eq!(count, 1);
+    for sql in [
+        format!(
+            "DELETE FROM incident_management_casealertlink WHERE case_id IN ({}, {})",
+            cases[0], cases[1]
+        ),
+        format!(
+            "DELETE FROM incident_management_case WHERE id IN ({}, {})",
+            cases[0], cases[1]
+        ),
+        format!(
+            "DELETE FROM incident_management_asset WHERE alert_linked IN ({}, {})",
+            alerts[0], alerts[1]
+        ),
+        format!(
+            "DELETE FROM incident_management_alert WHERE id IN ({}, {})",
+            alerts[0], alerts[1]
+        ),
+        format!("DELETE FROM incident_management_alertcontext WHERE id = {ctx}"),
+        format!("DELETE FROM incident_management_notification WHERE customer_code = '{acme}'"),
+        "DELETE FROM connectors WHERE connector_name = 'Shuffle'".to_string(),
+    ] {
+        h.exec(&sql).await;
+    }
+}

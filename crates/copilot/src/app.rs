@@ -93,8 +93,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/passkey",
     "/api/auth/security",
     // /api/incidents/db_operations but POST /case-report-template/default-template
-    // (the templates are files on the Python host) and POST /case/notification
-    // (Shuffle): those fall through to the legacy backend. The MinIO routes
+    // (the templates are files on the Python host), which falls through to the
+    // legacy backend; POST /case/notification is copilot-shuffle's. The MinIO routes
     // (case files, report templates, DELETE /case/{id}) are copilot-objectstore's,
     // the Wazuh-indexer reads (/available-source, /available-indices, /mappings)
     // copilot-ingest's.
@@ -217,6 +217,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/sysmon_config/deploy",
     // CoPilot Actions: the inventory and the invoke.
     "/api/copilot_action",
+    // The Shuffle connector (copilot-shuffle), and its case notification.
+    "/api/workflows",
+    "/api/shuffle",
+    "POST /api/incidents/db_operations/case/notification",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -328,6 +332,9 @@ pub struct App {
     /// The response routes (`/api/active_response`, the Graylog webhook,
     /// `/api/sysmon_config`).
     pub response: copilot_response::ResponseState,
+    /// The Shuffle connector's client (its routes, the case notification
+    /// and its verification).
+    pub shuffle: copilot_shuffle::ShuffleClient,
 }
 
 impl App {
@@ -451,6 +458,8 @@ impl App {
             )),
             legacy: legacy.clone(),
         };
+        let shuffle = copilot_shuffle::ShuffleClient::new(ctx.connectors.clone())
+            .context("building the Shuffle client")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -478,9 +487,14 @@ impl App {
             dispatcher,
             legacy,
             scheduler,
-            verifiers: Verifiers::new(copilot_wazuh::verify::verifiers(&wazuh).into_iter().chain(
-                copilot_velociraptor::verify::verifiers(agents.velociraptor.timeouts()),
-            )),
+            verifiers: Verifiers::new(
+                copilot_wazuh::verify::verifiers(&wazuh)
+                    .into_iter()
+                    .chain(copilot_velociraptor::verify::verifiers(
+                        agents.velociraptor.timeouts(),
+                    ))
+                    .chain(copilot_shuffle::verifiers(&shuffle)),
+            ),
             wazuh,
             ingest,
             graylog,
@@ -493,6 +507,7 @@ impl App {
             agents,
             objectstore,
             response,
+            shuffle,
         })
     }
 
@@ -505,6 +520,13 @@ impl App {
     }
 
     /// The Velociraptor routes' state (the agents routes' client).
+    fn shuffle_state(&self) -> copilot_shuffle::ShuffleState {
+        copilot_shuffle::ShuffleState {
+            ctx: self.ctx.clone(),
+            client: self.shuffle.clone(),
+        }
+    }
+
     fn velociraptor_state(&self) -> copilot_velociraptor::VelociraptorState {
         copilot_velociraptor::VelociraptorState {
             ctx: self.ctx.clone(),
@@ -740,6 +762,21 @@ impl App {
                     ),
                 ),
             )
+            // The Shuffle connector, by full path: `/api/workflows`,
+            // `/api/shuffle/*` and the case notification beside the nested
+            // `/api/incidents/db_operations`.
+            .merge(copilot_shuffle::router(self.shuffle_state()))
+            .merge(
+                copilot_shuffle::organizations_router(self.shuffle_state()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .merge(copilot_shuffle::case_notification_router(
+                self.shuffle_state(),
+            ))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

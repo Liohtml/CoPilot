@@ -10,7 +10,7 @@
 //! The Shuffle call is the one `execute_workflow` makes — `requests.post`
 //! of `ExecuteWorkflowRequest(...).model_dump()` with the connector's
 //! bearer key; the Shuffle *routes* (`/api/shuffle/*`, the case
-//! notification) stay in Python.
+//! notification) are `copilot-shuffle`'s.
 
 use std::time::Duration;
 

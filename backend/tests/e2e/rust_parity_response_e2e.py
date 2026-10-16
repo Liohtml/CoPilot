@@ -15,7 +15,9 @@ the body bytes — and both backends' requests are compared one by one:
 * the CoPilot Action service (`/inventory`, `/metrics`, httpx's requests;
   `CopilotActionService.BASE_URL` patched here, COPILOT_ACTION_URL for Rust);
 * Velociraptor's gRPC API (`rust_parity_agents_e2e.VeloStandIn`, grpcio over mutual TLS: each
-  `VQLCollectorArgs` and its deadline) for the CoPilot Action invoke.
+  `VQLCollectorArgs` and its deadline) for the CoPilot Action invoke;
+* Shuffle (`requests` with the connector's bearer key): workflows, their executions and results,
+  app-category runs, organizations, the connector's verification and the case notification.
 
 For each request the suite compares the status, the response bytes and the outbound requests.
 urllib3 prints an object's memory address in a connection error, which differs between any two
@@ -27,7 +29,7 @@ Ports (all overridable): RESPONSE_PARITY_RUST_PORT and RESPONSE_PARITY_RUST_BARE
 Rust instance without GRAYLOG_API_HEADER_VALUE / COPILOT_API_KEY), RESPONSE_MANAGER_STUB_PORT,
 RESPONSE_S3_STUB_PORT, RESPONSE_WORKER_STUB_PORT (the worker's port, 5003 in production:
 COPILOT_PROVISION_WORKER_PORT for Rust, `get_wazuh_endpoint` patched here),
-RESPONSE_ACTION_STUB_PORT, RESPONSE_VELO_STUB_PORT.
+RESPONSE_ACTION_STUB_PORT, RESPONSE_VELO_STUB_PORT, RESPONSE_SHUFFLE_STUB_PORT.
 """
 
 import asyncio
@@ -82,9 +84,11 @@ S3_PORT = int(os.environ.get("RESPONSE_S3_STUB_PORT", "5790"))
 WORKER_PORT = int(os.environ.get("RESPONSE_WORKER_STUB_PORT", "5791"))
 ACTION_PORT = int(os.environ.get("RESPONSE_ACTION_STUB_PORT", "5792"))
 VELO_PORT = int(os.environ.get("RESPONSE_VELO_STUB_PORT", "5793"))
+SHUFFLE_PORT = int(os.environ.get("RESPONSE_SHUFFLE_STUB_PORT", "5794"))
+SHUFFLE_KEY = "parity-shuffle-key"
 S3_USER, S3_SECRET = "minio-response", "minio-response-secret"
 CLOSED_PORT = 1
-OUR_CONNECTORS = ("Wazuh-Manager", "Velociraptor")
+OUR_CONNECTORS = ("Wazuh-Manager", "Velociraptor", "Shuffle")
 CUST_A, CUST_B = f"RsA{SFX}", f"RsB{SFX}"
 ADMIN, ANALYST, PORTAL, RESP = f"rs_admin{SFX}", f"rs_analyst{SFX}", f"rs_portal{SFX}", f"rs_resp{SFX}"
 USERS = (ADMIN, ANALYST, PORTAL, RESP)
@@ -375,7 +379,216 @@ class VeloRecorder:
 
 
 VELO_RECORDER = VeloRecorder()
-RECORDERS = [MANAGER_RECORDER, WORKER_RECORDER, ACTION_RECORDER, VELO_RECORDER]
+
+UUID_A, UUID_B = "4f1c0a9e-2b6d-4c3a-9e8f-1a2b3c4d5e6f", "8d7e6f5a-4b3c-4d2e-a1f0-9e8d7c6b5a4f"
+ORG_FULL = {
+    "name": "Acme MSSP",
+    "description": None,
+    "company_type": "MSSP",
+    "image": "data:image/png;base64,AAAA",
+    "id": "o1",
+    "org": "Acme",
+    "org_auth": {"token": "t0k", "expires": "2026-01-02T03:04:05.123456+02:00"},
+    "users": [{"username": "u"}],
+    "roles": ["admin", "user"],
+    "active_apps": ["a1"],
+    "cloud_sync": True,
+    "sync_config": {"interval": "60", "api_key": "k", "source": "s", "x": 1},
+    "sync_features": {"webhook": {"active": True}},
+    "invites": [1],
+    "child_orgs": ["c1"],
+    "manager_orgs": [1, None, "m", 2.5, [1], {"k": "v"}],
+    "creator_org": "root",
+    "partner_info": {"reseller": "true"},
+    "sso_config": {"client_id": "cid"},
+    "region": "eu",
+    "region_url": "https://eu.shuffler.io",
+    "tutorials": [{"name": "t", "done": False}],
+    "extra": "dropped",
+}
+
+
+class ShuffleStandIn:
+    """Shuffle's API per `mode` (a dict, reset by `shuffle(...)`)."""
+
+    def __init__(self):
+        self.mode = {}
+        self.results_calls = 0
+
+    def js(self, value, status=200):
+        return status, "application/json", json.dumps(value).encode()
+
+    def __call__(self, method, target, headers, body):
+        from urllib.parse import unquote
+
+        path = unquote(target.split("?")[0])
+        m = self.mode
+        if path == "/api/v1/workflows" and method == "GET":
+            return self.workflows(m.get("workflows", "ok"))
+        if path.startswith("/api/v1/workflows/") and path.endswith("/executions"):
+            return self.executions(path.split("/")[4], m.get("executions", "ok"))
+        if path.startswith("/api/v1/workflows/") and path.endswith("/execute"):
+            return self.execute(m.get("execute", "ok"))
+        if path == "/api/v1/streams/results":
+            self.results_calls += 1
+            return self.results(m.get("results", "finished"), self.results_calls)
+        if path == "/api/v1/apps/categories/run":
+            return self.run(m.get("run", "ok"))
+        if path == "/api/v1/orgs":
+            return self.orgs(m.get("orgs", "ok"))
+        if path.startswith("/api/v1/orgs/"):
+            return self.org(path[len("/api/v1/orgs/") :])
+        if path == "/api/v1/apps/authentication":
+            auth = m.get("auth", "ok")
+            if auth == "ok":
+                return self.js([{"app": "x"}])
+            if auth == "refused":
+                return 401, "application/json", '{"success": false, "reason": "Invalid API key é"}'.encode()
+            return 302, "text/html", b"<html>moved</html>"
+        return self.js({"success": False, "reason": f"no route {path}"}, status=404)
+
+    def workflows(self, mode):
+        wf = [
+            {"id": "wf-1", "name": "Notify", "actions": [{"name": "a", "large_image": "data:..."}, {"name": "b"}], "org_id": "o1"},
+            {"id": "wf-2", "name": "Other", "actions": []},
+            {"id": "wf-3", "name": "No actions", "_sa_internal": 1},
+        ]
+        answers = {
+            "ok": wf,
+            "empty": [],
+            "null": None,
+            "dict": {"x": 1, "my-actions": 2},
+            "dict-plain": {"a": 1},
+            "str-elem": ["has actions"],
+            "int-elem": [5],
+            "actions-null": [{"id": "x", "actions": None}],
+            "actions-lists": [{"id": "x", "actions": [[1]]}],
+            "actions-str": [{"id": "x", "actions": "abc"}],
+            "actions-dict": [{"id": "x", "actions": {"k": 1}}],
+            "list-elem": [["actions"]],
+            "no-id": [{"name": "x"}],
+            "no-name": [{"id": "wf-1"}],
+            "int-id": [{"id": 5, "name": "x"}],
+            "int-name": [{"id": "wf-1", "name": 5}],
+        }
+        if mode == "html":
+            return 200, "text/html", b"<html>login</html>"
+        if mode == "error":
+            return self.js({"success": False, "reason": "bad key"}, status=401)
+        return self.js(answers[mode])
+
+    def executions(self, workflow_id, mode):
+        if mode == "dict":
+            return self.js({"a": 1})
+        if mode == "no-status":
+            return self.js([{}])
+        if mode == "int-status":
+            return self.js([{"status": 5}])
+        if mode == "str":
+            return self.js("abc")
+        if mode == "html":
+            return 200, "text/html", b"<html/>"
+        answers = {"wf-1": [{"status": "FINISHED"}, {"status": "ABORTED"}], "wf-2": [], "wf-3": [{"status": None}]}
+        return self.js(answers.get(workflow_id, []))
+
+    def execute(self, mode):
+        answers = {
+            "ok": {"success": True, "execution_id": UUID_A.upper(), "authorization": "{" + UUID_B + "}"},
+            "fail": {"success": False, "execution_id": UUID_A, "authorization": UUID_B},
+            "fail-reason": {"success": False, "reason": "Workflow not found in this region é"},
+            "bad": {"success": "maybe", "execution_id": "x", "authorization": 5},
+            "v1": {"success": True, "execution_id": "12345678-1234-1234-1234-1234567890ab", "authorization": UUID_B},
+            "missing": {},
+            "list": [1],
+        }
+        if mode == "204":
+            return 204, "", b""
+        if mode == "html":
+            return 200, "text/html", b"<html/>"
+        if mode == "status-500":
+            return self.js({"error": "boom"}, status=500)
+        return self.js(answers[mode])
+
+    def results(self, mode, n):
+        finished = {"status": "FINISHED", "result": "done é", "results": [{"action": "a", "result": 1.5}]}
+        if mode == "finished":
+            return self.js(finished)
+        if mode == "second":
+            return self.js({"status": "EXECUTING"} if n == 1 else finished)
+        if mode == "then-204":
+            return self.js(finished) if n == 1 else (204, "", b"")
+        if mode == "then-list":
+            return self.js(finished) if n == 1 else self.js([1])
+        if mode == "then-html":
+            return self.js(finished) if n == 1 else (200, "text/html", b"<x>")
+        raise AssertionError(mode)
+
+    def run(self, mode):
+        answers = {
+            "ok": {"success": True, "id": "x", "_sa_hidden": 1, "nested": {"_sa": 2, "v": 1.5, "é": [True, None]}},
+            "false-reason": {"success": False, "reason": "no app"},
+            "false": {"success": False},
+            "reason-dict": {"success": False, "reason": {"a": 1}},
+            "list": [1, 2],
+        }
+        if mode == "204":
+            return 204, "", b""
+        if mode == "html":
+            return 200, "text/html", b"<html/>"
+        if mode == "status-400":
+            return self.js({"error": "x"}, status=400)
+        return self.js(answers[mode])
+
+    def orgs(self, mode):
+        if mode == "ok":
+            return self.js(
+                [
+                    ORG_FULL,
+                    {"name": "Beta", "id": "o2"},
+                    {"id": 5},
+                    "str",
+                    {
+                        "name": "Gamma",
+                        "id": "o3",
+                        "org_auth": {"token": "t", "expires": 1700000000},
+                        "users": None,
+                        "manager_orgs": ["a"],
+                        "sync_config": {"interval": "5"},
+                    },
+                ],
+            )
+        if mode == "dict":
+            return self.js({"a": 1})
+        if mode == "null":
+            return self.js(None)
+        if mode == "html":
+            return 200, "text/html", b"<html/>"
+        raise AssertionError(mode)
+
+    def org(self, org_id):
+        answers = {
+            "o1": ORG_FULL,
+            "o-empty": {},
+            "o-null": None,
+            "o-list": [1],
+            "o-bad": {"id": "x", "cloud_sync": "maybe"},
+            "o-mgr-int": {"name": "M", "id": "m1", "manager_orgs": 5},
+            "o-mgr-bool": {"name": "M", "id": "m2", "manager_orgs": True},
+            "o-mgr-float": {"name": "M", "id": "m3", "manager_orgs": 1.5},
+            "o-mgr-dict": {"name": "M", "id": "m4", "manager_orgs": {"a": 1}},
+            "o-mgr-str": {"name": "M", "id": "m5", "manager_orgs": "x", "description": None},
+            "o 1": {"name": "Spaced", "id": "o 1"},
+        }
+        if org_id == "o-html":
+            return 200, "text/html", b"<html/>"
+        if org_id in answers:
+            return self.js(answers[org_id])
+        return self.js({"success": False, "reason": "Org not found"}, status=404)
+
+
+SHUFFLE = ShuffleStandIn()
+SHUFFLE_RECORDER = Recorder()
+RECORDERS = [MANAGER_RECORDER, WORKER_RECORDER, ACTION_RECORDER, VELO_RECORDER, SHUFFLE_RECORDER]
 S3 = objstore.S3StandIn(S3_USER, S3_SECRET)
 BOUNDARY = re.compile(rb"[0-9a-f]{32}")
 
@@ -465,6 +678,7 @@ def cleanup():
         sql("DELETE FROM audit_log WHERE actor_username = :n", n=name)
         sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
         sql("DELETE FROM `user` WHERE username = :n", n=name)
+    cleanup_incidents()
     for code in (CUST_A, CUST_B):
         sql("DELETE FROM customers WHERE customer_code = :c", c=code)
 
@@ -497,15 +711,21 @@ def patch_python():
 
 
 def build_python_app():
+    from app.incidents.routes.db_operations import incidents_db_operations_router
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
     from app.routers import active_response
+    from app.routers import connectors
     from app.routers import copilot_action
+    from app.routers import shuffle
 
     api = APIRouter(prefix="/api")
     api.include_router(active_response.router)
     api.include_router(copilot_action.router)
+    api.include_router(shuffle.router)
+    api.include_router(connectors.router)
+    api.include_router(incidents_db_operations_router, prefix="/incidents/db_operations")
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -1482,11 +1702,397 @@ async def copilot_action_checks(p, bare, t_admin, t_analyst, t_portal, t_resp):
     )
 
 
+# --- Shuffle --------------------------------------------------------------------------------------
+
+#: Explicit ids of the case-notification rows, one block per table from this suite's base.
+INC = AGENT_ID_BASE
+CUST_C = f"RsC{SFX}"
+CTX = {
+    "c0": {"rule_level": "12", "rule_mitre_id": "T1059", "agent_name": "h1 é", "nested": {"z": 1.5, "a": [1, None]}},
+    "c1": {"rule": {"level": 3}, "data": "x"},
+    "c2": [1],
+    "c3": {"rule_level": 7.9, "rule_mitre_id": None},
+}
+#: alert key → (offset, customer, context key, or None for no asset; the asset's foreign key
+#: rules out a missing context)
+ALERTS = {
+    "al0": (0, CUST_A, "c0"),
+    "al1": (1, CUST_A, "c1"),
+    "al2": (2, CUST_A, None),
+    "al3": (3, CUST_A, "c2"),
+    "al5": (5, CUST_B, "c0"),
+    "al6": (6, CUST_C, "c3"),
+}
+#: case key → (offset, customer, alerts)
+CASES = {
+    "ok": (0, CUST_A, ["al0", "al1"]),
+    "no-asset": (1, CUST_A, ["al2"]),
+    "ctx-list": (2, CUST_A, ["al3"]),
+    "tenant-b": (4, CUST_B, ["al5"]),
+    "empty": (5, CUST_A, []),
+    "disabled": (6, CUST_C, ["al6"]),
+}
+
+
+def case_id(key):
+    return INC + CASES[key][0]
+
+
+def seed_incidents():
+    for i, (key, ctx) in enumerate(CTX.items()):
+        sql("INSERT INTO incident_management_alertcontext (id, source, context) VALUES (:i, 'wazuh', :j)", i=INC + i, j=json.dumps(ctx))
+    ctx_ids = {key: INC + i for i, key in enumerate(CTX)}
+    for key, (off, cust, ctx) in ALERTS.items():
+        sql(
+            "INSERT INTO incident_management_alert (id, alert_name, alert_description, status, alert_creation_time, customer_code, "
+            "source, escalated) VALUES (:i, :n, 'd', 'OPEN', '2026-10-01 10:00:00', :c, 'wazuh', 0)",
+            i=INC + off,
+            n=f"Alert {key} {SFX} é",
+            c=cust,
+        )
+        if ctx is not None:
+            sql(
+                "INSERT INTO incident_management_asset (id, alert_linked, asset_name, alert_context_id, customer_code, index_name, "
+                "index_id, agent_id) VALUES (:i, :a, :n, :ctx, :c, 'wazuh-alerts-1', :doc, '007')",
+                i=INC + off,
+                a=INC + off,
+                n=f"host-{key}",
+                ctx=ctx_ids[ctx],
+                c=cust,
+                doc=f"doc-{key}",
+            )
+    for i, (value, kind) in enumerate((("1.2.3.4", "IP"), ("evil.example", "DOMAIN"), ("1.2.3.4", "HASH"))):
+        sql("INSERT INTO incident_management_ioc (id, value, type, description) VALUES (:i, :v, :t, 'seen')", i=INC + i, v=value, t=kind)
+        sql("INSERT INTO incident_management_alert_to_ioc (alert_id, ioc_id) VALUES (:a, :i)", a=INC, i=INC + i)
+    for key, (off, cust, alerts) in CASES.items():
+        sql(
+            "INSERT INTO incident_management_case (id, case_name, case_description, case_creation_time, case_status, customer_code, "
+            "notification_invoked_number, escalated) VALUES (:i, :n, 'cd', '2026-10-02 09:00:00', 'OPEN', :c, NULL, 0)",
+            i=INC + off,
+            n=f"Case {key} {SFX}",
+            c=cust,
+        )
+        for a in alerts:
+            sql("INSERT INTO incident_management_casealertlink (case_id, alert_id) VALUES (:c, :a)", c=INC + off, a=INC + ALERTS[a][0])
+    sql(
+        "INSERT INTO incident_management_notification (id, customer_code, shuffle_workflow_id, enabled) VALUES "
+        "(:i, :a, 'wf-case', 1), (:j, :c, 'wf-off', 0)",
+        i=INC,
+        a=CUST_A,
+        j=INC + 1,
+        c=CUST_C,
+    )
+
+
+def cleanup_incidents():
+    lo, hi = INC, INC + 999
+    sql("DELETE FROM incident_management_casealertlink WHERE case_id BETWEEN :lo AND :hi", lo=lo, hi=hi)
+    sql("DELETE FROM incident_management_case WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
+    sql("DELETE FROM incident_management_alert_to_ioc WHERE alert_id BETWEEN :lo AND :hi", lo=lo, hi=hi)
+    sql("DELETE FROM incident_management_ioc WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
+    sql("DELETE FROM incident_management_asset WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
+    sql("DELETE FROM incident_management_alert WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
+    sql("DELETE FROM incident_management_alertcontext WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
+    sql("DELETE FROM incident_management_notification WHERE id BETWEEN :lo AND :hi", lo=lo, hi=hi)
+
+
+def notified(key):
+    with sync_engine.connect() as conn:
+        return conn.execute(
+            text("SELECT notification_invoked_number FROM incident_management_case WHERE id = :i"),
+            {"i": case_id(key)},
+        ).scalar()
+
+
+def shuffle(**mode):
+    def set_mode():
+        SHUFFLE.mode = dict(mode)
+        SHUFFLE.results_calls = 0
+
+    return set_mode
+
+
+def shuffle_down():
+    set_connector("Shuffle", f"http://127.0.0.1:{CLOSED_PORT}", api_key=SHUFFLE_KEY)
+
+
+def shuffle_up():
+    set_connector("Shuffle", f"http://127.0.0.1:{SHUFFLE_PORT}", api_key=SHUFFLE_KEY)
+
+
+async def shuffle_checks(p, t_admin, t_analyst, t_portal, t_resp):
+    W, I, ORGS = "/api/workflows", "/api/shuffle/integrations", "/api/shuffle/organizations/organizations"
+    N = "/api/incidents/db_operations/case/notification"
+    print("\n=== Shuffle: auth ===")
+    for method, path in (
+        ("GET", W),
+        ("GET", W + "/executions"),
+        ("POST", W + "/execute"),
+        ("GET", I + "/credentials"),
+        ("POST", I + "/execute"),
+        ("POST", I + "/invoke-workflow"),
+        ("POST", "/api/shuffle/singul/execute"),
+        ("GET", ORGS),
+        ("GET", ORGS + "/o1"),
+        ("GET", ORGS + "/name/beta"),
+        ("POST", N),
+    ):
+        await p.same(f"{method} {path}, no token", method, path, before=shuffle())
+        await p.same(f"{method} {path}, bad token", method, path, "not-a-jwt")
+        await p.same(f"{method} {path}, portal user", method, path, t_portal, expect=403, json={})
+
+    print("\n=== Shuffle: workflows ===")
+    for m in (
+        "ok",
+        "empty",
+        "null",
+        "dict",
+        "dict-plain",
+        "str-elem",
+        "int-elem",
+        "actions-null",
+        "actions-lists",
+        "actions-str",
+        "actions-dict",
+        "list-elem",
+        "no-id",
+        "no-name",
+        "int-id",
+        "int-name",
+        "html",
+        "error",
+    ):
+        await p.same(f"GET /workflows, Shuffle answers {m}", "GET", W, t_analyst, before=shuffle(workflows=m))
+        await p.same(f"GET /workflows/executions, Shuffle answers {m}", "GET", W + "/executions", t_admin, before=shuffle(workflows=m))
+    for m in ("dict", "no-status", "int-status", "str", "html"):
+        await p.same(
+            f"GET /workflows/executions, the executions answer {m}",
+            "GET",
+            W + "/executions",
+            t_admin,
+            before=shuffle(executions=m),
+        )
+    for body in ({}, {"workflow_id": 1, "execution_argument": None}, [], "x"):
+        await p.same(f"POST /workflows/execute {json.dumps(body)}", "POST", W + "/execute", t_admin, json=body, expect=422)
+    run = {"workflow_id": "wf-1", "execution_argument": "arg é"}
+    await p.same(
+        "POST /workflows/execute, an unknown workflow",
+        "POST",
+        W + "/execute",
+        t_admin,
+        json={**run, "workflow_id": "nope"},
+        before=shuffle(),
+    )
+    for wf, res in (
+        ("ok", "finished"),
+        ("ok", "second"),
+        ("ok", "then-204"),
+        ("ok", "then-list"),
+        ("ok", "then-html"),
+        ("fail", "finished"),
+        ("bad", "finished"),
+        ("v1", "finished"),
+        ("missing", "finished"),
+        ("list", "finished"),
+        ("204", "finished"),
+        ("html", "finished"),
+        ("status-500", "finished"),
+    ):
+        await p.same(
+            f"POST /workflows/execute, execute {wf}, results {res}",
+            "POST",
+            W + "/execute",
+            t_analyst,
+            json=run,
+            before=shuffle(execute=wf, results=res),
+        )
+    for m in ("no-id", "int-id", "html"):
+        await p.same(
+            f"POST /workflows/execute, the listing answers {m}",
+            "POST",
+            W + "/execute",
+            t_admin,
+            json=run,
+            before=shuffle(workflows=m),
+        )
+
+    print("\n=== Shuffle: integrations ===")
+    await p.same("GET /credentials", "GET", I + "/credentials", t_analyst, expect=200)
+    set_connector("Shuffle", f"http://127.0.0.1:{SHUFFLE_PORT}///", api_key=SHUFFLE_KEY)
+    await p.same("GET /credentials, trailing slashes", "GET", I + "/credentials", t_analyst, expect=200)
+    set_connector("Shuffle", f"http://127.0.0.1:{SHUFFLE_PORT}", api_key="")
+    await p.same("GET /credentials, no key", "GET", I + "/credentials", t_analyst, expect=400)
+    set_connector("Shuffle", None)
+    await p.same("GET /credentials, no connector", "GET", I + "/credentials", t_analyst, expect=404)
+    await p.same("GET /workflows, no connector", "GET", W, t_analyst, before=shuffle())
+    await p.same("POST /execute, no connector", "POST", I + "/execute", t_analyst, json={"app_name": "a", "category": "c", "label": "l"})
+    shuffle_up()
+    integration = {"app_name": "PagerDuty", "category": "cases", "label": "create_ticket", "fields": [{"key": "title", "value": "t é"}]}
+    for body in (
+        {},
+        {"app_name": 1, "category": None, "label": []},
+        {**integration, "fields": [1]},
+        {**integration, "skip_workflow": "maybe"},
+        "x",
+    ):
+        await p.same(f"POST /execute {json.dumps(body)[:80]}", "POST", I + "/execute", t_analyst, json=body, expect=422)
+    for m in ("ok", "false-reason", "false", "reason-dict", "list", "204", "html", "status-400"):
+        await p.same(f"POST /execute, Shuffle answers {m}", "POST", I + "/execute", t_analyst, json=integration, before=shuffle(run=m))
+    await p.same(
+        "POST /execute, nulls",
+        "POST",
+        I + "/execute",
+        t_analyst,
+        json={**integration, "fields": None, "skip_workflow": None},
+        before=shuffle(),
+    )
+    invoke = {"workflow_id": "wf-9", "execution_arguments": {"customer_code": CUST_A, "alert": {"x": [1, 2.5]}}, "start": "s"}
+    for body in (
+        {"execution_arguments": {"customer_code": CUST_A}},
+        {"workflow_id": "wf-9", "start": 5},
+        {"workflow_id": "wf-9"},
+        {"workflow_id": "wf-9", "execution_arguments": None},
+        {"workflow_id": "wf-9", "execution_arguments": {"customer_code": ""}},
+        {"workflow_id": "wf-9", "execution_arguments": {"customer_code": 0}},
+        {"workflow_id": "wf-9", "execution_arguments": "x"},
+    ):
+        await p.same(f"POST /invoke-workflow {json.dumps(body)[:80]}", "POST", I + "/invoke-workflow", t_analyst, json=body)
+    for m in ("ok", "fail", "fail-reason", "204", "html", "status-500"):
+        await p.same(
+            f"POST /invoke-workflow, Shuffle answers {m}",
+            "POST",
+            I + "/invoke-workflow",
+            t_analyst,
+            json=invoke,
+            before=shuffle(execute=m),
+        )
+    await p.same(
+        "POST /invoke-workflow, an int customer code (admin)",
+        "POST",
+        I + "/invoke-workflow",
+        t_admin,
+        json={**invoke, "execution_arguments": {"customer_code": 5}},
+        before=shuffle(),
+    )
+    # §4: the body names the tenant. Python ran another customer's workflow for any analyst.
+    for label, args in (("another tenant's customer", {"customer_code": CUST_B}), ("an int customer code", {"customer_code": 5})):
+        shuffle()()
+        py, out_py, _ = await p.call(p.py, "POST", I + "/invoke-workflow", t_analyst, json={**invoke, "execution_arguments": args})
+        shuffle()()
+        rs, out_rs, _ = await p.call(p.rs, "POST", I + "/invoke-workflow", t_analyst, json={**invoke, "execution_arguments": args})
+        check(
+            f"§4 POST /invoke-workflow, {label} (analyst): Python runs it, Rust refuses",
+            py.status_code == 200
+            and len(out_py) == 1
+            and rs.status_code == 403
+            and rs.json() == {"success": False, "message": f"Access denied to customer {args['customer_code']}"}
+            and out_rs == [],
+            f"python {py.status_code} {py.content[:300]!r}\n        rust   {rs.status_code} {rs.content[:300]!r}",
+        )
+    shuffle_down()
+    await p.same("POST /execute, Shuffle unreachable", "POST", I + "/execute", t_analyst, json=integration)
+    await p.same("POST /invoke-workflow, Shuffle unreachable", "POST", I + "/invoke-workflow", t_analyst, json=invoke)
+    await p.same("GET /workflows, Shuffle unreachable", "GET", W, t_analyst)
+    await p.same("GET /organizations, Shuffle unreachable", "GET", ORGS, t_analyst)
+    await p.same("POST /case/notification, Shuffle unreachable", "POST", N, t_admin, json={"case_id": case_id("ok")})
+    shuffle_up()
+
+    print("\n=== Shuffle: Singul ===")
+    for body in ({}, {"app": 5}, [], None):
+        await p.same(f"POST /singul/execute {json.dumps(body)}", "POST", "/api/shuffle/singul/execute", t_analyst, json=body, expect=422)
+    r = await p.rs.post("/api/shuffle/singul/execute", json={"app": "outlook"}, headers={"Authorization": f"Bearer {t_admin}"})
+    check(
+        "POST /singul/execute, a valid body: Rust answers uvicorn's bare 500 (exit(0))",
+        r.status_code == 500 and r.text == "Internal Server Error",
+        r.text,
+    )
+
+    print("\n=== Shuffle: organizations ===")
+    for m in ("ok", "dict", "null", "html"):
+        await p.same(f"GET /organizations, Shuffle answers {m}", "GET", ORGS, t_analyst, before=shuffle(orgs=m))
+        await p.same(f"GET /organizations/name/beta, Shuffle answers {m}", "GET", ORGS + "/name/beta", t_analyst, before=shuffle(orgs=m))
+    for query in ("?connector_name=shuffle", "?connector_name=Nope", "?connector_name=", "?connector_name=Shuffle&connector_name=Nope"):
+        await p.same(f"GET /organizations{query}", "GET", ORGS + query, t_analyst, before=shuffle())
+    for name in ("BETA", "gamma", "nope", "Acme%20MSSP", "o1"):
+        await p.same(f"GET /organizations/name/{name}", "GET", f"{ORGS}/name/{name}", t_admin, before=shuffle())
+    for org in (
+        "o1",
+        "o-empty",
+        "o-null",
+        "o-list",
+        "o-bad",
+        "o-mgr-int",
+        "o-mgr-bool",
+        "o-mgr-float",
+        "o-mgr-dict",
+        "o-mgr-str",
+        "o%201",
+        "o-html",
+        "unknown",
+        "name",
+    ):
+        await p.same(f"GET /organizations/{org}", "GET", f"{ORGS}/{org}", t_analyst, before=shuffle())
+    await p.same("GET /organizations/o1?connector_name=Nope", "GET", f"{ORGS}/o1?connector_name=Nope", t_analyst)
+
+    print("\n=== Shuffle: the connector's verification ===")
+    with sync_engine.connect() as conn:
+        shuffle_row = conn.execute(text("SELECT id FROM connectors WHERE connector_name = 'Shuffle'")).scalar()
+    for m in ("ok", "refused", "moved"):
+        await p.same(
+            f"POST /connectors/verify (Shuffle answers {m})",
+            "POST",
+            f"/api/connectors/verify/{shuffle_row}",
+            t_admin,
+            before=shuffle(auth=m),
+        )
+    shuffle_down()
+    with sync_engine.connect() as conn:
+        shuffle_row = conn.execute(text("SELECT id FROM connectors WHERE connector_name = 'Shuffle'")).scalar()
+    await p.same("POST /connectors/verify (Shuffle unreachable)", "POST", f"/api/connectors/verify/{shuffle_row}", t_admin)
+    shuffle_up()
+
+    print("\n=== Shuffle: the case notification ===")
+    for body in ({}, {"case_id": "x"}, {"case_id": 1.5}, [], "x"):
+        await p.same(f"POST /case/notification {json.dumps(body)}", "POST", N, t_admin, json=body, expect=422)
+    await p.same("POST /case/notification, an unknown case", "POST", N, t_admin, json={"case_id": INC + 900}, expect=404)
+    await p.same("POST /case/notification, a case id beyond the column", "POST", N, t_admin, json={"case_id": 10**18}, expect=404)
+    await p.same("POST /case/notification, another tenant's case", "POST", N, t_analyst, json={"case_id": case_id("tenant-b")}, expect=403)
+    for key, who, tok, mode in (
+        ("ok", "analyst", t_analyst, "ok"),
+        ("ok", "admin, as a string id", t_admin, "ok"),
+        ("ok", "Shuffle refuses", t_admin, "fail"),
+        ("ok", "Shuffle names why", t_admin, "fail-reason"),
+        ("ok", "Shuffle answers 204", t_admin, "204"),
+        ("ok", "Shuffle answers HTML", t_admin, "html"),
+        ("no-asset", "admin", t_admin, "ok"),
+        ("ctx-list", "admin", t_admin, "ok"),
+        ("tenant-b", "admin (no notification row)", t_admin, "ok"),
+        ("empty", "admin", t_admin, "ok"),
+        ("disabled", "admin (disabled)", t_admin, "ok"),
+    ):
+        before_count = notified(key)
+        r1, r2 = await p.same(
+            f"POST /case/notification, case {key}, {who}, {mode}",
+            "POST",
+            N,
+            tok,
+            json={"case_id": str(case_id(key)) if "string" in who else case_id(key)},
+            before=shuffle(execute=mode),
+        )
+        bumped = 2 if r1.status_code == 200 else 0
+        check(
+            f"POST /case/notification, case {key}, {who}, {mode}: notification_invoked_number",
+            notified(key) == (before_count or 0) + bumped if bumped else notified(key) == before_count,
+            f"{before_count} -> {notified(key)}",
+        )
+
+
 async def main():
     manager_server = start_http_stub(MANAGER_PORT, MANAGER, MANAGER_RECORDER)
     worker_server = start_http_stub(WORKER_PORT, WORKER, WORKER_RECORDER)
     s3_server = S3.serve(S3_PORT)
     action_server = start_http_stub(ACTION_PORT, ACTION, ACTION_RECORDER)
+    shuffle_server = start_http_stub(SHUFFLE_PORT, SHUFFLE, SHUFFLE_RECORDER)
     velo_stand_in = agents_parity.VeloStandIn(VELO_PORT, VELO)
     VELO_RECORDER.stand_in = velo_stand_in
     workdir = tempfile.mkdtemp(prefix="response-parity-")
@@ -1495,6 +2101,8 @@ async def main():
     try:
         seed()
         seed_action_agents()
+        seed_incidents()
+        shuffle_up()
         set_connector("Velociraptor", "https://velo", api_key=agents_parity.api_config(workdir, velo_stand_in.address))
         seed_minio()
         procs.append(start_rust(RS_PORT))
@@ -1508,7 +2116,7 @@ async def main():
     t_admin, t_analyst = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"])
     t_portal, t_resp = token(PORTAL, ["customer_user"]), token(RESP, ["responder", "analyst"])
     try:
-        sections = os.environ.get("RESPONSE_PARITY_SECTIONS", "active_response,graylog,sysmon,copilot_action").split(",")
+        sections = os.environ.get("RESPONSE_PARITY_SECTIONS", "active_response,graylog,sysmon,copilot_action,shuffle").split(",")
         if "active_response" in sections:
             await active_response_checks(p, t_admin, t_analyst, t_portal, t_resp)
         if "graylog" in sections:
@@ -1524,6 +2132,8 @@ async def main():
                 await copilot_action_checks(p, bare, t_admin, t_analyst, t_portal, t_resp)
             finally:
                 os.chdir(here)
+        if "shuffle" in sections:
+            await shuffle_checks(p, t_admin, t_analyst, t_portal, t_resp)
     finally:
         await p.close()
         await bare.close()
@@ -1538,6 +2148,7 @@ async def main():
         worker_server.shutdown()
         s3_server.shutdown()
         action_server.shutdown()
+        shuffle_server.shutdown()
         velo_stand_in.stop()
         shutil.rmtree(workdir, ignore_errors=True)
     failed = [n for n, ok in results if not ok]

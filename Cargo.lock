@@ -486,6 +486,7 @@ dependencies = [
  "copilot-provisioning",
  "copilot-response",
  "copilot-scheduler",
+ "copilot-shuffle",
  "copilot-sla",
  "copilot-soc-management",
  "copilot-talon",
@@ -1039,6 +1040,29 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "copilot-shuffle"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "copilot-auth",
+ "copilot-connectors",
+ "copilot-core",
+ "copilot-db",
+ "copilot-incidents",
+ "copilot-upstream",
+ "copilot-web",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

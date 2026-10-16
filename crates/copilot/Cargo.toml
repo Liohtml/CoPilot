@@ -42,6 +42,7 @@ copilot-velociraptor = { workspace = true }
 copilot-agents = { workspace = true }
 copilot-objectstore = { workspace = true }
 copilot-response = { workspace = true }
+copilot-shuffle = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
