@@ -23,6 +23,8 @@
 //!                      │                    → copilot-soc-management          │
 //!                      │ /api/agent_data_store/*, the incidents' MinIO routes │
 //!                      │                    → copilot-objectstore ────────────────► MinIO :9000
+//!                      │ /api/siem/dashboards, /event_sources, /events        │
+//!                      │                    → copilot-siem ───────────────────────► Wazuh indexer
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -208,6 +210,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The MinIO data store (copilot-objectstore): the upload and the agents'
     // Velociraptor artifact files.
     "/api/agent_data_store",
+    // SIEM (copilot-siem): dashboards (built-in and custom templates, panel
+    // data), event sources and the event search.
+    "/api/siem/dashboards",
+    "/api/siem/event_sources",
+    "/api/siem/events",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -241,6 +248,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_velociraptor::REQUIREMENTS);
     all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::datastore::REQUIREMENTS);
+    all.extend_from_slice(copilot_siem::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -682,6 +690,12 @@ impl App {
                     legacy: self.legacy.clone(),
                 },
             ))
+            // Full paths: `/api/siem/dashboards`, `/event_sources`, `/events`.
+            .merge(copilot_siem::router(copilot_siem::SiemState {
+                ctx: self.ctx.clone(),
+                es: self.wazuh.es.clone(),
+                legacy: self.legacy.clone(),
+            }))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

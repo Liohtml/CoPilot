@@ -454,8 +454,10 @@ impl PyHttp {
 }
 
 /// urllib3's `gzip` / `deflate` decoding of an answer (`deflate` is zlib,
-/// else raw deflate, as urllib3's `DeflateDecoder` tries).
-fn decode_content(headers: &HeaderMap, raw: Bytes) -> Result<Bytes, PyExc> {
+/// else raw deflate, as urllib3's `DeflateDecoder` tries). Also what
+/// aiohttp's `auto_decompress` does to the answers of the clients that ask
+/// for `gzip, deflate` (`copilot_wazuh::es`'s async flavour).
+pub fn decode_content(headers: &HeaderMap, raw: Bytes) -> Result<Bytes, PyExc> {
     use std::io::Read as _;
     let encoding = headers
         .get(http::header::CONTENT_ENCODING)

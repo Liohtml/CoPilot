@@ -485,6 +485,7 @@ dependencies = [
  "copilot-portainer",
  "copilot-provisioning",
  "copilot-scheduler",
+ "copilot-siem",
  "copilot-sla",
  "copilot-soc-management",
  "copilot-talon",
@@ -1003,6 +1004,27 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-siem"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-jinja",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "http",
+ "reqwest",
+ "serde_json",
+ "sqlx",
  "tracing",
 ]
 

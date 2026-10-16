@@ -334,24 +334,55 @@ impl Es {
             .header("user-agent", USER_AGENT)
             .header("authorization", &self.authorization);
         if self.flavor == Flavor::Async {
-            req = req.header("accept", "*/*");
+            // aiohttp's defaults; it decompresses what it asked for.
+            req = req
+                .header("accept", "*/*")
+                .header("accept-encoding", "gzip, deflate");
         }
-        if let Some(b) = body {
-            req = req.body(b.to_vec());
+        match body {
+            Some(b) => req = req.body(b.to_vec()),
+            // `Content-Length: 0` on a body-less request: urllib3 sends it for
+            // the methods that expect a body, aiohttp for every method but
+            // GET, HEAD, OPTIONS and TRACE (hyper writes none on its own).
+            None if self.sends_zero_length(method) => {
+                req = req.header("content-length", "0").body(Vec::new());
+            }
+            None => {}
         }
         let resp = match req.send().await {
             Ok(r) => r,
-            Err(e) => return Err(self.transport_failure(&e)),
+            Err(e) => return Err(self.transport_failure(&e).await),
         };
         let status = resp.status().as_u16();
-        let ctype = resp
-            .headers()
+        let headers = resp.headers().clone();
+        let ctype = headers
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
         let bytes = match resp.bytes().await {
             Ok(b) => b,
-            Err(e) => return Err(self.transport_failure(&e)),
+            Err(e) => return Err(self.transport_failure(&e).await),
+        };
+        let bytes = if self.flavor == Flavor::Async {
+            match copilot_upstream::http::decode_content(&headers, bytes) {
+                Ok(b) => b,
+                Err(e) => {
+                    let error = format!(
+                        "400, message='Can not decode content-encoding: {}'",
+                        headers
+                            .get(reqwest::header::CONTENT_ENCODING)
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or_default()
+                    );
+                    tracing::debug!("indexer answer not decodable: {}", e.text());
+                    return Err(EsError::Connection {
+                        error,
+                        cause: "ClientPayloadError",
+                    });
+                }
+            }
+        } else {
+            bytes
         };
         let raw = String::from_utf8_lossy(&bytes).into_owned();
         if !(200..300).contains(&status) {
@@ -382,8 +413,22 @@ impl Es {
         }
     }
 
-    /// A connection-level failure as urllib3/elasticsearch-py word it.
-    fn transport_failure(&self, e: &reqwest::Error) -> EsError {
+    /// Whether a body-less `method` carries `Content-Length: 0`.
+    fn sends_zero_length(&self, method: &Method) -> bool {
+        match self.flavor {
+            Flavor::Sync => [Method::POST, Method::PUT, Method::PATCH].contains(method),
+            Flavor::Async => {
+                ![Method::GET, Method::HEAD, Method::OPTIONS, Method::TRACE].contains(method)
+            }
+        }
+    }
+
+    /// A connection-level failure as elasticsearch-py words it: over urllib3
+    /// (the sync client) or aiohttp (`AsyncElasticsearch`).
+    async fn transport_failure(&self, e: &reqwest::Error) -> EsError {
+        if self.flavor == Flavor::Async {
+            return self.aiohttp_failure(e).await;
+        }
         if e.is_timeout() && !e.is_connect() {
             return EsError::Timeout {
                 cause: format!(
@@ -402,6 +447,65 @@ impl Es {
         EsError::Connection {
             error: format!("{conn}: Failed to establish a new connection: {detail}"),
             cause: "NewConnectionError",
+        }
+    }
+}
+
+impl Es {
+    /// `AIOHttpConnection.perform_request`'s `ConnectionError("N/A", str(e),
+    /// e)` (or `ConnectionTimeout`) for what aiohttp raised.
+    async fn aiohttp_failure(&self, e: &reqwest::Error) -> EsError {
+        if e.is_timeout() {
+            return EsError::Timeout {
+                cause: String::new(),
+            };
+        }
+        let connector = |strerror: String, cause: &'static str| EsError::Connection {
+            error: format!(
+                "Cannot connect to host {}:{} ssl:default [{strerror}]",
+                self.host, self.port
+            ),
+            cause,
+        };
+        if e.is_connect() {
+            let detail = os_error_text(e);
+            if detail == "[Errno -2] Name or service not known" {
+                return connector(
+                    "Name or service not known".into(),
+                    "ClientConnectorDNSError",
+                );
+            }
+            if detail == "[Errno 111] Connection refused" {
+                let addr = match self.host.parse::<std::net::IpAddr>() {
+                    Ok(ip) => Some(std::net::SocketAddr::new(ip, self.port)),
+                    Err(_) => tokio::net::lookup_host((self.host.as_str(), self.port))
+                        .await
+                        .ok()
+                        .and_then(|mut a| a.next()),
+                };
+                let addr = match addr {
+                    Some(std::net::SocketAddr::V4(a)) => {
+                        format!("({}, {})", str_repr(&a.ip().to_string()), a.port())
+                    }
+                    Some(std::net::SocketAddr::V6(a)) => format!(
+                        "({}, {}, {}, {})",
+                        str_repr(&a.ip().to_string()),
+                        a.port(),
+                        a.flowinfo(),
+                        a.scope_id()
+                    ),
+                    None => format!("({}, {})", str_repr(&self.host), self.port),
+                };
+                return connector(
+                    format!("Connect call failed {addr}"),
+                    "ClientConnectorError",
+                );
+            }
+            return connector(detail, "ClientConnectorError");
+        }
+        EsError::Connection {
+            error: "Server disconnected".into(),
+            cause: "ServerDisconnectedError",
         }
     }
 }
@@ -535,6 +639,10 @@ impl std::fmt::Display for EsError {
             }
             EsError::Connection { error, cause } => {
                 write!(f, "ConnectionError({error}) caused by: {cause}({error})")
+            }
+            EsError::Timeout { cause } if cause.is_empty() => {
+                // aiohttp's whole-request timeout: `asyncio.TimeoutError()`.
+                f.write_str("ConnectionTimeout caused by - TimeoutError()")
             }
             EsError::Timeout { cause } => {
                 write!(f, "ConnectionTimeout caused by - ReadTimeoutError({cause})")
