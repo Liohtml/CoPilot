@@ -41,8 +41,10 @@ from app.db.db_session import async_engine
 RUST_CAPABLE_JOBS = (
     "invoke_palace_lesson_drainer",
     "invoke_palace_lesson_sweeper",
+    "invoke_snapshot_schedules",
     "notify_sla_transitions",
     "prune_audit_log",
+    "resize_wazuh_index_fields",
 )
 
 # Seconds a run started by hand waits for a run in progress (here or in Rust) to finish.

@@ -283,7 +283,7 @@ impl App {
         let scheduler = Scheduler::new(
             ctx.db.clone(),
             OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
-            scheduled_jobs(&ctx, &talon, cfg),
+            scheduled_jobs(&ctx, &talon, &wazuh, cfg),
         );
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
@@ -486,10 +486,12 @@ impl App {
 
 /// Every job this build can take over from APScheduler (`handover.py`'s
 /// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`,
-/// `notify_sla_transitions`.
+/// `notify_sla_transitions`, `invoke_snapshot_schedules`,
+/// `resize_wazuh_index_fields`.
 pub fn scheduled_jobs(
     ctx: &AppContext,
     talon: &TalonConnector,
+    wazuh: &WazuhState,
     cfg: &CopilotConfig,
 ) -> Vec<copilot_scheduler::JobSpec> {
     let mut jobs = copilot_ai_analyst::palace_jobs::job_specs(ctx, talon);
@@ -498,6 +500,7 @@ pub fn scheduled_jobs(
         cfg.audit_log_retention_days.clone(),
     ));
     jobs.push(copilot_soc_management::notifier_job_spec(ctx));
+    jobs.extend(copilot_wazuh::jobs::job_specs(wazuh));
     jobs
 }
 

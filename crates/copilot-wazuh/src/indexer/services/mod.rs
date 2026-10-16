@@ -3,6 +3,7 @@
 
 pub mod alerts;
 pub mod monitoring;
+pub mod scheduled;
 pub mod snapshots;
 
 use reqwest::Method;

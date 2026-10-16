@@ -690,3 +690,82 @@ async fn a_connector_python_verifies_is_updated_and_verified_by_python() {
     legacy.verify().await;
     drop_connector(&h, id).await;
 }
+
+#[tokio::test]
+async fn the_snapshot_job_snapshots_what_is_new_and_records_it_on_the_schedule() {
+    use wiremock::matchers::{body_partial_json, method, path, path_regex, query_param};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let h = harness_or_skip!(None);
+    let s = &h.suffix;
+    let es = wiremock::MockServer::start().await;
+    let (id, old) = borrow_connector(&h, "Wazuh-Indexer", &es.uri(), "indexer", "pw-e2e").await;
+    let name = format!("Job {s}");
+    let prefix = format!("job_{s}");
+    Mock::given(method("GET"))
+        .and(path("/*/_alias"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            format!("idx{s}_1"): {"aliases": {}},
+            format!("idx{s}_2"): {"aliases": {}},
+            format!("idx{s}_3"): {"aliases": {}},
+        })))
+        .mount(&es)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/_snapshot/backup/_all"))
+        .and(query_param("ignore_unavailable", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"snapshots": [
+            {"snapshot": format!("scheduled_{prefix}_20260101_000000"), "indices": [format!("idx{s}_1")]}
+        ]})))
+        .mount(&es)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path_regex(format!(
+            r"^/_snapshot/backup/scheduled_{prefix}_\d{{8}}_\d{{6}}$"
+        )))
+        .and(query_param("wait_for_completion", "false"))
+        .and(body_partial_json(
+            json!({"indices": format!("idx{s}_2"), "metadata": {"already_snapshotted_count": 1}}),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"accepted": true})))
+        .expect(1)
+        .mount(&es)
+        .await;
+    let sid = h
+        .exec(&format!(
+            "INSERT INTO index_snapshot_schedules (name, index_pattern, repository, enabled, \
+             snapshot_prefix, include_global_state, skip_write_indices, interval_days, timezone, \
+             created_at, updated_at) VALUES ('{name}', 'idx{s}_*', 'backup', 1, 'scheduled', 0, 1, 1, \
+             'UTC', UTC_TIMESTAMP(), UTC_TIMESTAMP())"
+        ))
+        .await;
+    copilot_wazuh::jobs::invoke_snapshot_schedules(&h.app.wazuh)
+        .await
+        .unwrap();
+    let (status, snapshot, ran): (
+        Option<String>,
+        Option<String>,
+        Option<chrono::NaiveDateTime>,
+    ) = sqlx::query_as(
+        "SELECT last_execution_status, last_snapshot_name, last_execution_time \
+             FROM index_snapshot_schedules WHERE id = ?",
+    )
+    .bind(sid)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(status.as_deref(), Some("SUCCESS"));
+    assert!(
+        snapshot
+            .as_deref()
+            .is_some_and(|n| n.starts_with(&format!("scheduled_{prefix}_"))),
+        "{snapshot:?}"
+    );
+    assert!(ran.is_some());
+    es.verify().await;
+    h.exec(&format!(
+        "DELETE FROM index_snapshot_schedules WHERE id = {sid}"
+    ))
+    .await;
+    give_back(&h, id, old).await;
+}

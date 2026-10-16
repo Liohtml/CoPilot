@@ -7,9 +7,11 @@ from app.connectors.wazuh_indexer.services.snapshot_and_restore import (
     execute_all_enabled_schedules,
 )
 from app.db.db_session import get_db_session
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 
 
+@rust_handover("invoke_snapshot_schedules")
 async def invoke_snapshot_schedules():
     """
     Scheduled job to execute all enabled snapshot schedules.

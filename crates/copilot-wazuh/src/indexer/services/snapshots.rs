@@ -325,7 +325,7 @@ pub fn write_indices(names: &[String]) -> Vec<String> {
 }
 
 /// `get_all_indices()` (any failure: none).
-async fn all_indices(st: &WazuhState) -> Vec<String> {
+pub(crate) async fn all_indices(st: &WazuhState) -> Vec<String> {
     let Ok(es) = client(st).await else {
         return Vec::new();
     };

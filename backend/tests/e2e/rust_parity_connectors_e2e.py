@@ -23,8 +23,10 @@ import json
 import os
 import re
 import socket
+import subprocess
 import sys
 import threading
+import time
 import uuid
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
@@ -1859,6 +1861,196 @@ async def main():
         c=str(other_id),
     )
     await settle()
+
+    # ======================================================================
+    print("\n=== F. the two indexer jobs, handed over ===")
+    from app.schedulers.handover import manual_run
+    from app.schedulers.services.invoke_snapshot_and_restore import (
+        invoke_snapshot_schedules,
+    )
+    from app.schedulers.services.wazuh_index_resize import resize_wazuh_index_fields
+
+    SNAP, RESIZE = "invoke_snapshot_schedules", "resize_wazuh_index_fields"
+    es4 = Recorder(es_answer, "e4")
+    idx4 = await add_connector("Wazuh-Indexer", es4.url, ES_USER, ES_PASS, verified=1)
+    for job in (SNAP, RESIZE):
+        # Disabled = handed over; a day's interval keeps Rust's own ticks out of the run.
+        await sql(
+            "INSERT INTO scheduled_job_metadata (job_id, last_success, time_interval, extra_data, enabled, job_description) "
+            "VALUES (:j, NULL, 1440, NULL, 0, 'parity')",
+            j=job,
+        )
+    rs2_port = int(os.environ.get("RUST_JOBS_PORT", "5595"))
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "HOME": os.environ.get("HOME", "/tmp"),
+        "COPILOT_DATABASE_URL": f"mysql://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@{os.environ['MYSQL_URL']}/copilot",
+        "JWT_SECRET": os.environ["JWT_SECRET"],
+        "COPILOT_BIND": "127.0.0.1",
+        "COPILOT_PORT": str(rs2_port),
+        "COPILOT_RS_JOBS": f"{SNAP},{RESIZE}",
+        "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
+    }
+    binary = os.environ.get(
+        "COPILOT_BIN",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "target", "debug", "copilot"),
+    )
+    rs2_proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
+    for _ in range(100):
+        try:
+            if httpx.get(f"http://127.0.0.1:{rs2_port}/_copilot/health", timeout=1).status_code == 200:
+                break
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.2)
+    rs2 = httpx.AsyncClient(base_url=f"http://127.0.0.1:{rs2_port}", timeout=120)
+    # A manual run is looked up in APScheduler's store first: put the two jobs there, paused.
+    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+    from app.db.db_session import sync_engine
+    from app.schedulers import scheduler as scheduler_module
+
+    aps = AsyncIOScheduler(event_loop=asyncio.get_running_loop())
+    aps.configure(jobstores={"default": SQLAlchemyJobStore(engine=sync_engine)})
+    aps.start(paused=True)
+    for job, minutes in ((SNAP, 15), (RESIZE, 1)):
+        aps.add_job(
+            scheduler_module.get_function_by_name(job),
+            "interval",
+            minutes=minutes,
+            id=job,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+    STAMP = re.compile(r"_\d{8}_\d{6}")
+    hour = datetime.datetime.utcnow().hour
+    SCHEDULES = [
+        # name, pattern, enabled, skip write indices, global state, hour gate, weekday gate, prefix
+        (f"nightly {SFX}", f"{IDX_A}_*", 1, 1, 0, None, None, "scheduled"),
+        (f"Full {SFX}", f"{IDX_A}_*", 1, 0, 1, None, None, "scheduled"),
+        (f"later {SFX}", f"{IDX_A}_*", 1, 1, 0, (hour + 12) % 24, None, "scheduled"),
+        (f"off {SFX}", "*", 0, 1, 0, None, None, "scheduled"),
+        (f"exact {SFX}", "wazuh-alerts-4.x-2026.10.15", 1, 1, 0, None, None, "daily"),
+        (f"broken day {SFX}", "*", 1, 1, 0, None, 9, "scheduled"),
+    ]
+    sched_ids = []
+    for name, pattern, enabled, skip, glob, hr, dow, prefix in SCHEDULES:
+        r = await sql(
+            "INSERT INTO index_snapshot_schedules (name, index_pattern, repository, enabled, snapshot_prefix, include_global_state, "
+            "skip_write_indices, retention_days, last_execution_time, last_snapshot_name, last_execution_status, scheduled_hour, "
+            "scheduled_minute, interval_days, day_of_week, timezone, created_at, updated_at) VALUES "
+            "(:n, :p, 'backup', :e, :pre, :g, :s, NULL, NULL, NULL, NULL, :h, NULL, 1, :d, 'UTC', :t, :t)",
+            n=name,
+            p=pattern,
+            e=enabled,
+            pre=prefix,
+            g=glob,
+            s=skip,
+            h=hr,
+            d=dow,
+            t=START,
+        )
+        sched_ids.append(r.lastrowid)
+
+    async def job_effects(job):
+        found = await rows(
+            "SELECT name, last_execution_time, last_snapshot_name, last_execution_status, updated_at FROM index_snapshot_schedules "
+            "WHERE id IN :ids ORDER BY id".replace(":ids", "(" + ",".join(str(i) for i in sched_ids) + ")"),
+        )
+        out = []
+        for r in found:
+            out.append(
+                {
+                    "name": r["name"],
+                    "ran": r["last_execution_time"] is not None,
+                    "snapshot": STAMP.sub("_<ts>", r["last_snapshot_name"]) if r["last_snapshot_name"] else None,
+                    "status": r["last_execution_status"],
+                    "touched": str(r["updated_at"]) != START,
+                },
+            )
+        stamp = await rows("SELECT last_success FROM scheduled_job_metadata WHERE job_id = :j", j=job)
+        return {"schedules": out, "stamped": stamp[0]["last_success"] is not None}
+
+    async def reset_jobs():
+        await sql(
+            "UPDATE index_snapshot_schedules SET last_execution_time = NULL, last_snapshot_name = NULL, last_execution_status = NULL, "
+            "updated_at = :t WHERE id IN " + "(" + ",".join(str(i) for i in sched_ids) + ")",
+            t=START,
+        )
+        await sql("UPDATE scheduled_job_metadata SET last_success = NULL WHERE job_id IN (:a, :b)", a=SNAP, b=RESIZE)
+
+    async def job_both(name, job, py_fn):
+        got = {}
+        for tag in ("py", "rs"):
+            await reset_jobs()
+            es4.captured.clear()
+            if tag == "py":
+                with manual_run():
+                    await py_fn()
+            else:
+                r = await rs2.post(f"/api/scheduler/jobs/run/{job}", headers=H(t_admin))
+                got["rs_status"] = r.status_code
+            outbound = normalised(list(es4.captured))
+            for c in outbound:
+                c["path"] = STAMP.sub("_<ts>", c["path"])
+                c["body"] = STAMP.sub("_<ts>", c["body"])
+            got[tag] = {"outbound": outbound, **(await job_effects(job))}
+        check(
+            f"{name}: requests, rows, last_success (rust {got.get('rs_status')})",
+            got.get("rs_status") == 200 and json.dumps(got["py"], default=str) == json.dumps(got["rs"], default=str),
+            f"python {json.dumps(got['py'], default=str)[:3000]}\n        rust   {json.dumps(got['rs'], default=str)[:3000]}",
+        )
+        return got
+
+    try:
+        snap = await job_both("invoke_snapshot_schedules", SNAP, invoke_snapshot_schedules)
+        statuses = [s["status"] for s in snap["rs"]["schedules"]]
+        check(
+            "the schedules came out as designed",
+            statuses[0] == "SKIPPED: No new indices to snapshot (1 write indices skipped) (1 already snapshotted)"
+            and statuses[1] == "SUCCESS"
+            and statuses[2].startswith("DEFERRED: outside scheduled hour")
+            and statuses[3] is None
+            and statuses[4] == "SUCCESS"
+            and statuses[5] == "FAILED: list index out of range",
+            json.dumps(statuses),
+        )
+        es4.mode["refuse"] = True
+        await job_both("invoke_snapshot_schedules: the indexer refusing the snapshots", SNAP, invoke_snapshot_schedules)
+        es4.mode.clear()
+        await settle()
+        await job_both("resize_wazuh_index_fields (verified)", RESIZE, resize_wazuh_index_fields)
+        es4.mode["busy"] = True
+        await job_both("resize_wazuh_index_fields: the indexer failing (the run still returns)", RESIZE, resize_wazuh_index_fields)
+        es4.mode.clear()
+        await sql("UPDATE connectors SET connector_verified = 0 WHERE id = :i", i=idx4)
+        await settle()
+        got = await job_both("resize_wazuh_index_fields (not verified: nothing, no stamp)", RESIZE, resize_wazuh_index_fields)
+        check(
+            "an unverified indexer is left alone",
+            not got["rs"]["outbound"] and not got["rs"]["stamped"],
+            json.dumps(got["rs"], default=str),
+        )
+        # The guard: a scheduled Python tick of a handed-over job does nothing.
+        es4.captured.clear()
+        skipped = await invoke_snapshot_schedules()
+        check("python: a handed-over job's scheduled tick is skipped", repr(skipped) == "JOB_SKIPPED" and not es4.captured, repr(skipped))
+    finally:
+        for job in (SNAP, RESIZE):
+            aps.remove_job(job)
+        aps.shutdown(wait=False)
+        await rs2.aclose()
+        rs2_proc.terminate()
+        try:
+            rs2_proc.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            rs2_proc.kill()
+        await sql("DELETE FROM index_snapshot_schedules WHERE id IN " + "(" + ",".join(str(i) for i in sched_ids) + ")")
+        await sql("DELETE FROM scheduled_job_metadata WHERE job_id IN (:a, :b)", a=SNAP, b=RESIZE)
+        await sql("DELETE FROM connectors WHERE id = :i", i=idx4)
+        await settle()
 
     await py.aclose()
     await rs.aclose()

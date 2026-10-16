@@ -11,6 +11,8 @@
 //! - [`manager`] — the manager's token flow and `/api/wazuh_manager`
 //! - [`pyops`] — Python's dict/list/str operations and their error texts
 //! - [`verify`] — the two connectors' verification for `/api/connectors`
+//! - [`jobs`] — `invoke_snapshot_schedules` and `resize_wazuh_index_fields`,
+//!   taken over from APScheduler by the hand-over
 //! - [`pymodel`] — Pydantic models over upstream JSON (lax coercion and the
 //!   `ValidationError` texts the routes put into responses)
 //! - [`pyjson_error`] — CPython's `json` error messages
@@ -25,6 +27,7 @@
 pub mod error;
 pub mod es;
 pub mod indexer;
+pub mod jobs;
 pub mod manager;
 pub mod pyjson_error;
 pub mod pymodel;
