@@ -885,7 +885,12 @@ fn check_datetime(input: &PyValue, loc: &[Loc], ctx: &mut Ctx) -> Option<PyValue
 /// characters around `...` when longer than 50 (by UTF-8 bytes, like
 /// pydantic-core).
 pub fn input_value(v: &PyValue) -> String {
-    let repr = v.py_repr();
+    truncate_repr(v.py_repr())
+}
+
+/// [`input_value`]'s cut of a `repr()` text a caller built itself (an ORM
+/// or table-model instance, whose `repr` no [`PyValue`] has).
+pub fn truncate_repr(repr: String) -> String {
     let len = repr.len();
     if len <= 50 {
         return repr;

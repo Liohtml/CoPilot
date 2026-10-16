@@ -309,6 +309,15 @@ impl PyHttp {
         {
             builder = builder.header(http::header::ACCEPT_ENCODING, "gzip, deflate");
         }
+        // `requests.utils.default_headers()` (niquests keeps it) says it
+        // explicitly; hyper leaves HTTP/1.1's default unsaid.
+        if !req
+            .headers
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("connection"))
+        {
+            builder = builder.header(http::header::CONNECTION, "keep-alive");
+        }
         for (k, v) in &req.headers {
             builder = builder.header(k.as_str(), v.as_str());
         }

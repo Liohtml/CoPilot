@@ -208,6 +208,22 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The MinIO data store (copilot-objectstore): the upload and the agents'
     // Velociraptor artifact files.
     "/api/agent_data_store",
+    // The integrations core (copilot-integrations): the generic integrations
+    // system (its 14 routes; the delete of a deployed AWS instance is handed to
+    // Python, as is every integration's provisioning), the alert creation
+    // settings (mounted under /api/api/v1) and the network connectors.
+    "/api/integrations/available_integrations",
+    "/api/integrations/customer_integrations",
+    "/api/integrations/customer_integrations_meta",
+    "/api/integrations/create_integration",
+    "/api/integrations/create_integration_meta",
+    "/api/integrations/update_integration",
+    "/api/integrations/delete_integration",
+    "/api/integrations/integration_customer",
+    "/api/integrations/meta_auto",
+    "/api/integrations/update_meta_auto",
+    "/api/api/v1/alert_settings",
+    "/api/network_connectors",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -241,6 +257,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_velociraptor::REQUIREMENTS);
     all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::datastore::REQUIREMENTS);
+    all.extend_from_slice(copilot_integrations::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -679,6 +696,17 @@ impl App {
                 copilot_incidents::datastore::DatastoreState {
                     ctx: self.ctx.clone(),
                     store: self.objectstore.clone(),
+                    legacy: self.legacy.clone(),
+                },
+            ))
+            // Full paths: `/api/integrations/*` (only this router's routes),
+            // `/api/api/v1/alert_settings/*` and `/api/network_connectors/*`.
+            .merge(copilot_integrations::router(
+                copilot_integrations::IntegrationsState {
+                    ctx: self.ctx.clone(),
+                    graylog: self.graylog.clone(),
+                    grafana: self.grafana.clone(),
+                    wazuh: self.wazuh.clone(),
                     legacy: self.legacy.clone(),
                 },
             ))

@@ -1,0 +1,30 @@
+[package]
+name = "copilot-integrations"
+description = "The integrations core: /api/integrations (the generic integrations system, multi-instance included), /api/api/v1/alert_settings (alert creation settings) and /api/network_connectors"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-gateway = { workspace = true }
+copilot-graylog = { workspace = true }
+copilot-grafana = { workspace = true }
+copilot-wazuh = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+sqlx = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true
