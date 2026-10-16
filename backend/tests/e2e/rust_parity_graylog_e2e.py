@@ -5,8 +5,9 @@ The real FastAPI routers (in-process) and a Rust instance this suite starts (no 
 connector cache off, so a connector row changed between checks is seen at once by both) answer
 the same requests on one database. The tools themselves are local stand-ins that record every
 request: Graylog with a 6.x and a 7.x personality, the Event Shipper's GELF TCP input,
-InfluxDB 2.7's query API (annotated CSV from `connector_samples.influx_answer`), and Grafana 11's
-HTTP API (organizations, search, dashboards, org users). For
+InfluxDB 2.7's query API (annotated CSV from `connector_samples.influx_answer`), Grafana 11's
+HTTP API (organizations, search, dashboards, org users) and Portainer 2.21's (JWT login,
+endpoints, swarm nodes, stacks). For
 each request the suite compares the status, the response **bytes**, and every request each
 backend sent to the tool (method, target, the headers that matter, body bytes). urllib3 prints
 an object's memory address in a connection error, which differs between any two processes; it
@@ -14,7 +15,8 @@ is masked. Deliberate differences are asserted as such (RUST_MIGRATION.md §4).
 
     PARITY_SUITES=tests/e2e/rust_parity_graylog_e2e.py scripts/rust-parity.sh
 
-`CONNECTOR_PARITY_SECTIONS=graylog,influxdb,grafana` (the default) picks the connectors to check.
+`CONNECTOR_PARITY_SECTIONS=graylog,influxdb,grafana,portainer` (the default) picks the connectors
+to check.
 """
 
 import asyncio
@@ -65,14 +67,17 @@ RS_PORT = int(os.environ.get("GRAYLOG_PARITY_RUST_PORT", "5695"))
 GRAYLOG_PORT = int(os.environ.get("GRAYLOG_STUB_PORT", "5690"))
 INFLUX_PORT = int(os.environ.get("INFLUX_STUB_PORT", "5691"))
 GRAFANA_PORT = int(os.environ.get("GRAFANA_STUB_PORT", "5692"))
+PORTAINER_PORT = int(os.environ.get("PORTAINER_STUB_PORT", "5693"))
 GELF_PORT = int(os.environ.get("GELF_STUB_PORT", "5694"))
 CLOSED_PORT = 1
-OUR_CONNECTORS = ("Graylog", "Event Shipper", "InfluxDB", "Grafana")
+OUR_CONNECTORS = ("Graylog", "Event Shipper", "InfluxDB", "Grafana", "Portainer")
 INFLUX_URL = f"http://127.0.0.1:{INFLUX_PORT}"
 INFLUX_TOKEN = "influx-token"
 INFLUX_EXTRA = "SOC FORTRESS,telegraf"
 GRAFANA_URL = f"http://127.0.0.1:{GRAFANA_PORT}"
 GRAFANA_USER, GRAFANA_PASSWORD = "admin", "grafana-pässword"
+PORTAINER_URL = f"http://127.0.0.1:{PORTAINER_PORT}"
+PORTAINER_USER, PORTAINER_PASSWORD = "admin", "portainer-pw"
 results = []
 
 
@@ -318,7 +323,71 @@ class Grafana:
 
 GRAFANA = Grafana()
 GRAFANA_RECORDER = GrafanaRecorder()
-RECORDERS = (RECORDER, INFLUX_RECORDER, GRAFANA_RECORDER)
+
+CLOSE = object()
+
+
+class Portainer:
+    """Portainer 2.21 on a swarm: the JWT login, environments, nodes, stacks."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.overrides = {}
+        self.stacks = {s["Id"]: copy.deepcopy(s) for s in samples.PORTAINER_STACKS}
+
+    def answer(self, method, target, body, headers):
+        parts = urlsplit(target)
+        path, query = parts.path, parse_qs(parts.query)
+        key = (method, path)
+        if key in self.overrides:
+            return self.overrides[key]
+        if method == "POST" and path == "/api/auth":
+            creds = json.loads(body or b"null") or {}
+            if creds.get("username") == PORTAINER_USER and creds.get("password") == PORTAINER_PASSWORD:
+                return 200, "application/json", _json({"jwt": samples.PORTAINER_JWT})
+            return 422, "application/json", _json({"message": "Invalid credentials", "details": "Unauthorized"})
+        if headers.get("authorization") != f"Bearer {samples.PORTAINER_JWT}":
+            return 401, "application/json", _json({"message": "Invalid JWT token", "details": "Unauthorized"})
+        not_found = (
+            404,
+            "application/json",
+            _json(
+                {
+                    "message": "Unable to find a stack with the specified identifier inside the database",
+                    "details": "Object not found inside the database",
+                },
+            ),
+        )
+        if method == "GET" and path == "/api/endpoints":
+            return 200, "application/json", _json(samples.PORTAINER_ENDPOINTS)
+        if method == "GET" and path == "/api/endpoints/1/docker/nodes":
+            return 200, "application/json", _json(samples.PORTAINER_NODES)
+        if method == "GET" and path == "/api/stacks":
+            return 200, "application/json", _json(list(self.stacks.values()))
+        m = re.fullmatch(r"/api/stacks/(\d+)(?:/(start|stop))?", path)
+        if m and query.get("endpointId") == ["1"]:
+            stack = self.stacks.get(int(m.group(1)))
+            if stack is None:
+                return not_found
+            if method == "GET" and not m.group(2):
+                return 200, "application/json", _json(stack)
+            if method == "POST" and m.group(2):
+                want = 1 if m.group(2) == "start" else 2
+                if stack["Status"] == want:
+                    return 400, "application/json", _json({"message": f"Stack is already {'active' if want == 1 else 'inactive'}"})
+                stack["Status"] = want
+                return 200, "application/json", _json(stack)
+            if method == "DELETE" and not m.group(2):
+                del self.stacks[stack["Id"]]
+                return 204, None, b""
+        return 404, "application/json", _json({"message": "Not found", "details": "Not found"})
+
+
+PORTAINER = Portainer()
+PORTAINER_RECORDER = Recorder()
+RECORDERS = (RECORDER, INFLUX_RECORDER, GRAFANA_RECORDER, PORTAINER_RECORDER)
 
 
 def make_grafana_handler(tool, recorder):
@@ -328,7 +397,10 @@ def make_grafana_handler(tool, recorder):
             body = self.rfile.read(length) if length else b""
             headers = {k.lower(): v for k, v in self.headers.items()}
             recorder.add(self.command, self.path, headers, body)
-            status, ctype, payload = tool.answer(self.command, self.path, body, headers)
+            answer = tool.answer(self.command, self.path, body, headers)
+            if answer is CLOSE:
+                return
+            status, ctype, payload = answer
             self.send_response_only(status)
             if ctype:
                 self.send_header("Content-Type", ctype)
@@ -477,9 +549,41 @@ def seed():
     set_connector("Event Shipper", "127.0.0.1", extra=str(GELF_PORT))
     set_connector("InfluxDB", INFLUX_URL, api_key=INFLUX_TOKEN, extra=INFLUX_EXTRA)
     set_connector("Grafana", GRAFANA_URL, GRAFANA_USER, GRAFANA_PASSWORD)
+    set_connector("Portainer", PORTAINER_URL, PORTAINER_USER, PORTAINER_PASSWORD)
+    for i, (name, stack_id) in enumerate(PORTAINER_CUSTOMERS):
+        code = f"pt{i}{SFX}"
+        sql(
+            "INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :n, UTC_TIMESTAMP())",
+            c=code,
+            n=name[:50],
+        )
+        sql(
+            "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, customer_meta_graylog_stream, "
+            "customer_meta_grafana_org_id, customer_meta_wazuh_group, customer_meta_portainer_stack_id) "
+            "VALUES (:c, :n, 'i', 's', '1', 'g', :sid)",
+            c=code,
+            n=name,
+            sid=stack_id,
+        )
+
+
+PORTAINER_CUSTOMERS = [
+    (f"Portainer Co {SFX}", 5),
+    (f"No Stack Co {SFX}", None),
+    (f"Zero Stack Co {SFX}", 0),
+    (f"Twice Co {SFX}", 8),
+    (f"Twice Co {SFX}", 9),
+]
+
+
+def portainer_cleanup():
+    for i in range(len(PORTAINER_CUSTOMERS)):
+        sql("DELETE FROM customersmeta WHERE customer_code = :c", c=f"pt{i}{SFX}")
+        sql("DELETE FROM customers WHERE customer_code = :c", c=f"pt{i}{SFX}")
 
 
 def cleanup():
+    portainer_cleanup()
     for name in OUR_CONNECTORS:
         sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
     for row in SAVED_CONNECTORS:
@@ -504,11 +608,13 @@ def build_python_app():
     from app.routers import grafana
     from app.routers import graylog
     from app.routers import influxdb
+    from app.routers import portainer
 
     api = APIRouter(prefix="/api")
     api.include_router(graylog.router)
     api.include_router(influxdb.router)
     api.include_router(grafana.router)
+    api.include_router(portainer.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -1395,23 +1501,215 @@ async def grafana_checks(p, t_admin, t_analyst, t_portal):
     INFLUX.reset()
 
 
+async def portainer_checks(p, t_admin, t_analyst, t_portal):
+    P = "/api/portainer"
+
+    print("\n=== Portainer: reads ===")
+    await p.same("GET /node-details", "GET", P + "/node-details", t_analyst, before=PORTAINER.reset)
+    await p.same("GET /stacks", "GET", P + "/stacks", t_admin, before=PORTAINER.reset)
+    for raw in ("5", "05", " 6 ", "7", "404", "x", "1.0", ""):
+        await p.same(
+            f"GET /stack-details?stack_id={raw!r}",
+            "GET",
+            P + "/stack-details",
+            t_admin,
+            params={"stack_id": raw},
+            before=PORTAINER.reset,
+        )
+    await p.same("GET /stack-details, no stack_id", "GET", P + "/stack-details", t_admin)
+    for path, tok_name in (("/node-details", None), ("/stacks", "analyst"), ("/stacks", None), ("/stack-details?stack_id=5", "portal")):
+        tok = {"analyst": t_analyst, "portal": t_portal}.get(tok_name)
+        await p.same(f"GET {path} ({tok_name or 'no token'})", "GET", P + path, tok)
+
+    print("\n=== Portainer: start, stop, delete ===")
+    for action, method in (
+        ("start-wazuh-customer-stack", "POST"),
+        ("stop-wazuh-customer-stack", "POST"),
+        ("delete-wazuh-customer-stack", "DELETE"),
+    ):
+        for stack_id in ("5", "6", "7", "404", "x"):
+            await p.same(
+                f"{method} /{action}?stack_id={stack_id}",
+                method,
+                f"{P}/{action}",
+                t_admin,
+                params={"stack_id": stack_id},
+                before=PORTAINER.reset,
+            )
+        await p.same(f"{method} /{action}, analyst", method, f"{P}/{action}", t_analyst, params={"stack_id": "5"})
+        await p.same(f"{method} /{action}, no stack_id", method, f"{P}/{action}", t_admin)
+    await p.same(
+        "POST /start-wazuh-customer-stack, a JSON body is ignored",
+        "POST",
+        P + "/start-wazuh-customer-stack",
+        t_admin,
+        params={"stack_id": "6"},
+        content=b"{",
+        headers={"Content-Type": "application/json"},
+        before=PORTAINER.reset,
+    )
+
+    print("\n=== Portainer: what Portainer answers ===")
+    j = "application/json"
+    answers = [
+        (("GET", "/api/endpoints"), (200, j, _json([])), ["/node-details", "/stack-details?stack_id=5"]),
+        (("GET", "/api/endpoints"), (200, j, _json([{"Name": "local", "Id": "3"}])), ["/node-details"]),
+        (("GET", "/api/endpoints"), (200, j, _json([{"Name": "local", "Id": 5.7}])), ["/node-details"]),
+        (("GET", "/api/endpoints"), (200, j, _json([{"Name": "local", "Id": "x"}])), ["/node-details"]),
+        (("GET", "/api/endpoints"), (200, j, _json([{"Name": "local", "Id": None}])), ["/node-details"]),
+        (("GET", "/api/endpoints"), (200, j, _json([{"Id": 1}])), ["/node-details"]),
+        (("GET", "/api/endpoints"), (200, j, _json({"a": 1})), ["/node-details"]),
+        (("GET", "/api/endpoints"), (200, j, _json(None)), ["/node-details"]),
+        (("GET", "/api/endpoints"), (502, "text/html", b"<html>bad gateway</html>"), ["/node-details"]),
+        (
+            ("GET", "/api/endpoints/1/docker/nodes"),
+            (200, j, _json([{**samples.PORTAINER_NODES[0], "CreatedAt": "yesterday"}])),
+            ["/node-details"],
+        ),
+        (("GET", "/api/endpoints/1/docker/nodes"), (200, j, _json({"message": "boom"})), ["/node-details"]),
+        (("GET", "/api/stacks"), (200, j, _json([{"Id": 1}])), ["/stacks"]),
+        (("GET", "/api/stacks"), (500, j, _json({"message": "db down"})), ["/stacks"]),
+        (("GET", "/api/stacks"), (200, j, b""), ["/stacks"]),
+        (("GET", "/api/stacks/5"), (200, j, _json({**samples.PORTAINER_STACKS[0], "Status": "9"})), ["/stack-details?stack_id=5"]),
+        (("POST", "/api/auth"), (500, "text/html", b"<html>oops</html>"), ["/stacks", "/node-details"]),
+        (("POST", "/api/auth"), (200, j, _json({"token": "x"})), ["/stacks"]),
+        (("POST", "/api/auth"), (200, j, b"not json"), ["/stacks"]),
+        (("POST", "/api/auth"), (200, j, _json({"jwt": 5})), ["/stacks"]),
+        (("POST", "/api/auth"), (200, j, _json(["jwt"])), ["/stacks"]),
+    ]
+    for key, answer, routes in answers:
+        for route in routes:
+
+            def before(k=key, a=answer):
+                PORTAINER.reset()
+                PORTAINER.overrides[k] = a
+
+            tok = t_analyst if route == "/node-details" else t_admin
+            await p.same(f"GET {route} ← {key[1]} {answer[0]} {answer[2][:40]!r}", "GET", P + route, tok, before=before)
+    writes = [
+        ("start", "6", ("POST", "/api/stacks/6/start"), (204, None, b"")),
+        ("start", "6", ("POST", "/api/stacks/6/start"), (500, "text/html", b"<html>x</html>")),
+        ("start", "6", ("POST", "/api/stacks/6/start"), (409, j, _json({"message": "conflict"}))),
+        ("start", "6", ("POST", "/api/stacks/6/start"), CLOSE),
+        ("stop", "5", ("POST", "/api/stacks/5/stop"), (200, j, _json({**samples.PORTAINER_STACKS[0], "Status": 2, "Name": None}))),
+        ("delete", "6", ("DELETE", "/api/stacks/6"), (200, j, _json({"deleted": True}))),
+        ("delete", "6", ("DELETE", "/api/stacks/6"), (500, "text/html", b"<html>x</html>")),
+        ("delete", "6", ("DELETE", "/api/stacks/6"), (200, "text/plain", b"   \n")),
+        ("delete", "6", ("DELETE", "/api/stacks/6"), CLOSE),
+    ]
+    for action, stack_id, key, answer in writes:
+
+        def before(k=key, a=answer):
+            PORTAINER.reset()
+            PORTAINER.overrides[k] = a
+
+        method = "DELETE" if action == "delete" else "POST"
+        label = "hang-up" if answer is CLOSE else f"{answer[0]} {answer[2][:30]!r}"
+        await p.same(
+            f"{method} /{action}-wazuh-customer-stack?stack_id={stack_id} ← {label}",
+            method,
+            f"{P}/{action}-wazuh-customer-stack",
+            t_admin,
+            params={"stack_id": stack_id},
+            before=before,
+        )
+
+    print("\n=== Portainer: the customer's stack id ===")
+    names = [c[0] for c in PORTAINER_CUSTOMERS]
+    for name in (names[0], names[0].upper(), names[1], names[2], names[3], "Nobody", ""):
+        await p.same(f"GET /get-customer-stack-id {name!r}", "GET", P + "/get-customer-stack-id", t_admin, params={"customer_name": name})
+    await p.same("GET /get-customer-stack-id, no name", "GET", P + "/get-customer-stack-id", t_admin)
+    await p.same("GET /get-customer-stack-id, analyst", "GET", P + "/get-customer-stack-id", t_analyst, params={"customer_name": names[0]})
+
+    def stack_of(code):
+        return sql("SELECT customer_meta_portainer_stack_id FROM customersmeta WHERE customer_code = :c", c=code).scalar()
+
+    for name, value in ((names[0], "12"), (names[0], "5"), (names[1], "007"), (names[0], "99999999999"), ("Nobody", "3"), (names[3], "4")):
+        codes = [f"pt{i}{SFX}" for i, c in enumerate(PORTAINER_CUSTOMERS) if c[0] == name]
+        seeded = {f"pt{i}{SFX}": c[1] for i, c in enumerate(PORTAINER_CUSTOMERS)}
+
+        def restore():
+            for code in codes:
+                sql("UPDATE customersmeta SET customer_meta_portainer_stack_id = :v WHERE customer_code = :c", v=seeded[code], c=code)
+
+        restore()
+        r1, _ = await p.call(p.py, "POST", P + "/update-customer-stack-id", t_admin, params={"customer_name": name, "stack_id": value})
+        after1 = [stack_of(c) for c in codes]
+        restore()
+        r2, _ = await p.call(p.rs, "POST", P + "/update-customer-stack-id", t_admin, params={"customer_name": name, "stack_id": value})
+        after2 = [stack_of(c) for c in codes]
+        restore()
+        check(
+            f"POST /update-customer-stack-id {name!r} {value} [{r1.status_code}]",
+            (r1.status_code, r1.content, after1) == (r2.status_code, r2.content, after2),
+            f"python {r1.status_code} {r1.content!r} {after1}\n        rust   {r2.status_code} {r2.content!r} {after2}",
+        )
+    for params in ({"customer_name": names[0]}, {"stack_id": "1"}, {"customer_name": names[0], "stack_id": "x"}, {}):
+        await p.same(f"POST /update-customer-stack-id {params}", "POST", P + "/update-customer-stack-id", t_admin, params=params)
+
+    print("\n=== Portainer: connector problems ===")
+    cases = [
+        ("connection refused", f"http://127.0.0.1:{CLOSED_PORT}", PORTAINER_USER, PORTAINER_PASSWORD),
+        ("no scheme", f"127.0.0.1:{PORTAINER_PORT}", PORTAINER_USER, PORTAINER_PASSWORD),
+        ("wrong password", PORTAINER_URL, PORTAINER_USER, "nope"),
+        ("no credentials", PORTAINER_URL, None, None),
+        ("path prefix", PORTAINER_URL + "/portainer", PORTAINER_USER, PORTAINER_PASSWORD),
+        ("trailing slash", PORTAINER_URL + "/", PORTAINER_USER, PORTAINER_PASSWORD),
+        ("unknown host", "http://nonexistent.invalid:9000", PORTAINER_USER, PORTAINER_PASSWORD),
+        ("hangs up", INFLUX_URL, PORTAINER_USER, PORTAINER_PASSWORD),
+    ]
+    for label, url, user, password in cases:
+        set_connector("Portainer", url, user, password)
+
+        def before():
+            PORTAINER.reset()
+            INFLUX.reset()
+            INFLUX.mode = "close"
+
+        await p.same(f"GET /stacks ({label})", "GET", P + "/stacks", t_admin, before=before)
+        await p.same(f"GET /node-details ({label})", "GET", P + "/node-details", t_analyst, before=before)
+        await p.same(
+            f"POST /stop-wazuh-customer-stack ({label})",
+            "POST",
+            P + "/stop-wazuh-customer-stack",
+            t_admin,
+            params={"stack_id": "5"},
+            before=before,
+        )
+    INFLUX.reset()
+    set_connector("Portainer", None)
+    for path in ("/stacks", "/node-details", "/stack-details?stack_id=5"):
+        await p.same(f"GET {path} (no connector)", "GET", P + path, t_admin)
+    await p.same(
+        "DELETE /delete-wazuh-customer-stack (no connector)",
+        "DELETE",
+        P + "/delete-wazuh-customer-stack",
+        t_admin,
+        params={"stack_id": "5"},
+    )
+    set_connector("Portainer", PORTAINER_URL, PORTAINER_USER, PORTAINER_PASSWORD)
+
+
 async def main():
     graylog_server = start_http_stub(GRAYLOG_PORT, GRAYLOG, RECORDER)
     influx_server = start_http_stub(INFLUX_PORT, INFLUX, INFLUX_RECORDER, make_influx_handler)
     grafana_server = start_http_stub(GRAFANA_PORT, GRAFANA, GRAFANA_RECORDER, make_grafana_handler)
+    portainer_server = start_http_stub(PORTAINER_PORT, PORTAINER, PORTAINER_RECORDER, make_grafana_handler)
     gelf_server = start_gelf_stub(GELF_PORT)
     seed()
     proc = start_rust()
     p = Pair()
     t_admin, t_analyst, t_portal = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"]), token(PORTAL, ["customer_user"])
     try:
-        sections = os.environ.get("CONNECTOR_PARITY_SECTIONS", "graylog,influxdb,grafana").split(",")
+        sections = os.environ.get("CONNECTOR_PARITY_SECTIONS", "graylog,influxdb,grafana,portainer").split(",")
         if "graylog" in sections:
             await graylog_checks(p, t_admin, t_analyst, t_portal)
         if "influxdb" in sections:
             await influxdb_checks(p, t_admin, t_analyst, t_portal)
         if "grafana" in sections:
             await grafana_checks(p, t_admin, t_analyst, t_portal)
+        if "portainer" in sections:
+            await portainer_checks(p, t_admin, t_analyst, t_portal)
     finally:
         await p.close()
         proc.terminate()
@@ -1423,6 +1721,7 @@ async def main():
         graylog_server.shutdown()
         influx_server.shutdown()
         grafana_server.shutdown()
+        portainer_server.shutdown()
         gelf_server.shutdown()
     failed = [n for n, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")

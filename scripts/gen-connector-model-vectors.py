@@ -15,7 +15,9 @@ Writes:
   set to a value of another type), likewise;
 * `crates/copilot-influxdb/src/model_vectors.json` — the InfluxDB response models, likewise;
 * `crates/copilot-grafana/src/model_vectors.json` — the Grafana reporting and user models on
-  samples of Grafana 11 answers, likewise.
+  samples of Grafana 11 answers, likewise;
+* `crates/copilot-portainer/src/model_vectors.json` — the Portainer node and stack models on
+  samples of Portainer 2.21 / Docker swarm answers, likewise.
 
 A vector holds the JSON-mode dump's text (`ok`) or its SHA-256 (`ok_sha256`, for mutations of a
 large sample), or the `ValidationError` text (`err`). Re-run after a Pydantic upgrade or a change
@@ -375,6 +377,22 @@ def grafana_cases():
     ]
 
 
+def portainer_cases():
+    from app.connectors.portainer.schema import nodes
+    from app.connectors.portainer.schema import stack
+
+    return [
+        ("Node", nodes.Node, samples.PORTAINER_NODES[0]),
+        ("Node", nodes.Node, samples.PORTAINER_NODES[1]),
+        ("NodesResponse", nodes.NodesResponse, {"nodes": samples.PORTAINER_NODES, "success": True, "message": "m"}),
+        ("StackData", stack.StackData, samples.PORTAINER_STACKS[0]),
+        ("StackResponse", stack.StackResponse, {"data": samples.PORTAINER_STACKS[1], "success": True, "message": "m"}),
+        ("StacksResponse", stack.StacksResponse, {"data": samples.PORTAINER_STACKS, "success": True, "message": "m"}),
+        ("DeleteStackResponse", stack.DeleteStackResponse, {"data": None, "success": True, "message": "m"}),
+        ("StackIDResponse", stack.StackIDResponse, {"stack_id": 5, "success": True, "message": "m"}),
+    ]
+
+
 def write(path, doc):
     """One vector per line: diffable, and small enough for the repository."""
     lines = ["{"]
@@ -401,6 +419,9 @@ def main():
     grafana = model_vectors(grafana_cases())
     write(ROOT / "copilot-grafana" / "src" / "model_vectors.json", grafana)
     print(f"grafana: {len(grafana['bases'])} bases, {len(grafana['vectors'])} mutations")
+    portainer = model_vectors(portainer_cases())
+    write(ROOT / "copilot-portainer" / "src" / "model_vectors.json", portainer)
+    print(f"portainer: {len(portainer['bases'])} bases, {len(portainer['vectors'])} mutations")
     assert not math.isnan(0.0)
 
 

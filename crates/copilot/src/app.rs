@@ -53,6 +53,7 @@ use copilot_influxdb::{InfluxClient, InfluxState};
 use copilot_notifications::{Dispatcher, DispatchingSink, NotificationsState};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
+use copilot_portainer::{PortainerClient, PortainerState};
 use copilot_scheduler::{OptIn, Scheduler, SchedulerState};
 use copilot_talon::{TalonConnector, TalonState};
 use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
@@ -135,6 +136,13 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/reporting",
     "POST /api/reporting/generate_iframe_links",
     "POST /api/user/user/organization/add",
+    // The Portainer connector (copilot-portainer) but
+    // `POST /api/portainer/create-wazuh-customer-stack` (Wazuh, provisioning).
+    "GET /api/portainer",
+    "POST /api/portainer/start-wazuh-customer-stack",
+    "POST /api/portainer/stop-wazuh-customer-stack",
+    "POST /api/portainer/update-customer-stack-id",
+    "DELETE /api/portainer/delete-wazuh-customer-stack",
     // SOC Management but GET /report (the PDF operations report: matplotlib
     // charts and wkhtmltopdf), which falls through to the legacy backend.
     "/api/soc_management",
@@ -162,6 +170,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_sla::REQUIREMENTS);
     all.extend_from_slice(copilot_soc_management::REQUIREMENTS);
     all.extend_from_slice(copilot_notifications::db::REQUIREMENTS);
+    all.extend_from_slice(copilot_portainer::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -220,6 +229,8 @@ pub struct App {
     pub influxdb: InfluxClient,
     /// The Grafana client (`/api/reporting`, `/api/user`, and provisioning).
     pub grafana: GrafanaClient,
+    /// The Portainer client (`/api/portainer`, and provisioning).
+    pub portainer: PortainerClient,
 }
 
 impl App {
@@ -290,6 +301,8 @@ impl App {
             InfluxClient::new(ctx.connectors.clone()).context("building the InfluxDB client")?;
         let grafana =
             GrafanaClient::new(ctx.connectors.clone()).context("building the Grafana client")?;
+        let portainer = PortainerClient::new(ctx.connectors.clone())
+            .context("building the Portainer client")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -320,6 +333,7 @@ impl App {
             graylog,
             influxdb,
             grafana,
+            portainer,
         })
     }
 
@@ -419,6 +433,14 @@ impl App {
                 ctx: self.ctx.clone(),
                 client: self.grafana.clone(),
             }))
+            // All but `POST /create-wazuh-customer-stack`, which falls through.
+            .nest(
+                "/api/portainer",
+                copilot_portainer::router(PortainerState {
+                    ctx: self.ctx.clone(),
+                    client: self.portainer.clone(),
+                }),
+            )
             // `/api/soc_management/*` but `GET /report`; the portal's SLA page
             // with full paths beside the other `/api/customer_portal` routes.
             .nest(

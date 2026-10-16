@@ -825,3 +825,82 @@ GRAFANA_DASHBOARD = {
         "weekStart": "",
     },
 }
+
+
+# --- Portainer 2.21 (a Docker swarm) ---------------------------------------------------------------
+
+PORTAINER_JWT = "eyJhbGciOiJIUzI1NiJ9.eyJpZCI6MX0.portainer-parity"
+PORTAINER_ENDPOINTS = [
+    {"Id": 2, "Name": "edge-01", "Type": 4, "URL": "", "Status": 1},
+    {"Id": 1, "Name": "primary", "Type": 1, "URL": "unix:///var/run/docker.sock", "Status": 1},
+]
+
+
+def portainer_node(node_id, hostname, role, leader=False):
+    node = {
+        "ID": node_id,
+        "Version": {"Index": 42},
+        "CreatedAt": "2026-01-01T10:00:00.123456789Z",
+        "UpdatedAt": "2026-10-15T10:00:00.5Z",
+        "Spec": {"Labels": {"zone": "a"}, "Role": role, "Availability": "active"},
+        "Description": {
+            "Hostname": hostname,
+            "Platform": {"Architecture": "x86_64", "OS": "linux"},
+            "Resources": {"NanoCPUs": 8000000000, "MemoryBytes": 33567789056},
+            "Engine": {
+                "EngineVersion": "27.3.1",
+                "Plugins": [{"Type": "Log", "Name": "json-file"}, {"Type": "Network", "Name": "overlay"}],
+            },
+            "TLSInfo": {"TrustRoot": "-----BEGIN CERTIFICATE-----\n", "CertIssuerSubject": "MBMxETAP", "CertIssuerPublicKey": "MFkwEwYH"},
+        },
+        "Status": {"State": "ready", "Addr": "10.0.0.11"},
+    }
+    if role == "manager":
+        node["ManagerStatus"] = {"Leader": leader, "Reachability": "reachable", "Addr": "10.0.0.11:2377"}
+    return node
+
+
+PORTAINER_NODES = [portainer_node("n1abc", "swarm-01", "manager", leader=True), portainer_node("n2def", "swarm-02", "worker")]
+
+
+def portainer_stack(stack_id, name, status):
+    return {
+        "Id": stack_id,
+        "Name": name,
+        "Type": 1,
+        "EndpointId": 1,
+        "SwarmId": "abc123swarm",
+        "EntryPoint": "docker-compose.yml",
+        "Env": [{"name": "X", "value": "1"}],
+        "ResourceControl": {
+            "Id": 7,
+            "ResourceId": f"abc123swarm_{name}",
+            "SubResourceIds": [],
+            "Type": 6,
+            "UserAccesses": [],
+            "TeamAccesses": [],
+            "Public": False,
+            "AdministratorsOnly": True,
+            "System": False,
+        },
+        "Status": status,
+        "ProjectPath": f"/data/compose/{stack_id}",
+        "CreationDate": 1700000000,
+        "CreatedBy": "admin",
+        "UpdateDate": 0,
+        "UpdatedBy": "",
+        "AdditionalFiles": None,
+        "AutoUpdate": None,
+        "Option": None,
+        "GitConfig": None,
+        "FromAppTemplate": False,
+        "Namespace": "",
+        "IsComposeFormat": False,
+    }
+
+
+PORTAINER_STACKS = [
+    portainer_stack(5, "wazuh-worker-acme", 1),
+    portainer_stack(6, "wazuh-worker-beta", 2),
+    portainer_stack(7, "wazuh-worker-gamma", 3),
+]

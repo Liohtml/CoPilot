@@ -1,16 +1,18 @@
 //! End-to-end tests of the connector ports (`copilot-graylog`,
-//! `copilot-influxdb`, `copilot-grafana`): `/api/graylog`, `/api/influxdb`,
-//! `/api/reporting` and `/api/user` through the production router on a real
-//! MySQL, Graylog (6.x and 7.x), the Event Shipper, InfluxDB and Grafana
-//! replaced by local stand-ins.
+//! `copilot-influxdb`, `copilot-grafana`, `copilot-portainer`):
+//! `/api/graylog`, `/api/influxdb`, `/api/reporting`, `/api/user` and
+//! `/api/portainer` through the production router on a real MySQL, Graylog
+//! (6.x and 7.x), the Event Shipper, InfluxDB, Grafana and Portainer replaced
+//! by local stand-ins.
 //!
 //! ```text
 //! COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13308/copilot \
 //!   cargo test -p copilot --test e2e_graylog -- --test-threads=1
 //! ```
 //!
-//! The `Graylog`, `Event Shipper`, `InfluxDB` and `Grafana` connector rows
-//! are replaced for each test and removed again (run single-threaded).
+//! The `Graylog`, `Event Shipper`, `InfluxDB`, `Grafana` and `Portainer`
+//! connector rows are replaced for each test and removed again (run
+//! single-threaded).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -940,4 +942,174 @@ async fn grafana_user_add_answers_the_validation_error() {
         "Failed to create Grafana client: Invalid connector URL format"
     );
     set_connector(&h, "Grafana", None, None).await;
+}
+
+fn portainer_stack(id: i64, status: i64) -> Value {
+    json!({
+        "Id": id, "Name": format!("wazuh-worker-{id}"), "Type": 1, "EndpointId": 1,
+        "SwarmId": "swarm", "EntryPoint": "docker-compose.yml", "Env": [],
+        "ResourceControl": null, "Status": status, "ProjectPath": "/data/compose",
+        "CreationDate": 1, "CreatedBy": "admin", "UpdateDate": 0, "UpdatedBy": "",
+        "FromAppTemplate": false, "Namespace": "", "IsComposeFormat": false
+    })
+}
+
+#[tokio::test]
+async fn portainer_stacks_are_driven_through_a_fresh_jwt() {
+    let legacy = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/portainer/create-wazuh-customer-stack"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+        .mount(&legacy)
+        .await;
+    let h = harness_or_skip!(Some(&legacy));
+    let (admin, analyst, _) = users(&h).await;
+    let portainer = MockServer::start().await;
+    set_connector(&h, "Portainer", Some(&portainer.uri()), None).await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth"))
+        .and(body_string_contains(
+            "\"username\": \"admin\", \"password\": \"secret\"",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"jwt": "J1"})))
+        .mount(&portainer)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/endpoints"))
+        .and(header("authorization", "Bearer J1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"Id": 9, "Name": "edge"}, {"Id": "3", "Name": "local"}
+        ])))
+        .mount(&portainer)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/stacks/6"))
+        .and(query_param("endpointId", "3"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(portainer_stack(6, 2)))
+        .mount(&portainer)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/stacks/6/start"))
+        .and(query_param("endpointId", "3"))
+        .and(header("content-length", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(portainer_stack(6, 1)))
+        .mount(&portainer)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/stacks/6"))
+        .and(query_param("endpointId", "3"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&portainer)
+        .await;
+
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/portainer/start-wazuh-customer-stack?stack_id=06",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["Status"], 1);
+    // Stopped already: nothing is sent but the reads, then the delete.
+    let (status, body) = h
+        .call(
+            "DELETE",
+            "/api/portainer/delete-wazuh-customer-stack?stack_id=6",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({"data": null, "success": true, "message": "Successfully deleted resource"})
+    );
+    let auths = portainer
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/api/auth")
+        .count();
+    assert_eq!(auths, 8, "every Portainer call logs in first");
+
+    let (status, _) = h
+        .call("GET", "/api/portainer/stacks", Some(&analyst), None)
+        .await;
+    assert_ne!(status, StatusCode::OK, "admin only");
+    let (status, body) = h
+        .call("GET", "/api/portainer/stack-details", Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+
+    // The customer's stack id lives in customersmeta.
+    let s = &h.suffix;
+    h.exec(&format!(
+        "INSERT INTO customers (customer_code, customer_name, created_at) \
+         VALUES ('pt{s}', 'Pt Co {s}', UTC_TIMESTAMP())"
+    ))
+    .await;
+    h.exec(&format!(
+        "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, \
+         customer_meta_graylog_stream, customer_meta_grafana_org_id, customer_meta_wazuh_group) \
+         VALUES ('pt{s}', 'Pt Co {s}', 'i', 's', '1', 'g')"
+    ))
+    .await;
+    let name = format!("Pt%20Co%20{s}");
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("/api/portainer/get-customer-stack-id?customer_name={name}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(
+        body["message"],
+        format!("No Portainer stack ID found for customer Pt Co {s}")
+    );
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("/api/portainer/update-customer-stack-id?customer_name={name}&stack_id=12"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("/api/portainer/get-customer-stack-id?customer_name={name}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        body,
+        json!({"stack_id": 12, "success": true, "message": "Customer stack ID retrieved successfully."})
+    );
+    h.exec(&format!(
+        "DELETE FROM customersmeta WHERE customer_code = 'pt{s}'"
+    ))
+    .await;
+    h.exec(&format!(
+        "DELETE FROM customers WHERE customer_code = 'pt{s}'"
+    ))
+    .await;
+
+    // Creating a stack stays in Python.
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/portainer/create-wazuh-customer-stack",
+            Some(&admin),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!((status, body), (StatusCode::OK, json!({"from": "python"})));
+    set_connector(&h, "Portainer", None, None).await;
 }

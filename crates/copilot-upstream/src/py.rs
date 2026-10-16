@@ -201,6 +201,63 @@ pub fn py_str(value: &PyValue) -> String {
     value.py_str()
 }
 
+/// `int(value)` of a `json.loads` value: its decimal text (a float is
+/// truncated toward zero), or the `ValueError` / `TypeError` /
+/// `OverflowError` CPython raises.
+pub fn int_of(value: &PyValue) -> PyResult<String> {
+    match value {
+        PyValue::Int(i) => Ok(i.clone()),
+        PyValue::Bool(b) => Ok(if *b { "1" } else { "0" }.into()),
+        PyValue::Float(f) if f.is_nan() => Err(PyExc::ValueError(
+            "cannot convert float NaN to integer".into(),
+        )),
+        PyValue::Float(f) if f.is_infinite() => Err(PyExc::Other(
+            "OverflowError",
+            "cannot convert float infinity to integer".into(),
+        )),
+        PyValue::Float(f) => {
+            let t = f.trunc();
+            Ok(if t == 0.0 {
+                "0".into()
+            } else {
+                format!("{t:.0}")
+            })
+        }
+        PyValue::Str(s) => {
+            let invalid = || {
+                PyExc::ValueError(format!(
+                    "invalid literal for int() with base 10: {}",
+                    str_repr(s)
+                ))
+            };
+            let t = s.trim_matches(|c: char| c.is_whitespace());
+            let (sign, digits) = match t.strip_prefix('-') {
+                Some(d) => ("-", d),
+                None => ("", t.strip_prefix('+').unwrap_or(t)),
+            };
+            if digits.is_empty()
+                || digits.starts_with('_')
+                || digits.ends_with('_')
+                || digits.contains("__")
+                || !digits.chars().all(|c| c.is_ascii_digit() || c == '_')
+            {
+                return Err(invalid());
+            }
+            let clean: String = digits.chars().filter(|c| *c != '_').collect();
+            let clean = clean.trim_start_matches('0');
+            Ok(if clean.is_empty() {
+                "0".into()
+            } else {
+                format!("{sign}{clean}")
+            })
+        }
+        other => Err(PyExc::TypeError(format!(
+            "int() argument must be a string, a bytes-like object or a real number, not '{}'",
+            type_name(other)
+        ))),
+    }
+}
+
 /// Python `==` between two `json.loads` values (`1 == 1.0 == True`).
 pub fn py_eq(a: &PyValue, b: &PyValue) -> bool {
     fn num(v: &PyValue) -> Option<f64> {
@@ -280,6 +337,25 @@ mod tests {
         assert_eq!(PyExc::http(404, "x").unhandled().status(), 404);
         assert_eq!(PyExc::TypeError("x".into()).unhandled().status(), 500);
         assert_eq!(PyExc::http(500, "boom").display(), "500: boom");
+    }
+
+    #[test]
+    fn int_like_cpython() {
+        let f = |v: PyValue| int_of(&v).map_err(|e| e.text());
+        assert_eq!(f(PyValue::Float(-5.7)), Ok("-5".into()));
+        assert_eq!(
+            f(PyValue::Float(1e30)),
+            Ok("1000000000000000019884624838656".into())
+        );
+        assert_eq!(f(PyValue::Str(" 0_7 ".into())), Ok("7".into()));
+        assert_eq!(
+            f(PyValue::Str("1.0".into())),
+            Err("invalid literal for int() with base 10: '1.0'".into())
+        );
+        assert_eq!(
+            f(PyValue::None),
+            Err("int() argument must be a string, a bytes-like object or a real number, not 'NoneType'".into())
+        );
     }
 
     #[test]

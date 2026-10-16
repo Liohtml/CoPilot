@@ -18,6 +18,10 @@
 //! The one part that cannot match is that object's memory address, which
 //! differs between any two Python processes too ([`OBJECT_ADDRESS`]).
 //!
+//! Like the Python libraries (`trust_env`), the client goes through the
+//! proxies the environment names (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`,
+//! with `NO_PROXY`).
+//!
 //! TLS certificates are **not verified** when the Python helper passed
 //! `verify=False` (Graylog, Portainer, Grafana `?verify=false`): the tools
 //! of a SOCFortress stack serve self-signed certificates, and the Rust port
@@ -104,6 +108,10 @@ pub struct PyResponse {
     pub headers: HeaderMap,
     /// Body bytes.
     pub body: Bytes,
+    /// The status line's reason phrase (`response.reason`).
+    pub reason: String,
+    /// The final URL (`response.url`, after redirects).
+    pub url: String,
 }
 
 impl PyResponse {
@@ -141,6 +149,37 @@ impl PyResponse {
             }
             _ => String::from_utf8_lossy(&self.body).into_owned(),
         }
+    }
+
+    /// A response with only a status, headers and body (tests).
+    pub fn new(status: u16, headers: HeaderMap, body: impl Into<Bytes>) -> Self {
+        Self {
+            status,
+            headers,
+            body: body.into(),
+            reason: http::StatusCode::from_u16(status)
+                .ok()
+                .and_then(|s| s.canonical_reason())
+                .unwrap_or("")
+                .to_string(),
+            url: String::new(),
+        }
+    }
+
+    /// `response.raise_for_status()`: `HTTPError` for a 4xx or 5xx.
+    pub fn raise_for_status(&self) -> Result<(), PyExc> {
+        let kind = match self.status {
+            400..=499 => "Client",
+            500..=599 => "Server",
+            _ => return Ok(()),
+        };
+        Err(PyExc::Other(
+            "HTTPError",
+            format!(
+                "{} {kind} Error: {} for url: {}",
+                self.status, self.reason, self.url
+            ),
+        ))
     }
 
     /// `response.json()`: the value, or `requests.JSONDecodeError`.
@@ -208,7 +247,8 @@ impl PyHttp {
                 Flavor::Requests => "python-requests/2.33.1",
                 Flavor::Niquests => "niquests/3.18.7",
             })
-            .no_proxy()
+            // No `.no_proxy()`: both libraries honour `HTTP(S)_PROXY`,
+            // `ALL_PROXY` and `NO_PROXY` (`trust_env`), and so does reqwest.
             .build()?;
         Ok(Self {
             client,
@@ -298,6 +338,12 @@ impl PyHttp {
             Err(e) => return Err(self.transport_error(&e, &parts)),
         };
         let status = resp.status().as_u16();
+        let reason = resp
+            .extensions()
+            .get::<hyper::ext::ReasonPhrase>()
+            .map(|r| String::from_utf8_lossy(r.as_bytes()).into_owned())
+            .unwrap_or_else(|| resp.status().canonical_reason().unwrap_or("").to_string());
+        let final_url = resp.url().to_string();
         let headers = resp.headers().clone();
         let body = match resp.bytes().await {
             Ok(b) => b,
@@ -308,6 +354,8 @@ impl PyHttp {
             status,
             headers,
             body,
+            reason,
+            url: final_url,
         })
     }
 
