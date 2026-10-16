@@ -15,9 +15,10 @@
 //!   (GHSA-5542-j2fc-gqjm)
 //! - [`verify`] — the connector check for `/api/connectors`
 //! - [`routes`], [`services`], [`schema`] — `/api/artifacts` (the artifact
-//!   definitions, one host's artifacts, a remote command and a quarantine)
-//!   and `/api/flows` (a host's flows, one flow's results); the two MinIO
-//!   collection routes stay in Python
+//!   definitions, one host's artifacts, a remote command, a quarantine, and
+//!   the two collections whose download pack goes to MinIO through
+//!   `copilot-objectstore`) and `/api/flows` (a host's flows, one flow's
+//!   results)
 //! - [`agents`] — the `agents` rows those routes resolve a host through
 //!
 //! There is no `protoc` at build time: the five messages CoPilot uses are

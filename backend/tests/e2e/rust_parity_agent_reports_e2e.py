@@ -1,5 +1,6 @@
 """Parity of the agents' report routers (`crates/copilot-agent-reports`: /api/vulnerabilities,
-/api/sca, /api/syscollector) with this backend —
+/api/sca, /api/syscollector) and of Velociraptor's MinIO collections (`crates/copilot-velociraptor`:
+POST /api/artifacts/collect and /api/artifacts/collect/file/agent/{agent_id}) with this backend —
 NOT collected by pytest (needs a live MySQL and the Rust binary; run by scripts/rust-parity.sh).
 
 The real FastAPI routers (in-process, with copilot.py's GZipMiddleware) and a Rust instance this
@@ -1309,12 +1310,300 @@ async def syscollector_checks(p, t):
     check("indexer package search as an analyst (Rust searches the caller's agents) [200]", not reason, reason or "")
 
 
-# --- Velociraptor (no checks yet) ------------------------------------------------------------------
+# --- Checks: Velociraptor collections ----------------------------------------------------------------
+
+ARTIFACT_DEFS = [
+    {"name": "Linux.Sys.Users", "description": "users", "parameters": [{"name": "UserRegex"}, {"name": "Fast", "type": "bool"}]},
+    {"name": "Linux.Sys.Pslist", "description": "ps"},
+    {"name": "Windows.System.Pslist", "description": "ps", "parameters": [{"name": "ProcessRegex"}]},
+    {"name": "Generic.Collectors.File", "description": "files", "parameters": [{"name": "collectionSpec"}, {"name": "Root"}]},
+]
+PACK = bytes(range(256)) * 9
 
 
 def velo_answer(stand_in, vql, org_id):
-    """No route of these routers asks Velociraptor: every query answers no rows."""
-    return [], None
+    import grpc
+
+    mode = stand_in.mode
+    if vql.startswith("SELECT name,description,parameters FROM artifact_definitions()"):
+        found = list(ARTIFACT_DEFS)
+        m = re.fullmatch(r".* WHERE name = '(.*)'", vql)
+        if m:
+            found = [d for d in found if d["name"] == m.group(1)]
+        return [found], None
+    if vql.startswith("SELECT collect_client(org_id="):
+        call = vql[len("SELECT ") : -len(" FROM scope()")]
+        if mode.get("no_flow"):
+            return [[{call: {"request": {}}}]], None
+        if mode.get("int_flow"):
+            return [[{call: {"flow_id": 7}}]], None
+        return [[{"other": 1, call: {"flow_id": "F.CL" + SFX.upper(), "request": {"creator": "api"}}}]], None
+    if vql.startswith("SELECT * FROM watch_monitoring("):
+        return [[{"FlowId": "F.CL" + SFX.upper()}]], None
+    if vql.startswith("SELECT * FROM source("):
+        if mode.get("rows_not_dicts"):
+            return [[1, "two"]], None
+        return [[{"Name": "init", "Pid": 1}], [{"Name": "sshd é", "Pid": 22}]], None
+    if vql.startswith("SELECT os_info.hostname AS Hostname"):
+        if mode.get("no_hostname"):
+            return [[]], None
+        return [[{"Hostname": "VELO-" + SFX}]], None
+    if vql.startswith("SELECT create_flow_download("):
+        return [[{"create_flow_download": "downloads/x.zip"}]], None
+    m = re.search(r"offset=(\d+), length=(\d+)", vql)
+    if m:
+        if mode.get("empty_pack"):
+            return [[{"Data": ""}]], None
+        offset, length = int(m.group(1)), int(m.group(2))
+        if mode.get("bad_chunk"):
+            return [[{"Data": "@@@"}]], None
+        chunk = PACK[offset : offset + length]
+        return [[{"Data": base64.b64encode(chunk).decode()}]] if chunk else [[]], None
+    return [], (grpc.StatusCode.INVALID_ARGUMENT, f"unexpected VQL: {vql}")
+
+
+async def velociraptor_checks(p, t):
+    a1, w1, b1, a2 = (AGENTS[k][0] for k in ("a1", "w1", "b1", "a2"))
+    host_a1, host_w1, host_b1 = AGENTS["a1"][1], AGENTS["w1"][1], AGENTS["b1"][1]
+
+    def fresh():
+        p.velo.mode.clear()
+        sql("DELETE FROM agent_datastore WHERE agent_id IN " + our_agent_ids())
+        sql("DELETE FROM audit_log WHERE actor_username IN " + in_list(USERS))
+
+    def store_rows():
+        time.sleep(0.3)  # the Rust audit sink writes on a task of its own
+        return {
+            "datastore": rows(
+                "SELECT agent_id, velociraptor_id, artifact_name, flow_id, bucket_name, object_key, file_name, content_type, file_size, "
+                "file_hash, uploaded_by, notes, status, error_message FROM agent_datastore WHERE agent_id IN "
+                + our_agent_ids()
+                + " ORDER BY id",
+            ),
+            "audit": rows(
+                "SELECT actor_username, customer_code, action, entity_type, entity_id, result, old_value, new_value, details FROM audit_log "
+                "WHERE actor_username IN " + in_list(USERS) + " ORDER BY id",
+            ),
+        }
+
+    def with_mode(**mode):
+        def before():
+            fresh()
+            p.velo.mode.update(mode)
+
+        return before
+
+    C = "/api/artifacts/collect"
+    await p.same(
+        "collect an artifact",
+        "POST",
+        C,
+        t["analyst"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Users", "parameters": {"env": [{"key": "UserRegex", "value": "it's"}]}},
+        before=fresh,
+        db=store_rows,
+    )
+    await p.same(
+        "collect with direct parameters",
+        "POST",
+        C,
+        t["analyst"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Users", "parameters": {"Fast": "Y", "UserRegex": "root"}},
+        before=fresh,
+        db=store_rows,
+    )
+    await p.same(
+        "collect into the data store only",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": host_w1, "artifact_name": "Windows.System.Pslist", "data_store_only": True},
+        before=fresh,
+        db=store_rows,
+    )
+    await p.same(
+        "collect, the pack empty",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Pslist"},
+        before=with_mode(empty_pack=True),
+        db=store_rows,
+    )
+    await p.same(
+        "collect, a chunk that does not decode",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Pslist"},
+        before=with_mode(bad_chunk=True),
+        db=store_rows,
+    )
+    await p.same(
+        "collect, no hostname from Velociraptor",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Pslist"},
+        before=with_mode(no_hostname=True),
+        db=store_rows,
+    )
+    await p.same(
+        "collect, no flow",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Pslist"},
+        before=with_mode(no_flow=True),
+        db=store_rows,
+    )
+    await p.same(
+        "collect, a flow id that is no string",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Pslist"},
+        before=with_mode(int_flow=True),
+        db=store_rows,
+    )
+    await p.same(
+        "collect, rows that are not dicts",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Pslist"},
+        before=with_mode(rows_not_dicts=True),
+        db=store_rows,
+    )
+
+    def s3_down():
+        fresh()
+        S3.fault(
+            lambda m, path, q: m == "PUT" and path.startswith("/velociraptor-artifacts/"),
+            (500, {"Content-Type": "text/plain"}, b"nope"),
+            count=5,
+        )
+
+    await p.same(
+        "collect, MinIO refuses the upload",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Pslist"},
+        before=s3_down,
+        db=store_rows,
+    )
+    await p.same(
+        "collect with an unknown parameter",
+        "POST",
+        C,
+        t["analyst"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Users", "parameters": {"env": [{"key": "Nope", "value": "1"}]}},
+        before=fresh,
+    )
+    await p.same(
+        "collect with parameters it takes none of",
+        "POST",
+        C,
+        t["analyst"],
+        json={"hostname": host_a1, "artifact_name": "Linux.Sys.Pslist", "parameters": {"X": "1"}},
+        before=fresh,
+    )
+    await p.same(
+        "collect an artifact of another OS",
+        "POST",
+        C,
+        t["analyst"],
+        json={"hostname": host_a1, "artifact_name": "Windows.System.Pslist"},
+        before=fresh,
+    )
+    await p.same("collect without an artifact", "POST", C, t["analyst"], json={"hostname": host_a1}, before=fresh)
+    await p.same(
+        "collect on another tenant's host",
+        "POST",
+        C,
+        t["analyst"],
+        json={"hostname": host_b1, "artifact_name": "Linux.Sys.Pslist"},
+        before=fresh,
+        db=store_rows,
+    )
+    await p.same(
+        "collect on a host without Velociraptor",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": AGENTS["a2"][1], "artifact_name": "Linux.Sys.Pslist"},
+        before=fresh,
+    )
+    await p.same(
+        "collect on an unknown host",
+        "POST",
+        C,
+        t["admin"],
+        json={"hostname": "nobody", "artifact_name": "Linux.Sys.Pslist"},
+        before=fresh,
+    )
+    await p.same(
+        "collect with a bad body",
+        "POST",
+        C,
+        t["analyst"],
+        json={"hostname": host_a1, "parameters": {"x": 1}, "data_store_only": "maybe"},
+    )
+    await p.same("collect without a body", "POST", C, t["analyst"])
+    await p.same("collect as a portal user", "POST", C, t["portal"], json={"hostname": host_a1})
+
+    F = "/api/artifacts/collect/file/agent"
+    await p.same(
+        "collect a Windows file",
+        "POST",
+        f"{F}/{w1}",
+        t["analyst"],
+        json={"file": "Users\\Administrator\\Downloads\\LICENSE.txt"},
+        before=fresh,
+        db=store_rows,
+    )
+    await p.same(
+        "collect a Linux file",
+        "POST",
+        f"{F}/{a1}",
+        t["analyst"],
+        json={"file": "/tmp/x y.txt", "root_disk": "/"},
+        before=fresh,
+        db=store_rows,
+    )
+    await p.same(
+        "collect a file, the pack empty",
+        "POST",
+        f"{F}/{a1}",
+        t["admin"],
+        json={"file": "/tmp/x"},
+        before=with_mode(empty_pack=True),
+        db=store_rows,
+    )
+    await p.same(
+        "collect a file, MinIO refuses the upload",
+        "POST",
+        f"{F}/{a1}",
+        t["admin"],
+        json={"file": "/tmp/x"},
+        before=s3_down,
+        db=store_rows,
+    )
+    await p.same("collect a file, no flow", "POST", f"{F}/{a1}", t["admin"], json={"file": "/tmp/x"}, before=with_mode(no_flow=True))
+    await p.same("collect a file of another tenant's agent", "POST", f"{F}/{b1}", t["analyst"], json={"file": "/etc/passwd"}, before=fresh)
+    await p.same(
+        "collect a file of an agent without Velociraptor",
+        "POST",
+        f"{F}/{a2}",
+        t["admin"],
+        json={"file": "/etc/passwd"},
+        before=fresh,
+    )
+    await p.same("collect a file of an unknown agent", "POST", f"{F}/nobody", t["admin"], json={"file": "/etc/passwd"}, before=fresh)
+    await p.same("collect a file with a bad body", "POST", f"{F}/{a1}", t["analyst"], json={"root_disk": None})
+    await p.same("collect a file of another tenant's agent with a bad body", "POST", f"{F}/{b1}", t["analyst"], json={})
+    fresh()
 
 
 # --- Main --------------------------------------------------------------------------------------------
@@ -1341,13 +1630,23 @@ async def main():
         "scheduler": token(SCHED, ["scheduler"]),
     }
     try:
-        sections = os.environ.get("AGENT_REPORTS_PARITY_SECTIONS", "vulnerabilities,sca,syscollector").split(",")
+        sections = os.environ.get("AGENT_REPORTS_PARITY_SECTIONS", "vulnerabilities,sca,syscollector,velociraptor").split(",")
         if "vulnerabilities" in sections:
             await vulnerability_checks(p, t)
         if "sca" in sections:
             await sca_checks(p, t)
         if "syscollector" in sections:
             await syscollector_checks(p, t)
+        if "velociraptor" in sections:
+            # Python writes each download pack into its working directory and leaves it there when the upload fails:
+            # the collections run in a directory of their own.
+            home, packs = os.getcwd(), tempfile.mkdtemp(prefix="agent-reports-packs-")
+            os.chdir(packs)
+            try:
+                await velociraptor_checks(p, t)
+            finally:
+                os.chdir(home)
+                shutil.rmtree(packs, ignore_errors=True)
     finally:
         await p.close()
         proc.terminate()

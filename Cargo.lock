@@ -1132,6 +1132,7 @@ dependencies = [
  "copilot-connectors",
  "copilot-core",
  "copilot-db",
+ "copilot-objectstore",
  "copilot-upstream",
  "copilot-web",
  "futures",

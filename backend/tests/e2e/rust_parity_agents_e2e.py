@@ -1894,7 +1894,8 @@ async def main():  # noqa: C901 - one scenario after the other
         velo.mode = {"deny": True}
         await both("artifacts: the server refuses", "GET", AR, t_analyst, recs=VO)
         velo.mode = {}
-        for prefix in ("linux", "WINDOWS", "MacOS", "solaris", "collect"):
+        # `collect`, `command` and `quarantine` are POST routes: Starlette answers their GET with `/{os_prefix}`.
+        for prefix in ("linux", "WINDOWS", "MacOS", "solaris", "collect", "command", "quarantine"):
             await both(f"artifacts for OS prefix {prefix}", "GET", AR + f"/{prefix}", t_analyst, recs=VO)
         await both("artifact by name", "GET", AR + "/artifact/Linux.Sys.BashShell", t_analyst, recs=VO)
         await both("artifact by name: unknown", "GET", AR + "/artifact/Linux.Nothing", t_analyst, recs=VO)
@@ -1988,7 +1989,6 @@ async def main():  # noqa: C901 - one scenario after the other
             velo.mode = {mode: True}
             await both(f"quarantine: {mode}", "POST", QUA, t_resp, q, **W)
         velo.mode = {}
-        await both("collect: still Python's", "GET", AR + "/collect", t_analyst, recs=VO)
 
         await both("flows: no token", "GET", FL + f"/{host['a1']}")
         await both("flows: portal user", "GET", FL + f"/{host['a1']}", t_portal, recs=VO)

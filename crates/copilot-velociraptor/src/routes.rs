@@ -1,20 +1,20 @@
 //! `/api/artifacts` and `/api/flows` — port of
 //! `app/connectors/velociraptor/routes/{artifacts,flows}.py`.
 //!
-//! Every route but the artifact listings names an endpoint, by hostname or
-//! by Velociraptor client id; its tenant is checked first, as in Python
-//! (`verify_hostname_access`, `enforce_hostname_access`,
-//! `enforce_owned_object_access`: fail-closed). The response routes
-//! (`/command`, `/quarantine`) admit `admin` and `responder` and are audited.
+//! Every route but the artifact listings names an endpoint, by hostname, by
+//! agent id or by Velociraptor client id; its tenant is checked first, as in
+//! Python (`verify_hostname_access`, `enforce_hostname_access`,
+//! `verify_agent_id_access`, `enforce_owned_object_access`: fail-closed).
+//! The response routes (`/command`, `/quarantine`) admit `admin` and
+//! `responder` and are audited, as is an artifact collection.
 //!
-//! Still Python: `POST /api/artifacts/collect` and `POST
-//! /api/artifacts/collect/file/agent/{agent_id}` store the collection in
-//! MinIO. No route here matches them (`/collect` is only a `GET`), so the
-//! binary forwards both.
+//! The two collections (`POST /collect`, `POST /collect/file/agent/{agent_id}`)
+//! store the flow's download pack in MinIO and record it in
+//! `agent_datastore` ([`crate::services::collections`]).
 
 use axum::Router;
 use axum::extract::{FromRef, Path, State};
-use axum::routing::{get, post};
+use axum::routing::{MethodRouter, get, post};
 use serde_json::{Map, Value};
 
 use copilot_auth::pyvalue::PyValue;
@@ -26,11 +26,16 @@ use copilot_web::{
     WithJson,
 };
 
+use copilot_objectstore::ObjectStore;
+use copilot_upstream::respond::body_model;
+
 use crate::VelociraptorClient;
 use crate::agents::{self, AgentRow};
 use crate::schema::{
-    ACTIONS, COMMAND_ARTIFACTS, QUARANTINE_ARTIFACTS, QuarantineBody, RunCommandBody,
+    ACTIONS, COLLECT_ARTIFACT_BODY, COMMAND_ARTIFACTS, CollectArtifactBody, FILE_COLLECTION_BODY,
+    ParamValue, QUARANTINE_ARTIFACTS, QuarantineBody, RunCommandBody,
 };
+use crate::services::collections::{self, CollectFileBody, FILE_COLLECTOR};
 use crate::services::{artifacts, flows};
 
 /// `require_any_scope("admin", "responder")`.
@@ -49,6 +54,8 @@ pub struct VelociraptorState {
     pub ctx: AppContext,
     /// The gRPC client.
     pub client: VelociraptorClient,
+    /// MinIO, where the collections' download packs go.
+    pub store: ObjectStore,
 }
 
 impl FromRef<VelociraptorState> for AppContext {
@@ -68,8 +75,19 @@ pub fn artifacts_router(state: VelociraptorState) -> Router {
             get(parameters),
         )
         .route("/hostname/{hostname}", get(for_hostname))
-        .route("/command", post(command))
-        .route("/quarantine", post(quarantine))
+        .route(
+            "/collect",
+            post(collect).merge(segment_as_os_prefix("collect")),
+        )
+        .route(
+            "/command",
+            post(command).merge(segment_as_os_prefix("command")),
+        )
+        .route(
+            "/quarantine",
+            post(quarantine).merge(segment_as_os_prefix("quarantine")),
+        )
+        .route("/collect/file/agent/{agent_id}", post(collect_file))
         .with_state(state)
 }
 
@@ -143,9 +161,26 @@ async fn for_os_prefix(
     State(st): State<VelociraptorState>,
     Path(os_prefix): Path<String>,
 ) -> ApiResult {
-    let prefix = artifacts::verify_os_prefix(&os_prefix)?;
+    os_prefix_listing(&st, &os_prefix).await
+}
+
+/// `GET` of a path a `POST` route owns (`/collect`, `/command`,
+/// `/quarantine`): Starlette's router takes the first route that matches
+/// path *and* method, `GET /{os_prefix}`, with the segment as the prefix (a
+/// 400 `OS prefix … does not exist.`), where axum would answer 405.
+fn segment_as_os_prefix(segment: &'static str) -> MethodRouter<VelociraptorState> {
+    get(
+        move |_auth: Soc, State(st): State<VelociraptorState>| async move {
+            os_prefix_listing(&st, segment).await
+        },
+    )
+}
+
+/// `GET /{os_prefix}` once the token is checked.
+async fn os_prefix_listing(st: &VelociraptorState, os_prefix: &str) -> ApiResult {
+    let prefix = artifacts::verify_os_prefix(os_prefix)?;
     tracing::info!("Fetching all artifacts for OS prefix {prefix}");
-    let found = artifacts_with_prefix(&st, prefix).await?;
+    let found = artifacts_with_prefix(st, prefix).await?;
     Ok(model_response(&artifacts::artifacts_response(
         format!("All artifacts for OS prefix {prefix} retrieved"),
         found,
@@ -246,6 +281,156 @@ fn enum_or_none(
 ) -> Option<String> {
     obj.get(name)
         .and_then(|value| v.check_enum(&child(at, name), value, allowed))
+}
+
+/// `validate_artifact_parameters(artifact_name, parameters)`: the names
+/// sent must be the artifact's (the `env` list's keys, else the dict's).
+async fn validate_artifact_parameters(
+    st: &VelociraptorState,
+    artifact: Option<&str>,
+    parameters: Option<&[(String, ParamValue)]>,
+) -> Result<(), ApiError> {
+    let Some(parameters) = parameters.filter(|p| !p.is_empty()) else {
+        return Ok(());
+    };
+    let name = artifact.unwrap_or("None");
+    let (_, found) = artifacts::get_artifact_by_name(&st.client, name).await?;
+    let Some(definition) = found.first() else {
+        return Err(ApiError::not_found(format!("Artifact {name} not found")));
+    };
+    let mut valid: Vec<String> = match copilot_upstream::model::field(definition, "parameters") {
+        PyValue::List(params) if !params.is_empty() => params
+            .iter()
+            .filter_map(|p| {
+                copilot_upstream::model::field(p, "name")
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .collect(),
+        _ => {
+            return Err(ApiError::bad_request(format!(
+                "Artifact {name} does not accept any parameters"
+            )));
+        }
+    };
+    valid.sort();
+    valid.dedup();
+    let names: Vec<&str> = match parameters.iter().find(|(k, _)| k == "env") {
+        Some((_, ParamValue::Pairs(pairs))) => pairs.iter().map(|(k, _)| k.as_str()).collect(),
+        _ => parameters.iter().map(|(k, _)| k.as_str()).collect(),
+    };
+    if let Some(bad) = names.iter().find(|n| !valid.iter().any(|v| v == *n)) {
+        return Err(ApiError::bad_request(format!(
+            "Parameter '{bad}' is not valid for artifact {name}. Valid parameters: {}",
+            valid.join(", ")
+        )));
+    }
+    tracing::info!("All provided parameters are valid for artifact {name}");
+    Ok(())
+}
+
+async fn collect(
+    State(st): State<VelociraptorState>,
+    WithJson(auth, body): WithJson<Soc>,
+) -> ApiResult {
+    let mut body = CollectArtifactBody::from_dump(&body_model(&body, &COLLECT_ARTIFACT_BODY)?);
+    tracing::info!("Received request to collect artifact {}", body.py_str());
+    let agent = enforce_host(&st, &auth, &body.hostname).await?;
+    let found = host_artifacts(&st, &body.hostname, agent.as_ref()).await?;
+    let artifact = body.artifact_name.clone();
+    if !artifact
+        .as_ref()
+        .is_some_and(|a| artifact_names(&found).contains(a))
+    {
+        return Err(ApiError::bad_request(format!(
+            "Artifact name {} does not apply for hostname {} or does not exist",
+            artifact.as_deref().unwrap_or("None"),
+            body.hostname
+        )));
+    }
+    validate_artifact_parameters(&st, artifact.as_deref(), body.parameters.as_deref()).await?;
+    let (velociraptor_id, org) = host_ids(&body.hostname, agent.as_ref())?;
+    body.velociraptor_id = velociraptor_id;
+    body.velociraptor_org = Some(org);
+    st.ctx.audit.record(
+        AuditRecord::new("artifact.collect")
+            .actor(Some(auth.id), Some(&auth.username))
+            .entity("agent", &body.hostname)
+            .values(
+                None,
+                Some(serde_json::json!({
+                    "artifact_name": artifact,
+                    "velociraptor_id": body.velociraptor_id,
+                })),
+            )
+            .source_ip(auth.source_ip.clone()),
+    );
+    let dump =
+        collections::run_artifact_collection(&st.client, &st.store, &st.ctx.db, &body).await?;
+    Ok(model_response(&dump))
+}
+
+async fn collect_file(
+    State(st): State<VelociraptorState>,
+    Path(agent_id): Path<String>,
+    WithJson(auth, body): WithJson<Soc>,
+) -> ApiResult {
+    // `verify_agent_id_access`, then the body.
+    let owner = agents::collect_agent_by_id(&st.ctx.db, &agent_id).await?;
+    auth.enforce_owned(
+        &st.ctx,
+        owner.as_ref().and_then(|a| a.customer_code.as_deref()),
+        &format!("agent {agent_id}"),
+    )
+    .await?;
+    let request = body_model(&body, &FILE_COLLECTION_BODY)?;
+    let text = |k: &str| {
+        copilot_upstream::model::field(&request, k)
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    tracing::info!("Received request to collect file for agent ID {agent_id}");
+    let Some(agent) = owner else {
+        return Err(ApiError::not_found(format!(
+            "Agent with ID {agent_id} not found"
+        )));
+    };
+    if agent.hostname.is_empty() {
+        return Err(ApiError::not_found(format!(
+            "Hostname for agent {agent_id} is not available"
+        )));
+    }
+    let Some(velociraptor_id) = agent
+        .velociraptor_id
+        .clone()
+        .filter(|v| !v.is_empty() && v != "n/a")
+    else {
+        return Err(ApiError::not_found(format!(
+            "Velociraptor ID for agent {agent_id} is not available"
+        )));
+    };
+    let Some(org) = agent.velociraptor_org.clone().filter(|o| !o.is_empty()) else {
+        return Err(ApiError::not_found(format!(
+            "Velociraptor ORG for agent {agent_id} is not available"
+        )));
+    };
+    let prefix = artifacts::os_prefix_of(&agent.os.to_lowercase());
+    tracing::info!(
+        "OS prefix for agent ID {agent_id} is {}",
+        prefix.unwrap_or("None")
+    );
+    let file = collections::format_file_path_for_os(&text("file"), prefix)?;
+    let body = CollectFileBody {
+        hostname: agent.hostname.clone(),
+        velociraptor_id,
+        velociraptor_org: org,
+        file,
+        root_disk: text("root_disk"),
+    };
+    tracing::info!("Collecting {FILE_COLLECTOR} on {}", body.hostname);
+    let dump = collections::run_file_collection(&st.client, &st.store, &st.ctx.db, &body).await?;
+    Ok(model_response(&dump))
 }
 
 async fn command(

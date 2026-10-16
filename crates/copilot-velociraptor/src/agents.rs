@@ -11,6 +11,7 @@ pub const REQUIREMENTS: &[TableRequirement] = &[TableRequirement {
     table: "agents",
     columns: &[
         "id",
+        "agent_id",
         "hostname",
         "os",
         "velociraptor_id",
@@ -68,4 +69,48 @@ pub async fn set_quarantined(db: &Db, id: i32, quarantined: bool) -> Result<(), 
         .execute(db.pool())
         .await?;
     Ok(())
+}
+
+/// What the collection routes need of an agent (they store the collection
+/// under its `agent_id` and name the host in the download pack).
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct CollectAgent {
+    /// `agents.agent_id`.
+    pub agent_id: String,
+    /// `hostname`.
+    pub hostname: String,
+    /// `os`.
+    pub os: String,
+    /// `velociraptor_id`.
+    pub velociraptor_id: Option<String>,
+    /// `velociraptor_org`.
+    pub velociraptor_org: Option<String>,
+    /// `customer_code`.
+    pub customer_code: Option<String>,
+}
+
+const COLLECT_COLS: &str = "agents.agent_id, agents.hostname, agents.os, agents.velociraptor_id, \
+                            agents.velociraptor_org, agents.customer_code";
+
+/// The first agent with this Wazuh agent id.
+pub async fn collect_agent_by_id(db: &Db, agent_id: &str) -> Result<Option<CollectAgent>, DbError> {
+    Ok(sqlx::query_as::<_, CollectAgent>(&format!(
+        "SELECT {COLLECT_COLS} FROM agents WHERE agents.agent_id = ? LIMIT 1"
+    ))
+    .bind(agent_id)
+    .fetch_optional(db.pool())
+    .await?)
+}
+
+/// The first agent with this Velociraptor client id.
+pub async fn collect_agent_by_client_id(
+    db: &Db,
+    client_id: &str,
+) -> Result<Option<CollectAgent>, DbError> {
+    Ok(sqlx::query_as::<_, CollectAgent>(&format!(
+        "SELECT {COLLECT_COLS} FROM agents WHERE agents.velociraptor_id = ? LIMIT 1"
+    ))
+    .bind(client_id)
+    .fetch_optional(db.pool())
+    .await?)
 }

@@ -203,9 +203,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customer_provisioning",
     // The agents router (copilot-agents, on copilot-velociraptor's client).
     "/api/agents",
-    // The Velociraptor connector (copilot-velociraptor) but `POST
-    // /api/artifacts/collect` and `…/collect/file/agent/{agent_id}` (MinIO),
-    // which no Rust route matches: the binary forwards them.
+    // The Velociraptor connector (copilot-velociraptor), its MinIO collections
+    // (`POST /api/artifacts/collect`, `…/collect/file/agent/{agent_id}`) included.
     "/api/artifacts",
     "/api/flows",
     // The MinIO data store (copilot-objectstore): the upload and the agents'
@@ -500,6 +499,7 @@ impl App {
         copilot_velociraptor::VelociraptorState {
             ctx: self.ctx.clone(),
             client: self.agents.velociraptor.clone(),
+            store: self.objectstore.clone(),
         }
     }
 

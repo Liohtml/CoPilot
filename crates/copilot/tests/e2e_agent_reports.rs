@@ -1,5 +1,7 @@
 //! End-to-end tests of the agents' report routers (`copilot-agent-reports`:
-//! `/api/vulnerabilities`, `/api/sca`, `/api/syscollector`), through the
+//! `/api/vulnerabilities`, `/api/sca`, `/api/syscollector`) and the
+//! Velociraptor collections that store into MinIO (`POST
+//! /api/artifacts/collect`, `…/collect/file/agent/{agent_id}`), through the
 //! production router on a real MySQL.
 //!
 //! ```text
@@ -13,9 +15,11 @@
 //!   manager, the CoPilot-SCA repository on GitHub, by path;
 //! - `AGENT_REPORTS_E2E_S3_PORT` (5738): MinIO, in memory, every SigV4
 //!   signature recomputed from what arrived;
+//! - `AGENT_REPORTS_E2E_VELO_PORT` (5739): Velociraptor (`copilot-velociraptor`'s
+//!   gRPC stand-in over mutual TLS).
 //!
-//! The tests borrow the `Wazuh-Indexer` and `Wazuh-Manager` connector rows
-//! (created when missing, restored afterwards).
+//! The tests borrow the `Wazuh-Indexer`, `Wazuh-Manager` and `Velociraptor`
+//! connector rows (created when missing, restored afterwards).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -27,6 +31,8 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 use wiremock::matchers::any;
 use wiremock::{Mock, MockServer, Respond, ResponseTemplate};
+
+use copilot_velociraptor::testing::{Answer, StandIn};
 
 #[macro_use]
 mod common;
@@ -41,6 +47,10 @@ fn port(var: &str, default: u16) -> u16 {
 
 fn upstream_port() -> u16 {
     port("AGENT_REPORTS_E2E_UPSTREAM_PORT", 5737)
+}
+
+fn velo_port() -> u16 {
+    port("AGENT_REPORTS_E2E_VELO_PORT", 5739)
 }
 
 mod s3 {
@@ -1639,6 +1649,369 @@ async fn syscollector_packages_are_read_on_the_callers_agents() {
         )
         .await;
     assert_eq!(status, 403, "the search is the SOC's");
+
+    give_back(&h, borrowed).await;
+    cleanup(&h).await;
+}
+
+// --- Velociraptor collections ---------------------------------------------------------------
+
+/// Standard base64.
+fn b64(data: &[u8]) -> String {
+    const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in data.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(char::from(A[((n >> (18 - 6 * i)) & 63) as usize]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+#[tokio::test]
+async fn velociraptor_collections_store_their_pack_in_minio() {
+    let h = harness_or_skip!(None, &env());
+    h.seed().await;
+    cleanup(&h).await;
+    let s = h.suffix.clone();
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let client_id = format!("C.{s}");
+    let host = format!("win-{s}");
+    let a1 = agent(
+        &h,
+        "a1",
+        &host,
+        "Microsoft Windows 11",
+        &acme,
+        Some(&client_id),
+    )
+    .await;
+    let b1 = agent(
+        &h,
+        "b1",
+        &format!("other-{s}"),
+        "Ubuntu",
+        &beta,
+        Some(&format!("C.{s}b")),
+    )
+    .await;
+    let pack: Vec<u8> = (0..200u8).collect();
+    let encoded = b64(&pack);
+    let definitions = r#"[{"name": "Windows.System.Pslist", "description": "ps",
+        "parameters": [{"name": "ProcessRegex"}, {"name": "Fast"}]},
+        {"name": "Windows.Forensics.Usn", "description": "usn"}]"#
+        .to_string();
+    let velo = StandIn::start_at(velo_port(), move |args| {
+        let vql = args.query[0].vql.clone();
+        if vql.starts_with("SELECT name,description,parameters FROM artifact_definitions()") {
+            let all: Vec<Value> = serde_json::from_str(&definitions).unwrap();
+            let picked: Vec<Value> = match vql.split_once("WHERE name = '") {
+                Some((_, rest)) => {
+                    let name = rest.trim_end_matches('\'');
+                    all.into_iter().filter(|d| d["name"] == name).collect()
+                }
+                None => all,
+            };
+            Answer::rows(&[&Value::Array(picked).to_string()])
+        } else if vql.starts_with("SELECT collect_client(") {
+            let call = vql
+                .strip_prefix("SELECT ")
+                .and_then(|v| v.strip_suffix(" FROM scope()"))
+                .unwrap()
+                .to_string();
+            Answer::rows(&[&json!([{ call: {"flow_id": "F.ABC", "request": {}} }]).to_string()])
+        } else if vql.starts_with("SELECT * FROM watch_monitoring") {
+            Answer::rows(&[r#"[{"FlowId": "F.ABC"}]"#])
+        } else if vql.starts_with("SELECT * FROM source(") {
+            Answer::rows(&[r#"[{"Pid": 4, "Name": "System"}]"#])
+        } else if vql.starts_with("SELECT os_info.hostname") {
+            Answer::rows(&[r#"[{"Hostname": "WIN-E2E"}]"#])
+        } else if vql.starts_with("SELECT create_flow_download(") {
+            Answer::rows(&[r#"[{"create_flow_download": "downloads/x"}]"#])
+        } else if vql.contains("offset=0,") {
+            Answer::rows(&[&json!([{ "Data": encoded }]).to_string()])
+        } else {
+            Answer::rows(&["[]"])
+        }
+    })
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = velo.write_api_config(dir.path());
+    let mut borrowed = Borrowed::new();
+    borrow(
+        &h,
+        &mut borrowed,
+        "Velociraptor",
+        "https://velo",
+        None,
+        None,
+        Some(&config),
+    )
+    .await;
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+
+    let body = json!({"hostname": host, "artifact_name": "Windows.System.Pslist",
+                      "parameters": {"env": [{"key": "ProcessRegex", "value": "it's"}]}});
+    let (status, resp) = h
+        .call("POST", "/api/artifacts/collect", Some(&analyst), Some(body))
+        .await;
+    assert_eq!(status, 200, "{resp}");
+    let zip = format!("WIN-E2E-{client_id}-F.ABC.zip");
+    let key = format!("{a1}/F.ABC/{zip}");
+    assert_eq!(
+        resp,
+        json!({"message": "Successfully executed query", "success": true,
+               "results": [{"Pid": 4, "Name": "System"}],
+               "file_info": {"success": true,
+                             "message": "Successfully fetched file from Velociraptor and uploaded to MinIO",
+                             "bucket_name": "velociraptor-artifacts", "object_key": key, "file_name": zip,
+                             "file_size": 200,
+                             "file_hash": copilot_objectstore::sigv4::sha256_hex(&pack)}})
+    );
+    let vql = velo.vql();
+    assert!(
+        vql.contains(&format!(
+            "SELECT collect_client(org_id='root', client_id='{client_id}', \
+         artifacts=['Windows.System.Pslist'], env=dict(`ProcessRegex`='it\\'s')) FROM scope()"
+        )),
+        "{vql:#?}"
+    );
+    assert!(
+        vql.contains(&format!(
+            "SELECT create_flow_download(client_id='{client_id}', flow_id='F.ABC', wait=true, \
+         format='json', expand_sparse=false, name='WIN-E2E-{client_id}-F.ABC') FROM scope()"
+        )),
+        "{vql:#?}"
+    );
+    assert!(
+        vql.contains(&format!(
+            "SELECT base64encode(string=read_file(accessor='fs', \
+         filename='/downloads/{client_id}/F.ABC/{zip}', offset=0, length=1048576)) AS Data \
+         FROM scope()"
+        )),
+        "{vql:#?}"
+    );
+    let (stored, ct) = s3::get()
+        .object("velociraptor-artifacts", &key)
+        .expect("uploaded");
+    assert_eq!((stored, ct.as_str()), (pack.clone(), "application/zip"));
+    let row: (String, String, String, i64, String) = sqlx::query_as(&format!(
+        "SELECT velociraptor_id, artifact_name, flow_id, CAST(file_size AS SIGNED), status \
+         FROM agent_datastore WHERE agent_id = '{a1}'"
+    ))
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        row,
+        (
+            client_id.clone(),
+            "Windows.System.Pslist".to_string(),
+            "F.ABC".to_string(),
+            200,
+            "completed".to_string()
+        )
+    );
+    let mut audited = 0;
+    for _ in 0..20 {
+        audited = h
+            .scalar_i64(&format!(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'artifact.collect' AND entity_id = '{host}'"
+            ))
+            .await;
+        if audited > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(audited, 1);
+
+    // The checks before Velociraptor is asked to run anything.
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/artifacts/collect",
+            Some(&analyst),
+            Some(
+                json!({"hostname": host, "artifact_name": "Windows.System.Pslist",
+                        "parameters": {"Nope": "1"}}),
+            ),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (
+            400,
+            json!(
+                "Parameter 'Nope' is not valid for artifact Windows.System.Pslist. Valid parameters: Fast, ProcessRegex"
+            )
+        )
+    );
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/artifacts/collect",
+            Some(&analyst),
+            Some(
+                json!({"hostname": host, "artifact_name": "Windows.Forensics.Usn",
+                        "parameters": {"X": "1"}}),
+            ),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (
+            400,
+            json!("Artifact Windows.Forensics.Usn does not accept any parameters")
+        )
+    );
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/artifacts/collect",
+            Some(&analyst),
+            Some(json!({"hostname": host, "artifact_name": "Linux.Sys.Users"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (
+            400,
+            json!(format!(
+                "Artifact name Linux.Sys.Users does not apply for hostname {host} or does not exist"
+            ))
+        )
+    );
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/artifacts/collect",
+            Some(&analyst),
+            Some(json!({"hostname": format!("other-{s}"), "artifact_name": "Linux.Sys.Users"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (403, json!(format!("Access denied to host other-{s}")))
+    );
+    let (status, _) = h
+        .call(
+            "POST",
+            "/api/artifacts/collect",
+            Some(&analyst),
+            Some(json!({"hostname": host, "parameters": {"x": 1}})),
+        )
+        .await;
+    assert_eq!(status, 422);
+
+    // Stored only: no rows read.
+    velo.requests.lock().unwrap().clear();
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/artifacts/collect",
+            Some(&analyst),
+            Some(
+                json!({"hostname": host, "artifact_name": "Windows.Forensics.Usn",
+                        "data_store_only": true}),
+            ),
+        )
+        .await;
+    assert_eq!(status, 200, "{resp}");
+    assert_eq!(
+        resp["message"],
+        "Artifact collected and stored successfully. Results not retrieved."
+    );
+    assert_eq!(resp["results"], Value::Null);
+    assert!(
+        !velo
+            .vql()
+            .iter()
+            .any(|q| q.starts_with("SELECT * FROM source(")),
+        "{:?}",
+        velo.vql()
+    );
+
+    // The file collection, by agent id.
+    velo.requests.lock().unwrap().clear();
+    let (status, resp) = h
+        .call(
+            "POST",
+            &format!("/api/artifacts/collect/file/agent/{a1}"),
+            Some(&analyst),
+            Some(json!({"file": "Users\\Admin\\x.txt"})),
+        )
+        .await;
+    assert_eq!(status, 200, "{resp}");
+    assert_eq!(resp["file_info"]["object_key"], json!(key));
+    let vql = velo.vql();
+    assert!(
+        vql.contains(&format!(
+            "SELECT collect_client(org_id='root', client_id='{client_id}', \
+         artifacts=['Generic.Collectors.File'], spec=dict(`Generic.Collectors.File`=dict(\
+         `collectionSpec`='Glob\nUsers\\\\Admin\\\\x.txt\n', `Root`='C:'))) FROM scope()"
+        )),
+        "{vql:#?}"
+    );
+    let (status, resp) = h
+        .call(
+            "POST",
+            &format!("/api/artifacts/collect/file/agent/{b1}"),
+            Some(&analyst),
+            Some(json!({"file": "/etc/passwd"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (403, json!(format!("Access denied to agent {b1}")))
+    );
+    let (status, _) = h
+        .call(
+            "POST",
+            &format!("/api/artifacts/collect/file/agent/{a1}"),
+            Some(&analyst),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(status, 422);
+    let (status, resp) = h
+        .call(
+            "POST",
+            "/api/artifacts/collect/file/agent/nobody",
+            Some(&h.token(&format!("admin{s}"), "admin")),
+            Some(json!({"file": "/etc/passwd"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (404, json!("Agent with ID nobody not found"))
+    );
+    // A GET of a POST route's path is Starlette's `GET /{os_prefix}`, not a 405.
+    for segment in ["collect", "command", "quarantine"] {
+        let (status, resp) = h
+            .call(
+                "GET",
+                &format!("/api/artifacts/{segment}"),
+                Some(&analyst),
+                None,
+            )
+            .await;
+        assert_eq!(
+            (status.as_u16(), resp["message"].clone()),
+            (400, json!(format!("OS prefix {segment} does not exist.")))
+        );
+    }
+    assert_eq!(s3::get().bad_signatures(), 0);
 
     give_back(&h, borrowed).await;
     cleanup(&h).await;

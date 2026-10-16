@@ -337,6 +337,163 @@ impl QuarantineBody {
     }
 }
 
+/// `ParameterKeyValue`.
+pub static PARAMETER_KEY_VALUE: Model = Model::new(
+    "ParameterKeyValue",
+    &[Field::req("key", Ty::Str), Field::req("value", Ty::Str)],
+);
+
+/// `CollectArtifactBody`.
+pub static COLLECT_ARTIFACT_BODY: Model = Model::new(
+    "CollectArtifactBody",
+    &[
+        Field::req("hostname", Ty::Str),
+        Field::opt("velociraptor_id", Ty::Nullable(&Ty::Str)),
+        Field::opt("velociraptor_org", Ty::Nullable(&Ty::Str)),
+        Field::opt("artifact_name", Ty::Nullable(&Ty::Str)),
+        Field::opt(
+            "parameters",
+            Ty::Nullable(&Ty::Dict(&Ty::Union(&[
+                Ty::Str,
+                Ty::List(&Ty::Model(&PARAMETER_KEY_VALUE)),
+            ]))),
+        ),
+        Field::def("data_store_only", Ty::Nullable(&Ty::Bool), no),
+    ],
+);
+
+fn root_disk() -> PyValue {
+    PyValue::Str("C:".into())
+}
+
+/// `FileCollectionBody`.
+pub static FILE_COLLECTION_BODY: Model = Model::new(
+    "FileCollectionBody",
+    &[
+        Field::req("file", Ty::Str),
+        Field::def("root_disk", Ty::Str, root_disk),
+    ],
+);
+
+/// One value of `CollectArtifactBody.parameters`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParamValue {
+    /// A string.
+    Str(String),
+    /// `List[ParameterKeyValue]`, as `(key, value)` pairs.
+    Pairs(Vec<(String, String)>),
+}
+
+/// `CollectArtifactBody`, as the route holds it once it has set the host's
+/// client id and org.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CollectArtifactBody {
+    /// `hostname`.
+    pub hostname: String,
+    /// `velociraptor_id` (set by the route).
+    pub velociraptor_id: Option<String>,
+    /// `velociraptor_org` (set by the route).
+    pub velociraptor_org: Option<String>,
+    /// `artifact_name`.
+    pub artifact_name: Option<String>,
+    /// `parameters`, in the request's key order.
+    pub parameters: Option<Vec<(String, ParamValue)>>,
+    /// `data_store_only` (`None` when sent as `null`).
+    pub data_store_only: Option<bool>,
+}
+
+fn opt_text(v: &PyValue) -> Option<String> {
+    v.as_str().map(str::to_string)
+}
+
+impl CollectArtifactBody {
+    /// From the validated [`COLLECT_ARTIFACT_BODY`] dump.
+    pub fn from_dump(d: &PyValue) -> Self {
+        let parameters = match model::field(d, "parameters") {
+            PyValue::Dict(items) => Some(
+                items
+                    .iter()
+                    .map(|(k, v)| {
+                        let value = match v {
+                            PyValue::List(pairs) => ParamValue::Pairs(
+                                pairs
+                                    .iter()
+                                    .map(|p| {
+                                        (
+                                            opt_text(model::field(p, "key")).unwrap_or_default(),
+                                            opt_text(model::field(p, "value")).unwrap_or_default(),
+                                        )
+                                    })
+                                    .collect(),
+                            ),
+                            other => ParamValue::Str(opt_text(other).unwrap_or_default()),
+                        };
+                        (k.clone(), value)
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        };
+        Self {
+            hostname: opt_text(model::field(d, "hostname")).unwrap_or_default(),
+            velociraptor_id: opt_text(model::field(d, "velociraptor_id")),
+            velociraptor_org: opt_text(model::field(d, "velociraptor_org")),
+            artifact_name: opt_text(model::field(d, "artifact_name")),
+            parameters,
+            data_store_only: match model::field(d, "data_store_only") {
+                PyValue::Bool(b) => Some(*b),
+                _ => None,
+            },
+        }
+    }
+
+    /// `str(body)`.
+    pub fn py_str(&self) -> String {
+        let parameters = match &self.parameters {
+            None => "None".to_string(),
+            Some(items) => {
+                let parts: Vec<String> = items
+                    .iter()
+                    .map(|(k, v)| {
+                        let value = match v {
+                            ParamValue::Str(s) => repr(Some(s)),
+                            ParamValue::Pairs(pairs) => format!(
+                                "[{}]",
+                                pairs
+                                    .iter()
+                                    .map(|(k, v)| format!(
+                                        "ParameterKeyValue(key={}, value={})",
+                                        repr(Some(k)),
+                                        repr(Some(v))
+                                    ))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        };
+                        format!("{}: {value}", repr(Some(k)))
+                    })
+                    .collect();
+                format!("{{{}}}", parts.join(", "))
+            }
+        };
+        let data_store_only = match self.data_store_only {
+            None => "None",
+            Some(true) => "True",
+            Some(false) => "False",
+        };
+        format!(
+            "hostname={} velociraptor_id={} velociraptor_org={} artifact_name={} parameters={} \
+             data_store_only={}",
+            repr(Some(&self.hostname)),
+            repr(self.velociraptor_id.as_deref()),
+            repr(self.velociraptor_org.as_deref()),
+            repr(self.artifact_name.as_deref()),
+            parameters,
+            data_store_only,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

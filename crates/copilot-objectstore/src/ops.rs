@@ -241,6 +241,39 @@ pub async fn store_file_in_minio(
     }
 }
 
+/// `upload_agent_artifact_file(agent_id, flow_id, file_path, file_name)`: a
+/// Velociraptor collection's archive to `velociraptor-artifacts` as
+/// `{agent_id}/{flow_id}/{file_name}` (`application/zip`) — a client, the
+/// bucket created if missing, then `fput_object`; nothing is caught. The
+/// `content_type` of the answer is not part of Python's dict.
+pub async fn upload_agent_artifact_file(
+    store: &ObjectStore,
+    agent_id: &str,
+    flow_id: &str,
+    data: &[u8],
+    file_name: &str,
+) -> Result<Uploaded, PyExc> {
+    let client = store.session()?;
+    create_bucket_if_not_exists(store, ARTIFACTS_BUCKET).await?;
+    let file_hash = hex::encode(Sha256::digest(data));
+    let object_key = format!("{agent_id}/{flow_id}/{file_name}");
+    tracing::info!("Uploading artifact file to {ARTIFACTS_BUCKET}/{object_key}");
+    client
+        .fput_object(ARTIFACTS_BUCKET, &object_key, data, Some("application/zip"))
+        .await
+        .map_err(py)?;
+    let file_size = i64::try_from(data.len()).unwrap_or(i64::MAX);
+    tracing::info!("Successfully uploaded {file_name} ({file_size} bytes) to MinIO");
+    Ok(Uploaded {
+        bucket_name: ARTIFACTS_BUCKET.to_string(),
+        object_key,
+        file_name: file_name.to_string(),
+        file_size,
+        file_hash,
+        content_type: "application/zip".to_string(),
+    })
+}
+
 /// `delete_file`: `stat_object`, then `remove_object`; any failure is the
 /// 404 `File {object} not found in bucket {bucket}` (only the client's own
 /// construction escapes as it is).
