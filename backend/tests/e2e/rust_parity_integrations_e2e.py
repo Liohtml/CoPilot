@@ -1251,6 +1251,22 @@ async def delete_checks(p, t_admin, t_analyst):
         t_admin,
         json=body(instance_name="tenant-b"),
     )
+    # Python keeps a copy of the ossec.conf it wrote next to its module (every tenant's client
+    # secret, on the Python host); Rust writes none (RUST_MIGRATION.md §4).
+    copy_path = os.path.join(BACKEND, "app", "integrations", "office365", "wazuh_decommission_config.xml")
+    for client, side, writes in ((p.py, "python", True), (p.rs, "rust", False)):
+        if os.path.exists(copy_path):
+            os.remove(copy_path)
+        seed_rows()
+        STUB.reset()
+        r, _ = await p.call(client, "DELETE", url, t_admin, json=body(instance_name="tenant-b"))
+        check(
+            f"delete: the ossec.conf copy ({side} {'writes one' if writes else 'writes none'}) [diff by design]",
+            r.status_code == 200 and os.path.exists(copy_path) == writes,
+            f"{r.status_code} {r.content[:300]!r} copy exists: {os.path.exists(copy_path)}",
+        )
+    if os.path.exists(copy_path):
+        os.remove(copy_path)
     await p.same(
         "delete: the undeployed unnamed tenant (Wazuh block out, no Graylog)",
         "DELETE",
@@ -1355,6 +1371,14 @@ async def delete_checks(p, t_admin, t_analyst):
 
 async def meta_checks(p, t_admin, t_analyst, t_analyst_b):
     await p.same("meta auto: Office365, any instance", "GET", f"{INT}/meta_auto/{CUST_A}/Office365", t_admin, unordered=True)
+    from app.integrations.models.customer_integration_settings import (
+        CustomerIntegrationsMeta,
+    )
+
+    seed_rows()
+    r, _ = await p.call(p.rs, "GET", f"{INT}/meta_auto/{CUST_A}/Office365", t_admin)
+    keys = list(json.loads(r.content)["data"])
+    check("meta auto: Rust's key order is the declaration order", keys == list(CustomerIntegrationsMeta.model_fields), f"{keys}")
     await p.same(
         "meta auto: Office365, named",
         "GET",
@@ -1485,6 +1509,16 @@ async def alert_settings_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned
         ],
     }
     await p.same("alert settings create: created", "POST", create, t_admin, json=full, unordered=True, masked=("id",))
+    # Python's key order is the order SQLAlchemy loaded the attributes in (it varies between
+    # processes); Rust answers in the model's declaration order (RUST_MIGRATION.md §4).
+    from app.integrations.alert_creation_settings.models.alert_creation_settings import (
+        AlertCreationSettings,
+    )
+
+    seed_rows()
+    r, _ = await p.call(p.rs, "POST", create, t_admin, json=full)
+    keys = list(json.loads(r.content))
+    check("alert settings create: Rust's key order is the declaration order", keys == list(AlertCreationSettings.model_fields), f"{keys}")
     await p.same("alert settings create: exists (a 200 error)", "POST", create, t_admin, json={**full, "customer_code": CUST_A})
     await p.same(
         "alert settings create: invalid",
@@ -1733,6 +1767,11 @@ async def main():
                 await network_checks(p, t_admin, t_analyst, t_analyst_b)
         finally:
             await p.close()
+            # The in-process routers' pool, closed while its loop runs (else aiomysql's
+            # finalizers complain at exit).
+            from app.db.db_session import async_engine
+
+            await async_engine.dispose()
     finally:
         for proc in procs:
             proc.terminate()
