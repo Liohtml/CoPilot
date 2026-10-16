@@ -1,6 +1,7 @@
-//! End-to-end tests of the provisioning ports (`copilot-waf`): `/api/customer_waf`
-//! and the WAF alerts of `POST /api/monitoring_alert/provision`, through the
-//! production router on a real MySQL, with the WAF admin API, Graylog and the
+//! End-to-end tests of the provisioning ports: `/api/customer_waf` and the WAF
+//! alerts of `POST /api/monitoring_alert/provision` (`copilot-waf`), and stack
+//! provisioning (`copilot-provisioning`), through the production router on a
+//! real MySQL, with the WAF admin API, Graylog, InfluxDB, Grafana and the
 //! Python backend replaced by local stand-ins.
 //!
 //! ```text
@@ -9,8 +10,8 @@
 //! ```
 //!
 //! The stand-ins listen on `PROVISIONING_E2E_PORT_BASE` (5757) and the two
-//! ports after it. The `Graylog` connector row is replaced for each test and
-//! restored (run single-threaded).
+//! ports after it. The connector rows a test points at them are replaced for
+//! that test and restored (run single-threaded).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -638,4 +639,415 @@ async fn monitoring_alerts_other_than_the_waf_go_to_python() {
         body["message"],
         "Event definition SOCFORTRESS WAF BLOCKED already exists"
     );
+}
+
+// --- stack provisioning (copilot-provisioning) ---------------------------------
+
+/// A saved `connectors` row: url, username, password, API key.
+type SavedRow = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// A `connectors` row replaced for one test: what was there before.
+struct SavedConnector(String, Vec<SavedRow>);
+
+/// Point connector `name` at `url` (with a key and extra data); the old rows.
+async fn replace_connector(
+    h: &Harness,
+    name: &str,
+    url: &str,
+    key: Option<&str>,
+    extra: Option<&str>,
+) -> SavedConnector {
+    let saved: Vec<SavedRow> = sqlx::query_as(
+        "SELECT connector_url, connector_username, connector_password, connector_api_key \
+             FROM connectors WHERE connector_name = ?",
+    )
+    .bind(name)
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    sqlx::query("DELETE FROM connectors WHERE connector_name = ?")
+        .bind(name)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO connectors (connector_name, connector_type, connector_url, \
+         connector_last_updated, connector_username, connector_password, connector_api_key, \
+         connector_description, connector_supports, connector_configured, connector_verified, \
+         connector_accepts_host_only, connector_accepts_api_key, \
+         connector_accepts_username_password, connector_accepts_file, \
+         connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES \
+         (?, '3', ?, UTC_TIMESTAMP(), 'admin', 'secret', ?, 'e2e', 'e2e', 1, 1, 0, 0, 1, 0, 0, \
+         ?, 1)",
+    )
+    .bind(name)
+    .bind(url)
+    .bind(key)
+    .bind(extra)
+    .execute(h.db.pool())
+    .await
+    .unwrap();
+    SavedConnector(name.to_string(), saved)
+}
+
+async fn restore_connector(h: &Harness, saved: SavedConnector) {
+    let SavedConnector(name, rows) = saved;
+    sqlx::query("DELETE FROM connectors WHERE connector_name = ?")
+        .bind(&name)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    for (url, user, pw, key) in rows {
+        sqlx::query(
+            "INSERT INTO connectors (connector_name, connector_type, connector_url, \
+             connector_last_updated, connector_username, connector_password, connector_api_key, \
+             connector_description, connector_supports, connector_configured, \
+             connector_verified, connector_accepts_host_only, connector_accepts_api_key, \
+             connector_accepts_username_password, connector_accepts_file, \
+             connector_accepts_extra_data, connector_enabled) VALUES (?, '3', ?, \
+             UTC_TIMESTAMP(), ?, ?, ?, 'restored', 'restored', 1, 1, 0, 0, 1, 0, 0, 1)",
+        )
+        .bind(&name)
+        .bind(url)
+        .bind(user)
+        .bind(pw)
+        .bind(key)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+}
+
+fn graylog_system() -> Value {
+    json!({"facility": "graylog-server", "codename": "Noir", "node_id": "n", "cluster_id": "c",
+           "version": "6.1.4+d7b6e3c", "started_at": "2026-10-01T08:00:00.000Z",
+           "hostname": "graylog01", "lifecycle": "running", "lb_status": "alive",
+           "timezone": "UTC", "operating_system": "Linux", "is_processing": true})
+}
+
+#[tokio::test]
+async fn content_packs_install_and_the_etw_rule_follows() {
+    let h = harness_or_skip!(None, &env());
+    h.seed().await;
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let graylog = stand_in(0).await;
+    let saved = replace_connector(&h, "Graylog", &graylog.uri(), None, None).await;
+    Mock::given(method("GET"))
+        .and(path("/api/system"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(graylog_system()))
+        .mount(&graylog)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/system/content_packs"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"total": 0, "content_packs": []})),
+        )
+        .expect(1)
+        .mount(&graylog)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/system/content_packs"))
+        .and(body_string_contains(
+            "\"name\": \"SOCFORTRESS_WAZUH_CONTENT_PACK\"",
+        ))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"id": "x"})))
+        .expect(1)
+        .mount(&graylog)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(
+            "/api/system/content_packs/261577fe-d9a2-4141-af74-635f085eee54/3/installations",
+        ))
+        .and(body_string_contains(
+            "{\"comment\": \"Installed by SOCFortress CoPilot\"}",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&graylog)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/system/pipelines/rule"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&graylog)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/system/pipelines/rule"))
+        .and(body_string_contains(
+            "\"title\": \"Set Syslog Level to ALERT for ETW Registry\"",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": "r"})))
+        .expect(1)
+        .mount(&graylog)
+        .await;
+
+    let uri = "/api/stack_provisioning/graylog/provision/content_pack";
+    let (status, body) = h
+        .call(
+            "POST",
+            uri,
+            Some(&analyst),
+            Some(json!({"content_pack_name": "SOCFORTRESS_SENTINELONE_INPUT_SYSLOG_TLS"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    let (status, body) = h
+        .call(
+            "POST",
+            uri,
+            Some(&analyst),
+            Some(json!({"content_pack_name": "SOCFORTRESS_WAZUH_CONTENT_PACK"})),
+        )
+        .await;
+    restore_connector(&h, saved).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true,
+               "message": "SOCFORTRESS_WAZUH_CONTENT_PACK Content Pack provisioned successfully"})
+    );
+    graylog.verify().await;
+}
+
+#[tokio::test]
+async fn influx_checks_are_skipped_unless_overwrite() {
+    let h = harness_or_skip!(None, &env());
+    h.seed().await;
+    let (admin, analyst) = (
+        h.token(&format!("admin{}", h.suffix), "admin"),
+        h.token(&format!("analyst{}", h.suffix), "analyst"),
+    );
+    let influx = stand_in(0).await;
+    let saved = replace_connector(
+        &h,
+        "InfluxDB",
+        &format!("{}/", influx.uri()),
+        Some("tok"),
+        Some("SOCFORTRESS,telegraf"),
+    )
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/orgs"))
+        .and(query_param("org", "SOCFORTRESS"))
+        .and(header("authorization", "Token tok"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"orgs": [{"id": "0a1b", "name": "SOCFORTRESS"}]})),
+        )
+        .mount(&influx)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/checks"))
+        .and(query_param("limit", "100"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"checks": [{"id": "c-1", "name": "CPU CHECK"}]})),
+        )
+        .mount(&influx)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/api/v2/checks/c-1"))
+        .and(body_string_contains("\"orgID\":\"0a1b\""))
+        .and(body_string_contains("from(bucket: \\\"telegraf\\\")"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": "c-1"})))
+        .expect(1)
+        .mount(&influx)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/v2/checks/c-1"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&influx)
+        .await;
+
+    let uri = "/api/stack_provisioning/influxdb/provision/check";
+    let cpu = json!({"check_name": "SOCFORTRESS_INFLUXDB_CPU_CHECK"});
+    let (status, skipped) = h.call("POST", uri, Some(&analyst), Some(cpu.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{skipped}");
+    assert_eq!(skipped["results"][0]["action"], "skipped");
+    assert_eq!(
+        skipped["message"],
+        "CPU CHECK already exists in InfluxDB and was left unchanged. Set overwrite to replace it."
+    );
+    let (status, updated) = h
+        .call(
+            "POST",
+            uri,
+            Some(&analyst),
+            Some(json!({"check_name": "SOCFORTRESS_INFLUXDB_CPU_CHECK", "overwrite": true})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(
+        updated["results"][0],
+        json!({"name": "SOCFORTRESS_INFLUXDB_CPU_CHECK", "check_name": "CPU CHECK",
+               "action": "updated", "check_id": "c-1"})
+    );
+    let (status, listed) = h
+        .call(
+            "GET",
+            "/api/stack_provisioning/influxdb/available/checks",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    let provisioned: Vec<bool> = listed["available_checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["provisioned"].as_bool().unwrap())
+        .collect();
+    assert_eq!(provisioned, [true, false, false, false]);
+    let delete = "/api/stack_decommissioning/influxdb/check/SOCFORTRESS_INFLUXDB_CPU_CHECK";
+    let (status, _) = h.call("DELETE", delete, Some(&analyst), None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, deleted) = h.call("DELETE", delete, Some(&admin), None).await;
+    restore_connector(&h, saved).await;
+    assert_eq!(status, StatusCode::OK, "{deleted}");
+    assert_eq!(deleted["message"], "CPU CHECK decommissioned successfully");
+    influx.verify().await;
+}
+
+#[tokio::test]
+async fn network_connector_decommissioning_is_tenant_bound() {
+    let h = harness_or_skip!(None, &env());
+    h.seed().await;
+    let (admin, analyst) = (
+        h.token(&format!("admin{}", h.suffix), "admin"),
+        h.token(&format!("analyst{}", h.suffix), "analyst"),
+    );
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    for code in [&acme, &beta] {
+        sqlx::query(
+            "INSERT INTO customer_network_connectors_meta (customer_code, network_connector_name, \
+             graylog_input_id, graylog_index_id, graylog_stream_id, grafana_org_id, \
+             grafana_dashboard_folder_id, graylog_pipeline_id, graylog_content_pack_input_id, \
+             graylog_content_pack_stream_id, grafana_datasource_uid) VALUES (?, 'FORTINET', 'i', \
+             'x', 's', '44', 'fold', 'p', 'cp-in', 'cp-st', 'ds')",
+        )
+        .bind(code)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO customer_network_connectors (customer_code, customer_name, \
+             network_connector_service_id, network_connector_service_name, deployed) VALUES \
+             (?, 'n', 1, 'Fortinet', 1)",
+        )
+        .bind(code)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+    let graylog = stand_in(0).await;
+    let grafana = stand_in(1).await;
+    let saved_graylog = replace_connector(&h, "Graylog", &graylog.uri(), None, None).await;
+    let saved_grafana = replace_connector(&h, "Grafana", &grafana.uri(), None, None).await;
+    for pack in ["cp-in", "cp-st"] {
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/api/system/content_packs/{pack}/installations"
+            )))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"installations": [{"_id": format!("inst-{pack}")}]})),
+            )
+            .expect(1)
+            .mount(&graylog)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(format!(
+                "/api/system/content_packs/{pack}/installations/inst-{pack}"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&graylog)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(format!("/api/system/content_packs/{pack}")))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&graylog)
+            .await;
+    }
+    Mock::given(method("POST"))
+        .and(path("/api/user/using/44"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"message": "ok"})))
+        .expect(2)
+        .mount(&grafana)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/folders/fold"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&grafana)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/datasources/uid/ds"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": 1})))
+        .expect(1)
+        .mount(&grafana)
+        .await;
+
+    let uri = "/api/stack_decommissioning/graylog/decommission/network_connector";
+    // Python lets any analyst tear down any tenant's connector.
+    let (status, refused) = h
+        .call(
+            "POST",
+            uri,
+            Some(&analyst),
+            Some(json!({"network_connector": "fortinet", "customer_code": beta})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{refused}");
+    let (status, body) = h
+        .call(
+            "POST",
+            uri,
+            Some(&admin),
+            Some(json!({"network_connector": "fortinet", "customer_code": acme})),
+        )
+        .await;
+    restore_connector(&h, saved_graylog).await;
+    restore_connector(&h, saved_grafana).await;
+    let left: Vec<(String,)> = sqlx::query_as(
+        "SELECT customer_code FROM customer_network_connectors_meta WHERE customer_code IN (?, ?)",
+    )
+    .bind(&acme)
+    .bind(&beta)
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    let flags: Vec<(String, bool)> = sqlx::query_as(
+        "SELECT customer_code, deployed FROM customer_network_connectors WHERE customer_code IN \
+         (?, ?) ORDER BY customer_code",
+    )
+    .bind(&acme)
+    .bind(&beta)
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    for table in [
+        "customer_network_connectors_meta",
+        "customer_network_connectors",
+    ] {
+        sqlx::query(&format!(
+            "DELETE FROM {table} WHERE customer_code IN (?, ?)"
+        ))
+        .bind(&acme)
+        .bind(&beta)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(left, [(beta.clone(),)]);
+    assert_eq!(flags, [(acme, false), (beta, true)]);
+    graylog.verify().await;
+    grafana.verify().await;
 }

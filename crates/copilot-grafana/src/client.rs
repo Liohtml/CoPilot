@@ -294,6 +294,20 @@ impl GrafanaClient {
         json: Option<PyValue>,
         params: Vec<(String, String)>,
     ) -> PyResult<PyValue> {
+        self.call_with(api, method, path, json, params, false).await
+    }
+
+    /// [`Self::call`] with `accept_empty_json=` (an empty body that is not
+    /// JSON reads as `""` instead of raising).
+    pub async fn call_with(
+        &self,
+        api: &GrafanaApi,
+        method: Method,
+        path: &str,
+        json: Option<PyValue>,
+        params: Vec<(String, String)>,
+        accept_empty_json: bool,
+    ) -> PyResult<PyValue> {
         let mut req = PyRequest::new(method, format!("{}{path}", api.url))
             .header("User-Agent", USER_AGENT)
             .params(params)
@@ -314,7 +328,7 @@ impl GrafanaClient {
             }
             Err(e) => return Err(e),
         };
-        extract(&resp)
+        extract_with(&resp, accept_empty_json)
     }
 
     /// `organizations.list_organization()` (`GET /orgs`).
@@ -370,6 +384,33 @@ impl GrafanaClient {
             .await
     }
 
+    /// `folder.delete_folder(uid)` (`DELETE /folders/{uid}`, an empty answer
+    /// accepted).
+    pub async fn delete_folder(&self, api: &GrafanaApi, uid: &str) -> PyResult<PyValue> {
+        self.call_with(
+            api,
+            Method::DELETE,
+            &format!("/folders/{uid}"),
+            None,
+            Vec::new(),
+            true,
+        )
+        .await
+    }
+
+    /// `datasource.delete_datasource_by_uid(uid)`
+    /// (`DELETE /datasources/uid/{uid}`).
+    pub async fn delete_datasource_by_uid(&self, api: &GrafanaApi, uid: &str) -> PyResult<PyValue> {
+        self.call(
+            api,
+            Method::DELETE,
+            &format!("/datasources/uid/{uid}"),
+            None,
+            Vec::new(),
+        )
+        .await
+    }
+
     /// `organizations.organization_user_add(org, user)`
     /// (`POST /orgs/{org}/users`).
     pub async fn add_organization_user(
@@ -391,6 +432,11 @@ impl GrafanaClient {
 
 /// `GrafanaClient._extract_from_response(r, accept_empty_json=False)`.
 pub fn extract(r: &PyResponse) -> PyResult<PyValue> {
+    extract_with(r, false)
+}
+
+/// `GrafanaClient._extract_from_response(r, accept_empty_json)`.
+pub fn extract_with(r: &PyResponse, accept_empty_json: bool) -> PyResult<PyValue> {
     let status = r.status();
     if status >= 400 {
         let response = r.json().unwrap_or_else(|_| PyValue::Str(r.text()));
@@ -437,7 +483,10 @@ pub fn extract(r: &PyResponse) -> PyResult<PyValue> {
     if content_type.starts_with("text/") {
         return Ok(PyValue::Str(r.text()));
     }
-    r.json()
+    match r.json() {
+        Err(_) if accept_empty_json && r.text().is_empty() => Ok(PyValue::Str(String::new())),
+        other => other,
+    }
 }
 
 #[cfg(test)]

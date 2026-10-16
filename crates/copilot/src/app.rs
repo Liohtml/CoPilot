@@ -177,6 +177,13 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // two WAF alerts: any other alert name is handed to Python with its body.
     "/api/customer_waf",
     "POST /api/monitoring_alert/provision",
+    // Stack provisioning (copilot-provisioning): the content packs and the
+    // InfluxDB checks, and network-connector decommissioning; the Fortinet /
+    // SonicWall / SentinelOne provisioning (Grafana dashboards) stays Python.
+    "GET /api/stack_provisioning/graylog/available/content_packs",
+    "POST /api/stack_provisioning/graylog/provision/content_pack",
+    "/api/stack_provisioning/influxdb",
+    "/api/stack_decommissioning",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -204,6 +211,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_wazuh::REQUIREMENTS);
     all.extend_from_slice(copilot_portainer::REQUIREMENTS);
     all.extend_from_slice(copilot_waf::REQUIREMENTS);
+    all.extend_from_slice(copilot_provisioning::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -541,6 +549,14 @@ impl App {
             .merge(copilot_soc_management::portal_router(self.ctx.clone()))
             .nest("/api/customer_waf", copilot_waf::router(self.waf.clone()))
             .merge(copilot_waf::monitoring_router(self.waf.clone()))
+            .merge(copilot_provisioning::router(
+                copilot_provisioning::StackState {
+                    ctx: self.ctx.clone(),
+                    graylog: self.graylog.clone(),
+                    influx: self.influxdb.clone(),
+                    grafana: self.grafana.clone(),
+                },
+            ))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

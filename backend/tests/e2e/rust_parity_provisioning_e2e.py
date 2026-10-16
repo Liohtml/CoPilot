@@ -5,8 +5,8 @@ scripts/rust-parity.sh).
 The real FastAPI routers (in-process) and Rust instances this suite starts (no legacy backend,
 connector cache off) answer the same requests on one database. The tools are local stand-ins that
 record every request: a SOCFortress WAF admin API (plain HTTP, and HTTPS with a certificate from a
-test CA), and Graylog (6.x, and 7.x on a Rust instance of its own, since both backends cache the
-version). For each request the suite compares the status, the response (byte for byte, or with
+test CA), and on one port by path prefix Graylog (6.x, and 7.x on a Rust instance of its own, since
+both backends cache the version), InfluxDB's v2 REST API and Grafana. For each request the suite compares the status, the response (byte for byte, or with
 created ids and fresh timestamps masked), every request each backend sent to a tool (method,
 target, the headers that matter, body bytes) and the rows the request left. Deliberate
 differences are asserted as such (RUST_MIGRATION.md §4).
@@ -15,8 +15,8 @@ differences are asserted as such (RUST_MIGRATION.md §4).
 
 Ports (all overridable): PROVISIONING_PARITY_RUST_PORT (5751), PROVISIONING_PARITY_RUST_NOKEY_PORT
 (5752, no WAF key and no alert-forwarding settings), PROVISIONING_PARITY_RUST7_PORT (5753, Graylog
-7), PROVISIONING_STUB_PORT (5754, Graylog), WAF_STUB_PORT (5755), WAF_TLS_STUB_PORT (5756).
-`PROVISIONING_PARITY_SECTIONS=waf` picks the sections.
+7), PROVISIONING_STUB_PORT (5754, Graylog, InfluxDB, Grafana), WAF_STUB_PORT (5755), WAF_TLS_STUB_PORT (5756).
+`PROVISIONING_PARITY_SECTIONS=waf,forwarding,alerts,stack` picks the sections.
 """
 
 import asyncio
@@ -91,7 +91,7 @@ CUST_A, CUST_B = f"WAFA{SFX}", f"WAFB{SFX}"
 ADMIN, ANALYST, ANALYST_B, PORTAL = f"waf_admin{SFX}", f"waf_analyst{SFX}", f"waf_analyst_b{SFX}", f"waf_portal{SFX}"
 UNASSIGNED = f"waf_unassigned{SFX}"
 USERS = (ADMIN, ANALYST, ANALYST_B, PORTAL, UNASSIGNED)
-OUR_CONNECTORS = ("Graylog",)
+OUR_CONNECTORS = ("Graylog", "InfluxDB", "Grafana")
 results = []
 
 
@@ -386,8 +386,15 @@ class Graylog:
         definitions=None,
         allowlist=None,
         overrides=None,
+        content_packs=None,
+        rules=None,
+        system=None,
     ):
         self.version = version
+        self.system = system
+        self.content_packs = copy.deepcopy(content_packs if content_packs is not None else [listed_pack(OTHER_PACK)])
+        self.installations = {pack["id"]: [{"_id": f"inst-{pack['id']}", "content_pack_id": pack["id"]}] for pack in self.content_packs}
+        self.rules = copy.deepcopy(rules if rules is not None else samples.GRAYLOG_PIPELINE_RULES)
         self.inputs = copy.deepcopy(
             inputs
             if inputs is not None
@@ -421,7 +428,48 @@ class Graylog:
             if key in self.overrides:
                 return self.overrides[key]
         if method == "GET" and path == "/api/system":
+            if self.system is not None:
+                return 200, "application/json", _json(self.system)
             return 200, "application/json", _json(samples.GRAYLOG_SYSTEM_7 if self.version == 7 else samples.GRAYLOG_SYSTEM_6)
+        if method == "GET" and path == "/api/system/content_packs":
+            return (
+                200,
+                "application/json",
+                _json({"total": len(self.content_packs), "content_packs": self.content_packs, "content_packs_metadata": {}}),
+            )
+        if method == "POST" and path == "/api/system/content_packs":
+            pack = json.loads(body)
+            for known in self.content_packs:
+                if known["id"] == pack.get("id") and known["rev"] == pack.get("rev"):
+                    message = f"Content pack {pack.get('id')} with this revision {pack.get('rev')} already found!"
+                    return 400, "application/json", _json({"type": "ApiError", "message": message})
+            self.content_packs.append(listed_pack(pack))
+            return 201, "application/json", _json({"id": pack.get("id"), "rev": pack.get("rev")})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)/([^/]+)/installations", path)
+        if method == "POST" and m:
+            entity = json.loads(body)
+            if self.version >= 7:
+                if "entity" not in entity:
+                    return 400, "application/json", _json({"type": "ApiError", "message": "entity cannot be null"})
+            installation = {"_id": self._id("inst"), "content_pack_id": m.group(1), "content_pack_revision": m.group(2)}
+            self.installations.setdefault(m.group(1), []).append(installation)
+            return 200, "application/json", _json({"installation": installation, "entities_excluded": []})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)/installations", path)
+        if method == "GET" and m:
+            found = self.installations.get(m.group(1), [])
+            return 200, "application/json", _json({"installations": found, "total": len(found)})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)/installations/([^/]+)", path)
+        if method == "DELETE" and m:
+            return 200, "application/json", _json({"entities": []})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)", path)
+        if method == "DELETE" and m:
+            return 204, None, b""
+        if method == "GET" and path == "/api/system/pipelines/rule":
+            return 200, "application/json", _json(self.rules)
+        if method == "POST" and path == "/api/system/pipelines/rule":
+            rule = {"id": self._id("ru"), **json.loads(body), "created_at": "2026-10-16T00:00:00.000Z", "errors": None}
+            self.rules.append(rule)
+            return 200, "application/json", _json(rule)
         if method == "GET" and path == "/api/system/inputs":
             return 200, "application/json", _json({"inputs": self.inputs, "total": len(self.inputs)})
         if method == "POST" and path == "/api/system/inputs":
@@ -489,11 +537,133 @@ class Graylog:
         return 404, "application/json", _json({"type": "ApiError", "message": "HTTP 404 Not Found"})
 
 
+OTHER_PACK = {
+    "v": "1",
+    "id": "9e1f0000-0000-4000-8000-00000000c0de",
+    "rev": 2,
+    "name": "SOME OTHER PACK",
+    "summary": "s",
+    "description": "d",
+    "vendor": "v",
+    "url": "https://example.com",
+    "parameters": [],
+    "entities": [
+        {
+            "v": "1",
+            "type": {"name": "stream", "version": "1"},
+            "id": "e-1",
+            "data": {"title": {"@type": "string", "@value": "x"}},
+            "constraints": [{"type": "server-version", "version": ">=6.0.0"}],
+        },
+    ],
+}
+
+
+def listed_pack(pack):
+    """A content pack as `GET /api/system/content_packs` lists it (model versions as strings)."""
+    listed = {**copy.deepcopy(pack), "created_at": "2026-10-01T00:00:00.000Z", "server_version": "6.1.4"}
+    listed["v"] = str(listed.get("v"))
+    for entity in listed.get("entities") or []:
+        entity["v"] = str(entity.get("v"))
+    return listed
+
+
+class Influx:
+    """InfluxDB 2.7's v2 REST API for the checks: orgs, checks."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self, checks=None, orgs=None, overrides=None):
+        self.checks = copy.deepcopy(checks or [])
+        self.orgs = copy.deepcopy(
+            orgs
+            if orgs is not None
+            else [{"id": "05f0000000000001", "name": "OTHERORG"}, {"id": "0a1b2c3d4e5f6789", "name": "SOCFORTRESS"}],
+        )
+        self.overrides = dict(overrides or {})
+        self.counter = 0
+
+    def answer(self, method, target, body):
+        parts = urlsplit(target)
+        path = parts.path.removeprefix("/influx")
+        for key in ((method, path),):
+            if key in self.overrides:
+                return self.overrides[key]
+        if method == "GET" and path == "/api/v2/orgs":
+            return 200, "application/json; charset=utf-8", _json({"links": {"self": "/api/v2/orgs"}, "orgs": self.orgs})
+        if method == "GET" and path == "/api/v2/checks":
+            return 200, "application/json; charset=utf-8", _json({"links": {}, "checks": self.checks})
+        if method == "POST" and path == "/api/v2/checks":
+            self.counter += 1
+            check = {**json.loads(body), "id": f"0c{self.counter:014d}", "createdAt": "2026-10-16T00:00:00Z"}
+            self.checks.append(check)
+            return 201, "application/json; charset=utf-8", _json(check)
+        m = re.fullmatch(r"/api/v2/checks/([^/]+)", path)
+        if method == "PUT" and m:
+            check = {**json.loads(body), "id": m.group(1)}
+            self.checks = [check if c.get("id") == m.group(1) else c for c in self.checks]
+            return 200, "application/json; charset=utf-8", _json(check)
+        if method == "DELETE" and m:
+            self.checks = [c for c in self.checks if c.get("id") != m.group(1)]
+            return 204, None, b""
+        return 404, "application/json; charset=utf-8", _json({"code": "not found", "message": "path not found"})
+
+
+class Grafana:
+    """Grafana 11 for network-connector decommissioning: the org switch, folder and datasource
+    deletion (`grafana_client` builds `/grafanaapi` from a connector URL ending in `/grafana`)."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self, overrides=None):
+        self.overrides = dict(overrides or {})
+
+    def answer(self, method, target, body):
+        path = urlsplit(target).path.removeprefix("/grafanaapi")
+        for key in ((method, path), (method, re.sub(r"/[^/]+$", "/*", path))):
+            if key in self.overrides:
+                return self.overrides[key]
+        if method == "POST" and re.fullmatch(r"/user/using/[^/]+", path):
+            return 200, "application/json", _json({"message": "Active organization changed"})
+        if method == "DELETE" and re.fullmatch(r"/folders/[^/]+", path):
+            return 200, "application/json", _json({"id": 12, "message": "Folder deleted", "title": "FORTINET"})
+        if method == "DELETE" and re.fullmatch(r"/datasources/uid/[^/]+", path):
+            return 200, "application/json", _json({"id": 7, "message": "Data source deleted"})
+        return 404, "application/json", _json({"message": "Not found"})
+
+
+class ByPrefix:
+    """One stand-in port for Graylog (`/graylog`), InfluxDB (`/influx`) and Grafana
+    (`/grafanaapi`), each with its own recorder."""
+
+    def __init__(self, routes):
+        self.routes = routes
+
+    def pick(self, target):
+        for prefix, tool, recorder in self.routes:
+            if target.startswith(prefix):
+                return tool, recorder
+        return self.routes[0][1], self.routes[0][2]
+
+    def answer(self, method, target, body):
+        return self.pick(target)[0].answer(method, target, body)
+
+    def add(self, method, target, headers, body):
+        self.pick(target)[1].add(method, target, headers, body)
+
+
 WAF = Waf()
 GRAYLOG = Graylog()
+INFLUX = Influx()
+GRAFANA = Grafana()
 WAF_REC = Recorder(("authorization", "accept", "content-type", "content-length"))
 GRAYLOG_REC = Recorder(("authorization", "x-requested-by", "content-type", "content-length"))
-RECORDERS = (WAF_REC, GRAYLOG_REC)
+INFLUX_REC = Recorder(("authorization", "accept", "accept-encoding", "user-agent", "content-type", "content-length"))
+GRAFANA_REC = Recorder(("authorization", "user-agent", "content-type", "content-length"))
+RECORDERS = (WAF_REC, GRAYLOG_REC, INFLUX_REC, GRAFANA_REC)
+TOOLS = ByPrefix((("/graylog", GRAYLOG, GRAYLOG_REC), ("/influx", INFLUX, INFLUX_REC), ("/grafanaapi", GRAFANA, GRAFANA_REC)))
 
 
 def make_handler(tool, recorder):
@@ -539,19 +709,33 @@ SAVED_CONNECTORS = []
 IDS = {}
 
 
-def set_connector(name, url, username=None, password=None):
+def set_connector(name, url, username=None, password=None, api_key=None, extra=None):
     sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
     sql(
         "INSERT INTO connectors (connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
         "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
         "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
         "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) "
-        "VALUES (:n, '3', :u, UTC_TIMESTAMP(), :un, :pw, NULL, 'parity', 'parity', 1, 1, 0, 0, 1, 0, 0, NULL, 1)",
+        "VALUES (:n, '3', :u, UTC_TIMESTAMP(), :un, :pw, :k, 'parity', 'parity', 1, 1, 0, 0, 1, 0, 0, :x, 1)",
         n=name,
         u=url,
         un=username,
         pw=password,
+        k=api_key,
+        x=extra,
     )
+
+
+INFLUX_URL = f"http://127.0.0.1:{STUB_PORT}/influx"
+GRAFANA_URL = f"http://127.0.0.1:{STUB_PORT}/grafana"
+
+
+def set_influx(url=None, api_key="influx-token-parity", extra="SOCFORTRESS, telegraf "):
+    set_connector("InfluxDB", url or INFLUX_URL, api_key=api_key, extra=extra)
+
+
+def set_grafana():
+    set_connector("Grafana", GRAFANA_URL, "admin", "gräfana")
 
 
 def encrypt(value, key=WAF_KEY):
@@ -599,6 +783,8 @@ def seed():
         found = conn.execute(text("SELECT * FROM connectors WHERE connector_name IN :names").bindparams(names=list(OUR_CONNECTORS)))
         SAVED_CONNECTORS.extend(dict(r._mapping) for r in found)
     set_connector("Graylog", f"http://127.0.0.1:{STUB_PORT}/graylog", "admin", "pässword")
+    set_influx()
+    set_grafana()
     for code, name in ((CUST_A, f"Alpha Co {SFX}"), (CUST_B, f"Beta Co {SFX}")):
         sql("INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :n, UTC_TIMESTAMP())", c=code, n=name)
     for name, role in ((ADMIN, 1), (ANALYST, 2), (ANALYST_B, 2), (PORTAL, 4), (UNASSIGNED, 2)):
@@ -646,6 +832,72 @@ def seed():
             c=code,
         )
     IDS["missing"] = base + 90
+    # The network-connector rows: explicit ids, seven digits, a range of their own.
+    ntop = 0
+    for table in ("customer_network_connectors_meta", "customer_network_connectors"):
+        ntop = max(ntop, rows(f"SELECT COALESCE(MAX(id), 0) AS n FROM {table}")[0]["n"])
+    nbase = max(ntop + 100, 2_000_000)
+    for i, key in enumerate(("meta_a", "meta_b", "meta_a_dup")):
+        IDS[key] = nbase + i
+    for i, key in enumerate(("nc_a", "nc_b", "nc_a2")):
+        IDS[key] = nbase + 10 + i
+
+
+META_ROWS = {
+    # key: (customer, connector name, content pack input id, stream id, org, folder, datasource)
+    "meta_a": (CUST_A, "FORTINET", "cp-in-a", "cp-st-a", "44", "fold-a", "ds-a"),
+    "meta_b": (CUST_B, "FORTINET", "cp-in-b", "cp-st-b", "45", "fold-b", "ds-b"),
+    "meta_a_dup": (CUST_A, "FORTINET", "cp-in-dup", "cp-st-dup", "46", "fold-dup", "ds-dup"),
+}
+NC_ROWS = {"nc_a": (CUST_A, "Fortinet", 1), "nc_b": (CUST_B, "Fortinet", 1), "nc_a2": (CUST_A, "fortinet", 1)}
+
+
+def reset_network_rows(meta=("meta_a", "meta_b"), connectors=("nc_a", "nc_b")):
+    for code in (CUST_A, CUST_B):
+        sql("DELETE FROM customer_network_connectors_meta WHERE customer_code = :c", c=code)
+        sql("DELETE FROM customer_network_connectors WHERE customer_code = :c", c=code)
+    for key in meta:
+        code, name, cp_in, cp_st, org, folder, ds = META_ROWS[key]
+        sql(
+            "INSERT INTO customer_network_connectors_meta (id, customer_code, network_connector_name, graylog_input_id, "
+            "graylog_index_id, graylog_stream_id, grafana_org_id, grafana_dashboard_folder_id, graylog_pipeline_id, "
+            "graylog_content_pack_input_id, graylog_content_pack_stream_id, grafana_datasource_uid) VALUES "
+            "(:i, :c, :n, 'in-1', 'ix-1', 'st-1', :o, :f, 'pl-1', :ci, :cs, :d)",
+            i=IDS[key],
+            c=code,
+            n=name,
+            o=org,
+            f=folder,
+            ci=cp_in,
+            cs=cp_st,
+            d=ds,
+        )
+    for key in connectors:
+        code, service, deployed = NC_ROWS[key]
+        sql(
+            "INSERT INTO customer_network_connectors (id, customer_code, customer_name, network_connector_service_id, "
+            "network_connector_service_name, deployed) VALUES (:i, :c, 'n', 1, :s, :d)",
+            i=IDS[key],
+            c=code,
+            s=service,
+            d=deployed,
+        )
+
+
+def network_state(side=None):
+    return (
+        rows(
+            "SELECT id, customer_code, network_connector_name FROM customer_network_connectors_meta WHERE customer_code IN (:a, :b) ORDER BY id",
+            a=CUST_A,
+            b=CUST_B,
+        ),
+        rows(
+            "SELECT id, customer_code, network_connector_service_name, deployed FROM customer_network_connectors "
+            "WHERE customer_code IN (:a, :b) ORDER BY id",
+            a=CUST_A,
+            b=CUST_B,
+        ),
+    )
 
 
 def cleanup():
@@ -657,6 +909,8 @@ def cleanup():
     for name in USERS:
         sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
     for code in (CUST_A, CUST_B):
+        sql("DELETE FROM customer_network_connectors_meta WHERE customer_code = :c", c=code)
+        sql("DELETE FROM customer_network_connectors WHERE customer_code = :c", c=code)
         sql("DELETE FROM customer_waf_instances WHERE customer_code = :c", c=code)
         sql("DELETE FROM customers WHERE customer_code = :c", c=code)
     for table in ("fieldname", "assetfieldname", "timestampfieldname", "alerttitlefieldname", "iocfieldname"):
@@ -681,10 +935,12 @@ def build_python_app():
     from app.middleware.exception_handlers import value_error_handler
     from app.routers import customer_waf
     from app.routers import monitoring_alert
+    from app.routers import stack_provisioning
 
     api = APIRouter(prefix="/api")
     api.include_router(customer_waf.router)
     api.include_router(monitoring_alert.router)
+    api.include_router(stack_provisioning.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -1723,9 +1979,460 @@ async def alert_checks(p, t_admin, t_analyst, t_portal):
     set_connector("Graylog", f"http://127.0.0.1:{STUB_PORT}/graylog", "admin", "pässword")
 
 
+async def stack_checks(p, t_admin, t_analyst, t_analyst_b, t_portal):
+    SP, SD = "/api/stack_provisioning", "/api/stack_decommissioning"
+    CP = f"{SP}/graylog/provision/content_pack"
+    WAZUH = {"content_pack_name": "SOCFORTRESS_WAZUH_CONTENT_PACK"}
+
+    def graylog(version=6, **kw):
+        def before(side):
+            GRAYLOG.reset(version=version, **kw)
+            pin_graylog_version(version)
+
+        return before
+
+    def gl_err(status, message, ctype="application/json"):
+        return (status, ctype, _json({"type": "ApiError", "message": message}))
+
+    # ---- the listing, auth
+    await p.same("content packs: no token", "GET", f"{SP}/graylog/available/content_packs")
+    await p.same("content packs: portal user", "GET", f"{SP}/graylog/available/content_packs", t_portal)
+    await p.same("content packs: analyst", "GET", f"{SP}/graylog/available/content_packs", t_analyst)
+
+    # ---- the content pack body
+    for label, kw in (
+        ("no token", {"json": WAZUH, "tok": None}),
+        ("malformed JSON, no token", {"content": b"{", "headers": {"Content-Type": "application/json"}, "tok": None}),
+        ("no body", {}),
+        ("a list", {"json": [1]}),
+        ("text body", {"content": b"x", "headers": {"Content-Type": "text/plain"}}),
+        ("no name", {"json": {}}),
+        ("null name", {"json": {"content_pack_name": None, "keywords": 5}}),
+        ("number name", {"json": {"content_pack_name": 1.5}}),
+        ("list name", {"json": {"content_pack_name": ["SOCFORTRESS_WAZUH_CONTENT_PACK"]}}),
+        ("unknown name", {"json": {"content_pack_name": "socfortress_wazuh_content_pack"}}),
+        ("overview-only name", {"json": {"content_pack_name": "SOCFORTRESS_SENTINELONE_INPUT_SYSLOG_TLS"}}),
+        ("bad keywords", {"json": {**WAZUH, "keywords": 5}}),
+        ("bad keyword fields", {"json": {**WAZUH, "keywords": {"syslog_port": "x", "customer_name": 3, "tls_key_file": []}}}),
+    ):
+        kw = dict(kw)
+        tok = kw.pop("tok", t_analyst)
+        await p.same(f"content pack: {label}", "POST", CP, tok, before=graylog(), **kw)
+
+    # ---- provisioning
+    await p.same("content pack: Wazuh, Graylog 6", "POST", CP, t_analyst, json=WAZUH, before=graylog())
+    await p.same(
+        "content pack: with keywords (ignored)",
+        "POST",
+        CP,
+        t_analyst,
+        json={**WAZUH, "keywords": {"customer_name": "x", "syslog_port": "514"}},
+        before=graylog(),
+    )
+    await p.same("content pack: Wazuh, Graylog 7", "POST", CP, t_analyst, json=WAZUH, before=graylog(version=7), rust=p.rs7)
+    await p.same(
+        "content pack: the ETW rule exists",
+        "POST",
+        CP,
+        t_analyst,
+        json=WAZUH,
+        before=graylog(
+            rules=samples.GRAYLOG_PIPELINE_RULES
+            + [{**samples.GRAYLOG_PIPELINE_RULES[1], "title": "Set Syslog Level to ALERT for ETW Registry"}],
+        ),
+    )
+    wazuh_pack = json.load(open(os.path.join(REPO, "backend/app/stack_provisioning/graylog/templates/SOCFORTRESS_WAZUH_CONTENT_PACK.json")))
+    fortinet_pipe = json.load(
+        open(os.path.join(REPO, "backend/app/stack_provisioning/graylog/templates/SOCFORTRESS_FORTINET_PROCESSING_PIPELINE.json")),
+    )
+    await p.same(
+        "content pack: Graylog already has it",
+        "POST",
+        CP,
+        t_analyst,
+        json=WAZUH,
+        before=graylog(content_packs=[listed_pack(OTHER_PACK), listed_pack({**wazuh_pack, "name": "SOCFORTRESS_WAZUH_CONTENT_PACK"})]),
+    )
+    await p.same(
+        "content pack: Graylog has the revision (insert refused)",
+        "POST",
+        CP,
+        t_analyst,
+        json=WAZUH,
+        before=graylog(content_packs=[listed_pack({**wazuh_pack, "name": "renamed"})]),
+    )
+    await p.same(
+        "content pack: a processing pipeline Graylog already has",
+        "POST",
+        CP,
+        t_analyst,
+        json={"content_pack_name": "SOCFORTRESS_FORTINET_PROCESSING_PIPELINE"},
+        before=graylog(content_packs=[listed_pack(fortinet_pipe)]),
+    )
+    await p.same(
+        "content pack: a stream template as it is",
+        "POST",
+        CP,
+        t_analyst,
+        json={"content_pack_name": "SOCFORTRESS_SONICWALL_STREAM"},
+        before=graylog(),
+    )
+    for label, kw in (
+        ("Graylog too old", {"system": {**samples.GRAYLOG_SYSTEM_6, "version": "5.0.12"}}),
+        ("Graylog with a local version", {"system": {**samples.GRAYLOG_SYSTEM_6, "version": "5.0.13+083613f"}}),
+        ("an unparsable version", {"system": {**samples.GRAYLOG_SYSTEM_6, "version": "six"}}),
+        ("system info missing fields", {"system": {"version": "6.1.4"}}),
+        ("system info a list", {"system": [1]}),
+        ("content packs answer 500", {"overrides": {("GET", "/api/system/content_packs"): gl_err(500, "boom")}}),
+        ("content packs answer 404", {"overrides": {("GET", "/api/system/content_packs"): gl_err(404, "gone")}}),
+        (
+            "content packs a bad shape",
+            {
+                "overrides": {
+                    ("GET", "/api/system/content_packs"): (200, "application/json", _json({"total": "x", "content_packs": [{"id": 1}]})),
+                },
+            },
+        ),
+        ("content packs not JSON", {"overrides": {("GET", "/api/system/content_packs"): (200, "text/html", b"<html>")}}),
+        ("insert refused", {"overrides": {("POST", "/api/system/content_packs"): gl_err(400, "Invalid content pack")}}),
+        ("insert answers text", {"overrides": {("POST", "/api/system/content_packs"): (500, "text/plain", b"down")}}),
+        (
+            "install refused",
+            {
+                "overrides": {
+                    ("POST", f"/api/system/content_packs/{wazuh_pack['id']}/{wazuh_pack['rev']}/installations"): gl_err(400, "bad"),
+                },
+            },
+        ),
+        ("pipeline rules fail", {"overrides": {("GET", "/api/system/pipelines/rule"): gl_err(500, "rules down")}}),
+        (
+            "pipeline rules a bad shape",
+            {"overrides": {("GET", "/api/system/pipelines/rule"): (200, "application/json", _json([{"title": 1}]))}},
+        ),
+        ("pipeline rule refused", {"overrides": {("POST", "/api/system/pipelines/rule"): gl_err(400, "parse error")}}),
+    ):
+        await p.same(f"content pack: {label}", "POST", CP, t_analyst, json=WAZUH, before=graylog(**kw))
+
+    def no_graylog(side):
+        GRAYLOG.reset()
+        pin_graylog_version(6)
+        sql("DELETE FROM connectors WHERE connector_name = 'Graylog'")
+
+    def graylog_back(side):
+        set_connector("Graylog", f"http://127.0.0.1:{STUB_PORT}/graylog", "admin", "pässword")
+
+    await p.same("content pack: no Graylog connector", "POST", CP, t_analyst, json=WAZUH, before=no_graylog, after=graylog_back)
+
+    # ---- InfluxDB checks
+    IA, IP1, IPA = f"{SP}/influxdb/available/checks", f"{SP}/influxdb/provision/check", f"{SP}/influxdb/provision/checks"
+
+    def influx(checks=None, influx_url=None, api_key="influx-token-parity", extra="SOCFORTRESS, telegraf ", **kw):
+        def before(side):
+            INFLUX.reset(checks=checks, **kw)
+            set_influx(influx_url, api_key, extra)
+
+        return before
+
+    def influx_state(side):
+        return [(c.get("id"), c.get("name"), c.get("orgID")) for c in INFLUX.checks]
+
+    existing_cpu = [{"id": "0c00000000000077", "name": "CPU CHECK", "orgID": "0a1b2c3d4e5f6789"}, {"id": "0cx", "name": None}, {"name": ""}]
+    await p.same("checks: no token", "GET", IA)
+    await p.same("checks: portal user", "GET", IA, t_portal, before=influx())
+    await p.same("checks: none provisioned", "GET", IA, t_analyst, before=influx())
+    await p.same("checks: CPU provisioned", "GET", IA, t_analyst, before=influx(existing_cpu))
+    for label, answer in (
+        ("an empty answer", (200, None, b"")),
+        ("a list", (200, "application/json", _json([1]))),
+        ("checks a string", (200, "application/json", _json({"checks": "ab"}))),
+        ("checks empty string", (200, "application/json", _json({"checks": ""}))),
+        ("checks null", (200, "application/json", _json({"checks": None}))),
+        ("a check without id", (200, "application/json", _json({"checks": [{"name": "x"}]}))),
+        ("a list name", (200, "application/json", _json({"checks": [{"name": ["x"], "id": "1"}]}))),
+        ("not JSON", (200, "text/plain", b"nope")),
+        ("401", (401, "application/json", _json({"code": "unauthorized", "message": "unauthorized access"}))),
+    ):
+        await p.same(
+            f"checks: InfluxDB answers {label}",
+            "GET",
+            IA,
+            t_analyst,
+            before=influx(overrides={("GET", "/api/v2/checks"): answer}),
+        )
+    await p.same("checks: InfluxDB unreachable", "GET", IA, t_analyst, before=influx(influx_url=f"http://127.0.0.1:{CLOSED_PORT}"))
+    await p.same("checks: an URL without scheme", "GET", IA, t_analyst, before=influx(influx_url="127.0.0.1:8086"))
+
+    def no_influx(side):
+        INFLUX.reset()
+        sql("DELETE FROM connectors WHERE connector_name = 'InfluxDB'")
+
+    await p.same("checks: no InfluxDB connector", "GET", IA, t_analyst, before=no_influx, after=lambda side: set_influx())
+
+    CPU = {"check_name": "SOCFORTRESS_INFLUXDB_CPU_CHECK"}
+    for label, kw in (
+        ("no body", {}),
+        ("no name", {"json": {}}),
+        ("unknown name", {"json": {"check_name": "CPU"}}),
+        ("list name", {"json": {"check_name": []}}),
+        ("bad overwrite", {"json": {**CPU, "overwrite": "maybe"}}),
+        ("null overwrite", {"json": {**CPU, "overwrite": None}}),
+    ):
+        await p.same(f"check: {label}", "POST", IP1, t_analyst, before=influx(), after=influx_state, **kw)
+    await p.same("check: created", "POST", IP1, t_analyst, json=CPU, before=influx(), after=influx_state)
+    await p.same("check: exists, skipped", "POST", IP1, t_analyst, json=CPU, before=influx(existing_cpu), after=influx_state)
+    await p.same(
+        "check: exists, overwritten",
+        "POST",
+        IP1,
+        t_analyst,
+        json={**CPU, "overwrite": "yes"},
+        before=influx(existing_cpu),
+        after=influx_state,
+    )
+    await p.same(
+        "check: exists with a falsy id",
+        "POST",
+        IP1,
+        t_analyst,
+        json=CPU,
+        before=influx([{"id": "", "name": "CPU CHECK"}]),
+        after=influx_state,
+    )
+    await p.same(
+        "check: exists with a numeric id",
+        "POST",
+        IP1,
+        t_analyst,
+        json=CPU,
+        before=influx([{"id": 77, "name": "CPU CHECK"}]),
+        after=influx_state,
+    )
+    await p.same(
+        "check: overwrite a numeric id",
+        "POST",
+        IP1,
+        t_analyst,
+        json={**CPU, "overwrite": True},
+        before=influx([{"id": 77, "name": "CPU CHECK"}]),
+        after=influx_state,
+    )
+    for label, kw in (
+        ("org unknown", {"orgs": [{"id": "x", "name": "OTHER"}]}),
+        ("org without id", {"orgs": [{"name": "SOCFORTRESS"}]}),
+        ("org id a number", {"orgs": [{"id": 5, "name": "SOCFORTRESS"}]}),
+        ("org id breaking the JSON", {"orgs": [{"id": 'a"b', "name": "SOCFORTRESS"}]}),
+        ("org id with a backslash", {"orgs": [{"id": "a\\q", "name": "SOCFORTRESS"}]}),
+        ("orgs answer empty", {"overrides": {("GET", "/api/v2/orgs"): (200, None, b"")}}),
+        ("orgs a string", {"orgs": "SOCFORTRESS"}),
+        (
+            "POST refused",
+            {"overrides": {("POST", "/api/v2/checks"): (400, "application/json", _json({"code": "invalid", "message": "bad"}))}},
+        ),
+        ("POST answers a list", {"overrides": {("POST", "/api/v2/checks"): (201, "application/json", _json([1]))}}),
+        ("POST answers an int id", {"overrides": {("POST", "/api/v2/checks"): (201, "application/json", _json({"id": 9}))}}),
+        ("POST answers nothing", {"overrides": {("POST", "/api/v2/checks"): (204, None, b"")}}),
+        ("POST redirected", {"overrides": {("POST", "/api/v2/checks"): (307, "text/plain", b"moved")}}),
+    ):
+        await p.same(f"check: {label}", "POST", IP1, t_analyst, json=CPU, before=influx(**kw), after=influx_state)
+    for label, extra in (("bucket missing", "SOCFORTRESS"), ("no extra data", None), ("bucket padded", "SOCFORTRESS, tele ")):
+        await p.same(f"check: {label}", "POST", IP1, t_analyst, json=CPU, before=influx(extra=extra), after=influx_state)
+    await p.same("check: no token key", "POST", IP1, t_analyst, json=CPU, before=influx(api_key=None), after=influx_state)
+    await p.same("checks: all created", "POST", IPA, t_analyst, json={}, before=influx(), after=influx_state)
+    await p.same("checks: all, CPU skipped", "POST", IPA, t_analyst, json={"overwrite": 0}, before=influx(existing_cpu), after=influx_state)
+    await p.same(
+        "checks: all, overwrite",
+        "POST",
+        IPA,
+        t_analyst,
+        json={"overwrite": "on"},
+        before=influx(existing_cpu),
+        after=influx_state,
+    )
+    await p.same("checks: all, a list body", "POST", IPA, t_analyst, json=[], before=influx())
+    await p.same("checks: all, no body", "POST", IPA, t_analyst, before=influx())
+    await p.same(
+        "checks: all, the third one fails",
+        "POST",
+        IPA,
+        t_analyst,
+        json={"overwrite": True},
+        before=influx(overrides={("PUT", "/api/v2/checks/never"): (500, None, b"")}, checks=[{"id": "never", "name": "DISK USAGE CHECK"}]),
+        after=influx_state,
+    )
+    ID = f"{SD}/influxdb/check"
+    await p.same("check delete: analyst", "DELETE", f"{ID}/SOCFORTRESS_INFLUXDB_CPU_CHECK", t_analyst, before=influx(existing_cpu))
+    await p.same("check delete: unknown", "DELETE", f"{ID}/CPU%20CHECK", t_admin, before=influx(existing_cpu))
+    await p.same(
+        "check delete: absent",
+        "DELETE",
+        f"{ID}/SOCFORTRESS_INFLUXDB_DISK_CHECK",
+        t_admin,
+        before=influx(existing_cpu),
+        after=influx_state,
+    )
+    await p.same(
+        "check delete: present",
+        "DELETE",
+        f"{ID}/SOCFORTRESS_INFLUXDB_CPU_CHECK",
+        t_admin,
+        before=influx(existing_cpu),
+        after=influx_state,
+    )
+    await p.same(
+        "check delete: InfluxDB refuses",
+        "DELETE",
+        f"{ID}/SOCFORTRESS_INFLUXDB_CPU_CHECK",
+        t_admin,
+        before=influx(
+            existing_cpu,
+            overrides={("DELETE", "/api/v2/checks/0c00000000000077"): (404, "application/json", _json({"message": "gone"}))},
+        ),
+        after=influx_state,
+    )
+
+    # ---- network connector decommissioning
+    NC = f"{SD}/graylog/decommission/network_connector"
+
+    def network(meta=("meta_a", "meta_b"), connectors=("nc_a", "nc_b"), grafana=None, **graylog_kw):
+        packs = [listed_pack({**OTHER_PACK, "id": cp}) for cp in ("cp-in-a", "cp-st-a", "cp-in-b", "cp-st-b", "cp-in-dup", "cp-st-dup")]
+
+        chosen = graylog_kw.pop("content_packs", packs)
+
+        def before(side):
+            GRAYLOG.reset(content_packs=chosen, **graylog_kw)
+            pin_graylog_version(6)
+            GRAFANA.reset(overrides=grafana)
+            reset_network_rows(meta, connectors)
+
+        return before
+
+    for label, body in (
+        ("no name", {"customer_code": CUST_A}),
+        ("unknown name", {"network_connector": "PALOALTO", "customer_code": CUST_A}),
+        ("zero", {"network_connector": 0, "customer_code": CUST_A}),
+        ("a number", {"network_connector": 7, "customer_code": CUST_A}),
+        ("a list", {"network_connector": ["FORTINET"]}),
+        ("an empty list", {"network_connector": []}),
+        ("no customer", {"network_connector": "fortinet"}),
+        ("lower case, unknown customer", {"network_connector": "fortinet", "customer_code": f"NOPE{SFX}"}),
+        ("crowdstrike, none deployed", {"network_connector": "CrowdStrike", "customer_code": CUST_A}),
+    ):
+        await p.same(f"decommission: {label}", "POST", NC, t_admin, json=body, before=network(), after=network_state)
+    A_BODY = {"network_connector": "Fortinet", "customer_code": CUST_A}
+    await p.same("decommission: analyst token, no body", "POST", NC, t_analyst)
+    await p.same("decommission: A", "POST", NC, t_analyst, json=A_BODY, before=network(), after=network_state)
+    await p.same(
+        "decommission: B's connector by A's analyst",
+        "POST",
+        NC,
+        t_analyst,
+        json={"network_connector": "FORTINET", "customer_code": CUST_B},
+        before=network(),
+        after=network_state,
+        expect=(200, 403),
+    )
+    await p.same(
+        "decommission: an unknown customer by A's analyst",
+        "POST",
+        NC,
+        t_analyst,
+        json={"network_connector": "FORTINET", "customer_code": f"NOPE{SFX}"},
+        before=network(),
+        expect=(404, 403),
+    )
+    await p.same(
+        "decommission: two rows, the first",
+        "POST",
+        NC,
+        t_admin,
+        json=A_BODY,
+        before=network(meta=("meta_a_dup", "meta_a")),
+        after=network_state,
+    )
+    await p.same(
+        "decommission: no connector row left to flag",
+        "POST",
+        NC,
+        t_admin,
+        json=A_BODY,
+        before=network(connectors=("nc_b",)),
+        after=network_state,
+    )
+    await p.same(
+        "decommission: the flag on a case-insensitive name",
+        "POST",
+        NC,
+        t_admin,
+        json=A_BODY,
+        before=network(connectors=("nc_a2", "nc_b")),
+        after=network_state,
+    )
+    await p.same(
+        "decommission: no installation",
+        "POST",
+        NC,
+        t_admin,
+        json=A_BODY,
+        before=network(content_packs=[]),
+        after=network_state,
+    )
+    await p.same(
+        "decommission: installations answer 404",
+        "POST",
+        NC,
+        t_admin,
+        json=A_BODY,
+        before=network(overrides={("GET", "/api/system/content_packs/cp-in-a/installations"): gl_err(404, "No such pack")}),
+        after=network_state,
+    )
+    await p.same(
+        "decommission: the uninstall refused",
+        "POST",
+        NC,
+        t_admin,
+        json=A_BODY,
+        before=network(overrides={("DELETE", "/api/system/content_packs/cp-in-a/installations/inst-cp-in-a"): gl_err(400, "in use")}),
+        after=network_state,
+    )
+    await p.same(
+        "decommission: the delete answers text",
+        "POST",
+        NC,
+        t_admin,
+        json=A_BODY,
+        before=network(overrides={("DELETE", "/api/system/content_packs/cp-st-a"): (500, "text/plain", b"x")}),
+        after=network_state,
+    )
+    await p.same(
+        "decommission: Grafana 9's empty folder answer",
+        "POST",
+        NC,
+        t_admin,
+        json=A_BODY,
+        before=network(grafana={("DELETE", "/folders/*"): (200, "application/json", b"")}),
+        after=network_state,
+    )
+    for label, grafana in (
+        ("Grafana refuses the org", {("POST", "/user/using/*"): (401, "application/json", _json({"message": "Unauthorized"}))}),
+        ("Grafana has no folder", {("DELETE", "/folders/*"): (404, "application/json", _json({"message": "folder not found"}))}),
+        ("Grafana fails the datasource", {("DELETE", "/datasources/uid/*"): (500, "text/plain", b"oops")}),
+    ):
+        await p.same(f"decommission: {label}", "POST", NC, t_admin, json=A_BODY, before=network(grafana=grafana), after=network_state)
+
+    def no_grafana(side):
+        network()(side)
+        sql("DELETE FROM connectors WHERE connector_name = 'Grafana'")
+
+    def grafana_back(side):
+        set_grafana()
+        return network_state()
+
+    await p.same("decommission: no Grafana connector", "POST", NC, t_admin, json=A_BODY, before=no_grafana, after=grafana_back)
+
+
 async def main():
     servers = [
-        start_stub(STUB_PORT, GRAYLOG, GRAYLOG_REC),
+        start_stub(STUB_PORT, TOOLS, TOOLS),
         start_stub(WAF_PORT, WAF, WAF_REC),
         start_stub(WAF_TLS_PORT, WAF, WAF_REC, tls=True),
     ]
@@ -1735,13 +2442,15 @@ async def main():
     t_admin, t_analyst = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"])
     t_analyst_b, t_portal = token(ANALYST_B, ["analyst"]), token(PORTAL, ["customer_user"])
     try:
-        sections = os.environ.get("PROVISIONING_PARITY_SECTIONS", "waf,forwarding,alerts").split(",")
+        sections = os.environ.get("PROVISIONING_PARITY_SECTIONS", "waf,forwarding,alerts,stack").split(",")
         if "waf" in sections:
             await waf_checks(p, t_admin, t_analyst, t_analyst_b, t_portal)
         if "forwarding" in sections:
             await forwarding_checks(p, t_admin, t_analyst)
         if "alerts" in sections:
             await alert_checks(p, t_admin, t_analyst, t_portal)
+        if "stack" in sections:
+            await stack_checks(p, t_admin, t_analyst, t_analyst_b, t_portal)
     finally:
         await p.close()
         for proc in procs:
