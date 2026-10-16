@@ -86,6 +86,8 @@ USERS = (ADMIN, ANALYST, PORTAL)
 OUR_CONNECTORS = ("Wazuh-Indexer", "VirusTotal")
 ES_USER, ES_PASS = "parity-indexer", f"es-{SFX}"
 results = []
+#: Every stand-in (`main` fills it): each call takes and compares what all of them received.
+RECS = []
 
 
 def check(name, passed, detail=""):
@@ -121,7 +123,12 @@ class Recorder:
                 headers = {k.lower(): v for k, v in self.headers.items()}
                 with recorder.lock:
                     recorder.captured.append({"method": self.command, "path": self.path, "headers": headers, "body": body})
-                status, ctype, payload, extra = recorder.answer(recorder, self.command, self.path, headers, body)
+                answer = recorder.answer(recorder, self.command, self.path, headers, body)
+                if answer is None:
+                    # Hang up without a response.
+                    self.close_connection = True
+                    return
+                status, ctype, payload, extra = answer
                 self.send_response(status)
                 if ctype:
                     self.send_header("Content-Type", ctype)
@@ -275,6 +282,8 @@ def es_answer(rec, method, raw_path, headers, body):
     if method == "GET" and "/_doc/" in path:
         index, _, doc_id = path[1:].partition("/_doc/")
         index, doc_id = unquote(index), unquote(doc_id)
+        if index == "ai-alerts" and doc_id in AI_DOCS:
+            return ok({"_index": index, "_id": doc_id, "_version": 3, "found": True, "_source": AI_DOCS[doc_id]})
         for hit in HITS:
             if hit["_index"] == index and hit["_id"] == doc_id:
                 return ok({**hit, "_version": 1, "found": True})
@@ -352,6 +361,303 @@ def es_answer(rec, method, raw_path, headers, body):
             return ok({"hits": {"total": [1, 2]}})
         return answer({"hits": {"total": {"value": 10000, "relation": "gte"}, "hits": []}}, index)
     return 404, "text/plain", b"no stub for " + raw_path.encode(), {}
+
+
+# --- SOCFortress, VirusTotal, api.first.org --------------------------------------------------
+#: Indexer documents the AI routes read (`ai-alerts/_doc/<id>`).
+AI_DOCS = {
+    "wazuh": {
+        "timestamp": "2026-10-16T10:00:00.000Z",
+        "syslog_type": "wazuh",
+        "agent_name": "dc01",
+        "rule_level": 12,
+        "message": "dropped",
+        "full_log": "dropped",
+        "gl2_message_id": "dropped",
+        "data_win_eventdata_image": "C:\\Windows\\cmd.exe",
+        "nested": {"a": [1, 2.5, None, True]},
+        "unicode": "é ✓",
+    },
+    "fortinet": {"timestamp": 1760600000, "syslog_type": "fortinet", "process_id": 4242, "srcip": "10.0.0.1"},
+    "other": {"timestamp": "t", "syslog_type": "syslog"},
+    "integration": {"timestamp": "t", "integration": "office365"},
+}
+LICENSE_KEY = f"lic-{SFX}"
+VT_KEY = f"vt-key-{SFX}"
+FEATURES = [{"name": "THREAT INTEL", "intValue": 1}, {"name": "SOCFORTRESS AI", "intValue": 1}, {"name": "OTHER", "intValue": 0}]
+
+
+def ti_answer(rec, method, raw_path, headers, body):
+    """SOCFortress: the licence server, threat intel, the AI endpoints, the cyber-news MCP."""
+    path, _, query = raw_path.partition("?")
+    params = dict(parse_qsl(query, keep_blank_values=True))
+    if path == "/verify-license":
+        mode = rec.mode.get("license", "ok")
+        answers = {
+            "ok": (200, {"data": {"license": {"key": LICENSE_KEY, "dataObjects": FEATURES}}, "success": True, "message": "ok"}),
+            "disabled": (200, {"data": {"license": {"dataObjects": [{"name": "THREAT INTEL", "intValue": 0}]}}}),
+            "bare": (200, {"license": {"dataObjects": FEATURES}}),
+            "dataobjects": (200, {"dataObjects": FEATURES, "success": False}),
+            "error500": (500, {"message": "boom", "detail": "x"}),
+            "detail500": (500, {"message": "", "detail": "only detail"}),
+            "list500": (500, [1]),
+            "list": (200, [1]),
+            "string": (200, "metadata"),
+            "number": (200, 5),
+            "nolicense": (200, {"data": {"message": "Internal"}}),
+            "missing_intvalue": (200, {"data": {"license": {"dataObjects": [{"name": "THREAT INTEL"}]}}}),
+            "dataobjects_strings": (200, {"data": {"license": {"dataObjects": ["a"]}}}),
+            "name_int": (200, {"data": {"license": {"dataObjects": [{"name": 5, "intValue": 1}, {"name": "", "intValue": 1}]}}}),
+            "license_list": (200, {"data": {"license": [1]}}),
+            "unicode": (200, {"data": {"license": {"dataObjects": FEATURES, "note": "é ✓"}}}),
+        }
+        if mode == "text500":
+            return 500, "text/plain", b"not json", {}
+        if mode == "empty500":
+            return 500, "text/plain", b"", {}
+        if mode == "204":
+            return 204, None, b"", {}
+        if mode == "hangup":
+            return None
+        status, obj = answers[mode]
+        return status, "application/json", jbody(obj), {}
+    if path == "/search":
+        value = params.get("value", "")
+        if value.startswith("notjson"):
+            return 200, "text/plain", b"nope", {}
+        if value.startswith("list"):
+            return ok([1])
+        if value.startswith("nodata"):
+            return ok({"success": True})
+        if value.startswith("nulldata"):
+            return ok({"data": None, "success": True})
+        if value.startswith("badscore"):
+            return ok({"data": {"score": "inf"}, "success": True, "message": "m"})
+        if value.startswith("nanscore"):
+            return 200, "application/json", b'{"data": {"score": NaN, "comment": 5}, "success": true}', {}
+        if value.startswith("invalid"):
+            return ok({"data": {"comment": 5, "score": [1]}, "success": "maybe", "message": 7})
+        if value.startswith("hangup"):
+            return None
+        return (
+            503 if value.startswith("down") else 200,
+            "application/json",
+            jbody(
+                {
+                    "data": {
+                        "comment": "c",
+                        "ioc_source": "x",
+                        "report_url": "u",
+                        "score": "100.0" if not value.startswith("num") else 7.9,
+                        "timestamp": "t",
+                        "type": "Domain-Name",
+                        "value": value,
+                        "virustotal_url": "vt",
+                        "extra": 1,
+                    },
+                    "success": True,
+                    "message": "found",
+                },
+            ),
+            {},
+        )
+    if path == "/query/cyber_news":
+        mode = rec.mode.get("mcp", "ok")
+        if mode == "error":
+            return 500, "text/plain", b"mcp boom", {}
+        if mode == "notjson":
+            return 200, "text/plain", b"<html>", {}
+        if mode == "list":
+            return ok([1])
+        if mode == "invalid":
+            return ok({"message": 5, "structured_result": {"thinking_process": 1}})
+        if mode == "redirect":
+            return 302, "text/plain", b"", {"Location": "https://elsewhere.example/x"}
+        if mode == "hangup":
+            return None
+        return ok(
+            {
+                "message": "ok",
+                "success": True,
+                "result": {"a": [1, 2.5, None]},
+                "structured_result": {"response": "r", "thinking_process": None},
+                "execution_time": 3,
+                "extra": "x",
+            },
+        )
+    if path in ("/analyze-alert", "/wazuh-exclusion-rule"):
+        mode = rec.mode.get("ai", "ok")
+        if mode == "forbidden":
+            return ok({"message": "Forbidden"})
+        if mode == "429":
+            return 429, "text/plain", b"slow down", {}
+        if mode == "500":
+            return 500, "text/plain", b"upstream boom", {}
+        if mode == "notjson":
+            return 200, "text/plain", b"nope", {}
+        if mode == "list":
+            return ok([1])
+        if mode == "invalid":
+            return ok({"message": "ok", "confidence_score": 2, "wazuh_exclusion_rule": 5})
+        if mode == "hangup":
+            return None
+        if path == "/analyze-alert":
+            score = {"bounds": 1.5, "negative": "-0.5"}.get(mode, 0.8)
+            return ok(
+                {
+                    "message": "ok",
+                    "success": True,
+                    "analysis": f"looks bad {SFX}",
+                    "base64_decoded": None,
+                    "confidence_score": score,
+                    "threat_indicators": "ti",
+                    "risk_evaluation": "high",
+                    "extra": 1,
+                },
+            )
+        return ok(
+            {"message": "ok", "success": True, "wazuh_exclusion_rule": f"<rule>{SFX}</rule>", "wazuh_exclusion_rule_justification": None},
+        )
+    return 404, "text/plain", b"no stub for " + raw_path.encode(), {}
+
+
+def vt_answer(rec, method, raw_path, headers, body):
+    """VirusTotal: lookups, file submission, analyses, file reports."""
+    path = unquote(raw_path.partition("?")[0])
+    if headers.get("x-apikey") != VT_KEY:
+        return 401, "application/json", jbody({"error": {"code": "WrongCredentialsError"}}), {}
+    if method == "POST" and path == "/api/v3/files":
+        mode = rec.mode.get("submit", "ok")
+        errors = {
+            "400zip": (400, {"error": {"message": "Invalid zip file uploaded"}}),
+            "400large": (400, {"error": {"message": "File too large for you"}}),
+            "400missing": (400, {"error": {"message": "Field MISSING"}}),
+            "400other": (400, {"error": {"message": "nope"}}),
+            "400noerror": (400, {"other": 1}),
+            "400list": (400, [1]),
+            "400nonstr": (400, {"error": {"message": 5}}),
+            "400listmsg": (400, {"error": {"message": ["Invalid zip file"]}}),
+            "429": (429, {"error": {"message": "quota"}}),
+            "413": (413, {"error": {"message": "big"}}),
+            "401": (401, {"error": {"message": "denied"}}),
+            "nodata": (200, {"x": 1}),
+        }
+        if mode == "notjson":
+            return 200, "text/plain", b"nope", {}
+        if mode == "400text":
+            return 400, "text/plain", b"plain text error", {}
+        if mode == "hangup":
+            return None
+        if mode in errors:
+            status, obj = errors[mode]
+            return status, "application/json", jbody(obj), {}
+        return ok({"data": {"type": "analysis", "id": f"an-{SFX}", "links": {"self": "s"}}})
+    if path.startswith("/api/v3/analyses/"):
+        analysis_id = path[len("/api/v3/analyses/") :]
+        if analysis_id == "missing":
+            return 404, "application/json", jbody({"error": {"code": "NotFoundError"}}), {}
+        if analysis_id == "notjson":
+            return 200, "text/plain", b"nope", {}
+        if analysis_id == "nodata":
+            return ok({"x": 1})
+        plan = rec.mode.get("analysis_plan")
+        state = plan.pop(0) if plan else "completed"
+        return ok(
+            {
+                "data": {
+                    "type": "analysis",
+                    "id": analysis_id,
+                    "attributes": {
+                        "date": 1760600000,
+                        "status": state,
+                        "stats": {"malicious": 2, "harmless": "1", "custom": 9},
+                        "results": {},
+                    },
+                    "links": {"self": "s"},
+                },
+                "meta": {"file_info": {"sha256": "x"}},
+            },
+        )
+    if path.startswith("/api/v3/files/"):
+        file_id = path[len("/api/v3/files/") :]
+        if file_id == "missing":
+            return 404, "application/json", jbody({"error": {"code": "NotFoundError"}}), {}
+        if file_id == "err":
+            return 503, "text/plain", b"try later", {}
+        if file_id == "invalid":
+            return ok({"data": {"type": "file", "id": file_id, "attributes": {"size": "big"}}})
+        return ok(
+            {
+                "data": {
+                    "type": "file",
+                    "id": file_id,
+                    "attributes": {
+                        "md5": "m",
+                        "size": "12",
+                        "last_analysis_stats": {"harmless": 1},
+                        "last_analysis_results": {"E": {"method": "m", "engine_name": "E", "category": "c", "result": None, "x": 1}},
+                        "names": ["a"],
+                    },
+                    "links": {"self": "s"},
+                },
+            },
+        )
+    for kind in ("/api/v3/ip_addresses/", "/api/v3/domains/"):
+        if path.startswith(kind):
+            ioc = path[len(kind) :]
+            if ioc.startswith("missing"):
+                return 404, "application/json", jbody({"error": {"code": "NotFoundError"}}), {}
+            if ioc.startswith("notjson"):
+                return 200, "text/plain", b"nope", {}
+            if ioc.startswith("invalid"):
+                return ok({"data": {"id": 1}})
+            return ok(
+                {
+                    "data": {
+                        "id": ioc,
+                        "type": "ip_address",
+                        "links": {"self": f"https://vt/{ioc}"},
+                        "attributes": {
+                            "total_votes": {"harmless": 1, "malicious": 2, "extra": 3},
+                            "last_analysis_results": {"E": {"method": "m", "engine_name": "E", "category": "c", "result": None, "x": 1}},
+                            "last_analysis_stats": {"harmless": 1, "malicious": "2"},
+                            "tags": ["t"],
+                            "asn": "15169",
+                            "whatever": {"x": 1},
+                        },
+                        "extra_data": 1,
+                    },
+                    "meta": 1,
+                },
+            )
+    return 404, "text/plain", b"no stub for " + raw_path.encode(), {}
+
+
+def epss_answer(rec, method, raw_path, headers, body):
+    """api.first.org: one CVE's EPSS score."""
+    params = dict(parse_qsl(raw_path.partition("?")[2], keep_blank_values=True))
+    cve = params.get("cve", "")
+    base = {"status": "OK", "status-code": 200, "version": "1.0", "access": "public", "total": 1, "offset": 0, "limit": 100}
+    row = {"cve": cve, "epss": "0.00043", "percentile": "0.0815", "date": "2026-10-16", "extra": 1}
+    if cve == "CVE-BAD":
+        return ok({**base, "status-code": 404, "data": []})
+    if cve == "CVE-NOTJSON":
+        return 200, "text/html", b"<html>", {}
+    if cve == "CVE-LIST":
+        return ok([1])
+    if cve == "CVE-NUM":
+        return ok({**base, "data": [{**row, "epss": 0.1, "date": None}]})
+    if cve == "CVE-STR":
+        return ok({**base, "data": ["x"]})
+    if cve == "CVE-NULL":
+        return ok({**base, "data": None})
+    if cve == "CVE-NODATA":
+        return ok({"status-code": 200.0})
+    if cve == "CVE-TRUE":
+        return ok({"status-code": True, "data": []})
+    if cve == "CVE-HANGUP":
+        return None
+    return ok({**base, "data": [row, {**row, "cve": "CVE-OTHER"}]})
 
 
 # --- the database ---------------------------------------------------------------------------
@@ -687,8 +993,18 @@ async def cleanup():
         await sql("DELETE FROM custom_dashboard_templates WHERE id >= :n AND id < :m", n=IDS["next"], m=IDS["next"] + 5000)
     await sql("DELETE FROM license_cache WHERE license_key LIKE :k", k=f"%{SFX}%")
     await sql("DELETE FROM license WHERE license_key LIKE :k", k=f"%{SFX}%")
+    for row in TI.get("saved_licenses", []):
+        await sql(
+            "INSERT INTO license (id, license_key, customer_name, customer_email, company_name) VALUES (:id, :license_key, "
+            ":customer_name, :customer_email, :company_name)",
+            **row,
+        )
+    alerts = [TI[k] for k in ("alA", "alB") if k in TI]
+    if alerts:
+        await sql("DELETE FROM incident_management_comment WHERE alert_id IN " + in_list(alerts))
     await sql("DELETE FROM incident_management_comment WHERE comment LIKE :c", c=f"%{SFX}%")
     await sql("DELETE FROM incident_management_alert WHERE alert_name LIKE :n", n=f"%{SFX}%")
+    await sql("DELETE FROM agents WHERE agent_id LIKE :a", a=f"ti{SFX}%")
     for name in OUR_CONNECTORS:
         await sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
     await sql("DELETE FROM log_entries WHERE route LIKE '/api/siem/%' OR route LIKE '/api/threat_intel/%'")
@@ -696,6 +1012,88 @@ async def cleanup():
     await sql("DELETE FROM `user` WHERE username IN " + in_list(USERS))
     await sql("DELETE FROM customers WHERE customer_code IN (:a, :b)", a=CUST_A, b=CUST_B)
     connector_cache.invalidate_all()
+
+
+# --- threat intel ------------------------------------------------------------------------
+TI = {}
+#: Agents the Velociraptor recommendation reads: suffix -> os.
+TI_AGENTS = {"w": "Microsoft Windows 11 Pro", "l": "Ubuntu 22.04.4 LTS", "m": "macOS 14.5", "x": "SunOS 5.11", "e": ""}
+
+
+async def insert_license():
+    await sql(
+        "INSERT INTO license (license_key, customer_name, customer_email, company_name) VALUES (:k, 'Parity', 'p@parity.test', 'Parity Co')",
+        k=LICENSE_KEY,
+    )
+
+
+async def seed_ti():
+    # `get_license` reads the first row: ours is the only one while the suite runs.
+    TI["saved_licenses"] = await rows("SELECT id, license_key, customer_name, customer_email, company_name FROM license ORDER BY id")
+    await sql("DELETE FROM license")
+    await insert_license()
+    top = (await rows("SELECT COALESCE(MAX(id), 0) AS n FROM incident_management_alert"))[0]["n"]
+    for i, (key, cust) in enumerate((("alA", CUST_A), ("alB", CUST_B))):
+        TI[key] = top + 1000 + i
+        await sql(
+            "INSERT INTO incident_management_alert (id, alert_name, alert_description, status, alert_creation_time, customer_code, "
+            "source, escalated, severity) VALUES (:i, :n, 'd', 'OPEN', '2026-10-01 10:00:00', :c, 'wazuh', 0, 'High')",
+            i=TI[key],
+            n=f"TI {key} {SFX}",
+            c=cust,
+        )
+    TI["unknown_alert"] = top + 1500
+    for suffix, os_name in TI_AGENTS.items():
+        await sql(
+            "INSERT INTO agents (agent_id, ip_address, os, hostname, label, critical_asset, wazuh_last_seen, wazuh_agent_version, "
+            "wazuh_agent_status, customer_code, quarantined) VALUES (:a, '10.0.0.1', :os, :h, '', 0, '2026-10-01 10:00:00', 'v4.8.0', "
+            "'active', :c, 0)",
+            a=f"ti{SFX}{suffix}",
+            os=os_name,
+            h=f"ti-{SFX}-{suffix}",
+            c=CUST_A,
+        )
+    TI["cache_next"] = (await rows("SELECT COALESCE(MAX(id), 0) + 1000 AS n FROM license_cache"))[0]["n"]
+
+
+def ti_state(cache=(), licensed=True):
+    """A reset: the licence row (or none), the feature cache as given — `(feature, enabled,
+    fresh)` — and no comment on the suite's alerts."""
+
+    async def reset():
+        await sql("DELETE FROM license_cache WHERE license_key = :k", k=LICENSE_KEY)
+        await sql(f"ALTER TABLE license_cache AUTO_INCREMENT = {TI['cache_next']}")
+        await sql("DELETE FROM license WHERE license_key = :k", k=LICENSE_KEY)
+        if licensed:
+            await insert_license()
+        for feature, enabled, fresh in cache:
+            await sql(
+                "INSERT INTO license_cache (license_key, feature_name, is_enabled, cached_at, expires_at, license_data) VALUES "
+                "(:k, :f, :e, UTC_TIMESTAMP() - INTERVAL 2 HOUR, UTC_TIMESTAMP() + INTERVAL :h HOUR, '{}')",
+                k=LICENSE_KEY,
+                f=feature,
+                e=enabled,
+                h=1 if fresh else -1,
+            )
+        await sql("DELETE FROM incident_management_comment WHERE alert_id IN " + in_list([TI["alA"], TI["alB"]]))
+
+    return reset
+
+
+async def ti_rows():
+    """The feature cache of the suite's licence and the comments on its alerts."""
+    cache = await rows(
+        "SELECT id, license_key, feature_name, is_enabled, cached_at, expires_at, license_data FROM license_cache "
+        "WHERE license_key = :k ORDER BY id",
+        k=LICENSE_KEY,
+    )
+    comments = await rows(
+        "SELECT alert_id, comment, user_name, created_at FROM incident_management_comment WHERE alert_id IN "
+        + in_list([TI["alA"], TI["alB"]])
+        + " ORDER BY id",
+    )
+    licenses = await rows("SELECT license_key, customer_name FROM license ORDER BY id")
+    return {"cache": cache, "comments": comments, "licenses": licenses}
 
 
 def build_python_app():
@@ -788,7 +1186,7 @@ def start_rust():
 
 
 #: Stamps the two backends write at their own instant.
-CLOCK_KEYS = {"created_at", "updated_at"}
+CLOCK_KEYS = {"created_at", "updated_at", "cached_at", "expires_at"}
 
 
 def same_instant(a, b, slack=10):
@@ -845,8 +1243,14 @@ def body_of(r):
 
 async def main():  # noqa: C901 - one scenario after the other
     es = Recorder(es_answer, INDEXER_PORT, "es")
+    ti = Recorder(ti_answer, TI_PORT, "ti")
+    vt = Recorder(vt_answer, VT_PORT, "vt")
+    epss = Recorder(epss_answer, EPSS_PORT, "epss")
+    RECS[:] = [es, ti, vt, epss]
     await seed()
+    await seed_ti()
     await set_connector("Wazuh-Indexer", es.url, ES_USER, ES_PASS)
+    await set_connector("VirusTotal", f"{vt.url}/api/v3", api_key=VT_KEY)
     patch_python_clients()
     rust = start_rust()
     py = httpx.AsyncClient(transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False), base_url="http://py")
@@ -856,25 +1260,32 @@ async def main():  # noqa: C901 - one scenario after the other
     src = {k[4:]: v for k, v in IDS.items() if k.startswith("src_")}
     en = {k[3:]: v for k, v in IDS.items() if k.startswith("en_")}
 
-    async def send(client, method, path, tok, body, raw, headers):
+    async def send(client, method, path, tok, body, raw, headers, files=None, data=None):
         kw = {"headers": {**({"Authorization": f"Bearer {tok}"} if tok else {}), **(headers or {})}}
         if raw is not None:
             kw["content"] = raw
-            kw["headers"]["Content-Type"] = "application/json"
+            kw["headers"].setdefault("Content-Type", "application/json")
+        elif files is not None or data is not None:
+            kw["files"] = files or {}
+            kw["data"] = data or {}
         elif body is not None:
             kw["json"] = body
         return await client.request(method, path, **kw)
 
-    async def both(name, method, path, tok=None, body=None, raw=None, headers=None, reset=None, snapshot=None):
-        """The responses, every request each backend sent the indexer and (`snapshot`) the
+    async def both(name, method, path, tok=None, body=None, raw=None, headers=None, reset=None, snapshot=None, files=None, data=None):
+        """The responses, every request each backend sent upstream and (`snapshot`) the
         rows it left; `reset` runs before each backend's call."""
         got = {}
         for tag, client in (("py", py), ("rs", rs)):
             if reset is not None:
                 await reset()
-            es.take()
-            r = await send(client, method, path, tok, body, raw, headers)
-            upstream, stamps = normalised(es.take())
+            for rec in RECS:
+                rec.take()
+            r = await send(client, method, path, tok, body, raw, headers, files, data)
+            upstream, stamps = {}, []
+            for rec in RECS:
+                upstream[rec.name], found = normalised(rec.take())
+                stamps += found
             got[tag] = {
                 "status": r.status_code,
                 "type": r.headers.get("content-type"),
@@ -891,11 +1302,13 @@ async def main():  # noqa: C901 - one scenario after the other
             same,
             f"python {p['status']} {p['type']} {json.dumps(p['body'])[:2500]}\n        rust   {q['status']} {q['type']} {json.dumps(q['body'])[:2500]}",
         )
-        a, b = p["upstream"], q["upstream"]
-        if a or b:
+        for upstream in p["upstream"]:
+            a, b = p["upstream"][upstream], q["upstream"][upstream]
+            if not (a or b):
+                continue
             first = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), None)
             check(
-                f"{name}: requests to the indexer ({len(a)})",
+                f"{name}: requests to {upstream} ({len(a)})",
                 a == b,
                 f"python {[x['method'] + ' ' + x['path'] for x in a]}\n        rust   {[x['method'] + ' ' + x['path'] for x in b]}"
                 + (
@@ -919,15 +1332,16 @@ async def main():  # noqa: C901 - one scenario after the other
             )
         return p, q
 
-    async def differ(name, method, path, tok, body, py_status, rs_status, rs_detail, reset=reset_seed):
+    async def differ(name, method, path, tok, body, py_status, rs_status, rs_detail, reset=reset_seed, snapshot=siem_rows):
         """A difference by design (§4): Python answers `py_status`, Rust `rs_status` with
-        `rs_detail` and leaves the rows as they were."""
+        `rs_detail`, sends nothing upstream and leaves the rows as they were."""
         await reset()
-        before = await siem_rows()
+        before = await snapshot()
         r = await send(py, method, path, tok, body, None, None)
         check(f"python: {name} [{r.status_code}]", r.status_code == py_status, f"{r.status_code} {r.text[:600]}")
         await reset()
-        es.take()
+        for rec in RECS:
+            rec.take()
         q = await send(rs, method, path, tok, body, None, None)
         detail = body_of(q).get("message") if isinstance(body_of(q), dict) else None
         check(
@@ -935,9 +1349,9 @@ async def main():  # noqa: C901 - one scenario after the other
             q.status_code == rs_status and detail == rs_detail,
             f"{q.status_code} {q.text[:600]}",
         )
-        after = await siem_rows()
+        after = await snapshot()
         check(f"rust: {name}: no rows changed", json.dumps(before, default=str) == json.dumps(after, default=str))
-        check(f"rust: {name}: no indexer request", es.take() == [])
+        check(f"rust: {name}: no upstream request", all(rec.take() == [] for rec in RECS))
         await reset()
 
     try:
@@ -1685,9 +2099,383 @@ async def main():  # noqa: C901 - one scenario after the other
         await both("fields: compressed", "GET", f"{EV}/{A}/Compressed/fields", t_analyst)
         await both("fields: odd", "GET", f"{EV}/{A}/Odd/fields", t_analyst)
         await both("fields: unknown source", "GET", f"{EV}/{A}/Nope/fields", t_analyst)
+
+        # ==================================================================
+        print("\n=== G. threat intel ===")
+        TIP = "/api/threat_intel"
+        fresh = ti_state()
+        enabled = ti_state(cache=[("THREAT INTEL", 1, True), ("SOCFORTRESS AI", 1, True)])
+
+        EP = TIP + "/epss"
+        await both("epss: no token", "POST", EP)
+        await both("epss: malformed JSON, no token", "POST", EP, raw=b"{")
+        await both("epss: portal user", "POST", EP, t_portal, {"cve": "CVE-2024-1"})
+        await both("epss: no body", "POST", EP, t_analyst)
+        await both("epss: no cve", "POST", EP, t_analyst, {})
+        await both("epss: an int cve", "POST", EP, t_analyst, {"cve": 5})
+        for cve in (
+            "CVE-2024-3400",
+            "CVE-BAD",
+            "CVE-NOTJSON",
+            "CVE-LIST",
+            "CVE-NUM",
+            "CVE-STR",
+            "CVE-NULL",
+            "CVE-NODATA",
+            "CVE-TRUE",
+            "CVE-HANGUP",
+            "",
+            "CVE 1&x=\u00e9/?#",
+        ):
+            await both(f"epss: {cve!r}", "POST", EP, t_admin, {"cve": cve})
+
+        SF = TIP + "/socfortress"
+        await both("socfortress: no token", "POST", SF)
+        await both("socfortress: portal user", "POST", SF, t_portal, {"ioc_value": "x"})
+        await both("socfortress: no body", "POST", SF, t_analyst)
+        await both("socfortress: no ioc", "POST", SF, t_analyst, {"customer_code": "x"})
+        await both("socfortress: an int ioc and customer", "POST", SF, t_analyst, {"ioc_value": 5, "customer_code": 7})
+        ioc = {"ioc_value": "example.com"}
+        await both("socfortress: no licence", "POST", SF, t_analyst, ioc, reset=ti_state(licensed=False), snapshot=ti_rows)
+        await both("socfortress: the licence verified and cached", "POST", SF, t_analyst, ioc, reset=fresh, snapshot=ti_rows)
+        await both("socfortress: cached as enabled", "POST", SF, t_analyst, ioc, reset=enabled, snapshot=ti_rows)
+        await both(
+            "socfortress: cached as disabled",
+            "POST",
+            SF,
+            t_analyst,
+            ioc,
+            reset=ti_state(cache=[("THREAT INTEL", 0, True)]),
+            snapshot=ti_rows,
+        )
+        await both(
+            "socfortress: an expired cache",
+            "POST",
+            SF,
+            t_analyst,
+            ioc,
+            reset=ti_state(cache=[("THREAT INTEL", 0, False)]),
+            snapshot=ti_rows,
+        )
+        for mode in (
+            "disabled",
+            "bare",
+            "dataobjects",
+            "error500",
+            "detail500",
+            "list500",
+            "list",
+            "string",
+            "number",
+            "nolicense",
+            "missing_intvalue",
+            "dataobjects_strings",
+            "name_int",
+            "license_list",
+            "unicode",
+            "text500",
+            "empty500",
+            "204",
+            "hangup",
+        ):
+            ti.mode = {"license": mode}
+            await both(f"socfortress: the licence server answers {mode}", "POST", SF, t_analyst, ioc, reset=fresh, snapshot=ti_rows)
+        ti.mode = {}
+        for value in (
+            f"good-{SFX}.com",
+            "notjson-x",
+            "list-x",
+            "nodata-x",
+            "nulldata",
+            "badscore",
+            "nanscore",
+            "invalid",
+            "hangup",
+            "down",
+            "num",
+            "a b&c=d/\u00e9?#",
+        ):
+            await both(f"socfortress: lookup {value!r}", "POST", SF, t_analyst, {"ioc_value": value, "customer_code": None}, reset=enabled)
+        await both("socfortress: a customer code", "POST", SF, t_admin, {"ioc_value": "x.com", "customer_code": "C1"}, reset=enabled)
+
+        PN = TIP + "/process_name"
+        await both("process name: no token", "POST", PN)
+        await both("process name: portal user", "POST", PN, t_portal, {"process_name": "cmd.exe"})
+        await both("process name: no body", "POST", PN, t_analyst)
+        await both("process name: an int", "POST", PN, t_analyst, {"process_name": 5}, reset=enabled)
+        await both("process name: a list", "POST", PN, t_analyst, {"process_name": ["a"]}, reset=enabled)
+        await both("process name: null", "POST", PN, t_analyst, {"process_name": None}, reset=enabled)
+        for name in ("C:\\Windows\\System32\\cmd.exe", "/usr/bin/bash", "trailing\\", "", "\u00e9 \u2713"):
+            await both(f"process name: {name!r}", "POST", PN, t_analyst, {"process_name": name}, reset=enabled)
+        pn = {"process_name": "svchost.exe"}
+        await both("process name: no licence", "POST", PN, t_analyst, pn, reset=ti_state(licensed=False), snapshot=ti_rows)
+        await both(
+            "process name: SOCFORTRESS AI cached as disabled",
+            "POST",
+            PN,
+            t_analyst,
+            pn,
+            reset=ti_state(cache=[("SOCFORTRESS AI", 0, True)]),
+            snapshot=ti_rows,
+        )
+        await both("process name: the licence verified", "POST", PN, t_analyst, pn, reset=fresh, snapshot=ti_rows)
+        ti.mode = {"license": "error500"}
+        await both("process name: the licence server fails", "POST", PN, t_analyst, pn, reset=fresh, snapshot=ti_rows)
+        for mode in ("error", "notjson", "list", "invalid", "redirect", "hangup"):
+            ti.mode = {"mcp": mode}
+            await both(f"process name: the MCP answers {mode}", "POST", PN, t_analyst, pn, reset=enabled)
+        ti.mode = {}
+
+        VTL = TIP + "/virustotal"
+        await both("virustotal: no token", "POST", VTL)
+        await both("virustotal: portal user", "POST", VTL, t_portal, {"ioc_value": "8.8.8.8"})
+        await both("virustotal: no body", "POST", VTL, t_analyst)
+        await both("virustotal: an int ioc", "POST", VTL, t_analyst, {"ioc_value": 5})
+        for value in (
+            "8.8.8.8",
+            "example.com",
+            "d41d8cd98f00b204e9800998ecf8427e",
+            "https://example.com/x",
+            "ftp://a b",
+            "not an ioc!",
+            "8.8.8.8\n",
+            "999.1.1.1",
+            "missing.example.com",
+            "notjson.example.com",
+            "invalid.example.com",
+        ):
+            await both(f"virustotal: {value!r}", "POST", VTL, t_analyst, {"ioc_value": value})
+        AN = TIP + "/virustotal/analysis"
+        FR = TIP + "/virustotal/file"
+        for label, url, key, verified in (
+            ("a rejected key", f"{vt.url}/api/v3", "wrong-key", 1),
+            ("an unverified connector", f"{vt.url}/api/v3", VT_KEY, 0),
+            ("an empty key", f"{vt.url}/api/v3", "", 1),
+            ("no key", f"{vt.url}/api/v3", None, 1),
+            ("a closed port", f"http://127.0.0.1:{CLOSED_PORT}/api/v3", VT_KEY, 1),
+            ("not a URL", "not a url", VT_KEY, 1),
+            ("no connector", None, None, 1),
+        ):
+            await set_connector("VirusTotal", url, api_key=key, verified=verified)
+            await both(f"virustotal: {label}", "POST", VTL, t_analyst, {"ioc_value": "8.8.8.8"})
+            await both(f"vt analysis: {label}", "GET", f"{AN}/an-x", t_analyst)
+            await both(f"vt file report: {label}", "GET", f"{FR}/abc", t_analyst)
+        await set_connector("VirusTotal", f"{vt.url}/api/v3", api_key=VT_KEY)
+
+        FS = TIP + "/virustotal/file/submit"
+        sample = {"file": ("sample.exe", b"MZ\x90\x00 parity " + SFX.encode(), "application/octet-stream")}
+        await both("file submit: no token", "POST", FS, files=sample)
+        await both("file submit: portal user", "POST", FS, t_portal, files=sample)
+        await both("file submit: no form", "POST", FS, t_analyst)
+        await both("file submit: no file", "POST", FS, t_analyst, data={"password": "x"})
+        await both("file submit: a text file field", "POST", FS, t_analyst, data={"file": "text"})
+        await both("file submit", "POST", FS, t_analyst, files=sample)
+        await both("file submit: a password for an exe", "POST", FS, t_analyst, files=sample, data={"password": "pw"})
+        await both(
+            "file submit: a password for a zip",
+            "POST",
+            FS,
+            t_analyst,
+            files={"file": ("a.ZIP", b"PK\x03\x04", "application/octet-stream")},
+            data={"password": "pw"},
+        )
+        await both(
+            "file submit: a password, zip MIME",
+            "POST",
+            FS,
+            t_analyst,
+            files={"file": ("noext", b"PK\x03\x04", "application/x-zip")},
+            data={"password": "pw \u00e9"},
+        )
+        await both("file submit: an empty password", "POST", FS, t_analyst, files=sample, data={"password": ""})
+        await both(
+            "file submit: a password file part",
+            "POST",
+            FS,
+            t_analyst,
+            files={**sample, "password": ("p.txt", b"pw", "text/plain")},
+        )
+        await both(
+            "file submit: an odd file name",
+            "POST",
+            FS,
+            t_analyst,
+            files={"file": ('\u00e9 \u2713 "q"\\x.bin', b"x", "application/octet-stream")},
+        )
+        await both("file submit: a guessed content type", "POST", FS, t_analyst, files={"file": ("x.unknownext", b"x")})
+        await both("file submit: an empty file", "POST", FS, t_analyst, files={"file": ("empty.bin", b"", "text/plain")})
+        for mode in (
+            "400zip",
+            "400large",
+            "400missing",
+            "400other",
+            "400noerror",
+            "400list",
+            "400nonstr",
+            "400listmsg",
+            "429",
+            "413",
+            "401",
+            "nodata",
+            "notjson",
+            "400text",
+            "hangup",
+        ):
+            vt.mode = {"submit": mode}
+            await both(f"file submit: VirusTotal answers {mode}", "POST", FS, t_analyst, files=sample)
+        vt.mode = {}
+        big = {"file": ("big.bin", b"\0" * (32 * 1024 * 1024 + 1), "application/octet-stream")}
+        await both("file submit: over 32 MB", "POST", FS, t_analyst, files=big)
+        del big
+
+        await both("vt analysis: no token", "GET", f"{AN}/x")
+        await both("vt analysis: portal user", "GET", f"{AN}/x", t_portal)
+        for analysis_id in (f"an-{SFX}", "missing", "notjson", "nodata", "a%20b%3Fc", "%C3%A9"):
+            await both(f"vt analysis {analysis_id}", "GET", f"{AN}/{analysis_id}", t_analyst)
+
+        def vt_plan(*states):
+            async def reset():
+                vt.mode = {"analysis_plan": list(states)}
+
+            return reset
+
+        await both("vt analysis: queued", "GET", f"{AN}/q", t_analyst, reset=vt_plan("queued"))
+        vt.mode = {}
+
+        await both("vt file report: no token", "GET", f"{FR}/x")
+        await both("vt file report 'submit': no token", "GET", f"{FR}/submit")
+        await both("vt file report 'analyze': portal user", "GET", f"{FR}/analyze", t_portal)
+        for file_id in ("abc123", "missing", "err", "invalid", "submit", "analyze", "a%20b"):
+            await both(f"vt file report {file_id}", "GET", f"{FR}/{file_id}", t_analyst)
+
+        FA = TIP + "/virustotal/file/analyze"
+        await both("analyze: no token", "POST", FA, files=sample)
+        await both("analyze: portal user", "POST", FA, t_portal, files=sample)
+        await both("analyze: no file", "POST", FA, t_analyst, data={"max_wait_time": "60"})
+        for label, data in (
+            ("max_wait_time 29", {"max_wait_time": "29"}),
+            ("max_wait_time 601", {"max_wait_time": "601"}),
+            ("poll_interval 4", {"poll_interval": "4"}),
+            ("poll_interval 61", {"poll_interval": "61"}),
+            ("not integers", {"max_wait_time": "x", "poll_interval": "1.5"}),
+            ("an empty value", {"max_wait_time": ""}),
+            ("padded", {"max_wait_time": " 60 ", "poll_interval": "+5"}),
+            ("a password for an exe", {"password": "pw"}),
+        ):
+            await both(f"analyze: {label}", "POST", FA, t_analyst, files=sample, data=data, reset=vt_plan("completed"))
+        await both(
+            "analyze: a number as a file part",
+            "POST",
+            FA,
+            t_analyst,
+            files={**sample, "max_wait_time": ("m", b"60", "text/plain")},
+        )
+        await both("analyze: completed at once", "POST", FA, t_analyst, files=sample, reset=vt_plan("completed"))
+        await both(
+            "analyze: queued, then completed",
+            "POST",
+            FA,
+            t_analyst,
+            files=sample,
+            data={"poll_interval": "5"},
+            reset=vt_plan("queued", "completed"),
+        )
+        vt.mode = {"submit": "429"}
+        await both("analyze: the submission fails", "POST", FA, t_analyst, files=sample)
+        vt.mode = {}
+        await both(
+            "analyze: never completes",
+            "POST",
+            FA,
+            t_analyst,
+            files=sample,
+            data={"max_wait_time": "30", "poll_interval": "30"},
+            reset=vt_plan("queued", "queued"),
+        )
+        vt.mode = {}
+
+        alA, alB = TI["alA"], TI["alB"]
+
+        def ai(doc, alert=alA, **extra):
+            return {"index_name": "ai-alerts", "index_id": doc, "alert_id": alert, **extra}
+
+        for label, path in (("analyze", TIP + "/ai/analyze-alert"), ("exclusion rule", TIP + "/ai/wazuh-exclusion-rule")):
+            await both(f"ai {label}: no token", "POST", path)
+            await both(f"ai {label}: malformed JSON, no token", "POST", path, raw=b"[")
+            await both(f"ai {label}: portal user", "POST", path, t_portal, ai("wazuh"))
+            await both(f"ai {label}: no body", "POST", path, t_analyst)
+            await both(f"ai {label}: no index", "POST", path, t_analyst, {"alert_id": "x"})
+            for doc in ("wazuh", "fortinet", "other", "integration", "nope"):
+                await both(f"ai {label}: {doc}", "POST", path, t_analyst, ai(doc), reset=enabled, snapshot=ti_rows)
+            await both(f"ai {label}: no alert id", "POST", path, t_admin, ai("wazuh", None), reset=enabled, snapshot=ti_rows)
+            await both(
+                f"ai {label}: an unknown alert (admin)",
+                "POST",
+                path,
+                t_admin,
+                ai("wazuh", TI["unknown_alert"]),
+                reset=enabled,
+                snapshot=ti_rows,
+            )
+            await both(f"ai {label}: B's alert (admin)", "POST", path, t_admin, ai("wazuh", alB), reset=enabled, snapshot=ti_rows)
+            await both(f"ai {label}: no licence", "POST", path, t_analyst, ai("wazuh"), reset=ti_state(licensed=False), snapshot=ti_rows)
+            await both(f"ai {label}: nothing cached", "POST", path, t_analyst, ai("wazuh"), reset=fresh, snapshot=ti_rows)
+            for mode in ("forbidden", "429", "500", "notjson", "list", "invalid", "hangup", "bounds", "negative"):
+                ti.mode = {"ai": mode}
+                await both(
+                    f"ai {label}: SOCFortress AI answers {mode}",
+                    "POST",
+                    path,
+                    t_analyst,
+                    ai("wazuh"),
+                    reset=enabled,
+                    snapshot=ti_rows,
+                )
+            ti.mode = {}
+            await differ(
+                f"ai {label}: an analyst on another tenant's alert",
+                "POST",
+                path,
+                t_analyst,
+                ai("wazuh", alB),
+                200,
+                403,
+                f"Access denied to alert {alB} - insufficient customer permissions",
+                reset=enabled,
+                snapshot=ti_rows,
+            )
+            await differ(
+                f"ai {label}: an analyst on an unknown alert",
+                "POST",
+                path,
+                t_analyst,
+                ai("wazuh", TI["unknown_alert"]),
+                404,
+                404,
+                "Alert not found",
+                reset=enabled,
+                snapshot=ti_rows,
+            )
+
+        AIV = TIP + "/ai/velociraptor-artifact-recommendation"
+        await both("ai velociraptor: no token", "POST", AIV)
+        await both("ai velociraptor: portal user", "POST", AIV, t_portal, ai("wazuh", agent_id=f"ti{SFX}w"))
+        await both("ai velociraptor: no body", "POST", AIV, t_analyst)
+        for label, agent in (
+            ("no agent", None),
+            ("an unknown agent", "nope"),
+            ("Windows", f"ti{SFX}w"),
+            ("Linux", f"ti{SFX}l"),
+            ("macOS", f"ti{SFX}m"),
+            ("SunOS", f"ti{SFX}x"),
+            ("an empty OS", f"ti{SFX}e"),
+        ):
+            await both(f"ai velociraptor: {label}", "POST", AIV, t_analyst, ai("wazuh", agent_id=agent), reset=enabled, snapshot=ti_rows)
+        await both("ai velociraptor: a missing document", "POST", AIV, t_analyst, ai("nope", agent_id=f"ti{SFX}w"), reset=enabled)
     finally:
         await cleanup()
-        es.stop()
+        for rec in RECS:
+            rec.stop()
         rust.terminate()
         rust.wait(timeout=10)
         await py.aclose()

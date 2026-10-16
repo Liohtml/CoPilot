@@ -48,6 +48,7 @@ copilot-velociraptor = { path = "crates/copilot-velociraptor" }
 copilot-agents = { path = "crates/copilot-agents" }
 copilot-objectstore = { path = "crates/copilot-objectstore" }
 copilot-siem = { path = "crates/copilot-siem" }
+copilot-threat-intel = { path = "crates/copilot-threat-intel" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

@@ -1,7 +1,9 @@
-//! End-to-end tests of the SIEM port (`copilot-siem`): `/api/siem/dashboards`,
-//! `/api/siem/event_sources` and `/api/siem/events` on the production router
-//! against a real MySQL at the Alembic head, the Wazuh indexer replaced by a
-//! mock.
+//! End-to-end tests of the SIEM and threat-intel ports (`copilot-siem`,
+//! `copilot-threat-intel`): `/api/siem/dashboards`, `/api/siem/event_sources`,
+//! `/api/siem/events` and `/api/threat_intel` on the production router
+//! against a real MySQL at the Alembic head, the Wazuh indexer, SOCFortress,
+//! VirusTotal and api.first.org replaced by mocks (the threat-intel tests
+//! that call out use the crate's router with its URLs on the mock).
 //!
 //! ```text
 //! COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13310/copilot \
@@ -732,5 +734,509 @@ async fn panels_and_events_run_against_the_indexer() {
         )
         .await;
     assert_eq!(status, 403);
+    cleanup(&h).await;
+}
+
+// --- /api/threat_intel ----------------------------------------------------------------
+
+const TI: &str = "/api/threat_intel";
+
+/// The threat-intel routes with every upstream URL on `upstream` (the
+/// parity harness's `COPILOT_*_URL` overrides, set here without touching the
+/// process environment).
+fn ti_router(h: &Harness, upstream: &str) -> axum::Router {
+    let mut st = h.app.threat_intel.clone();
+    st.urls = std::sync::Arc::new(copilot_threat_intel::urls::Urls {
+        epss: format!("{upstream}/data/v1/epss"),
+        intel: format!("{upstream}/search"),
+        ai: upstream.to_string(),
+        mcp: format!("{upstream}/query"),
+        license: format!("{upstream}/"),
+        virustotal: format!("{upstream}/api/v3"),
+    });
+    copilot_threat_intel::router(st)
+}
+
+/// `get_license` reads the first `license` row: the test's own is the only
+/// one until [`restore_licences`] puts the others back.
+async fn own_licence(h: &Harness, key: &str) -> Vec<(i64, String, String, String, String)> {
+    let saved = sqlx::query_as::<_, (i64, String, String, String, String)>(
+        "SELECT id, license_key, customer_name, customer_email, company_name FROM license",
+    )
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    h.exec("DELETE FROM license").await;
+    h.exec(&format!(
+        "INSERT INTO license (license_key, customer_name, customer_email, company_name) \
+         VALUES ('{key}', 'e2e', 'e2e@example.com', 'e2e')"
+    ))
+    .await;
+    saved
+}
+
+async fn restore_licences(
+    h: &Harness,
+    key: &str,
+    saved: Vec<(i64, String, String, String, String)>,
+) {
+    h.exec(&format!(
+        "DELETE FROM license_cache WHERE license_key = '{key}'"
+    ))
+    .await;
+    h.exec(&format!("DELETE FROM license WHERE license_key = '{key}'"))
+        .await;
+    for (id, k, name, email, company) in saved {
+        sqlx::query(
+            "INSERT INTO license (id, license_key, customer_name, customer_email, company_name) \
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(k)
+        .bind(name)
+        .bind(email)
+        .bind(company)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+}
+
+async fn virustotal_connector(h: &Harness, url: Option<&str>) {
+    h.exec("DELETE FROM connectors WHERE connector_name = 'VirusTotal'")
+        .await;
+    if let Some(url) = url {
+        sqlx::query(
+            "INSERT INTO connectors (connector_name, connector_type, connector_url, \
+             connector_last_updated, connector_username, connector_password, connector_api_key, \
+             connector_description, connector_supports, connector_configured, connector_verified, \
+             connector_accepts_host_only, connector_accepts_api_key, \
+             connector_accepts_username_password, connector_accepts_file, \
+             connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES \
+             ('VirusTotal', '3', ?, '2026-01-02 03:04:05', NULL, NULL, 'vt-e2e', 'desc', \
+             'supports', 1, 1, 0, 1, 0, 0, 0, NULL, 1)",
+        )
+        .bind(url)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn threat_intel_routes_are_for_analysts() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let s = h.suffix.clone();
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+    for route in [
+        "/epss",
+        "/socfortress",
+        "/process_name",
+        "/virustotal",
+        "/ai/analyze-alert",
+        "/ai/wazuh-exclusion-rule",
+        "/ai/velociraptor-artifact-recommendation",
+    ] {
+        let (status, _) = h
+            .call("POST", &format!("{TI}{route}"), None, Some(json!({})))
+            .await;
+        assert_eq!(status, 401, "{route}");
+        let (status, _) = h
+            .call(
+                "POST",
+                &format!("{TI}{route}"),
+                Some(&portal),
+                Some(json!({})),
+            )
+            .await;
+        assert_eq!(status, 403, "{route}");
+    }
+    for uri in ["/virustotal/analysis/x", "/virustotal/file/x"] {
+        let (status, _) = h
+            .call("GET", &format!("{TI}{uri}"), Some(&portal), None)
+            .await;
+        assert_eq!(status, 403, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn epss_and_socfortress_intel_go_through_the_licence_cache() {
+    let mut h = harness_or_skip!(None);
+    h.seed().await;
+    let s = h.suffix.clone();
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let upstream = MockServer::start().await;
+    h.router = ti_router(&h, &upstream.uri());
+    let key = format!("e2e-lic-{s}");
+    let saved = own_licence(&h, &key).await;
+
+    Mock::given(method("GET"))
+        .and(path("/data/v1/epss"))
+        .and(wiremock::matchers::query_param("cve", "CVE-2024-1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "status-code": 200,
+            "data": [{"cve": "CVE-2024-1", "epss": "0.1", "percentile": "0.5", "date": "2026-10-16"}],
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{TI}/epss"),
+            Some(&analyst),
+            Some(json!({"cve": "CVE-2024-1"})),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["data"][0]["cve"], "CVE-2024-1");
+    assert_eq!(body["message"], "EPSS score retrieved successfully");
+
+    Mock::given(method("POST"))
+        .and(path("/verify-license"))
+        .and(wiremock::matchers::header("module-version", "1.0"))
+        .and(wiremock::matchers::body_json(json!({"license_key": key})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": {"license": {"dataObjects": [
+                {"name": "THREAT INTEL", "intValue": 1},
+                {"name": "OTHER", "intValue": 0},
+            ]}},
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/search"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": {"comment": "c", "score": "90", "type": "Domain-Name", "value": "example.com"},
+            "success": true,
+            "message": "found",
+        })))
+        .expect(2)
+        .mount(&upstream)
+        .await;
+    for _ in 0..2 {
+        let (status, body) = h
+            .call(
+                "POST",
+                &format!("{TI}/socfortress"),
+                Some(&analyst),
+                Some(json!({"ioc_value": "example.com"})),
+            )
+            .await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body["data"]["score"], 90);
+        assert_eq!(body["message"], "found");
+    }
+    // One licence check (the second call read the cache), its features cached.
+    upstream.verify().await;
+    let cached = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM license_cache WHERE license_key = '{key}'"
+        ))
+        .await;
+    assert_eq!(cached, 2);
+    let search = upstream
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|r| r.url.path() == "/search")
+        .unwrap();
+    assert_eq!(
+        search.url.query(),
+        Some("value=example.com%26customer_code%3Dsocfortress_copilot"),
+        "Python's f-string puts the customer code inside the quoted value"
+    );
+
+    h.exec(&format!(
+        "UPDATE license_cache SET is_enabled = 0 WHERE license_key = '{key}'"
+    ))
+    .await;
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{TI}/socfortress"),
+            Some(&analyst),
+            Some(json!({"ioc_value": "x.com"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (
+            400,
+            json!(
+                "Feature is not enabled. You must purchase the THREAT INTEL license to use this feature."
+            )
+        )
+    );
+    h.exec(&format!("DELETE FROM license WHERE license_key = '{key}'"))
+        .await;
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{TI}/socfortress"),
+            Some(&analyst),
+            Some(json!({"ioc_value": "x.com"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (
+            404,
+            json!("No license found. A license must be created first.")
+        )
+    );
+    restore_licences(&h, &key, saved).await;
+}
+
+#[tokio::test]
+async fn virustotal_lookups_and_file_submissions() {
+    let mut h = harness_or_skip!(None);
+    h.seed().await;
+    let s = h.suffix.clone();
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let upstream = MockServer::start().await;
+    h.router = ti_router(&h, &upstream.uri());
+
+    virustotal_connector(&h, None).await;
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{TI}/virustotal"),
+            Some(&analyst),
+            Some(json!({"ioc_value": "8.8.8.8"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (500, json!("VirusTotal connector is not verified."))
+    );
+
+    virustotal_connector(&h, Some(&format!("{}/api/v3", upstream.uri()))).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/ip_addresses/8.8.8.8"))
+        .and(wiremock::matchers::header("x-apikey", "vt-e2e"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": {
+                "id": "8.8.8.8",
+                "type": "ip_address",
+                "links": {"self": "https://vt/8.8.8.8"},
+                "attributes": {"total_votes": {"harmless": 1, "malicious": 0}, "tags": []},
+            },
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{TI}/virustotal"),
+            Some(&analyst),
+            Some(json!({"ioc_value": "8.8.8.8"})),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["data"]["data"]["id"], "8.8.8.8");
+    assert_eq!(
+        body["message"],
+        "VirusTotal threat intelligence lookup was successful."
+    );
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{TI}/virustotal"),
+            Some(&analyst),
+            Some(json!({"ioc_value": "https://example.com/x"})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (400, json!("URL scanning is currently not supported."))
+    );
+
+    Mock::given(method("POST"))
+        .and(path("/api/v3/files"))
+        .and(wiremock::matchers::header("x-apikey", "vt-e2e"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": {"type": "analysis", "id": "an-1", "links": {"self": "s"}},
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let form = |name: &str, password: Option<&str>| {
+        let mut body = format!(
+            "--XB\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n\
+             Content-Type: application/octet-stream\r\n\r\nMZ e2e\r\n"
+        );
+        if let Some(p) = password {
+            body.push_str(&format!(
+                "--XB\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\n{p}\r\n"
+            ));
+        }
+        body.push_str("--XB--\r\n");
+        body
+    };
+    let (status, body) = h
+        .call_raw(
+            "POST",
+            &format!("{TI}/virustotal/file/submit"),
+            Some(&analyst),
+            Some("multipart/form-data; boundary=XB"),
+            form("sample.exe", Some("pw")),
+        )
+        .await;
+    assert_eq!(status, 400, "a password is for zip files only: {body}");
+    assert_eq!(
+        body["message"],
+        "Password can only be provided for zip files. File 'sample.exe' has extension 'exe' and \
+         MIME type 'application/octet-stream', which are not recognized as zip file formats."
+    );
+    let (status, body) = h
+        .call_raw(
+            "POST",
+            &format!("{TI}/virustotal/file/submit"),
+            Some(&analyst),
+            Some("multipart/form-data; boundary=XB"),
+            form("sample.exe", None),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["data"]["id"], "an-1");
+    upstream.verify().await;
+    let submitted = upstream
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|r| r.url.path() == "/api/v3/files")
+        .unwrap();
+    let text = String::from_utf8_lossy(&submitted.body).into_owned();
+    assert!(
+        text.contains("name=\"file\"; filename=\"sample.exe\"") && text.contains("MZ e2e"),
+        "{text}"
+    );
+    virustotal_connector(&h, None).await;
+}
+
+#[tokio::test]
+async fn ai_analysis_comments_only_on_the_callers_alerts() {
+    let mut h = harness_or_skip!(None);
+    let (acme_alert, beta_alert) = h.seed().await;
+    let s = h.suffix.clone();
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let upstream = MockServer::start().await;
+    h.router = ti_router(&h, &upstream.uri());
+    indexer(&h, &upstream.uri()).await;
+    let key = format!("e2e-lic-{s}");
+    let saved = own_licence(&h, &key).await;
+    Mock::given(method("GET"))
+        .and(path("/ai-alerts/_doc/d1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "_index": "ai-alerts", "_id": "d1", "_version": 1, "found": true,
+            "_source": {"timestamp": "t", "syslog_type": "wazuh", "agent_name": "dc01", "message": "x"},
+        })))
+        .mount(&upstream)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/analyze-alert"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "message": "ok", "success": true, "analysis": format!("looks bad {s}"),
+            "confidence_score": 0.8, "threat_indicators": "ti", "risk_evaluation": "high",
+        })))
+        .mount(&upstream)
+        .await;
+    let body = |alert: i64| json!({"index_name": "ai-alerts", "index_id": "d1", "alert_id": alert});
+
+    // §4: another tenant's alert is refused before anything is sent.
+    let (status, resp) = h
+        .call(
+            "POST",
+            &format!("{TI}/ai/analyze-alert"),
+            Some(&analyst),
+            Some(body(beta_alert)),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (
+            403,
+            json!(format!(
+                "Access denied to alert {beta_alert} - insufficient customer permissions"
+            ))
+        )
+    );
+    assert!(upstream.received_requests().await.unwrap().is_empty());
+
+    let (status, resp) = h
+        .call(
+            "POST",
+            &format!("{TI}/ai/analyze-alert"),
+            Some(&analyst),
+            Some(body(acme_alert)),
+        )
+        .await;
+    assert_eq!(status, 200, "{resp}");
+    assert_eq!(resp["analysis"], format!("looks bad {s}"));
+    let sent = upstream
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|r| r.url.path() == "/analyze-alert")
+        .unwrap();
+    assert_eq!(
+        sent.headers.get("x-api-key").unwrap().to_str().unwrap(),
+        key,
+        "the licence key is the API key"
+    );
+    let sent: Value = serde_json::from_slice(&sent.body).unwrap();
+    assert_eq!(sent["integration"], "SOCFORTRESS AI");
+    assert!(
+        sent["alert_payload"].get("message").is_none(),
+        "the payload's dropped keys: {sent}"
+    );
+    let (comment, user) = sqlx::query_as::<_, (String, String)>(
+        "SELECT comment, user_name FROM incident_management_comment WHERE alert_id = ?",
+    )
+    .bind(acme_alert)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        (comment.as_str(), user.as_str()),
+        (
+            format!("SOCFortress AI Analysis: looks bad {s}").as_str(),
+            "admin"
+        )
+    );
+
+    // An admin's unknown alert: the analysis runs, then the comment fails
+    // (Python's order).
+    let before = upstream.received_requests().await.unwrap().len();
+    let (status, resp) = h
+        .call(
+            "POST",
+            &format!("{TI}/ai/analyze-alert"),
+            Some(&admin),
+            Some(body(i64::from(i32::MAX))),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), resp["message"].clone()),
+        (404, json!("Alert not found"))
+    );
+    assert_eq!(
+        upstream.received_requests().await.unwrap().len(),
+        before + 2
+    );
+
+    h.exec(&format!(
+        "DELETE FROM incident_management_comment WHERE alert_id IN ({acme_alert}, {beta_alert})"
+    ))
+    .await;
+    restore_licences(&h, &key, saved).await;
     cleanup(&h).await;
 }
