@@ -93,7 +93,7 @@ pub fn body_model(body: &JsonBody, model: &'static Model) -> Result<PyValue, Api
             "body",
         )),
         JsonBody::Value(v @ Value::Object(_)) => {
-            model::validate(model, &from_json(v)).map_err(invalid)
+            model::validate_body(&Ty::Model(model), &from_json(v)).map_err(invalid)
         }
         _ => Err(validation_error(
             vec![PyError {
@@ -135,7 +135,7 @@ pub fn body_value(body: &JsonBody, ty: &Ty) -> Result<PyValue, ApiError> {
             }],
             "body",
         )),
-        _ => model::validate_ty(ty, &input).map_err(invalid),
+        _ => model::validate_body(ty, &input).map_err(invalid),
     }
 }
 

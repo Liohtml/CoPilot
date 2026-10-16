@@ -154,11 +154,24 @@ impl PyResponse {
     }
 }
 
+/// Which Python client library is being reproduced. Both run on the
+/// urllib3-future the backend installs (it replaces `urllib3`), so they fail
+/// alike; they differ in what they put on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flavor {
+    /// `requests` 2.33: `json=` as `application/json`, Basic over latin-1.
+    Requests,
+    /// `niquests` 3.18 (`grafana_client`): `json=` as
+    /// `application/json;charset=utf-8`, Basic over UTF-8.
+    Niquests,
+}
+
 /// A `requests`-like client.
 #[derive(Debug, Clone)]
 pub struct PyHttp {
     client: reqwest::Client,
-    timeout: Duration,
+    timeout_text: String,
+    flavor: Flavor,
 }
 
 /// Parsed parts of an HTTP(S) URL (`urllib3.util.parse_url`).
@@ -177,15 +190,38 @@ impl PyHttp {
     /// A client with `requests`' `timeout=` (connect and read) that does
     /// not verify certificates when `verify` is false.
     pub fn new(timeout: Duration, verify: bool) -> Result<Self, reqwest::Error> {
+        Self::build(timeout, verify, Flavor::Requests)
+    }
+
+    /// The same for `niquests` ([`Flavor::Niquests`]).
+    pub fn niquests(timeout: Duration, verify: bool) -> Result<Self, reqwest::Error> {
+        Self::build(timeout, verify, Flavor::Niquests)
+    }
+
+    fn build(timeout: Duration, verify: bool, flavor: Flavor) -> Result<Self, reqwest::Error> {
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(!verify)
             .connect_timeout(timeout)
             .read_timeout(timeout)
             .redirect(reqwest::redirect::Policy::limited(30))
-            .user_agent("python-requests/2.33.1")
+            .user_agent(match flavor {
+                Flavor::Requests => "python-requests/2.33.1",
+                Flavor::Niquests => "niquests/3.18.7",
+            })
             .no_proxy()
             .build()?;
-        Ok(Self { client, timeout })
+        Ok(Self {
+            client,
+            timeout_text: timeout_text(timeout),
+            flavor,
+        })
+    }
+
+    /// How Python wrote the timeout (`5.0` for a float, `60` for an int),
+    /// which urllib3's timeout errors print.
+    pub fn with_timeout_text(mut self, text: impl Into<String>) -> Self {
+        self.timeout_text = text.into();
+        self
     }
 
     /// Send `req` the way `requests.request(...)` does.
@@ -200,10 +236,20 @@ impl PyHttp {
         };
         let auth = match &req.basic_auth {
             None => None,
-            Some((user, password)) => Some(basic_auth(
-                user.as_deref().unwrap_or("None"),
-                password.as_deref().unwrap_or("None"),
-            )?),
+            Some((user, password)) => {
+                let (user, password) = (
+                    user.as_deref().unwrap_or("None"),
+                    password.as_deref().unwrap_or("None"),
+                );
+                Some(match self.flavor {
+                    Flavor::Requests => basic_auth(user, password)?,
+                    Flavor::Niquests => format!(
+                        "Basic {}",
+                        base64::engine::general_purpose::STANDARD
+                            .encode(format!("{user}:{password}"))
+                    ),
+                })
+            }
         };
         let Some(parts) = url.parts else {
             return Err(PyExc::Other(
@@ -215,6 +261,14 @@ impl PyHttp {
             ));
         };
         let mut builder = self.client.request(req.method.clone(), &url.url);
+        // Both libraries' session defaults; the answer is decoded below.
+        if !req
+            .headers
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("accept-encoding"))
+        {
+            builder = builder.header(http::header::ACCEPT_ENCODING, "gzip, deflate");
+        }
         for (k, v) in &req.headers {
             builder = builder.header(k.as_str(), v.as_str());
         }
@@ -223,8 +277,12 @@ impl PyHttp {
         }
         match body {
             Some(b) => {
+                let content_type = match self.flavor {
+                    Flavor::Requests => "application/json",
+                    Flavor::Niquests => "application/json;charset=utf-8",
+                };
                 builder = builder
-                    .header(http::header::CONTENT_TYPE, "application/json")
+                    .header(http::header::CONTENT_TYPE, content_type)
                     .body(b.into_bytes());
             }
             None => {
@@ -245,6 +303,7 @@ impl PyHttp {
             Ok(b) => b,
             Err(e) => return Err(self.transport_error(&e, &parts)),
         };
+        let body = decode_content(&headers, body)?;
         Ok(PyResponse {
             status,
             headers,
@@ -276,7 +335,7 @@ impl PyHttp {
             }
             u
         };
-        let secs = timeout_text(self.timeout);
+        let secs = self.timeout_text.clone();
         let chain = error_chain(e);
         if e.is_timeout() {
             if e.is_connect() {
@@ -299,13 +358,20 @@ impl PyHttp {
             let reason = if chain.contains("Connection refused") {
                 "[Errno 111] Connection refused".to_string()
             } else if chain.contains("dns error") || chain.contains("failed to lookup") {
+                // urllib3-future's resolver: the resolver's sentence, the
+                // name, and how many resolvers it asked.
+                let reason = chain
+                    .split("failed to lookup address information: ")
+                    .nth(1)
+                    .map(|r| r.split(": ").next().unwrap_or(r))
+                    .unwrap_or("Name or service not known");
+                let host = parts.host.to_ascii_lowercase();
                 return PyExc::Other(
                     "ConnectionError",
                     format!(
                         "{pool}: Max retries exceeded with url: {url} (Caused by \
-                         NameResolutionError(\"{conn}: Failed to resolve '{}' ([Errno -2] Name \
-                         or service not known)\"))",
-                        parts.host
+                         NameResolutionError(\"{conn}: Failed to resolve '{host}' ({reason}: \
+                         {host} using 1 resolver(s))\"))"
                     ),
                 );
             } else if chain.contains("No route to host") {
@@ -329,13 +395,54 @@ impl PyHttp {
         {
             return PyExc::Other(
                 "ConnectionError",
-                "('Connection aborted.', RemoteDisconnected('Remote end closed connection \
-                 without response'))"
-                    .to_string(),
+                "Remote end closed connection without response".to_string(),
             );
+        }
+        if e.is_redirect() {
+            return PyExc::Other("TooManyRedirects", "Exceeded 30 redirects.".to_string());
         }
         PyExc::Other("ConnectionError", chain)
     }
+}
+
+/// urllib3's `gzip` / `deflate` decoding of an answer (`deflate` is zlib,
+/// else raw deflate, as urllib3's `DeflateDecoder` tries).
+fn decode_content(headers: &HeaderMap, raw: Bytes) -> Result<Bytes, PyExc> {
+    use std::io::Read as _;
+    let encoding = headers
+        .get(http::header::CONTENT_ENCODING)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let failed = |e: &str| {
+        PyExc::Other(
+            "ContentDecodingError",
+            format!(
+                "('Received response with content-encoding: {encoding}, but failed to decode \
+                 it.', error('Error -3 while decompressing data: {e}'))"
+            ),
+        )
+    };
+    let mut out = Vec::new();
+    match encoding.as_str() {
+        "gzip" | "x-gzip" => {
+            flate2::read::MultiGzDecoder::new(&raw[..])
+                .read_to_end(&mut out)
+                .map_err(|_| failed("incorrect header check"))?;
+        }
+        "deflate" => {
+            let zlib = flate2::read::ZlibDecoder::new(&raw[..]).read_to_end(&mut out);
+            if zlib.is_err() {
+                out.clear();
+                flate2::read::DeflateDecoder::new(&raw[..])
+                    .read_to_end(&mut out)
+                    .map_err(|_| failed("invalid stored block lengths"))?;
+            }
+        }
+        _ => return Ok(raw),
+    }
+    Ok(Bytes::from(out))
 }
 
 fn timeout_text(d: Duration) -> String {

@@ -46,6 +46,7 @@ use copilot_db::audit::DbAuditSink;
 use copilot_db::connectors::ConnectorCache;
 use copilot_db::schema::{self, TableRequirement};
 use copilot_gateway::LegacyProxy;
+use copilot_grafana::{GrafanaClient, GrafanaState};
 use copilot_graylog::{GraylogClient, GraylogState};
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
 use copilot_influxdb::{InfluxClient, InfluxState};
@@ -127,6 +128,13 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/graylog/receiver",
     // The InfluxDB connector (copilot-influxdb): alerts and metrics.
     "GET /api/influxdb",
+    // The Grafana connector (copilot-grafana): the reporting reads and iframe
+    // links, adding a user to an org. `POST /api/reporting/generate-report`
+    // (Playwright) and `POST /api/grafana/dashboards` (the templates live in
+    // backend/) stay in Python.
+    "GET /api/reporting",
+    "POST /api/reporting/generate_iframe_links",
+    "POST /api/user/user/organization/add",
     // SOC Management but GET /report (the PDF operations report: matplotlib
     // charts and wkhtmltopdf), which falls through to the legacy backend.
     "/api/soc_management",
@@ -210,6 +218,8 @@ pub struct App {
     pub graylog: GraylogClient,
     /// The InfluxDB client (`/api/influxdb`, and the checks provisioning).
     pub influxdb: InfluxClient,
+    /// The Grafana client (`/api/reporting`, `/api/user`, and provisioning).
+    pub grafana: GrafanaClient,
 }
 
 impl App {
@@ -278,6 +288,8 @@ impl App {
             GraylogClient::new(ctx.connectors.clone()).context("building the Graylog client")?;
         let influxdb =
             InfluxClient::new(ctx.connectors.clone()).context("building the InfluxDB client")?;
+        let grafana =
+            GrafanaClient::new(ctx.connectors.clone()).context("building the Grafana client")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -307,6 +319,7 @@ impl App {
             scheduler,
             graylog,
             influxdb,
+            grafana,
         })
     }
 
@@ -400,6 +413,12 @@ impl App {
                     client: self.influxdb.clone(),
                 }),
             )
+            // Full paths: `/api/reporting/*` but `POST /generate-report`, and
+            // `/api/user/user/organization/add`.
+            .merge(copilot_grafana::router(GrafanaState {
+                ctx: self.ctx.clone(),
+                client: self.grafana.clone(),
+            }))
             // `/api/soc_management/*` but `GET /report`; the portal's SLA page
             // with full paths beside the other `/api/customer_portal` routes.
             .nest(

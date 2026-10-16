@@ -31,6 +31,7 @@ copilot-soc-management = { workspace = true }
 copilot-scheduler = { workspace = true }
 copilot-graylog = { workspace = true }
 copilot-influxdb = { workspace = true }
+copilot-grafana = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

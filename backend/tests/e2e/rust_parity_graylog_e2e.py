@@ -4,8 +4,9 @@ NOT collected by pytest (needs a live MySQL and the Rust binary; run by scripts/
 The real FastAPI routers (in-process) and a Rust instance this suite starts (no legacy backend,
 connector cache off, so a connector row changed between checks is seen at once by both) answer
 the same requests on one database. The tools themselves are local stand-ins that record every
-request: Graylog with a 6.x and a 7.x personality, the Event Shipper's GELF TCP input, and
-InfluxDB 2.7's query API (annotated CSV from `connector_samples.influx_answer`). For
+request: Graylog with a 6.x and a 7.x personality, the Event Shipper's GELF TCP input,
+InfluxDB 2.7's query API (annotated CSV from `connector_samples.influx_answer`), and Grafana 11's
+HTTP API (organizations, search, dashboards, org users). For
 each request the suite compares the status, the response **bytes**, and every request each
 backend sent to the tool (method, target, the headers that matter, body bytes). urllib3 prints
 an object's memory address in a connection error, which differs between any two processes; it
@@ -13,7 +14,7 @@ is masked. Deliberate differences are asserted as such (RUST_MIGRATION.md §4).
 
     PARITY_SUITES=tests/e2e/rust_parity_graylog_e2e.py scripts/rust-parity.sh
 
-`CONNECTOR_PARITY_SECTIONS=graylog,influxdb` (the default) picks the connectors to check.
+`CONNECTOR_PARITY_SECTIONS=graylog,influxdb,grafana` (the default) picks the connectors to check.
 """
 
 import asyncio
@@ -63,12 +64,15 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")
 RS_PORT = int(os.environ.get("GRAYLOG_PARITY_RUST_PORT", "5695"))
 GRAYLOG_PORT = int(os.environ.get("GRAYLOG_STUB_PORT", "5690"))
 INFLUX_PORT = int(os.environ.get("INFLUX_STUB_PORT", "5691"))
+GRAFANA_PORT = int(os.environ.get("GRAFANA_STUB_PORT", "5692"))
 GELF_PORT = int(os.environ.get("GELF_STUB_PORT", "5694"))
 CLOSED_PORT = 1
-OUR_CONNECTORS = ("Graylog", "Event Shipper", "InfluxDB")
+OUR_CONNECTORS = ("Graylog", "Event Shipper", "InfluxDB", "Grafana")
 INFLUX_URL = f"http://127.0.0.1:{INFLUX_PORT}"
 INFLUX_TOKEN = "influx-token"
 INFLUX_EXTRA = "SOC FORTRESS,telegraf"
+GRAFANA_URL = f"http://127.0.0.1:{GRAFANA_PORT}"
+GRAFANA_USER, GRAFANA_PASSWORD = "admin", "grafana-pässword"
 results = []
 
 
@@ -245,7 +249,99 @@ class InfluxDB:
 
 INFLUX = InfluxDB()
 INFLUX_RECORDER = InfluxRecorder()
-RECORDERS = (RECORDER, INFLUX_RECORDER)
+
+
+class GrafanaRecorder(Recorder):
+    HEADERS = ("authorization", "content-type", "content-length", "user-agent", "accept")
+
+
+def _grafana_auth(user, password):
+    import base64
+
+    return "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+
+
+class Grafana:
+    """Grafana 11's API as CoPilot uses it: organizations, the current org of the admin user,
+    search, dashboards by uid, org users."""
+
+    USERS = {"a@b.c", "viewer@acme.io", "é@exämple.io"}
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.overrides = {}
+        self.current_org = 1
+        self.members = {1: {"a@b.c"}, 44: {"viewer@acme.io"}}
+
+    def answer(self, method, target, body, headers):
+        path = urlsplit(target).path
+        for (m, prefix), answer in self.overrides.items():
+            if m == method and path.startswith(prefix):
+                return answer
+        if headers.get("authorization") != _grafana_auth(GRAFANA_USER, GRAFANA_PASSWORD):
+            return (
+                401,
+                "application/json",
+                _json({"message": "Invalid username or password", "messageId": "password-auth.failed", "statusCode": 401, "traceID": ""}),
+            )
+        not_found = (404, "application/json", _json({"message": "Not found"}))
+        org_ids = {o["id"] for o in samples.GRAFANA_ORGS}
+        if method == "GET" and path == "/api/orgs":
+            return 200, "application/json", _json(samples.GRAFANA_ORGS)
+        m = re.fullmatch(r"/api/user/using/(-?\d+)", path)
+        if method == "POST" and m:
+            if int(m.group(1)) not in org_ids:
+                return 401, "application/json", _json({"message": "Not a valid organization"})
+            self.current_org = int(m.group(1))
+            return 200, "application/json", _json({"message": "Active organization changed"})
+        if method == "GET" and path == "/api/search":
+            return 200, "application/json", _json(samples.GRAFANA_SEARCH.get(self.current_org, []))
+        if method == "GET" and path.startswith("/api/dashboards/uid/"):
+            if path.rsplit("/", 1)[1] == samples.GRAFANA_DASHBOARD["dashboard"]["uid"]:
+                return 200, "application/json", _json(samples.GRAFANA_DASHBOARD)
+            return 404, "application/json", _json({"message": "Dashboard not found", "traceID": ""})
+        m = re.fullmatch(r"/api/orgs/([^/]+)/users", path)
+        if method == "POST" and m:
+            if not m.group(1).isdigit() or int(m.group(1)) not in org_ids:
+                return 404, "application/json", _json({"message": "Organization not found"})
+            login = json.loads(body).get("loginorEmail")
+            if login not in self.USERS:
+                return 404, "application/json", _json({"message": "User not found"})
+            if login in self.members.setdefault(int(m.group(1)), set()):
+                return 409, "application/json", _json({"message": "User is already member of this organization"})
+            self.members[int(m.group(1))].add(login)
+            return 200, "application/json", _json({"message": "User added to organization", "userId": 7})
+        return not_found
+
+
+GRAFANA = Grafana()
+GRAFANA_RECORDER = GrafanaRecorder()
+RECORDERS = (RECORDER, INFLUX_RECORDER, GRAFANA_RECORDER)
+
+
+def make_grafana_handler(tool, recorder):
+    class Handler(BaseHTTPRequestHandler):
+        def _serve(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(length) if length else b""
+            headers = {k.lower(): v for k, v in self.headers.items()}
+            recorder.add(self.command, self.path, headers, body)
+            status, ctype, payload = tool.answer(self.command, self.path, body, headers)
+            self.send_response_only(status)
+            if ctype:
+                self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        do_GET = do_POST = do_PUT = do_DELETE = _serve  # noqa: N815 - http.server API
+
+        def log_message(self, *args):
+            pass
+
+    return Handler
 
 
 def make_influx_handler(tool, recorder):
@@ -380,6 +476,7 @@ def seed():
     set_connector("Graylog", f"http://127.0.0.1:{GRAYLOG_PORT}", "admin", "pässword")
     set_connector("Event Shipper", "127.0.0.1", extra=str(GELF_PORT))
     set_connector("InfluxDB", INFLUX_URL, api_key=INFLUX_TOKEN, extra=INFLUX_EXTRA)
+    set_connector("Grafana", GRAFANA_URL, GRAFANA_USER, GRAFANA_PASSWORD)
 
 
 def cleanup():
@@ -404,12 +501,14 @@ def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers import grafana
     from app.routers import graylog
     from app.routers import influxdb
 
     api = APIRouter(prefix="/api")
     api.include_router(graylog.router)
     api.include_router(influxdb.router)
+    api.include_router(grafana.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -450,6 +549,21 @@ def normalize(body):
     return ADDRESS.sub(b"object at 0x...", body)
 
 
+CLOCK = re.compile(rb"from=(-?\d+)&to=(-?\d+)")
+
+
+def same_clock(b1, b2):
+    """The iframe links carry `now` in milliseconds: the two answers may be a second apart, but
+    span the same range. Masked once that holds."""
+    c1, c2 = CLOCK.findall(b1), CLOCK.findall(b2)
+    if len(c1) != len(c2):
+        return b1, b2
+    for (f1, t1), (f2, t2) in zip(c1, c2):
+        if int(t1) - int(f1) != int(t2) - int(f2) or abs(int(t1) - int(t2)) > 5000:
+            return b1, b2
+    return CLOCK.sub(b"from=F&to=T", b1), CLOCK.sub(b"from=F&to=T", b2)
+
+
 class Pair:
     def __init__(self):
         self.py = httpx.AsyncClient(
@@ -469,7 +583,7 @@ class Pair:
         await asyncio.sleep(0)
         return r, [request for recorder in RECORDERS for request in recorder.take()]
 
-    async def same(self, name, method, path, tok=None, before=None, outbound=True, concurrent=False, **kw):
+    async def same(self, name, method, path, tok=None, before=None, outbound=True, concurrent=False, clock=False, **kw):
         """Python, then Rust, with the stand-in reset by `before` for each.
 
         `concurrent`: the route sends its requests at once (`asyncio.gather`), so their order
@@ -482,6 +596,8 @@ class Pair:
             before()
         r2, out2 = await self.call(self.rs, method, path, tok, **kw)
         b1, b2 = normalize(r1.content), normalize(r2.content)
+        if clock:
+            b1, b2 = same_clock(b1, b2)
         ok = r1.status_code == r2.status_code and b1 == b2
         if concurrent and not ok and r1.status_code == r2.status_code:
             swapped = b1.replace(b"/journal", b"/__swap__").replace(b"/metrics", b"/journal").replace(b"/__swap__", b"/metrics")
@@ -825,13 +941,22 @@ async def graylog_checks(p, t_admin, t_analyst, t_portal):
         ("ftp", "ftp://127.0.0.1", "admin"),
         ("trailing slash", f"http://127.0.0.1:{GRAYLOG_PORT}/", None),
         ("non-latin-1 user", f"http://127.0.0.1:{GRAYLOG_PORT}", "€uro"),
+        ("unknown host", "http://nonexistent.invalid:9000", "admin"),
+        ("hangs up", INFLUX_URL, "admin"),
     ):
         set_connector("Graylog", url, user, "pw")
+
+        def before():
+            GRAYLOG.reset()
+            INFLUX.reset()
+            INFLUX.mode = "close"
+
         for route in ("/indices", "/streams", "/pipeline/rules/x"):
-            await p.same(f"GET {route} ({label})", "GET", G + route, t_analyst, before=GRAYLOG.reset)
-        await p.same(f"POST /event/alerts ({label})", "POST", G + "/event/alerts", t_analyst, json={}, before=GRAYLOG.reset)
-        if label != "connection refused":
-            await p.same(f"GET /metrics ({label})", "GET", G + "/metrics", t_analyst, before=GRAYLOG.reset, concurrent=True)
+            await p.same(f"GET {route} ({label})", "GET", G + route, t_analyst, before=before)
+        await p.same(f"POST /event/alerts ({label})", "POST", G + "/event/alerts", t_analyst, json={}, before=before)
+        if label not in ("connection refused", "unknown host", "hangs up"):
+            await p.same(f"GET /metrics ({label})", "GET", G + "/metrics", t_analyst, before=before, concurrent=True)
+    INFLUX.reset()
     set_connector("Graylog", None)
     for route in ("/indices", "/inputs", "/metrics", "/url_whitelist"):
         await p.same(f"GET {route} (no connector)", "GET", G + route, t_admin, before=GRAYLOG.reset, concurrent=route == "/metrics")
@@ -1092,20 +1217,201 @@ async def influxdb_checks(p, t_admin, t_analyst, t_portal):
     await p.same("GET /alerts (InfluxDB never answers: 10 s timeout)", "GET", IX + "/alerts", t_analyst, before=mode("silent"))
 
 
+async def grafana_checks(p, t_admin, t_analyst, t_portal):
+    R = "/api/reporting"
+    U = "/api/user/user/organization/add"
+    uid = samples.GRAFANA_DASHBOARD["dashboard"]["uid"]
+
+    print("\n=== Grafana: reporting reads ===")
+    for path in ("/orgs", "/dashboards/44", "/dashboards/1", "/dashboards/007", "/dashboards/%2044", "/dashboards/999", "/dashboards/-1"):
+        await p.same(f"GET {path}", "GET", R + path, t_analyst, before=GRAFANA.reset)
+    for path in ("/dashboards/x", "/dashboards/1.5", "/dashboards/99999999999999999999"):
+        await p.same(f"GET {path}", "GET", R + path, t_analyst, before=GRAFANA.reset)
+    for prefix in ("/dashboard/", "/dashboard_panels/"):
+        for u in (uid, "nope", "a%20b", "%3Fx%3D1", "a%2Fb"):
+            await p.same(f"GET {prefix}{u}", "GET", R + prefix + u, t_admin, before=GRAFANA.reset)
+    for path in ("/orgs", "/dashboards/1", f"/dashboard/{uid}", f"/dashboard_panels/{uid}"):
+        await p.same(f"GET {path}, no token", "GET", R + path)
+        await p.same(f"GET {path}, bad token", "GET", R + path, "not-a-jwt")
+        await p.same(f"GET {path}, portal user", "GET", R + path, t_portal)
+
+    print("\n=== Grafana: what Grafana answers ===")
+    text_panel = copy.deepcopy(samples.GRAFANA_DASHBOARD)
+    text_panel["dashboard"]["panels"].append({"id": 9, "title": "Notes", "type": "text", "options": {"content": "x", "mode": "markdown"}})
+    refresh_off = copy.deepcopy(samples.GRAFANA_DASHBOARD)
+    refresh_off["dashboard"]["refresh"] = False
+    no_meta = {"dashboard": samples.GRAFANA_DASHBOARD["dashboard"]}
+    answers = [
+        ("/api/orgs", 200, _json([{"id": "x", "name": 5}])),
+        ("/api/orgs", 200, _json({"orgs": []})),
+        ("/api/orgs", 200, _json(None)),
+        ("/api/orgs", 200, b"not json"),
+        ("/api/orgs", 200, b""),
+        ("/api/orgs", 204, b""),
+        ("/api/orgs", 500, b"<html>down</html>"),
+        ("/api/orgs", 500, _json({"message": 5})),
+        ("/api/orgs", 400, _json({"message": "bad", "x": [1, None]})),
+        ("/api/orgs", 403, b""),
+        ("/api/orgs", 404, _json(["x"])),
+        ("/api/search", 200, _json([{"id": 1}])),
+        ("/api/search", 200, _json([{**samples.GRAFANA_SEARCH[44][1], "tags": None, "folderId": "5"}])),
+        ("/api/user/using/", 500, _json({"message": "switch failed"})),
+        ("/api/dashboards/uid/", 200, _json(text_panel)),
+        ("/api/dashboards/uid/", 200, _json(refresh_off)),
+        ("/api/dashboards/uid/", 200, _json(no_meta)),
+        ("/api/dashboards/uid/", 200, _json({"dashboard": {"panels": [{"id": 1, "title": "x"}]}})),
+        ("/api/dashboards/uid/", 200, _json({"dashboard": {"panels": {"a": 1}}})),
+        ("/api/dashboards/uid/", 200, _json({"dashboard": {"panels": [{"id": "x", "title": None, "type": "graph"}]}})),
+        (
+            "/api/dashboards/uid/",
+            200,
+            _json({"dashboard": {"panels": [{"id": 2, "title": "row", "type": "row"}, {"id": 3, "title": "t", "type": "stat"}]}}),
+        ),
+        ("/api/dashboards/uid/", 200, _json({"dashboard": []})),
+        ("/api/dashboards/uid/", 200, _json([])),
+        ("/api/dashboards/uid/", 200, b"oops"),
+    ]
+    routes_for = {
+        "/api/orgs": ["/orgs"],
+        "/api/search": ["/dashboards/44"],
+        "/api/user/using/": ["/dashboards/44"],
+        "/api/dashboards/uid/": [f"/dashboard/{uid}", f"/dashboard_panels/{uid}"],
+    }
+    for prefix, status, payload in answers:
+        for route in routes_for[prefix]:
+
+            def before(pr=prefix, st=status, pa=payload):
+                GRAFANA.reset()
+                GRAFANA.overrides[("GET" if pr != "/api/user/using/" else "POST", pr)] = (
+                    st,
+                    "application/json" if pa[:1] in (b"{", b"[", b"n") else "text/html",
+                    pa,
+                )
+
+            await p.same(f"GET {route} ← {status} {payload[:40]!r}", "GET", R + route, t_analyst, before=before)
+
+    print("\n=== Grafana: iframe links ===")
+    link = {
+        "org_id": 44,
+        "dashboard_title": "huntress-summary",
+        "dashboard_uid": uid,
+        "panel_id": 5,
+        "time_range": {"value": 7, "unit": "d"},
+    }
+    bodies = [
+        link,
+        {**link, "time_range": {"value": 30, "unit": "m"}, "theme": "light"},
+        {**link, "time_range": {"value": "12", "unit": "h"}, "org_id": "007", "panel_id": True},
+        {**link, "time_range": {"value": -5, "unit": "d"}, "dashboard_title": "a b/é?x"},
+        {**link, "time_range": {"value": 7, "unit": "w"}},
+        {**link, "time_range": {"value": "x", "unit": "w"}},
+        {**link, "time_range": {"value": 7, "unit": 5}},
+        {**link, "time_range": {"value": 1.5, "unit": "d"}},
+        {**link, "time_range": {"value": 1000000000, "unit": "d"}},
+        {**link, "time_range": {"value": 999999999, "unit": "d"}},
+        {**link, "time_range": None},
+        {k: v for k, v in link.items() if k != "panel_id"},
+        {},
+        [],
+    ]
+    for body in bodies:
+        await p.same(
+            f"POST /generate_iframe_links {json.dumps(body)[:70]}",
+            "POST",
+            R + "/generate_iframe_links",
+            t_analyst,
+            json=body,
+            clock=True,
+        )
+    await p.same("POST /generate_iframe_links, no token", "POST", R + "/generate_iframe_links", json=link)
+    await p.same(
+        "POST /generate_iframe_links, malformed JSON, no token",
+        "POST",
+        R + "/generate_iframe_links",
+        content=b"{",
+        headers={"Content-Type": "application/json"},
+    )
+
+    print("\n=== Grafana: adding a user to an organization ===")
+    users = [
+        {"loginorEmail": "a@b.c", "organizationId": "44"},
+        {"loginorEmail": "viewer@acme.io", "role": "Editor", "organizationId": "44"},
+        {"loginorEmail": "é@exämple.io", "role": "Admin", "organizationId": "1"},
+        {"loginorEmail": "nobody@x.io", "organizationId": "44"},
+        {"loginorEmail": "a@b.c", "organizationId": "999"},
+        {"loginorEmail": "a@b.c", "organizationId": "4/4?x"},
+        {"loginorEmail": "a@b.c", "organizationId": 44},
+        {"organizationId": "44"},
+        {"loginorEmail": None, "role": None},
+        [],
+    ]
+    for body in users:
+        await p.same(f"POST {U} {json.dumps(body, ensure_ascii=False)[:60]}", "POST", U, t_analyst, json=body, before=GRAFANA.reset)
+    await p.same(f"POST {U}, portal user", "POST", U, t_portal, json=users[0])
+    await p.same(f"POST {U}, no body", "POST", U, t_admin)
+
+    print("\n=== Grafana: connector problems ===")
+    cases = [
+        ("connection refused", f"http://127.0.0.1:{CLOSED_PORT}", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("no scheme", f"127.0.0.1:{GRAFANA_PORT}", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("upper-case scheme", f"HTTP://127.0.0.1:{GRAFANA_PORT}", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("bad port", "http://127.0.0.1:99999", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("port not a number", "http://127.0.0.1:x", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("wrong password", GRAFANA_URL, GRAFANA_USER, "nope"),
+        ("no credentials", GRAFANA_URL, None, None),
+        ("empty user", GRAFANA_URL, "", GRAFANA_PASSWORD),
+        ("path prefix", GRAFANA_URL + "/grafana", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("path prefix with slash", GRAFANA_URL + "/grafana/", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("own query", GRAFANA_URL + "?orgId=1", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("unknown host", "http://nonexistent.invalid:3000", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("no host", "http://", GRAFANA_USER, GRAFANA_PASSWORD),
+        ("hangs up", INFLUX_URL, GRAFANA_USER, GRAFANA_PASSWORD),
+    ]
+    for label, url, user, password in cases:
+        set_connector("Grafana", url, user, password)
+
+        def before():
+            GRAFANA.reset()
+            INFLUX.reset()
+            INFLUX.mode = "close"
+
+        for route in ("/orgs", "/dashboards/44", f"/dashboard_panels/{uid}"):
+            await p.same(f"GET {route} ({label})", "GET", R + route, t_analyst, before=before)
+        await p.same(f"POST {U} ({label})", "POST", U, t_analyst, json=users[0], before=before)
+        await p.same(f"POST /generate_iframe_links ({label})", "POST", R + "/generate_iframe_links", t_analyst, json=link, clock=True)
+    set_connector("Grafana", INFLUX_URL, GRAFANA_USER, GRAFANA_PASSWORD)
+
+    def silent():
+        INFLUX.reset()
+        INFLUX.mode = "silent"
+
+    await p.same("GET /orgs (Grafana never answers: 5 s read timeout)", "GET", R + "/orgs", t_analyst, before=silent)
+    set_connector("Grafana", None)
+    for route in ("/orgs", "/dashboards/44", f"/dashboard/{uid}"):
+        await p.same(f"GET {route} (no connector)", "GET", R + route, t_analyst)
+    await p.same(f"POST {U} (no connector)", "POST", U, t_analyst, json=users[0])
+    await p.same("POST /generate_iframe_links (no connector)", "POST", R + "/generate_iframe_links", t_analyst, json=link)
+    set_connector("Grafana", GRAFANA_URL, GRAFANA_USER, GRAFANA_PASSWORD)
+    INFLUX.reset()
+
+
 async def main():
     graylog_server = start_http_stub(GRAYLOG_PORT, GRAYLOG, RECORDER)
     influx_server = start_http_stub(INFLUX_PORT, INFLUX, INFLUX_RECORDER, make_influx_handler)
+    grafana_server = start_http_stub(GRAFANA_PORT, GRAFANA, GRAFANA_RECORDER, make_grafana_handler)
     gelf_server = start_gelf_stub(GELF_PORT)
     seed()
     proc = start_rust()
     p = Pair()
     t_admin, t_analyst, t_portal = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"]), token(PORTAL, ["customer_user"])
     try:
-        sections = os.environ.get("CONNECTOR_PARITY_SECTIONS", "graylog,influxdb").split(",")
+        sections = os.environ.get("CONNECTOR_PARITY_SECTIONS", "graylog,influxdb,grafana").split(",")
         if "graylog" in sections:
             await graylog_checks(p, t_admin, t_analyst, t_portal)
         if "influxdb" in sections:
             await influxdb_checks(p, t_admin, t_analyst, t_portal)
+        if "grafana" in sections:
+            await grafana_checks(p, t_admin, t_analyst, t_portal)
     finally:
         await p.close()
         proc.terminate()
@@ -1116,6 +1422,7 @@ async def main():
         cleanup()
         graylog_server.shutdown()
         influx_server.shutdown()
+        grafana_server.shutdown()
         gelf_server.shutdown()
     failed = [n for n, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")

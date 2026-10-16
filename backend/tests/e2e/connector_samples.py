@@ -689,3 +689,139 @@ def influx_answer(query, statuses):
     if "schema.tagValues" in query:
         return flux_csv([([("_value", "string", False)], [[{"_value": h} for h in INFLUX_HOSTS]])])
     return influx_metric(query)
+
+
+# --- Grafana 11 ------------------------------------------------------------------------------------
+
+GRAFANA_ORGS = [{"id": 1, "name": "Main Org."}, {"id": 44, "name": "ACME Corp"}]
+
+
+def _hit(hit_id, uid, title, kind="dash-db", folder=None, tags=()):
+    hit = {
+        "id": hit_id,
+        "uid": uid,
+        "orgId": 44,
+        "title": title,
+        "uri": f"db/{title.lower().replace(' ', '-')}",
+        "url": f"/d/{uid}/{title.lower().replace(' ', '-')}" if kind == "dash-db" else f"/dashboards/f/{uid}/",
+        "slug": "",
+        "type": kind,
+        "tags": list(tags),
+        "isStarred": False,
+        "sortMeta": 0,
+        "permanentlyDeleteDate": "0001-01-01T00:00:00Z",
+    }
+    if folder:
+        hit.update({"folderId": folder[0], "folderUid": folder[1], "folderTitle": folder[2], "folderUrl": f"/dashboards/f/{folder[1]}/"})
+    return hit
+
+
+GRAFANA_SEARCH = {
+    1: [_hit(3, "home01", "Home")],
+    44: [
+        _hit(5, "f1huntress", "HUNTRESS", kind="dash-folder"),
+        _hit(12, "ab9bab2c-5d86-43e7-bac2-c1d68fc91342", "HUNTRESS - SUMMARY", folder=(5, "f1huntress", "HUNTRESS"), tags=["huntress"]),
+        _hit(13, "sap01", "SAP Users Auth", folder=(5, "f1huntress", "HUNTRESS")),
+    ],
+}
+
+
+def _timeseries(panel_id, title, x=0, y=0):
+    return {
+        "datasource": {"type": "grafana-opensearch-datasource", "uid": "ds1"},
+        "fieldConfig": {
+            "defaults": {
+                "color": {"mode": "palette-classic"},
+                "custom": {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 10},
+                "mappings": [],
+                "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": None}, {"color": "red", "value": 80}]},
+            },
+            "overrides": [],
+        },
+        "gridPos": {"h": 8, "w": 12, "x": x, "y": y},
+        "id": panel_id,
+        "options": {
+            "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": True},
+            "tooltip": {"mode": "single", "sort": "none"},
+        },
+        "targets": [{"query": "*", "refId": "A"}],
+        "title": title,
+        "type": "timeseries",
+    }
+
+
+GRAFANA_DASHBOARD = {
+    "meta": {
+        "type": "db",
+        "canSave": True,
+        "canEdit": True,
+        "canAdmin": True,
+        "canStar": True,
+        "canDelete": True,
+        "slug": "huntress-summary",
+        "url": "/d/ab9bab2c-5d86-43e7-bac2-c1d68fc91342/huntress-summary",
+        "expires": "0001-01-01T00:00:00Z",
+        "created": "2026-01-01T10:00:00Z",
+        "updated": "2026-01-02T10:00:00Z",
+        "updatedBy": "admin",
+        "createdBy": "admin",
+        "version": 3,
+        "hasAcl": False,
+        "isFolder": False,
+        "folderId": 5,
+        "folderUid": "f1huntress",
+        "folderTitle": "HUNTRESS",
+        "folderUrl": "/dashboards/f/f1huntress/huntress",
+        "provisioned": False,
+        "provisionedExternalId": "",
+        "annotationsPermissions": {
+            "dashboard": {"canAdd": True, "canEdit": True, "canDelete": True},
+            "organization": {"canAdd": True, "canEdit": True, "canDelete": True},
+        },
+        "publicDashboardEnabled": False,
+    },
+    "dashboard": {
+        "annotations": {
+            "list": [
+                {
+                    "builtIn": 1,
+                    "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+                    "enable": True,
+                    "hide": True,
+                    "iconColor": "rgba(0, 211, 255, 1)",
+                    "name": "Annotations & Alerts",
+                    "type": "dashboard",
+                },
+            ],
+        },
+        "editable": True,
+        "fiscalYearStartMonth": 0,
+        "graphTooltip": 0,
+        "id": 12,
+        "links": [],
+        "liveNow": False,
+        "panels": [
+            _timeseries(1, "Incidents over time"),
+            {
+                "collapsed": True,
+                "gridPos": {"h": 1, "w": 24, "x": 0, "y": 8},
+                "id": 7,
+                "panels": [_timeseries(8, "Agents — détails", y=9)],
+                "title": "Details",
+                "type": "row",
+            },
+            {"datasource": {"uid": "ds1"}, "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}, "id": 4, "title": "Total", "type": "stat"},
+        ],
+        "refresh": "",
+        "schemaVersion": 39,
+        "tags": ["huntress"],
+        "templating": {"list": []},
+        "time": {"from": "now-24h", "to": "now"},
+        "timepicker": {},
+        "timezone": "browser",
+        "title": "HUNTRESS - SUMMARY",
+        "uid": "ab9bab2c-5d86-43e7-bac2-c1d68fc91342",
+        "version": 3,
+        "weekStart": "",
+    },
+}

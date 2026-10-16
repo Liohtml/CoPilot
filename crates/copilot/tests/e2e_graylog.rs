@@ -1,15 +1,16 @@
 //! End-to-end tests of the connector ports (`copilot-graylog`,
-//! `copilot-influxdb`): `/api/graylog` and `/api/influxdb` through the
-//! production router on a real MySQL, Graylog (6.x and 7.x), the Event
-//! Shipper and InfluxDB replaced by local stand-ins.
+//! `copilot-influxdb`, `copilot-grafana`): `/api/graylog`, `/api/influxdb`,
+//! `/api/reporting` and `/api/user` through the production router on a real
+//! MySQL, Graylog (6.x and 7.x), the Event Shipper, InfluxDB and Grafana
+//! replaced by local stand-ins.
 //!
 //! ```text
 //! COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13308/copilot \
 //!   cargo test -p copilot --test e2e_graylog -- --test-threads=1
 //! ```
 //!
-//! The `Graylog`, `Event Shipper` and `InfluxDB` connector rows are replaced
-//! for each test and removed again (run single-threaded).
+//! The `Graylog`, `Event Shipper`, `InfluxDB` and `Grafana` connector rows
+//! are replaced for each test and removed again (run single-threaded).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -711,4 +712,232 @@ async fn influxdb_metrics_and_failures() {
         .await;
     assert_eq!(body["message"], "InfluxDB connector not found");
     assert_eq!(body["total_count"], 0);
+}
+
+#[tokio::test]
+async fn grafana_reporting_reads_and_links() {
+    let legacy = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/reporting/generate-report"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+        .mount(&legacy)
+        .await;
+    let h = harness_or_skip!(Some(&legacy));
+    let (_, analyst, portal) = users(&h).await;
+    let grafana = MockServer::start().await;
+    set_connector(&h, "Grafana", Some(&grafana.uri()), None).await;
+    let basic = "Basic YWRtaW46c2VjcmV0"; // admin:secret
+    Mock::given(method("GET"))
+        .and(path("/api/orgs"))
+        .and(header("authorization", basic))
+        .and(header("user-agent", "grafana-client/5.1.0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 1, "name": "Main Org."},
+            {"id": "44", "name": "ACME", "extra": true}
+        ])))
+        .mount(&grafana)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/user/using/44"))
+        .and(header("content-length", "0"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"message": "Active organization changed"})),
+        )
+        .mount(&grafana)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/search"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"id": 1}])))
+        .mount(&grafana)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/dashboards/uid/u1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"dashboard": {"panels": [
+                {"id": 1, "title": "Row", "type": "row"},
+                {"id": 2, "title": "Graph", "type": "timeseries", "gridPos": {"h": 1}}
+            ]}})),
+        )
+        .mount(&grafana)
+        .await;
+
+    let (status, body) = h
+        .call("GET", "/api/reporting/orgs", Some(&analyst), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["orgs"],
+        json!([{"id": 1, "name": "Main Org."}, {"id": 44, "name": "ACME"}])
+    );
+
+    // The search answer misses required fields: the response model's
+    // ValidationError is the ValueError handler's 400.
+    let (status, body) = h
+        .call("GET", "/api/reporting/dashboards/44", Some(&analyst), None)
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["message"].as_str().unwrap().starts_with(
+            "9 validation errors for GrafanaDashboardResponse\ndashboards.0.uid\n  Field required"
+        ),
+        "{body}"
+    );
+    let (status, _) = h
+        .call("GET", "/api/reporting/dashboards/x", Some(&analyst), None)
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/reporting/dashboard_panels/u1",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["panels"],
+        json!([{"fieldConfig": null, "gridPos": null, "id": 2, "options": null, "title": "Graph",
+                "type": null, "collapsed": null, "panels": []}])
+    );
+    let (status, body) = h
+        .call("GET", "/api/reporting/dashboard/nope", Some(&analyst), None)
+        .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("Failed to collect dashboard details: Client Error 404: "),
+        "{body}"
+    );
+
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/reporting/generate_iframe_links",
+            Some(&analyst),
+            Some(
+                json!({"org_id": 44, "dashboard_title": "t", "dashboard_uid": "u1", "panel_id": 5,
+                        "time_range": {"value": 2, "unit": "h"}}),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let url = body["links"][0]["panel_url"].as_str().unwrap();
+    let prefix = format!("{}/d-solo/u1/t?orgId=44&from=", grafana.uri());
+    assert!(url.starts_with(&prefix), "{url}");
+    let rest = &url[prefix.len()..];
+    let (from, rest) = rest.split_once("&to=").unwrap();
+    let (to, panel) = rest.split_once('&').unwrap();
+    assert_eq!(panel, "panelId=5");
+    let (from, to): (i64, i64) = (from.parse().unwrap(), to.parse().unwrap());
+    assert_eq!(to - from, 2 * 3600 * 1000);
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/reporting/generate_iframe_links",
+            Some(&analyst),
+            Some(
+                json!({"org_id": 44, "dashboard_title": "t", "dashboard_uid": "u1", "panel_id": 5,
+                        "time_range": {"value": 2, "unit": "w"}}),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        body["message"],
+        "Invalid time range unit: w. Must be one of ['m', 'h', 'd']"
+    );
+
+    // The PDF report stays in Python.
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/reporting/generate-report",
+            Some(&analyst),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!((status, body), (StatusCode::OK, json!({"from": "python"})));
+    let (status, _) = h
+        .call("GET", "/api/reporting/orgs", Some(&portal), None)
+        .await;
+    assert_ne!(status, StatusCode::OK);
+    set_connector(&h, "Grafana", None, None).await;
+}
+
+#[tokio::test]
+async fn grafana_user_add_answers_the_validation_error() {
+    let h = harness_or_skip!(None);
+    let (admin, _, _) = users(&h).await;
+    let grafana = MockServer::start().await;
+    set_connector(&h, "Grafana", Some(&grafana.uri()), None).await;
+    Mock::given(method("POST"))
+        .and(path("/api/orgs/44/users"))
+        .and(header("content-type", "application/json;charset=utf-8"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"message": "User added to organization"})),
+        )
+        .mount(&grafana)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/orgs/1/users"))
+        .respond_with(
+            ResponseTemplate::new(409)
+                .set_body_json(json!({"message": "User is already member of this organization"})),
+        )
+        .mount(&grafana)
+        .await;
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/user/user/organization/add",
+            Some(&admin),
+            Some(json!({"loginorEmail": "é@x.io", "organizationId": "44"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(
+        body["message"].as_str().unwrap().starts_with(
+            "Error adding user to organization: 1 validation error for \
+             UserOrganizationAddResponse\nsuccess\n  Field required"
+        ),
+        "{body}"
+    );
+    let sent = grafana.received_requests().await.unwrap();
+    assert_eq!(
+        String::from_utf8(sent[0].body.clone()).unwrap(),
+        "{\"loginorEmail\": \"\\u00e9@x.io\", \"role\": \"Viewer\"}"
+    );
+    let (_, body) = h
+        .call(
+            "POST",
+            "/api/user/user/organization/add",
+            Some(&admin),
+            Some(json!({"loginorEmail": "a", "organizationId": "1"})),
+        )
+        .await;
+    assert_eq!(
+        body["message"],
+        "Error adding user to organization: Client Error 409: User is already member of this organization"
+    );
+    set_connector(&h, "Grafana", Some("grafana:3000"), None).await;
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/user/user/organization/add",
+            Some(&admin),
+            Some(json!({"loginorEmail": "a", "organizationId": "1"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        body["message"],
+        "Failed to create Grafana client: Invalid connector URL format"
+    );
+    set_connector(&h, "Grafana", None, None).await;
 }

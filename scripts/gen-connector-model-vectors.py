@@ -13,7 +13,9 @@ Writes:
 * `crates/copilot-graylog/src/model_vectors.json` — every Graylog model on samples of Graylog 6.1
   and 7.0 answers (`tests/e2e/connector_samples.py`) and on mutations of them (a key deleted, or
   set to a value of another type), likewise;
-* `crates/copilot-influxdb/src/model_vectors.json` — the InfluxDB response models, likewise.
+* `crates/copilot-influxdb/src/model_vectors.json` — the InfluxDB response models, likewise;
+* `crates/copilot-grafana/src/model_vectors.json` — the Grafana reporting and user models on
+  samples of Grafana 11 answers, likewise.
 
 A vector holds the JSON-mode dump's text (`ok`) or its SHA-256 (`ok_sha256`, for mutations of a
 large sample), or the `ValidationError` text (`err`). Re-run after a Pydantic upgrade or a change
@@ -44,11 +46,16 @@ def dump(model, instance):
 
 
 def run(model, value):
-    """`Model(**value)` (or `model_validate` for a non-dict): the dump, or the error text."""
+    """`Model(**value)` (or `model_validate` for a non-dict): the dump, or the error text (an
+    `HTTPException` a validator raises as `abort <status> <detail>`)."""
+    from fastapi import HTTPException
+
     try:
         instance = model(**value) if isinstance(value, dict) else model.model_validate(value)
     except ValidationError as e:
         return {"err": str(e)}
+    except HTTPException as e:
+        return {"err": f"abort {e.status_code} {e.detail}"}
     return {"ok": dump(model, instance)}
 
 
@@ -315,6 +322,59 @@ def influxdb_cases():
     return cases
 
 
+def grafana_cases():
+    from app.connectors.grafana.schema import reporting
+    from app.connectors.grafana.schema import user
+
+    hit = samples.GRAFANA_SEARCH[44][1]
+    return [
+        ("GrafanaOrganizations", reporting.GrafanaOrganizations, samples.GRAFANA_ORGS[1]),
+        (
+            "GrafanaOrganizationsResponse",
+            reporting.GrafanaOrganizationsResponse,
+            {"message": "m", "orgs": samples.GRAFANA_ORGS, "success": True},
+        ),
+        ("GrafanaOrganizationDashboards", reporting.GrafanaOrganizationDashboards, hit),
+        ("GrafanaOrganizationDashboards", reporting.GrafanaOrganizationDashboards, samples.GRAFANA_SEARCH[44][0]),
+        ("GrafanaDashboardResponse", reporting.GrafanaDashboardResponse, {"message": "m", "dashboards": [hit], "success": True}),
+        ("Panel", reporting.Panel, samples.GRAFANA_DASHBOARD["dashboard"]["panels"][0]),
+        ("Panel", reporting.Panel, samples.GRAFANA_DASHBOARD["dashboard"]["panels"][1]),
+        ("Panel", reporting.Panel, samples.GRAFANA_DASHBOARD["dashboard"]["panels"][2]),
+        ("MetaDetails", reporting.MetaDetails, samples.GRAFANA_DASHBOARD["meta"]),
+        ("DashboardDetails", reporting.DashboardDetails, samples.GRAFANA_DASHBOARD["dashboard"]),
+        ("GrafanaDashboardDetails", reporting.GrafanaDashboardDetails, samples.GRAFANA_DASHBOARD),
+        (
+            "GrafanaDashboardPanelsResponse",
+            reporting.GrafanaDashboardPanelsResponse,
+            {"message": "m", "panels": [{"id": 1, "title": "t"}], "success": True},
+        ),
+        ("TimeRange", reporting.TimeRange, {"value": 7, "unit": "d"}),
+        (
+            "GrafanaGenerateIframeLinksRequest",
+            reporting.GrafanaGenerateIframeLinksRequest,
+            {
+                "org_id": 44,
+                "dashboard_title": "huntress-summary",
+                "dashboard_uid": "ab9b",
+                "panel_id": 5,
+                "time_range": {"value": 1, "unit": "h"},
+                "theme": "light",
+            },
+        ),
+        (
+            "GrafanaGenerateIframeLinksResponse",
+            reporting.GrafanaGenerateIframeLinksResponse,
+            {"message": "m", "links": [{"panel_id": 5, "panel_url": "http://g/d-solo/x"}], "success": True},
+        ),
+        (
+            "UserOrganizationAddRequest",
+            user.UserOrganizationAddRequest,
+            {"loginorEmail": "a@b.c", "role": "Editor", "organizationId": "44"},
+        ),
+        ("UserOrganizationAddResponse", user.UserOrganizationAddResponse, {"success": True, "message": "m"}),
+    ]
+
+
 def write(path, doc):
     """One vector per line: diffable, and small enough for the repository."""
     lines = ["{"]
@@ -338,6 +398,9 @@ def main():
     write(ROOT / "copilot-influxdb" / "src" / "model_vectors.json", influxdb)
     print(f"engine: {len(engine['vectors'])} vectors; graylog: {len(graylog['bases'])} bases, {len(graylog['vectors'])} mutations")
     print(f"influxdb: {len(influxdb['bases'])} bases, {len(influxdb['vectors'])} mutations")
+    grafana = model_vectors(grafana_cases())
+    write(ROOT / "copilot-grafana" / "src" / "model_vectors.json", grafana)
+    print(f"grafana: {len(grafana['bases'])} bases, {len(grafana['vectors'])} mutations")
     assert not math.isnan(0.0)
 
 

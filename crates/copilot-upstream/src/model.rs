@@ -244,15 +244,17 @@ struct Ctx {
     abort: Option<(u16, String)>,
     exactness: Exactness,
     fields_set: Option<usize>,
+    from_attributes: bool,
 }
 
 impl Ctx {
-    fn new() -> Self {
+    fn new(from_attributes: bool) -> Self {
         Self {
             errors: Vec::new(),
             abort: None,
             exactness: Exactness::Exact,
             fields_set: None,
+            from_attributes,
         }
     }
 
@@ -281,7 +283,18 @@ pub fn validate(model: &'static Model, input: &PyValue) -> Result<PyValue, Inval
 
 /// Validate `input` against any type (a `TypeAdapter`).
 pub fn validate_ty(ty: &Ty, input: &PyValue) -> Result<PyValue, Invalid> {
-    let mut ctx = Ctx::new();
+    validate_with(ty, input, false)
+}
+
+/// `TypeAdapter.validate_python(input, from_attributes=True)`, which is how
+/// FastAPI validates a request body: a nested model given anything but a
+/// dict is `model_attributes_type` ("… or object to extract fields from").
+pub fn validate_body(ty: &Ty, input: &PyValue) -> Result<PyValue, Invalid> {
+    validate_with(ty, input, true)
+}
+
+fn validate_with(ty: &Ty, input: &PyValue, from_attributes: bool) -> Result<PyValue, Invalid> {
+    let mut ctx = Ctx::new(from_attributes);
     let mut loc = Vec::new();
     let out = check(ty, input, &mut loc, &mut ctx);
     if let Some((status, detail)) = ctx.abort {
@@ -376,15 +389,24 @@ fn check_model(
     ctx: &mut Ctx,
 ) -> Option<PyValue> {
     let PyValue::Dict(items) = input else {
-        ctx.push(
-            loc,
-            "model_type",
-            format!(
-                "Input should be a valid dictionary or instance of {}",
-                model.name
-            ),
-            input,
-        );
+        if ctx.from_attributes {
+            ctx.push(
+                loc,
+                "model_attributes_type",
+                "Input should be a valid dictionary or object to extract fields from",
+                input,
+            );
+        } else {
+            ctx.push(
+                loc,
+                "model_type",
+                format!(
+                    "Input should be a valid dictionary or instance of {}",
+                    model.name
+                ),
+                input,
+            );
+        }
         return None;
     };
     let mut out = Vec::with_capacity(model.fields.len());
@@ -480,7 +502,7 @@ fn check_union(
     let mut best: Option<(PyValue, Exactness, Option<usize>)> = None;
     let mut failures: Vec<(String, Vec<PyError>)> = Vec::new();
     for member in members {
-        let mut sub = Ctx::new();
+        let mut sub = Ctx::new(ctx.from_attributes);
         let mut sub_loc = Vec::new();
         let out = check(member, input, &mut sub_loc, &mut sub);
         if let Some((status, detail)) = sub.abort {
@@ -962,6 +984,30 @@ mod tests {
         assert_eq!(
             ok.unwrap().py_repr(),
             "{'n': 2, 'children': [{'n': 1, 'children': None}]}"
+        );
+    }
+
+    #[test]
+    fn request_bodies_validate_from_attributes() {
+        static OUTER: Model = Model::new("Outer", &[Field::req("leaf", Ty::Model(&LEAF))]);
+        let input = loads(r#"{"leaf": null}"#).unwrap();
+        let kind = |r: Result<PyValue, Invalid>| match r {
+            Err(Invalid::Errors(e)) => (e[0].kind, e[0].msg.clone()),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(
+            kind(validate(&OUTER, &input)),
+            (
+                "model_type",
+                "Input should be a valid dictionary or instance of Leaf".into()
+            )
+        );
+        assert_eq!(
+            kind(validate_body(&Ty::Model(&OUTER), &input)),
+            (
+                "model_attributes_type",
+                "Input should be a valid dictionary or object to extract fields from".into()
+            )
         );
     }
 

@@ -470,6 +470,7 @@ dependencies = [
  "copilot-customers",
  "copilot-db",
  "copilot-gateway",
+ "copilot-grafana",
  "copilot-graylog",
  "copilot-healthchecks",
  "copilot-identity",
@@ -620,6 +621,28 @@ dependencies = [
  "tracing",
  "url",
  "wiremock",
+]
+
+[[package]]
+name = "copilot-grafana"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-upstream",
+ "copilot-web",
+ "hex",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -888,6 +911,7 @@ dependencies = [
  "chrono",
  "copilot-auth",
  "copilot-web",
+ "flate2",
  "http",
  "pretty_assertions",
  "reqwest",

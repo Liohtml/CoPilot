@@ -37,6 +37,7 @@ copilot-notifications = { path = "crates/copilot-notifications" }
 copilot-upstream = { path = "crates/copilot-upstream" }
 copilot-graylog = { path = "crates/copilot-graylog" }
 copilot-influxdb = { path = "crates/copilot-influxdb" }
+copilot-grafana = { path = "crates/copilot-grafana" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }
