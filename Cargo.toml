@@ -47,6 +47,7 @@ copilot-ingest = { path = "crates/copilot-ingest" }
 copilot-velociraptor = { path = "crates/copilot-velociraptor" }
 copilot-agents = { path = "crates/copilot-agents" }
 copilot-objectstore = { path = "crates/copilot-objectstore" }
+copilot-response = { path = "crates/copilot-response" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

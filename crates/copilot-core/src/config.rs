@@ -155,6 +155,9 @@ pub struct CopilotConfig {
     pub minio: MinioEnv,
     /// What the WAF and provisioning modules read from the environment.
     pub provisioning: ProvisioningEnv,
+    /// What the response routes and the Shuffle connector read from the
+    /// environment, as set.
+    pub response: crate::response_env::ResponseEnv,
 }
 
 /// Raw values the WAF and provisioning modules read per call in Python
@@ -377,6 +380,7 @@ impl CopilotConfig {
                 alert_forwarding_ip: env.get_raw("ALERT_FORWARDING_IP"),
                 graylog_api_header_value: env.get_raw("GRAYLOG_API_HEADER_VALUE").map(Secret::new),
             },
+            response: crate::response_env::ResponseEnv::from_env(env),
         })
     }
 }

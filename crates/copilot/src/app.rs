@@ -149,7 +149,7 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/wazuh_manager/mitre/techniques",
     "POST /api/wazuh_manager/management/restart",
     // The Graylog connector (copilot-graylog); `POST /api/graylog/invoke`,
-    // the active-response webhook, is not part of it and stays in Python.
+    // the active-response webhook, is copilot-response's (below).
     "GET /api/graylog/indices",
     "GET /api/graylog/inputs",
     "/api/graylog/event",
@@ -208,6 +208,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The MinIO data store (copilot-objectstore): the upload and the agents'
     // Velociraptor artifact files.
     "/api/agent_data_store",
+    // The response routes (copilot-response): the Wazuh active response and
+    // its Graylog webhook.
+    "/api/active_response",
+    "POST /api/graylog/invoke",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -316,6 +320,8 @@ pub struct App {
     /// The MinIO object store (`/api/agent_data_store`, the incidents'
     /// files).
     pub objectstore: ObjectStore,
+    /// The response routes (`/api/active_response`, the Graylog webhook).
+    pub response: copilot_response::ResponseState,
 }
 
 impl App {
@@ -422,6 +428,14 @@ impl App {
         };
         let objectstore = ObjectStore::from_env(&cfg.minio)
             .map_err(|e| anyhow::anyhow!("MinIO settings: {e}"))?;
+        let response = copilot_response::ResponseState {
+            ctx: ctx.clone(),
+            wazuh: wazuh.clone(),
+            env: Arc::new(copilot_response::ResponseEnv {
+                graylog_api_header_value: cfg.ingest.graylog_api_header_value.clone(),
+            }),
+            legacy: legacy.clone(),
+        };
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -463,6 +477,7 @@ impl App {
                 .context("building the provisioning-worker client")?,
             agents,
             objectstore,
+            response,
         })
     }
 
@@ -682,6 +697,17 @@ impl App {
                     legacy: self.legacy.clone(),
                 },
             ))
+            .nest(
+                "/api/active_response",
+                copilot_response::active_response_router(self.response.clone()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            // Full path beside the nested Graylog connector.
+            .merge(copilot_response::graylog_router(self.response.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
