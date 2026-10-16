@@ -261,9 +261,11 @@ impl ManagerHttp {
         };
         match payload {
             Some(p) => req = req.body(p),
-            // `Content-Length: 0` on a body-less PUT/POST/DELETE.
+            // `requests` sends `Content-Length: 0` on a body-less request of any
+            // method but GET and HEAD; hyper writes none for an empty DELETE, so
+            // the header is set here (hyper keeps a given length as the only one).
             None if method != Method::GET && method != Method::HEAD => {
-                req = req.body(Vec::new());
+                req = req.header("content-length", "0").body(Vec::new());
             }
             None => {}
         }
@@ -677,4 +679,58 @@ pub async fn restart_wazuh_manager_service(st: &WazuhState) -> Result<Value, PyE
         pyops::py_str(&enabled)
     );
     restart_service(st).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    /// The request head one `send` writes, read off a plain TCP listener.
+    async fn head_of(method: Method) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = sock.read(&mut chunk).unwrap();
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            sock.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}",
+            )
+            .unwrap();
+            String::from_utf8(buf).unwrap()
+        });
+        let http = ManagerHttp::new().unwrap();
+        let url = format!("http://127.0.0.1:{port}/agents");
+        http.send(method, &url, &[], &[], None).await.unwrap();
+        server.join().unwrap()
+    }
+
+    fn content_lengths(head: &str) -> Vec<String> {
+        head.lines()
+            .filter(|l| l.to_ascii_lowercase().starts_with("content-length:"))
+            .map(|l| l.to_ascii_lowercase())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_bodyless_request_carries_one_zero_content_length_but_get() {
+        for method in [Method::DELETE, Method::PUT, Method::POST] {
+            let head = head_of(method.clone()).await;
+            assert_eq!(
+                content_lengths(&head),
+                ["content-length: 0"],
+                "{method}: {head}"
+            );
+        }
+        let head = head_of(Method::GET).await;
+        assert!(content_lengths(&head).is_empty(), "GET: {head}");
+    }
 }
