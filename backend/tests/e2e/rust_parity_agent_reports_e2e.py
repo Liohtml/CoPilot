@@ -1,5 +1,5 @@
-"""Parity of the agents' report routers (`crates/copilot-agent-reports`: /api/vulnerabilities)
-with this backend —
+"""Parity of the agents' report routers (`crates/copilot-agent-reports`: /api/vulnerabilities,
+/api/sca) with this backend —
 NOT collected by pytest (needs a live MySQL and the Rust binary; run by scripts/rust-parity.sh).
 
 The real FastAPI routers (in-process, with copilot.py's GZipMiddleware) and a Rust instance this
@@ -22,7 +22,8 @@ as are the stream's per-agent events. One header is normalised: elasticsearch-py
 Python version in its `User-Agent` (`Python 3.11.17`), the Rust port the minor one.
 
 Deliberate differences (RUST_MIGRATION.md §4), each checked as such: the per-agent vulnerability
-list is the caller's customers' only; a host's sync is refused for another tenant's host.
+list is the caller's customers' only; a host's sync is refused for another tenant's host; the
+registry lookup's message counts the caller's matches.
 
 Ports (all overridable): AGENT_REPORTS_PARITY_RUST_PORT (5740, the Rust instance),
 AGENT_REPORTS_PARITY_STUB_PORT (5741), AGENT_REPORTS_PARITY_S3_PORT (5742),
@@ -1056,6 +1057,198 @@ async def vulnerability_checks(p, t):
     reset_vulns()
 
 
+# --- Checks: /api/sca --------------------------------------------------------------------------------
+SCA_P = "/api/sca"
+
+
+def stream_view(body):
+    """The frames of an event stream, the per-agent ones (whose order is the order the agents
+    answered in) as a set; the progress frames dropped (their `processed` counts depend on it)."""
+    if not isinstance(body, str):
+        return body
+    frames = []
+    for raw in body.split("\n\n"):
+        if not raw:
+            continue
+        event, _, data = raw.partition("\n")
+        frames.append([event, json.loads(data[len("data: ") :])])
+    head = [f for f in frames if f[0] in ("start",)]
+    tail = [f for f in frames if f[0] in ("complete", "error")]
+    middle = sorted((f for f in frames if f[0] not in ("start", "complete", "error", "progress")), key=json.dumps)
+    progress = [f for f in frames if f[0] == "progress"]
+    return {
+        "head": head,
+        "agents": middle,
+        "progress_count": len(progress),
+        "last_progress": progress[-1:] and progress[-1][1]["percent_complete"],
+        "tail": tail,
+    }
+
+
+async def sca_checks(p, t):
+    a1 = AGENTS["a1"][0]
+
+    await p.same("overview", "GET", f"{SCA_P}/overview", t["analyst"], unordered=True)
+    await p.same("overview, paged and filtered", "GET", f"{SCA_P}/overview?page=2&page_size=1&min_score=50", t["analyst"], unordered=True)
+    await p.same("overview by policy", "GET", f"{SCA_P}/overview?policy_id=cis_ubuntu&policy_name=ubuntu", t["analyst"], unordered=True)
+    await p.same("overview of one host", "GET", f"{SCA_P}/overview?agent_name={AGENTS['a2'][1]}", t["analyst"], unordered=True)
+    await p.same(
+        "overview as admin of two customers",
+        "GET",
+        f"{SCA_P}/overview?customer_codes={CUST_A}&customer_codes={CUST_B}",
+        t["admin"],
+        unordered=True,
+    )
+    await p.same("overview of another tenant", "GET", f"{SCA_P}/overview?customer_codes={CUST_B}", t["analyst"])
+    await p.same("overview with bad filters", "GET", f"{SCA_P}/overview?min_score=101&page=0", t["analyst"])
+    await p.same("stats", "GET", f"{SCA_P}/stats", t["analyst"], unordered=True)
+    await p.same(
+        "stats of two customers",
+        "GET",
+        f"{SCA_P}/stats?customer_codes={CUST_A}&customer_codes={CUST_B}",
+        t["admin"],
+        unordered=True,
+    )
+    await p.same("stats of another tenant", "GET", f"{SCA_P}/stats?customer_codes={CUST_B}", t["analyst"])
+    await p.same("stats as a portal user", "GET", f"{SCA_P}/stats", t["portal"])
+
+    await p.same("stream", "GET", f"{SCA_P}/overview/stream", t["analyst"], unordered=True, body_view=stream_view)
+    await p.same(
+        "stream of two customers, filtered",
+        "GET",
+        f"{SCA_P}/overview/stream?customer_codes={CUST_A}&customer_codes={CUST_B}&max_score=60",
+        t["admin"],
+        unordered=True,
+        body_view=stream_view,
+    )
+    await p.same("stream of one unknown host", "GET", f"{SCA_P}/overview/stream?agent_name=nobody", t["analyst"], body_view=stream_view)
+    await p.same("stream of another tenant", "GET", f"{SCA_P}/overview/stream?customer_codes={CUST_B}", t["analyst"])
+    await p.same("stream with a bad filter", "GET", f"{SCA_P}/overview/stream?min_score=x", t["analyst"])
+
+    def no_reports():
+        sql("DELETE FROM sca_reports WHERE customer_code IN (:a, :b)", a=CUST_A, b=CUST_B)
+
+    def report_rows():
+        return rows(
+            "SELECT report_name, customer_code, bucket_name, object_key, file_name, file_size, file_hash, generated_by, filters_json, "
+            "total_policies, total_checks, passed_count, failed_count, invalid_count, status, error_message FROM sca_reports "
+            "WHERE customer_code IN (:a, :b) ORDER BY id",
+            a=CUST_A,
+            b=CUST_B,
+        )
+
+    for name, tok, body in (
+        ("report", "analyst", {"customer_code": CUST_A, "report_name": f"sr-{SFX}"}),
+        (
+            "report, filtered",
+            "analyst",
+            {
+                "customer_code": CUST_A,
+                "report_name": f"sr2-{SFX}",
+                "policy_id": "cis_ubuntu",
+                "min_score": 50,
+                "agent_name": AGENTS["a1"][1],
+            },
+        ),
+        ("report without results", "analyst", {"customer_code": CUST_A, "report_name": f"sr3-{SFX}", "max_score": 1}),
+        ("report of another tenant", "analyst", {"customer_code": CUST_B, "report_name": f"sr4-{SFX}"}),
+        ("report of an unknown customer", "admin", {"customer_code": f"nope{SFX}", "report_name": f"sr5-{SFX}"}),
+        ("report with a bad body", "analyst", {"report_name": 3, "min_score": -1}),
+    ):
+        await p.same(name, "POST", f"{SCA_P}/reports/generate", t[tok], json=body, before=no_reports, db=report_rows, unordered=True)
+
+    csv = b"Agent ID,Agent Name\r\n001,web\r\n"
+
+    def stored():
+        no_reports()
+        for i, (cust, name) in enumerate(((CUST_A, f"sca-a-{SFX}"), (CUST_B, f"sca-b-{SFX}"), (CUST_A, f"sca ☃ {SFX}"))):
+            sql(
+                "INSERT INTO sca_reports (id, report_name, customer_code, bucket_name, object_key, file_name, file_size, file_hash, "
+                "generated_at, generated_by, filters_json, total_policies, total_checks, passed_count, failed_count, invalid_count, "
+                "status, error_message) VALUES (:i, :n, :c, 'sca-reports', :k, :f, :s, 'h', :g, 1, :fj, 1, 10, 8, 2, 0, :st, :e)",
+                i=IDS["sreport"] + i,
+                n=name,
+                c=cust,
+                k=f"{cust}/{name}.csv",
+                f=f"{name}.csv",
+                s=len(csv),
+                g=f"2026-10-0{i + 1} 10:00:00",
+                fj=json.dumps({"min_score": 5}) if i == 0 else "",
+                st="failed" if i == 1 else "completed",
+                e="boom" if i == 1 else None,
+            )
+            S3.put("sca-reports", f"{cust}/{name}.csv", csv, "text/csv")
+
+    stored()
+    sa, sb, sbad = IDS["sreport"], IDS["sreport"] + 1, IDS["sreport"] + 2
+    await p.same("report list", "GET", f"{SCA_P}/reports", t["analyst"])
+    await p.same("report list as admin", "GET", f"{SCA_P}/reports?customer_codes={CUST_A}&customer_codes={CUST_B}", t["admin"])
+    await p.same("report list of another tenant", "GET", f"{SCA_P}/reports?customer_codes={CUST_B}", t["analyst"])
+    await p.same("report download", "GET", f"{SCA_P}/reports/{sa}/download", t["analyst"])
+    await p.same("report download of another tenant", "GET", f"{SCA_P}/reports/{sb}/download", t["analyst"])
+    await p.same("report download with a non-latin-1 name", "GET", f"{SCA_P}/reports/{sbad}/download", t["analyst"])
+    await p.same("report download of an unknown id", "GET", f"{SCA_P}/reports/9999999/download", t["analyst"])
+
+    def missing_file():
+        stored()
+        S3.drop("sca-reports", f"{CUST_A}/sca-a-{SFX}.csv")
+
+    await p.same("report download of a lost file", "GET", f"{SCA_P}/reports/{sa}/download", t["analyst"], before=missing_file)
+    await p.same("report delete", "DELETE", f"{SCA_P}/reports/{sa}", t["analyst"], before=stored, db=report_rows)
+    await p.same("report delete of a lost file", "DELETE", f"{SCA_P}/reports/{sa}", t["analyst"], before=missing_file, db=report_rows)
+    await p.same("report delete of another tenant", "DELETE", f"{SCA_P}/reports/{sb}", t["analyst"], before=stored, db=report_rows)
+    await p.same("report delete of a bad id", "DELETE", f"{SCA_P}/reports/x", t["analyst"])
+    no_reports()
+
+    # The CoPilot-SCA repository.
+    for mode in (None, "missing", "not_json", "bad_policy", "list"):
+
+        def set_mode(mode=mode):
+            p.up.mode["index"] = mode
+
+        label = mode or "ok"
+        await p.same(f"policies ({label})", "GET", f"{SCA_P}/policies", t["analyst"], before=set_mode)
+        await p.same(f"policy metadata ({label})", "GET", f"{SCA_P}/policies/cis_nginx/metadata", t["analyst"], before=set_mode)
+        await p.same(f"policy content ({label})", "GET", f"{SCA_P}/policies/cis_apache_24", t["analyst"], before=set_mode)
+    p.up.mode.pop("index", None)
+    await p.same("policy metadata of an unknown id", "GET", f"{SCA_P}/policies/nope/metadata", t["analyst"])
+    await p.same("policy content of a missing file", "GET", f"{SCA_P}/policies/cis_nginx", t["analyst"])
+    await p.same("policy content of an unknown id", "GET", f"{SCA_P}/policies/nope", t["analyst"])
+    await p.same("policies as a portal user", "GET", f"{SCA_P}/policies", t["portal"])
+
+    # The package registry.
+    await p.same("package registry", "GET", f"{SCA_P}/packages/registry", t["analyst"])
+    await p.same("registry agents as admin", "GET", f"{SCA_P}/packages/registry/apache/agents", t["admin"])
+    await p.same("registry agents of an unknown key", "GET", f"{SCA_P}/packages/registry/nope/agents", t["analyst"])
+
+    def counted(py, rs):
+        if py["upstream"] != rs["upstream"]:
+            return f"upstream python {py['upstream']} rust {rs['upstream']}"
+        pb, rb = py["body"], rs["body"]
+        mine = [m for m in pb.get("matched_agents", []) if m["agent_id"] == a1]
+        if pb.get("total") != 1 or rb.get("total") != 1 or rb.get("matched_agents") != mine:
+            return f"python {pb} rust {rb}"
+        if rb.get("message") != "Found 1 agent-package combinations for 'Apache HTTP Server'" or pb.get("message") == rb.get("message"):
+            return f"messages python {pb.get('message')} rust {rb.get('message')}"
+        if dict(pb, matched_agents=mine, message=rb["message"]) != rb:
+            return f"rust {rb} python {pb}"
+        return None
+
+    await p.same(
+        "registry agents (Rust counts the caller's)",
+        "GET",
+        f"{SCA_P}/packages/registry/apache/agents",
+        t["analyst"],
+        expect_diff=counted,
+    )
+
+    def index_down():
+        p.up.mode["index"] = "missing"
+
+    await p.same("registry agents without the repository", "GET", f"{SCA_P}/packages/registry/nginx/agents", t["admin"], before=index_down)
+    p.up.mode.pop("index", None)
+
+
 # --- Velociraptor (no checks yet) ------------------------------------------------------------------
 
 
@@ -1088,9 +1281,11 @@ async def main():
         "scheduler": token(SCHED, ["scheduler"]),
     }
     try:
-        sections = os.environ.get("AGENT_REPORTS_PARITY_SECTIONS", "vulnerabilities").split(",")
+        sections = os.environ.get("AGENT_REPORTS_PARITY_SECTIONS", "vulnerabilities,sca").split(",")
         if "vulnerabilities" in sections:
             await vulnerability_checks(p, t)
+        if "sca" in sections:
+            await sca_checks(p, t)
     finally:
         await p.close()
         proc.terminate()

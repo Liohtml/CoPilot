@@ -1,5 +1,6 @@
 //! End-to-end tests of the agents' report routers (`copilot-agent-reports`:
-//! `/api/vulnerabilities`), through the production router on a real MySQL.
+//! `/api/vulnerabilities`, `/api/sca`), through the production router on a
+//! real MySQL.
 //!
 //! ```text
 //! COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13307/copilot \
@@ -1069,6 +1070,429 @@ async fn vulnerability_search_and_reports_stay_in_the_callers_customers() {
         (404, json!(format!("Report with ID {id} not found")))
     );
     assert_eq!(s3::get().bad_signatures(), 0);
+
+    give_back(&h, borrowed).await;
+    cleanup(&h).await;
+}
+
+// --- /api/sca -----------------------------------------------------------------------------
+
+/// `GET` on any router (for the routers built around a stand-in).
+async fn get_on(router: &axum::Router, uri: &str, token: &str) -> (StatusCode, Value) {
+    let req = Request::builder()
+        .uri(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), 16 << 20)
+        .await
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned())),
+    )
+}
+
+fn sca_policy(id: &str, name: &str, score: i64) -> Value {
+    json!({
+        "policy_id": id, "name": name, "description": format!("{name} benchmark"),
+        "total_checks": 10, "pass": score / 10, "fail": 10 - score / 10, "invalid": 0,
+        "score": score, "start_scan": "2026-10-01T00:00:00Z", "end_scan": "2026-10-01T00:05:00Z",
+        "references": null, "hash_file": "abc"
+    })
+}
+
+#[tokio::test]
+async fn sca_overview_stats_stream_and_reports() {
+    let h = harness_or_skip!(None, &env());
+    h.seed().await;
+    cleanup(&h).await;
+    let s = h.suffix.clone();
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let a1 = agent(&h, "a1", &format!("web-{s}"), "Ubuntu", &acme, None).await;
+    let a2 = agent(&h, "a2", &format!("app-{s}"), "Ubuntu", &acme, None).await;
+    let a3 = agent(&h, "a3", &format!("new-{s}"), "Ubuntu", &acme, None).await;
+    agent(&h, "b1", &format!("db-{s}"), "Ubuntu", &beta, None).await;
+    let (_server, up) = upstream().await;
+    up.data.lock().unwrap().sca = vec![
+        (
+            a1.clone(),
+            json!([
+                sca_policy("cis_ubuntu", "CIS Ubuntu", 80),
+                sca_policy("cis_ssh", "CIS SSH", 60)
+            ]),
+        ),
+        (
+            a2.clone(),
+            json!([sca_policy("cis_ubuntu", "CIS Ubuntu", 40)]),
+        ),
+    ];
+    let mut borrowed = Borrowed::new();
+    wazuh(&h, &mut borrowed).await;
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+
+    let (status, body) = h
+        .call("GET", "/api/sca/overview?page_size=2", Some(&analyst), None)
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let ids: Vec<(String, i64)> = body["sca_results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            (
+                r["agent_id"].as_str().unwrap().to_string(),
+                r["score"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        [(a2.clone(), 40), (a1.clone(), 60)],
+        "lowest agent first"
+    );
+    let first = body["sca_results"][0].as_object().unwrap();
+    assert_eq!(
+        first.keys().map(String::as_str).collect::<Vec<_>>(),
+        [
+            "agent_id",
+            "agent_name",
+            "customer_code",
+            "policy_id",
+            "policy_name",
+            "description",
+            "total_checks",
+            "pass",
+            "fail",
+            "invalid",
+            "score",
+            "start_scan",
+            "end_scan",
+            "references",
+            "hash_file"
+        ]
+    );
+    assert_eq!(body["total_count"], 3);
+    assert_eq!(body["total_pages"], 2);
+    assert_eq!(body["has_next"], true);
+    assert_eq!(body["average_score"], 60.0);
+    assert_eq!(body["filters_applied"], json!({"customer_codes": [acme]}));
+    let asked: Vec<String> = up
+        .take()
+        .into_iter()
+        .filter(|r| r.path.starts_with("/sca/"))
+        .map(|r| r.path)
+        .collect();
+    assert_eq!(asked.len(), 3, "acme's three agents only: {asked:?}");
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("/api/sca/overview?customer_codes={beta}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["message"], "No accessible customers");
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/sca/overview?min_score=101",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 422, "{body}");
+
+    let (status, body) = h.call("GET", "/api/sca/stats", Some(&analyst), None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["total_agents_with_sca"], 2);
+    assert_eq!(body["total_policies"], 2);
+    assert_eq!(body["by_customer"], json!({}), "one customer in scope");
+
+    // The event stream.
+    let (status, headers, bytes) = raw(&h, "/api/sca/overview/stream", &analyst).await;
+    assert_eq!(status, 200);
+    assert_eq!(headers["content-type"], "text/event-stream; charset=utf-8");
+    assert_eq!(headers["cache-control"], "no-cache");
+    assert_eq!(headers["x-accel-buffering"], "no");
+    assert!(headers.get("content-encoding").is_none());
+    let text = String::from_utf8(bytes).unwrap();
+    let frames: Vec<(String, Value)> = text
+        .split("\n\n")
+        .filter(|f| !f.is_empty())
+        .map(|f| {
+            let (event, data) = f.split_once('\n').unwrap();
+            (
+                event.trim_start_matches("event: ").to_string(),
+                serde_json::from_str(data.trim_start_matches("data: ")).unwrap(),
+            )
+        })
+        .collect();
+    let events: Vec<&str> = frames.iter().map(|(e, _)| e.as_str()).collect();
+    assert_eq!(events[0], "start");
+    assert_eq!(frames[0].1["total_agents"], 3);
+    assert_eq!(events.iter().filter(|e| **e == "agent_result").count(), 2);
+    assert_eq!(events.iter().filter(|e| **e == "agent_empty").count(), 1);
+    assert_eq!(events[events.len() - 2], "progress");
+    assert_eq!(frames[frames.len() - 2].1["percent_complete"], 100.0);
+    let done = &frames.last().unwrap().1;
+    assert_eq!(frames.last().unwrap().0, "complete");
+    assert_eq!(done["total_results"], 3);
+    assert_eq!(done["agents_successful"], 2);
+    assert_eq!(
+        done["message"],
+        "Completed SCA collection: 3 results from 2 agents"
+    );
+    let (_, _, bytes) = raw(
+        &h,
+        &format!("/api/sca/overview/stream?customer_codes={beta}"),
+        &analyst,
+    )
+    .await;
+    assert_eq!(
+        String::from_utf8(bytes).unwrap(),
+        "event: complete\ndata: {\"results\": [], \"message\": \"No accessible customers\"}\n\n"
+    );
+    let _ = a3;
+
+    // A report.
+    let name = format!("sca-{s}");
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/sca/reports/generate",
+            Some(&analyst),
+            Some(json!({"customer_code": acme, "report_name": name, "min_score": 50})),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["success"], true, "{body}");
+    let report = &body["report"];
+    assert_eq!(report["total_policies"], 2);
+    assert_eq!(report["filters_applied"], json!({"min_score": 50}));
+    assert_eq!(report["error_message"], Value::Null);
+    let id = report["id"].as_i64().unwrap();
+    let (csv, _) = s3::get()
+        .object("sca-reports", &format!("{acme}/{name}.csv"))
+        .expect("stored");
+    let csv = String::from_utf8(csv).unwrap();
+    assert!(
+        csv.starts_with("Agent ID,Agent Name,Customer Code,Policy ID,"),
+        "{csv}"
+    );
+    assert_eq!(csv.lines().count(), 3);
+    let (status, headers, bytes) =
+        raw(&h, &format!("/api/sca/reports/{id}/download"), &analyst).await;
+    assert_eq!(status, 200);
+    assert_eq!(headers["content-type"], "text/csv; charset=utf-8");
+    assert_eq!(
+        headers["content-disposition"],
+        format!("attachment; filename={name}.csv").as_str()
+    );
+    assert_eq!(String::from_utf8(bytes).unwrap(), csv);
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/sca/reports/generate",
+            Some(&analyst),
+            Some(json!({"customer_code": beta})),
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["error"], "Insufficient permissions");
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/sca/reports/generate",
+            Some(&analyst),
+            Some(json!({"customer_code": acme, "max_score": 200})),
+        )
+        .await;
+    assert_eq!(status, 422, "{body}");
+    let (status, body) = h
+        .call(
+            "DELETE",
+            &format!("/api/sca/reports/{id}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), body),
+        (
+            200,
+            json!({"success": true, "message": format!("Successfully deleted report '{name}'")})
+        )
+    );
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("/api/sca/reports/{id}/download"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (404, json!("Report not found"))
+    );
+    assert_eq!(s3::get().bad_signatures(), 0);
+
+    give_back(&h, borrowed).await;
+    cleanup(&h).await;
+}
+
+#[tokio::test]
+async fn sca_policies_and_the_package_registry() {
+    let h = harness_or_skip!(None, &env());
+    h.seed().await;
+    cleanup(&h).await;
+    let s = h.suffix.clone();
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let a1 = agent(&h, "a1", &format!("web-{s}"), "Ubuntu", &acme, None).await;
+    let b1 = agent(&h, "b1", &format!("db-{s}"), "Ubuntu", &beta, None).await;
+    let (_server, up) = upstream().await;
+    let index = json!({
+        "version": "1.2", "last_updated": "2026-10-01",
+        "policies": [
+            {"id": "cis_apache_24", "name": "CIS Apache 2.4", "description": "d", "file": "apache/cis_apache_24.yml",
+             "application": "apache", "app_version": "2.4", "platform": "linux", "cis_version": "2.0.0"},
+            {"id": "cis_nginx", "name": "CIS NGINX", "description": "d", "file": "nginx/cis_nginx.yml",
+             "application": "nginx", "app_version": "1", "platform": "linux", "cis_version": "1.0.0"}
+        ]
+    });
+    {
+        let mut d = up.data.lock().unwrap();
+        d.github = vec![
+            ("/index.json".into(), 200, index.to_string()),
+            (
+                "/apache/cis_apache_24.yml".into(),
+                200,
+                "policy:\n  id: cis_apache_24\n".into(),
+            ),
+            ("/nginx/cis_nginx.yml".into(), 404, "404: Not Found".into()),
+        ];
+        d.packages = vec![
+            json!({"_index": "wazuh-states-inventory-packages-e2e", "_id": "p1",
+                   "_source": {"agent": {"id": a1, "name": "web"}, "package": {"name": "apache2", "version": "2.4.58", "architecture": "amd64"}}}),
+            json!({"_index": "wazuh-states-inventory-packages-e2e", "_id": "p2",
+                   "_source": {"agent": {"id": b1, "name": "db"}, "package": {"name": "apache2-bin", "version": "2.4.58", "architecture": "amd64"}}}),
+        ];
+    }
+    let mut borrowed = Borrowed::new();
+    wazuh(&h, &mut borrowed).await;
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let state = copilot_agent_reports::AgentReportsState {
+        sca_repo: copilot_agent_reports::sca::policies::ScaRepo::new(format!(
+            "http://127.0.0.1:{}",
+            upstream_port()
+        ))
+        .unwrap(),
+        ..h.app.agent_reports.clone()
+    };
+    let sca = copilot_agent_reports::sca::router(state);
+
+    let (status, body) = get_on(&sca, "/policies", &analyst).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["version"], "1.2");
+    assert_eq!(
+        body["message"],
+        "Successfully fetched 2 available SCA policies"
+    );
+    let (status, body) = get_on(&sca, "/policies/cis_nginx/metadata", &analyst).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["policy"]["file"], "nginx/cis_nginx.yml");
+    let (status, body) = get_on(&sca, "/policies/cis_apache_24", &analyst).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["content"], "policy:\n  id: cis_apache_24\n");
+    assert_eq!(
+        body["message"],
+        "Successfully fetched policy 'CIS Apache 2.4'"
+    );
+    let (status, body) = get_on(&sca, "/policies/cis_nginx", &analyst).await;
+    assert_eq!(status, 404, "{body}");
+    assert_eq!(
+        body["message"],
+        format!(
+            "Failed to fetch SCA policy file from GitHub: Client error '404 Not Found' for url \
+             'http://127.0.0.1:{}/nginx/cis_nginx.yml'\nFor more information check: \
+             https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+            upstream_port()
+        )
+    );
+    let (status, body) = get_on(&sca, "/policies/missing", &analyst).await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (
+            404,
+            json!("SCA policy 'missing' not found in the CoPilot-SCA repository index")
+        )
+    );
+    let seen = up.take();
+    let github = seen.iter().find(|r| r.path == "/index.json").unwrap();
+    assert_eq!(github.method, "GET");
+
+    let (status, body) = get_on(&sca, "/packages/registry", &analyst).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["total"], 6);
+    assert_eq!(body["entries"][0]["key"], "apache");
+    let (status, body) = get_on(&sca, "/packages/registry/nope/agents", &analyst).await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (
+            404,
+            json!(
+                "Registry key 'nope' not found. Valid keys: apache, nginx, iis, mysql, postgresql, sqlserver"
+            )
+        )
+    );
+    let (status, body) = get_on(&sca, "/packages/registry/apache/agents", &analyst).await;
+    assert_eq!(status, 200, "{body}");
+    let matched: Vec<&str> = body["matched_agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["agent_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(matched, [a1.as_str()], "another tenant's agent is dropped");
+    assert_eq!(body["total"], 1);
+    assert_eq!(
+        body["message"], "Found 1 agent-package combinations for 'Apache HTTP Server'",
+        "§4: the message counts the caller's matches"
+    );
+    assert_eq!(body["applicable_policies"][0]["id"], "cis_apache_24");
+    let search = up
+        .take()
+        .into_iter()
+        .find(|r| r.path == "/wazuh-states-inventory-packages-*/_search")
+        .unwrap();
+    assert_eq!(search.query, "size=10000");
+    let (_, body) = get_on(&sca, "/packages/registry/apache/agents", &admin).await;
+    assert_eq!(body["total"], 2);
+
+    // The repository unreachable: the 502 with httpx's text.
+    let state = copilot_agent_reports::AgentReportsState {
+        sca_repo: copilot_agent_reports::sca::policies::ScaRepo::new("http://127.0.0.1:1").unwrap(),
+        ..h.app.agent_reports.clone()
+    };
+    let (status, body) = get_on(
+        &copilot_agent_reports::sca::router(state),
+        "/policies",
+        &analyst,
+    )
+    .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (
+            502,
+            json!("Failed to fetch SCA policies index: All connection attempts failed")
+        )
+    );
 
     give_back(&h, borrowed).await;
     cleanup(&h).await;

@@ -23,7 +23,8 @@
 //!                      │                    → copilot-soc-management          │
 //!                      │ /api/agent_data_store/*, the incidents' MinIO routes │
 //!                      │                    → copilot-objectstore ────────────────► MinIO :9000
-//!                      │ /api/vulnerabilities/* → copilot-agent-reports       │
+//!                      │ /api/vulnerabilities/*, /api/sca/*                   │
+//!                      │                    → copilot-agent-reports           │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -210,8 +211,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The MinIO data store (copilot-objectstore): the upload and the agents'
     // Velociraptor artifact files.
     "/api/agent_data_store",
-    // The agents' reports (copilot-agent-reports): vulnerabilities.
+    // The agents' reports (copilot-agent-reports): vulnerabilities and SCA.
     "/api/vulnerabilities",
+    "/api/sca",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -321,7 +323,7 @@ pub struct App {
     /// The MinIO object store (`/api/agent_data_store`, the incidents'
     /// files).
     pub objectstore: ObjectStore,
-    /// The agents' report routers (`/api/vulnerabilities`).
+    /// The agents' report routers (`/api/vulnerabilities`, `/api/sca`).
     pub agent_reports: AgentReportsState,
 }
 
@@ -434,6 +436,8 @@ impl App {
             wazuh: wazuh.clone(),
             store: objectstore.clone(),
             epss: agents.epss.clone(),
+            sca_repo: copilot_agent_reports::sca::policies::ScaRepo::from_env()
+                .context("building the CoPilot-SCA client")?,
         };
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
@@ -682,6 +686,15 @@ impl App {
             .nest(
                 "/api/vulnerabilities",
                 copilot_agent_reports::vulnerabilities::router(self.agent_reports.clone()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .nest(
+                "/api/sca",
+                copilot_agent_reports::sca::router(self.agent_reports.clone()).layer(
                     from_fn_with_state(
                         self.wazuh.legacy.clone(),
                         copilot_wazuh::decoded_slash_to_legacy,

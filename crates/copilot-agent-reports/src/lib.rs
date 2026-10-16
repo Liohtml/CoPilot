@@ -6,17 +6,24 @@
 //!   indexer's vulnerability states into `agent_vulnerabilities`, the
 //!   statistics, the indexer search (with the per-CVE EPSS lookup) and the
 //!   CSV reports stored in MinIO (`vulnerability-reports`)
+//! - [`sca`] — `/api/sca`: the SCA overview of every agent from the Wazuh
+//!   manager (and its server-sent-events stream), the statistics, the CSV
+//!   reports (`sca-reports`), the CoPilot-SCA policy catalog on GitHub and
+//!   the package registry with its indexer lookup
 //!
 //! Upstreams are reached the way the Python libraries reach them: the
 //! indexer through `copilot-wazuh`'s elasticsearch-py port, the manager
 //! through its `requests` port, MinIO through `copilot-objectstore`
-//! (miniopy-async) and api.first.org through `copilot-agents`' EPSS client.
+//! (miniopy-async), api.first.org through `copilot-agents`' EPSS client and
+//! GitHub through an httpx-shaped client ([`httpx`]).
 
 #![warn(missing_docs)]
 
 pub mod agents;
+pub mod httpx;
 pub mod pyfmt;
 pub mod query;
+pub mod sca;
 pub mod vulnerabilities;
 
 use copilot_agents::services::epss::EpssClient;
@@ -35,6 +42,9 @@ pub struct AgentReportsState {
     pub store: ObjectStore,
     /// api.first.org (`COPILOT_EPSS_URL` in the parity harness).
     pub epss: EpssClient,
+    /// The CoPilot-SCA repository (`COPILOT_SCA_REPO_URL` in the parity
+    /// harness).
+    pub sca_repo: sca::policies::ScaRepo,
 }
 
 impl axum::extract::FromRef<AgentReportsState> for AppContext {
@@ -45,5 +55,7 @@ impl axum::extract::FromRef<AgentReportsState> for AppContext {
 
 /// The columns these routers read and write.
 pub fn requirements() -> Vec<copilot_db::schema::TableRequirement> {
-    vulnerabilities::db::REQUIREMENTS.to_vec()
+    let mut all = vulnerabilities::db::REQUIREMENTS.to_vec();
+    all.extend_from_slice(sca::db::REQUIREMENTS);
+    all
 }
