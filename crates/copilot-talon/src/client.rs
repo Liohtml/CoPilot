@@ -143,6 +143,24 @@ impl TalonConnector {
         send_json(req, "POST", endpoint).await
     }
 
+    /// `send_post_request` with the body already serialized (`requests`'
+    /// `json=` writes `json.dumps(data)`: `", "`/`": "` separators), sent as
+    /// `application/json`.
+    pub async fn post_text(
+        &self,
+        endpoint: &str,
+        body: String,
+        timeout: Duration,
+    ) -> Result<Value, TalonError> {
+        let ep = self.endpoint().await?;
+        let req = self
+            .request(&ep, reqwest::Method::POST, endpoint)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body)
+            .timeout(timeout);
+        send_json(req, "POST", endpoint).await
+    }
+
     /// `send_post_request_sse`: POST JSON and hand back the streaming
     /// response once Talon answered 2xx.
     pub async fn post_stream(

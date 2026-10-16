@@ -149,6 +149,8 @@ pub struct CopilotConfig {
     pub webauthn: WebAuthnEnv,
     /// The `SMTP_*` settings, as set.
     pub smtp: SmtpEnv,
+    /// What the alert ingest reads from the environment, as set.
+    pub ingest: crate::ingest_env::IngestEnv,
     /// The `MINIO_*` settings, as set.
     pub minio: MinioEnv,
     /// What the WAF and provisioning modules read from the environment.
@@ -357,6 +359,7 @@ impl CopilotConfig {
                 from: env.get_raw("SMTP_FROM"),
                 use_tls: env.get_raw("SMTP_USE_TLS"),
             },
+            ingest: crate::ingest_env::IngestEnv::from_env(env),
             minio: MinioEnv {
                 url: env.get_raw("MINIO_URL"),
                 root_user: env.get_raw("MINIO_ROOT_USER"),

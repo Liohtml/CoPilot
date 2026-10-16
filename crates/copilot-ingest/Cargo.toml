@@ -1,0 +1,34 @@
+[package]
+name = "copilot-ingest"
+description = "Incident alert creation and ingest (/api/incidents/alerts): indexer and Graylog-event alerts, Graylog threshold alerts, the Velociraptor Sigma ingest with its exclusion matcher, draft and dry-run, the indexer reads of /db_operations, the alert collection job"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-incidents = { workspace = true }
+copilot-sla = { workspace = true }
+copilot-talon = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-scheduler = { workspace = true }
+copilot-gateway = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+reqwest = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+regex = { workspace = true }
+speedate = { workspace = true }
+strum = { workspace = true }
+
+[lints]
+workspace = true

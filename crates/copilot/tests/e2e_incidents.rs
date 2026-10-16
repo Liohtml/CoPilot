@@ -563,13 +563,9 @@ async fn unported_paths_and_methods_reach_the_legacy_backend() {
     let legacy = MockServer::start().await;
     let h = harness_or_skip!(Some(&legacy));
     h.seed().await;
-    Mock::given(method("GET"))
-        .and(path(format!("{P}/available-source/wazuh-alerts")))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-get"})))
-        .mount(&legacy)
-        .await;
-    // The MinIO routes are copilot-objectstore's now (e2e_objectstore.rs);
-    // the default-template upload reads files on the Python host.
+    // The MinIO routes are copilot-objectstore's now (e2e_objectstore.rs),
+    // the indexer reads copilot-ingest's (e2e_ingest.rs); the default-template
+    // upload reads files on the Python host.
     Mock::given(method("POST"))
         .and(path(format!("{P}/case-report-template/default-template")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-post"})))
@@ -583,11 +579,6 @@ async fn unported_paths_and_methods_reach_the_legacy_backend() {
     let s = h.suffix.clone();
     let admin = h.token(&format!("admin{s}"), "admin");
     for (m, uri, want) in [
-        (
-            "GET",
-            format!("{P}/available-source/wazuh-alerts"),
-            "python-get",
-        ),
         (
             "POST",
             format!("{P}/case-report-template/default-template"),
@@ -1348,20 +1339,9 @@ async fn velo_sigma_exclusions_crud_tenancy_and_fall_through() {
         )
     );
 
-    // The rest of /api/incidents/alerts is Python's.
-    for (m, p) in [
-        (
-            "GET",
-            format!("/alert/{}/velo-sigma/exclusion-draft", seeded.tagged),
-        ),
-        (
-            "POST",
-            format!("/alert/{}/velo-sigma/exclusion-dry-run", seeded.tagged),
-        ),
-        ("POST", "/create/manual".to_string()),
-        ("POST", "/create/velo-sigma".to_string()),
-        ("PUT", "/create/velo-sigma/exclusion/1".to_string()),
-    ] {
+    // The rest of /api/incidents/alerts is copilot-ingest's (e2e_ingest);
+    // a method no Rust router takes is Python's.
+    for (m, p) in [("PUT", "/create/velo-sigma/exclusion/1".to_string())] {
         Mock::given(method(m))
             .and(path(format!("{A}{p}")))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))

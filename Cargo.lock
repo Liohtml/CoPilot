@@ -477,6 +477,7 @@ dependencies = [
  "copilot-identity",
  "copilot-incidents",
  "copilot-influxdb",
+ "copilot-ingest",
  "copilot-notifications",
  "copilot-objectstore",
  "copilot-platform",
@@ -783,6 +784,34 @@ dependencies = [
  "reqwest",
  "serde_json",
  "sha2",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-ingest"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-incidents",
+ "copilot-scheduler",
+ "copilot-sla",
+ "copilot-talon",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "http",
+ "regex",
+ "reqwest",
+ "serde_json",
+ "speedate",
+ "sqlx",
+ "strum",
  "tokio",
  "tracing",
 ]

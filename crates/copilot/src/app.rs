@@ -53,6 +53,7 @@ use copilot_grafana::{GrafanaClient, GrafanaState};
 use copilot_graylog::{GraylogClient, GraylogState};
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
 use copilot_influxdb::{InfluxClient, InfluxState};
+use copilot_ingest::IngestState;
 use copilot_notifications::{Dispatcher, DispatchingSink, NotificationsState};
 use copilot_objectstore::{DataStoreState, ObjectStore};
 use copilot_platform::PlatformState;
@@ -89,20 +90,21 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/sso",
     "/api/auth/passkey",
     "/api/auth/security",
-    // /api/incidents/db_operations but the Wazuh-indexer reads (/available-source,
-    // /available-indices, /mappings), POST /case-report-template/default-template
+    // /api/incidents/db_operations but POST /case-report-template/default-template
     // (the templates are files on the Python host) and POST /case/notification
     // (Shuffle): those fall through to the legacy backend. The MinIO routes
-    // (case files, report templates, DELETE /case/{id}) are copilot-objectstore's.
+    // (case files, report templates, DELETE /case/{id}) are copilot-objectstore's,
+    // the Wazuh-indexer reads (/available-source, /available-indices, /mappings)
+    // copilot-ingest's.
     "/api/incidents/db_operations",
     // The template CRUD; the library and /suggest stay in Python.
     "/api/incidents/case_templates",
     "/api/incidents/tag_access",
-    // Of /api/incidents/alerts only the Velociraptor Sigma exclusion rules
-    // (CRUD and toggle); alert creation, the Sigma ingest, the exclusion
-    // draft and dry-run stay in Python.
-    "/api/incidents/alerts/create/velo-sigma/exclusion",
-    "/api/incidents/alerts/velo-sigma/exclusion",
+    // /api/incidents/alerts: the Velociraptor Sigma exclusion rules (CRUD and
+    // toggle, copilot-incidents), and alert creation and ingest (copilot-ingest):
+    // the indexer and Graylog-event alerts, /create/threshold, the Sigma ingest,
+    // the exclusion draft and dry-run.
+    "/api/incidents/alerts",
     // The CSV case exports; the DOCX and PDF reports stay in Python.
     "POST /api/incidents/report/generate-report-csv",
     // The report list, the visibility switch, download and delete (GET "",
@@ -217,6 +219,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::security::REQUIREMENTS);
     all.extend_from_slice(copilot_db::branding::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::REQUIREMENTS);
+    all.extend_from_slice(copilot_ingest::REQUIREMENTS);
     all.extend_from_slice(copilot_sla::REQUIREMENTS);
     all.extend_from_slice(copilot_soc_management::REQUIREMENTS);
     all.extend_from_slice(copilot_notifications::db::REQUIREMENTS);
@@ -283,6 +286,8 @@ pub struct App {
     pub verifiers: Verifiers,
     /// The Wazuh indexer and manager clients.
     pub wazuh: WazuhState,
+    /// Alert creation and ingest (`/api/incidents/alerts`).
+    pub ingest: IngestState,
     /// The Graylog client (`/api/graylog`, and later ports' provisioning).
     pub graylog: GraylogClient,
     /// The InfluxDB client (`/api/influxdb`, and the checks provisioning).
@@ -360,10 +365,18 @@ impl App {
         });
         let wazuh =
             WazuhState::new(ctx.clone(), legacy.clone()).context("building the Wazuh clients")?;
+        let ingest = IngestState::new(
+            ctx.clone(),
+            wazuh.es.clone(),
+            talon.clone(),
+            cfg.ingest.clone(),
+            legacy.clone(),
+        )
+        .context("building the ingest clients")?;
         let scheduler = Scheduler::new(
             ctx.db.clone(),
             OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
-            scheduled_jobs(&ctx, &talon, &wazuh, cfg),
+            scheduled_jobs(&ctx, &talon, &wazuh, &ingest, cfg),
         );
         let graylog =
             GraylogClient::new(ctx.connectors.clone()).context("building the Graylog client")?;
@@ -418,6 +431,7 @@ impl App {
             scheduler,
             verifiers: Verifiers::new(copilot_wazuh::verify::verifiers(&wazuh)),
             wazuh,
+            ingest,
             graylog,
             influxdb,
             grafana,
@@ -504,6 +518,9 @@ impl App {
                     legacy: self.legacy.clone(),
                 }),
             )
+            // Full paths beside the two nested incidents routers: alert
+            // creation and ingest, and the indexer reads of /db_operations.
+            .merge(copilot_ingest::router(self.ingest.clone()))
             // Full paths: the module spans `/api/customers/{code}/…`,
             // `/api/notifications`, `/api/notification_channels` and
             // `/api/internal_notification_routes`.
@@ -666,11 +683,12 @@ impl App {
 /// Every job this build can take over from APScheduler (`handover.py`'s
 /// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`,
 /// `notify_sla_transitions`, `invoke_snapshot_schedules`,
-/// `resize_wazuh_index_fields`.
+/// `resize_wazuh_index_fields`, `invoke_alert_creation_collect`.
 pub fn scheduled_jobs(
     ctx: &AppContext,
     talon: &TalonConnector,
     wazuh: &WazuhState,
+    ingest: &IngestState,
     cfg: &CopilotConfig,
 ) -> Vec<copilot_scheduler::JobSpec> {
     let mut jobs = copilot_ai_analyst::palace_jobs::job_specs(ctx, talon);
@@ -680,6 +698,7 @@ pub fn scheduled_jobs(
     ));
     jobs.push(copilot_soc_management::notifier_job_spec(ctx));
     jobs.extend(copilot_wazuh::jobs::job_specs(wazuh));
+    jobs.push(copilot_ingest::job_spec(ingest));
     jobs
 }
 
