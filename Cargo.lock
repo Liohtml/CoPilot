@@ -486,9 +486,11 @@ dependencies = [
  "copilot-portainer",
  "copilot-provisioning",
  "copilot-scheduler",
+ "copilot-siem",
  "copilot-sla",
  "copilot-soc-management",
  "copilot-talon",
+ "copilot-threat-intel",
  "copilot-velociraptor",
  "copilot-waf",
  "copilot-wazuh",
@@ -1030,6 +1032,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-siem"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-jinja",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "http",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "tracing",
+]
+
+[[package]]
 name = "copilot-sla"
 version = "0.2.0"
 dependencies = [
@@ -1087,6 +1110,38 @@ dependencies = [
  "tokio",
  "tracing",
  "wiremock",
+]
+
+[[package]]
+name = "copilot-threat-intel"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-incidents",
+ "copilot-ingest",
+ "copilot-jinja",
+ "copilot-objectstore",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "flate2",
+ "hex",
+ "http",
+ "hyper",
+ "rand 0.8.8",
+ "regex",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]

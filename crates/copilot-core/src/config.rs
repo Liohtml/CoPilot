@@ -30,6 +30,7 @@
 //! | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` | *(unset)*, `587`, …, `true` | the temporary-password email; read as set, and parsed per request like Python (a bad `SMTP_PORT` is that request's 400) |
 //! | `MINIO_URL`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_SECURE` | `copilot-minio`, `admin`, `password`, `false` | the MinIO object store, read as `app/data_store/data_store_session.py` reads them (environs: an empty value is a value; `MINIO_SECURE` must be one of marshmallow's boolean spellings, else neither backend starts); the client dials `{MINIO_URL}:9000` |
 //! | `COPILOT_MINIO_ENDPOINT` | *(unset)* | tests only: `host:port` dialled instead of `{MINIO_URL}:9000` (the parity harness's S3 stand-in); never set in production |
+//! | `COPILOT_API_KEY` | *(unset)* | the licence server's `x-api-key` (secret), read as `os.getenv` reads it (unset is sent as `None`) |
 
 use std::fmt;
 use std::net::IpAddr;
@@ -155,6 +156,9 @@ pub struct CopilotConfig {
     pub minio: MinioEnv,
     /// What the WAF and provisioning modules read from the environment.
     pub provisioning: ProvisioningEnv,
+    /// `COPILOT_API_KEY`, as set: the licence server's `x-api-key`
+    /// (`os.getenv` semantics; `None` is sent as the text `None`).
+    pub copilot_api_key: Option<Secret>,
 }
 
 /// Raw values the WAF and provisioning modules read per call in Python
@@ -377,6 +381,7 @@ impl CopilotConfig {
                 alert_forwarding_ip: env.get_raw("ALERT_FORWARDING_IP"),
                 graylog_api_header_value: env.get_raw("GRAYLOG_API_HEADER_VALUE").map(Secret::new),
             },
+            copilot_api_key: env.get_raw("COPILOT_API_KEY").map(Secret::new),
         })
     }
 }

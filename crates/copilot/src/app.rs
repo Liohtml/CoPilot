@@ -23,6 +23,11 @@
 //!                      │                    → copilot-soc-management          │
 //!                      │ /api/agent_data_store/*, the incidents' MinIO routes │
 //!                      │                    → copilot-objectstore ────────────────► MinIO :9000
+//!                      │ /api/siem/dashboards, /event_sources, /events        │
+//!                      │                    → copilot-siem ───────────────────────► Wazuh indexer
+//!                      │ /api/threat_intel/*                                  │
+//!                      │                    → copilot-threat-intel ───────────► SOCFortress, VirusTotal,
+//!                      │                                                      │   api.first.org
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -224,6 +229,14 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/integrations/update_meta_auto",
     "/api/api/v1/alert_settings",
     "/api/network_connectors",
+    // SIEM (copilot-siem): dashboards (built-in and custom templates, panel
+    // data), event sources and the event search.
+    "/api/siem/dashboards",
+    "/api/siem/event_sources",
+    "/api/siem/events",
+    // Threat intel (copilot-threat-intel): EPSS, SOCFortress intel and AI,
+    // the process-name analysis, VirusTotal.
+    "/api/threat_intel",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -258,6 +271,8 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::datastore::REQUIREMENTS);
     all.extend_from_slice(copilot_integrations::REQUIREMENTS);
+    all.extend_from_slice(copilot_siem::REQUIREMENTS);
+    all.extend_from_slice(copilot_threat_intel::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -333,6 +348,8 @@ pub struct App {
     /// The MinIO object store (`/api/agent_data_store`, the incidents'
     /// files).
     pub objectstore: ObjectStore,
+    /// The threat-intel routes' clients (`/api/threat_intel`).
+    pub threat_intel: copilot_threat_intel::ThreatIntelState,
 }
 
 impl App {
@@ -437,6 +454,13 @@ impl App {
             }),
             legacy: legacy.clone(),
         };
+        let threat_intel = copilot_threat_intel::ThreatIntelState::new(
+            ctx.clone(),
+            ingest.clone(),
+            cfg.copilot_api_key.clone(),
+            legacy.clone(),
+        )
+        .context("building the threat-intel clients")?;
         let objectstore = ObjectStore::from_env(&cfg.minio)
             .map_err(|e| anyhow::anyhow!("MinIO settings: {e}"))?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
@@ -480,6 +504,7 @@ impl App {
                 .context("building the provisioning-worker client")?,
             agents,
             objectstore,
+            threat_intel,
         })
     }
 
@@ -710,6 +735,14 @@ impl App {
                     legacy: self.legacy.clone(),
                 },
             ))
+            // Full paths: `/api/siem/dashboards`, `/event_sources`, `/events`.
+            .merge(copilot_siem::router(copilot_siem::SiemState {
+                ctx: self.ctx.clone(),
+                es: self.wazuh.es.clone(),
+                legacy: self.legacy.clone(),
+            }))
+            // Full paths: `/api/threat_intel/*`.
+            .merge(copilot_threat_intel::router(self.threat_intel.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

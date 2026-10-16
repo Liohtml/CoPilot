@@ -43,7 +43,7 @@ mod symbols;
 #[rustfmt::skip]
 mod tables;
 mod textwrap;
-mod unicode;
+pub mod unicode;
 mod urlize;
 mod value;
 pub mod vm;

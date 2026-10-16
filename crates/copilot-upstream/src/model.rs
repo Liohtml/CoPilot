@@ -920,6 +920,9 @@ pub fn format_validation_error(title: &str, errors: &[PyError]) -> String {
                 .loc
                 .iter()
                 .map(|l| match l {
+                    // pydantic-core's `LocItem` display: a key holding a dot
+                    // is quoted with backticks.
+                    Loc::Key(k) if k.contains('.') => format!("`{k}`"),
                     Loc::Key(k) => k.clone(),
                     Loc::Index(i) => i.to_string(),
                 })
@@ -989,6 +992,22 @@ mod tests {
         assert_eq!(
             ok.unwrap().py_repr(),
             "{'n': 2, 'children': [{'n': 1, 'children': None}]}"
+        );
+    }
+
+    #[test]
+    fn a_dotted_key_is_quoted_in_the_location() {
+        // Recorded with pydantic 2.13: `Dict[str, int]` given {"a.b": "x"}.
+        static BAG: Model = Model::new("Bag", &[Field::req("d", Ty::Dict(&Ty::Int))]);
+        let Err(Invalid::Errors(errs)) = validate(&BAG, &loads(r#"{"d": {"a.b": "x"}}"#).unwrap())
+        else {
+            panic!("expected errors")
+        };
+        assert_eq!(
+            format_validation_error("Bag", &errs),
+            "1 validation error for Bag\nd.`a.b`\n  Input should be a valid integer, unable to \
+             parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    \
+             For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
         );
     }
 
