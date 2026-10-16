@@ -1,5 +1,5 @@
 """Parity of the agents' report routers (`crates/copilot-agent-reports`: /api/vulnerabilities,
-/api/sca) with this backend —
+/api/sca, /api/syscollector) with this backend —
 NOT collected by pytest (needs a live MySQL and the Rust binary; run by scripts/rust-parity.sh).
 
 The real FastAPI routers (in-process, with copilot.py's GZipMiddleware) and a Rust instance this
@@ -23,7 +23,8 @@ Python version in its `User-Agent` (`Python 3.11.17`), the Rust port the minor o
 
 Deliberate differences (RUST_MIGRATION.md §4), each checked as such: the per-agent vulnerability
 list is the caller's customers' only; a host's sync is refused for another tenant's host; the
-registry lookup's message counts the caller's matches.
+indexer package search covers the caller's agents only; the registry lookup's message counts the
+caller's matches.
 
 Ports (all overridable): AGENT_REPORTS_PARITY_RUST_PORT (5740, the Rust instance),
 AGENT_REPORTS_PARITY_STUB_PORT (5741), AGENT_REPORTS_PARITY_S3_PORT (5742),
@@ -1249,6 +1250,65 @@ async def sca_checks(p, t):
     p.up.mode.pop("index", None)
 
 
+# --- Checks: /api/syscollector -----------------------------------------------------------------------
+SYS = "/api/syscollector"
+
+
+async def syscollector_checks(p, t):
+    a1, b1 = AGENTS["a1"][0], AGENTS["b1"][0]
+    await p.same("an agent's packages", "GET", f"{SYS}/{a1}/packages", t["portal"])
+    await p.same(
+        "an agent's packages, every parameter",
+        "GET",
+        f"{SYS}/{a1}/packages?limit=10&offset=5&sort=-name&search=ssl&select=name&select=version&vendor=U&name=openssl"
+        f"&architecture=amd64&format=deb&version=3&q=name%3Dopenssl",
+        t["analyst"],
+    )
+    await p.same("another tenant's agent's packages", "GET", f"{SYS}/{b1}/packages", t["portal"])
+    await p.same("an unknown agent's packages", "GET", f"{SYS}/nope/packages", t["admin"])
+    await p.same("packages with bad parameters", "GET", f"{SYS}/{a1}/packages?limit=0&offset=-1", t["admin"])
+
+    def manager_down():
+        p.up.mode["syscollector"] = "fail"
+
+    await p.same("packages when the manager fails", "GET", f"{SYS}/{a1}/packages", t["admin"], before=manager_down)
+    p.up.mode.pop("syscollector", None)
+    await p.same("indexer package search as admin", "GET", f"{SYS}/search/packages?package_name=apache&size=3", t["admin"])
+    await p.same(
+        "indexer package search, every filter",
+        "GET",
+        f"{SYS}/search/packages?agent_name=rp&agent_id={a1}&architecture=amd64&package_type=deb&vendor=x&package_version=2.4",
+        t["admin"],
+    )
+    await p.same("indexer package search with a bad size", "GET", f"{SYS}/search/packages?size=0", t["admin"])
+    await p.same("indexer package search as a portal user", "GET", f"{SYS}/search/packages", t["portal"])
+
+    def scoped(py, rs):
+        theirs = {h["agent"]["id"] for h in py.get("packages", [])}
+        mine = {h["agent"]["id"] for h in rs.get("packages", [])}
+        if b1 not in theirs or b1 in mine or a1 not in mine:
+            return f"python {sorted(theirs)} rust {sorted(mine)}"
+        return None
+
+    # §4: the analyst's agents only (Rust adds a `terms` clause; the upstream requests differ too).
+    r_py = await p.call(p.py, "GET", f"{SYS}/search/packages", t["analyst"], {})
+    p.up.take()
+    r_rs = await p.call(p.rs, "GET", f"{SYS}/search/packages", t["analyst"], {})
+    sent = upstream_view(p.up.take())
+    reason = scoped(r_py.json(), r_rs.json())
+    owned = sent and json.loads(sent[-1]["body"])["query"]["bool"]["must"][-1]
+    if (
+        not reason
+        and owned != {"terms": {"agent.id": sorted([AGENTS[k][0] for k in ("a1", "a2", "w1")])}}
+        and owned
+        != {
+            "terms": {"agent.id": [AGENTS[k][0] for k in ("a1", "a2", "w1")]},
+        }
+    ):
+        reason = f"the Rust search sent {owned}"
+    check("indexer package search as an analyst (Rust searches the caller's agents) [200]", not reason, reason or "")
+
+
 # --- Velociraptor (no checks yet) ------------------------------------------------------------------
 
 
@@ -1281,11 +1341,13 @@ async def main():
         "scheduler": token(SCHED, ["scheduler"]),
     }
     try:
-        sections = os.environ.get("AGENT_REPORTS_PARITY_SECTIONS", "vulnerabilities,sca").split(",")
+        sections = os.environ.get("AGENT_REPORTS_PARITY_SECTIONS", "vulnerabilities,sca,syscollector").split(",")
         if "vulnerabilities" in sections:
             await vulnerability_checks(p, t)
         if "sca" in sections:
             await sca_checks(p, t)
+        if "syscollector" in sections:
+            await syscollector_checks(p, t)
     finally:
         await p.close()
         proc.terminate()

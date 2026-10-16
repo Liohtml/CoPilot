@@ -23,8 +23,8 @@
 //!                      │                    → copilot-soc-management          │
 //!                      │ /api/agent_data_store/*, the incidents' MinIO routes │
 //!                      │                    → copilot-objectstore ────────────────► MinIO :9000
-//!                      │ /api/vulnerabilities/*, /api/sca/*                   │
-//!                      │                    → copilot-agent-reports           │
+//!                      │ /api/vulnerabilities/*, /api/sca/*,                  │
+//!                      │ /api/syscollector/* → copilot-agent-reports          │
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -211,9 +211,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The MinIO data store (copilot-objectstore): the upload and the agents'
     // Velociraptor artifact files.
     "/api/agent_data_store",
-    // The agents' reports (copilot-agent-reports): vulnerabilities and SCA.
+    // The agents' reports (copilot-agent-reports): vulnerabilities, SCA and
+    // the syscollector packages.
     "/api/vulnerabilities",
     "/api/sca",
+    "/api/syscollector",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -323,7 +325,8 @@ pub struct App {
     /// The MinIO object store (`/api/agent_data_store`, the incidents'
     /// files).
     pub objectstore: ObjectStore,
-    /// The agents' report routers (`/api/vulnerabilities`, `/api/sca`).
+    /// The agents' report routers (`/api/vulnerabilities`, `/api/sca`,
+    /// `/api/syscollector`).
     pub agent_reports: AgentReportsState,
 }
 
@@ -695,6 +698,15 @@ impl App {
             .nest(
                 "/api/sca",
                 copilot_agent_reports::sca::router(self.agent_reports.clone()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
+            )
+            .nest(
+                "/api/syscollector",
+                copilot_agent_reports::syscollector::router(self.agent_reports.clone()).layer(
                     from_fn_with_state(
                         self.wazuh.legacy.clone(),
                         copilot_wazuh::decoded_slash_to_legacy,

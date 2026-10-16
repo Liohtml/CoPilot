@@ -1,6 +1,6 @@
 [package]
 name = "copilot-agent-reports"
-description = "The agents' report routers: /api/vulnerabilities (sync, stats, search, CSV reports in MinIO) and /api/sca (overview, SSE stream, stats, reports, the CoPilot-SCA policies, the package registry)"
+description = "The agents' report routers: /api/vulnerabilities (sync, stats, search, CSV reports in MinIO), /api/sca (overview, SSE stream, stats, reports, the CoPilot-SCA policies, the package registry) and /api/syscollector"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

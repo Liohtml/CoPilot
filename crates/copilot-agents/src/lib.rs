@@ -15,7 +15,7 @@
 //! - [`db`] / [`schema`] — the statements and the response shapes
 //!
 //! `/api/vulnerabilities`, `/api/sca` and `/api/syscollector` (the other
-//! routers of `app/agents/`) are not ported here.
+//! routers of `app/agents/`) are `copilot-agent-reports`'.
 
 #![warn(missing_docs)]
 

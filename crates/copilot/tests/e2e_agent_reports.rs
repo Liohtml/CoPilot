@@ -1,6 +1,6 @@
 //! End-to-end tests of the agents' report routers (`copilot-agent-reports`:
-//! `/api/vulnerabilities`, `/api/sca`), through the production router on a
-//! real MySQL.
+//! `/api/vulnerabilities`, `/api/sca`, `/api/syscollector`), through the
+//! production router on a real MySQL.
 //!
 //! ```text
 //! COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13307/copilot \
@@ -1493,6 +1493,152 @@ async fn sca_policies_and_the_package_registry() {
             json!("Failed to fetch SCA policies index: All connection attempts failed")
         )
     );
+
+    give_back(&h, borrowed).await;
+    cleanup(&h).await;
+}
+
+// --- /api/syscollector ---------------------------------------------------------------------
+
+#[tokio::test]
+async fn syscollector_packages_are_read_on_the_callers_agents() {
+    let h = harness_or_skip!(None, &env());
+    h.seed().await;
+    cleanup(&h).await;
+    let s = h.suffix.clone();
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    let a1 = agent(&h, "a1", &format!("web-{s}"), "Ubuntu", &acme, None).await;
+    let b1 = agent(&h, "b1", &format!("db-{s}"), "Ubuntu", &beta, None).await;
+    let (_server, up) = upstream().await;
+    {
+        let mut d = up.data.lock().unwrap();
+        d.syscollector = vec![(
+            a1.clone(),
+            json!([{"name": "openssl", "version": "3.0", "format": "deb", "size": 1024,
+                    "agent_id": a1, "install_time": "2026-01-01"}]),
+        )];
+        d.packages = vec![
+            json!({"_index": "wazuh-states-inventory-packages-e2e", "_id": "p1",
+                   "_source": {"agent": {"id": a1, "name": "web", "groups": ["x"]}, "package": {"name": "openssl", "type": "deb"}}}),
+            json!({"_index": "wazuh-states-inventory-packages-e2e", "_id": "p2",
+                   "_source": {"agent": {"id": b1, "name": "db"}, "package": {"name": "openssl"}}}),
+        ];
+    }
+    let mut borrowed = Borrowed::new();
+    wazuh(&h, &mut borrowed).await;
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let admin = h.token(&format!("admin{s}"), "admin");
+
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("/api/syscollector/{a1}/packages?select=name&select=version&q=name%3Dopenssl"),
+            Some(&portal),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"packages": [{"architecture": null, "description": null, "format": "deb", "name": "openssl",
+               "priority": null, "scan": null, "section": null, "size": 1024, "vendor": null, "version": "3.0",
+               "agent_id": a1, "install_time": "2026-01-01"}],
+               "total_affected_items": 1, "success": true,
+               "message": format!("Successfully fetched 1 packages for agent {a1}")})
+    );
+    let asked = up
+        .take()
+        .into_iter()
+        .find(|r| r.path.starts_with("/syscollector/"))
+        .unwrap();
+    assert_eq!(
+        asked.query,
+        "limit=500&offset=0&wait_for_complete=True&select=name%2Cversion&q=name%3Dopenssl"
+    );
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("/api/syscollector/{b1}/packages"),
+            Some(&portal),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (
+            404,
+            json!(format!(
+                "Agent with agent_id {b1} not found or access denied"
+            ))
+        )
+    );
+    let (status, _) = h
+        .call(
+            "GET",
+            &format!("/api/syscollector/{a1}/packages?limit=0"),
+            Some(&portal),
+            None,
+        )
+        .await;
+    assert_eq!(status, 422);
+
+    // §4: the indexer search covers the caller's agents only.
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/syscollector/search/packages?package_name=ssl",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["packages"][0]["_id"], "p1");
+    assert_eq!(
+        body["packages"][0]["agent"],
+        json!({"id": a1, "name": "web", "version": null})
+    );
+    let search = up.take().pop().unwrap();
+    assert_eq!(search.query, "size=500");
+    let must = search.body["query"]["bool"]["must"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(
+        must[0],
+        json!({"wildcard": {"package.name": {"value": "*ssl*", "case_insensitive": true}}})
+    );
+    let mut owned: Vec<String> = must[1]["terms"]["agent.id"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    owned.sort();
+    assert!(owned.contains(&a1) && !owned.contains(&b1), "{owned:?}");
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/syscollector/search/packages",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        up.take().pop().unwrap().body,
+        json!({"query": {"match_all": {}}})
+    );
+    let (status, _) = h
+        .call(
+            "GET",
+            "/api/syscollector/search/packages",
+            Some(&portal),
+            None,
+        )
+        .await;
+    assert_eq!(status, 403, "the search is the SOC's");
 
     give_back(&h, borrowed).await;
     cleanup(&h).await;

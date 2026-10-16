@@ -10,6 +10,8 @@
 //!   manager (and its server-sent-events stream), the statistics, the CSV
 //!   reports (`sca-reports`), the CoPilot-SCA policy catalog on GitHub and
 //!   the package registry with its indexer lookup
+//! - [`syscollector`] — `/api/syscollector`: an agent's packages from the
+//!   manager and the package search in the indexer
 //!
 //! Upstreams are reached the way the Python libraries reach them: the
 //! indexer through `copilot-wazuh`'s elasticsearch-py port, the manager
@@ -24,6 +26,7 @@ pub mod httpx;
 pub mod pyfmt;
 pub mod query;
 pub mod sca;
+pub mod syscollector;
 pub mod vulnerabilities;
 
 use copilot_agents::services::epss::EpssClient;
