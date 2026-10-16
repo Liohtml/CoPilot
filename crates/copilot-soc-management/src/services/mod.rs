@@ -1,10 +1,11 @@
 //! Application services: loading facts, composing the dashboard, the policy
-//! and calendar editors and the portal SLA page — ports of
+//! and calendar editors, the portal SLA page and the notifier — ports of
 //! `soc_management/services/` and `customer_portal/services/sla.py`.
 
 pub mod calendars;
 pub mod datasets;
 pub mod metrics;
+pub mod notifier;
 pub mod policy;
 pub mod portal;
 

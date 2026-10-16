@@ -33,6 +33,7 @@ from app.notifications.schema.events import EntityType
 from app.notifications.schema.events import NotificationEvent
 from app.notifications.services.emit import emit
 from app.notifications.services.event_builders import sla_event
+from app.schedulers.handover import rust_handover
 from app.soc_management.clock import utc_now
 from app.soc_management.domain.analytics import ItemFact
 from app.soc_management.domain.notices import STAMP_COLUMNS
@@ -131,8 +132,14 @@ def _event(fact: ItemFact, notice: Notice, now) -> NotificationEvent:
     )
 
 
+@rust_handover("notify_sla_transitions")
 async def notify_sla_transitions() -> None:
     """Scheduler entry point.
+
+    Guarded by the hand-over (``app/schedulers/handover.py``): a scheduled tick runs
+    here only while the job's ``scheduled_job_metadata`` row is enabled or absent; the
+    Rust service (``copilot-soc-management``) runs it once the row is disabled and it
+    is opted in.
 
     A failed pass is logged and re-raised, so the scheduler records it as an error rather
     than stamping ``last_success``; the next pass simply tries again.

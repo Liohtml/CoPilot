@@ -21,7 +21,9 @@ states are stable for twenty minutes, so the portal overview (which reports no "
 
 Writes run once per backend on twin customers (P for Python, R for Rust) with identical items, and
 the rows they leave — policy cells, calendars, re-targeted due times — are compared; the global
-policy and calendar writes are compared with the database restored in between.
+policy and calendar writes are compared with the database restored in between. The notifier runs
+once in Python and once in Rust (a second binary opted in to `notify_sla_transitions`, the job
+handed over), against one webhook recorder: stamps, deliveries and dispatch-log rows are compared.
 
 Deliberate differences are asserted as such (DIFF_BY_DESIGN) and listed in
 docs/architecture/RUST_MIGRATION.md §4.
@@ -33,8 +35,14 @@ import json
 import os
 import random
 import re
+import socket
+import subprocess
 import sys
+import threading
+import time
 import uuid
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -70,6 +78,7 @@ BOB, CLEO = f"soc_bob{SFX}", f"soc_cleo{SFX}"
 T0 = datetime.datetime.utcnow().replace(second=0, microsecond=0)
 SO = "/api/soc_management"
 CP = "/api/customer_portal/sla"
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 # --- frozen clock for the Python side ------------------------------------------------
 CLOCK = [None]
@@ -776,6 +785,7 @@ async def main():
     await edge_section(same, tok, q7)
     await tag_rbac_section(same, tok, q30, ids)
     await writes_section(py, rs, tok, H, ids)
+    await notifier_section(py, rs, tok, H, ids)
     await by_design_section(rs, tok, H)
 
     failed = [n for n, ok in results if not ok]
@@ -1145,6 +1155,242 @@ async def writes_section(py, rs, tok, H, ids):
                 )
     finally:
         await restore()
+
+
+# ==========================================================================
+CAPTURED = []
+
+
+class _Recorder(BaseHTTPRequestHandler):
+    def do_POST(self):  # noqa: N802 - http.server API
+        length = int(self.headers.get("Content-Length") or 0)
+        CAPTURED.append({"path": self.path, "body": self.rfile.read(length) if length else b""})
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, *args):
+        pass
+
+
+def start_recorder():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Recorder)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def start_rust_with_job(port):
+    binary = os.environ.get("COPILOT_BIN", os.path.join(REPO, "target", "debug", "copilot"))
+    user, password, host = os.environ["MYSQL_USER"], os.environ["MYSQL_PASSWORD"], os.environ["MYSQL_URL"]
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "HOME": os.environ.get("HOME", "/tmp"),
+        "COPILOT_DATABASE_URL": f"mysql://{user}:{password}@{host}/copilot",
+        "JWT_SECRET": os.environ["JWT_SECRET"],
+        "COPILOT_BIND": "127.0.0.1",
+        "COPILOT_PORT": str(port),
+        "COPILOT_URL": os.environ.get("COPILOT_URL", "https://copilot.parity.test/"),
+        "COPILOT_RS_JOBS": "notify_sla_transitions",
+        "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
+    }
+    proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
+    for _ in range(100):
+        try:
+            if httpx.get(f"http://127.0.0.1:{port}/_copilot/health", timeout=1).status_code == 200:
+                return proc
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.2)
+    proc.kill()
+    raise RuntimeError("the second Rust binary did not start")
+
+
+def in_list(values):
+    return "(" + ", ".join(f"'{v}'" if isinstance(v, str) else str(int(v)) for v in values) + ")"
+
+
+STAMPS = "ack_at_risk_notified_at, ack_breached_notified_at, resolve_at_risk_notified_at, resolve_breached_notified_at"
+
+
+async def notifier_section(py, rs, tok, H, ids):
+    print("\n=== I. notify_sla_transitions (Python pass, then the Rust job) ===")
+    from app.notifications.services import emit as emit_module
+    from app.soc_management.services.notifier import SlaNotifier
+
+    mine = (A, B, C, D, P, R)
+    # Foreign rows owe nothing during this section: their NULL stamps are set to a sentinel and
+    # restored afterwards, so only this suite's clocks (placed away from every boundary) count.
+    sentinel = "1970-01-02 00:00:00"
+    neutralised = {}
+    for table, key, owner in (
+        ("soc_sla_alert_tracking", "alert_id", "incident_management_alert"),
+        ("soc_sla_case_tracking", "case_id", "incident_management_case"),
+    ):
+        neutralised[table] = await rows(
+            f"SELECT t.{key}, {STAMPS} FROM {table} t JOIN {owner} o ON o.id = t.{key} "
+            f"WHERE o.customer_code IS NULL OR o.customer_code NOT IN {in_list(mine)}",
+        )
+        for col in STAMPS.split(", "):
+            await sql(
+                f"UPDATE {table} t JOIN {owner} o ON o.id = t.{key} SET t.{col} = :s "
+                f"WHERE t.{col} IS NULL AND (o.customer_code IS NULL OR o.customer_code NOT IN {in_list(mine)})",
+                s=sentinel,
+            )
+    stub = start_recorder()
+    routes = []
+    for trigger in ("sla_at_risk", "sla_breached"):
+        r = await rs.post(
+            "/api/internal_notification_routes",
+            json={
+                "name": f"SLA {trigger} {SFX}",
+                "trigger": trigger,
+                "channel": "webhook",
+                "scope": "internal",
+                "min_severity": "Informational",
+                "config": {"url": f"{stub}/hook/{trigger}"},
+            },
+            headers=H(tok["admin"]),
+        )
+        check(f"internal route {trigger} created [{r.status_code}]", r.status_code == 200, r.text)
+        routes.append(r.json()["route"]["id"])
+    my_rows = (
+        f"SELECT t.alert_id, {STAMPS} FROM soc_sla_alert_tracking t JOIN incident_management_alert o ON o.id = t.alert_id "
+        f"WHERE o.customer_code IN {in_list(mine)} ORDER BY t.alert_id"
+    )
+    my_case_rows = (
+        f"SELECT t.case_id, {STAMPS} FROM soc_sla_case_tracking t JOIN incident_management_case o ON o.id = t.case_id "
+        f"WHERE o.customer_code IN {in_list(mine)} ORDER BY t.case_id"
+    )
+
+    def log_q():
+        return (
+            "SELECT customer_code, alert_id, route_id, `trigger`, status, entity_type, entity_id, dedupe_key, triggered_by, "
+            "trigger_source, payload_preview, error_message, provider_reference FROM notification_dispatch_log "
+            f"WHERE route_id IN {in_list(routes)} ORDER BY route_id, dedupe_key"
+        )
+
+    async def reset_stamps():
+        for table, key in (("soc_sla_alert_tracking", "alert_id"), ("soc_sla_case_tracking", "case_id")):
+            owner = "incident_management_alert" if key == "alert_id" else "incident_management_case"
+            await sql(
+                f"UPDATE {table} t JOIN {owner} o ON o.id = t.{key} SET "
+                + ", ".join(f"t.{c} = NULL" for c in STAMPS.split(", "))
+                + f" WHERE o.customer_code IN {in_list(mine)}",
+            )
+        await sql(f"DELETE FROM notification_dispatch_log WHERE route_id IN {in_list(routes)}")
+
+    meta = await rows("SELECT id, enabled, last_success FROM scheduled_job_metadata WHERE job_id = 'notify_sla_transitions' ORDER BY id")
+    created_meta = not meta
+    if created_meta:
+        await sql(
+            "INSERT INTO scheduled_job_metadata (job_id, last_success, time_interval, enabled, job_description) "
+            "VALUES ('notify_sla_transitions', NULL, 2, 1, 'SLA notices (parity)')",
+        )
+        meta = await rows(
+            "SELECT id, enabled, last_success FROM scheduled_job_metadata WHERE job_id = 'notify_sla_transitions' ORDER BY id",
+        )
+    meta_id = meta[0][0]
+
+    async def settled():
+        """Wait until the deliveries stop arriving (both sides dispatch on tasks of their own)."""
+        seen, quiet = -1, 0
+        while quiet < 8:
+            await asyncio.sleep(0.25)
+            quiet = quiet + 1 if len(CAPTURED) == seen else 0
+            seen = len(CAPTURED)
+
+    # The Rust run is a real scheduled tick: the job handed over (row disabled, opt-in set), its
+    # first tick one interval after `last_success`. Owed clocks are due on whole minutes, so the
+    # tick is placed a few seconds past a minute: "N min left/overdue" cannot sit on a rounding
+    # edge between the Rust tick and the Python pass (frozen at the instant the tick stamped).
+    wall = datetime.datetime.utcnow()
+    target = wall.replace(second=4, microsecond=0) + datetime.timedelta(minutes=1 if wall.second < 45 else 2)
+    last = target - datetime.timedelta(minutes=2)
+    await sql(
+        "UPDATE scheduled_job_metadata SET enabled = 0, time_interval = 2, last_success = :l WHERE id = :i",
+        l=last,
+        i=meta_id,
+    )
+    proc = start_rust_with_job(free_port())
+    try:
+        CAPTURED.clear()
+        ran = False
+        for _ in range(900):
+            await asyncio.sleep(0.2)
+            stamp_now = (await rows("SELECT last_success FROM scheduled_job_metadata WHERE id = :i", i=meta_id))[0][0]
+            if stamp_now and stamp_now > last:
+                ran = True
+                break
+        # Back to APScheduler's side (not running here): the binary's next ticks skip.
+        await sql("UPDATE scheduled_job_metadata SET enabled = 1 WHERE id = :i", i=meta_id)
+        check("Rust tick ran and stamped last_success", ran, f"last_success {stamp_now}")
+        await settled()
+        rust_captured = list(CAPTURED)
+        rust_stamps = await rows(my_rows) + await rows(my_case_rows)
+        rust_log = await rows(log_q())
+        stamped = [v for row in rust_stamps for v in row[1:] if v is not None]
+        now = max(stamped) if stamped else datetime.datetime.utcnow().replace(microsecond=0)
+        check(
+            "Rust pass stamped and sent something",
+            bool(stamped) and bool(rust_captured),
+            f"{len(stamped)} stamps, {len(rust_captured)} deliveries",
+        )
+
+        await reset_stamps()
+        CAPTURED.clear()
+        counts = await SlaNotifier(clock=lambda: now).run()
+        await asyncio.gather(*list(emit_module._IN_FLIGHT), return_exceptions=True)
+        await settled()
+        py_captured = list(CAPTURED)
+        py_stamps = await rows(my_rows) + await rows(my_case_rows)
+        py_log = await rows(log_q())
+        print(f"        python pass: {counts}")
+        check(
+            "notifier: stamps",
+            py_stamps == rust_stamps,
+            f"{[r for r in py_stamps if r not in rust_stamps][:4]} / {[r for r in rust_stamps if r not in py_stamps][:4]}",
+        )
+        key = lambda c: (c["path"], c["body"])  # noqa: E731
+        check(
+            f"notifier: deliveries ({len(py_captured)})",
+            sorted(map(key, py_captured)) == sorted(map(key, rust_captured)),
+            f"python {sorted(map(key, py_captured))[:2]}\n        rust   {sorted(map(key, rust_captured))[:2]}",
+        )
+        check("notifier: dispatch log", py_log == rust_log, f"{py_log[:3]} / {rust_log[:3]}")
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+        if created_meta:
+            await sql("DELETE FROM scheduled_job_metadata WHERE id = :i", i=meta_id)
+        else:
+            await sql(
+                "UPDATE scheduled_job_metadata SET enabled = :e, last_success = :l WHERE id = :i",
+                e=meta[0][1],
+                l=meta[0][2],
+                i=meta_id,
+            )
+        for route in routes:
+            await rs.delete(f"/api/internal_notification_routes/{route}", headers=H(tok["admin"]))
+        for table, snap in neutralised.items():
+            key = "alert_id" if "alert" in table else "case_id"
+            async with AsyncSession(async_engine) as s:
+                for row in snap:
+                    await s.execute(
+                        text(
+                            f"UPDATE {table} SET ack_at_risk_notified_at = :a, ack_breached_notified_at = :b, "
+                            f"resolve_at_risk_notified_at = :c, resolve_breached_notified_at = :d WHERE {key} = :k",
+                        ),
+                        {"a": row[1], "b": row[2], "c": row[3], "d": row[4], "k": row[0]},
+                    )
+                await s.commit()
 
 
 if __name__ == "__main__":

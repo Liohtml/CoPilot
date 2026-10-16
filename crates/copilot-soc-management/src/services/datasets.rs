@@ -44,6 +44,18 @@ pub struct Visibility {
 }
 
 impl Visibility {
+    /// Every alert and every case (the notifier runs for the deployment).
+    pub fn everything() -> Self {
+        Self {
+            alerts: Some(AlertVisibility {
+                customers: None,
+                tags: copilot_auth::tags::TagScope::All,
+            }),
+            alert_codes: None,
+            case_codes: None,
+        }
+    }
+
     /// `sees_alerts`.
     pub fn sees_alerts(&self) -> bool {
         self.alerts.is_some()

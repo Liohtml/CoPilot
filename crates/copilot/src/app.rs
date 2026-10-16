@@ -417,7 +417,8 @@ impl App {
 }
 
 /// Every job this build can take over from APScheduler (`handover.py`'s
-/// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`.
+/// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`,
+/// `notify_sla_transitions`.
 pub fn scheduled_jobs(
     ctx: &AppContext,
     talon: &TalonConnector,
@@ -428,6 +429,7 @@ pub fn scheduled_jobs(
         ctx.db.clone(),
         cfg.audit_log_retention_days.clone(),
     ));
+    jobs.push(copilot_soc_management::notifier_job_spec(ctx));
     jobs
 }
 

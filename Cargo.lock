@@ -796,6 +796,7 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
+ "copilot-scheduler",
  "copilot-sla",
  "copilot-web",
  "http",

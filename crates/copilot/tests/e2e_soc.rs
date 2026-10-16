@@ -13,10 +13,15 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::sync::Arc;
+
 use chrono::NaiveDateTime;
 use serde_json::{Value, json};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+use copilot_core::notify::{MemoryNotificationSink, NotificationTrigger, SharedNotificationSink};
+use copilot_web::{AppContext, AppDeps};
 
 #[macro_use]
 mod common;
@@ -688,8 +693,119 @@ async fn portal_sla_page_is_opt_in_and_person_free() {
     );
 }
 
+/// The app's dependencies with the notification sink swapped for a recorder.
+fn recording_ctx(h: &Harness) -> (AppContext, MemoryNotificationSink) {
+    let sink = MemoryNotificationSink::default();
+    let ctx = &h.app.ctx;
+    let deps = AppDeps {
+        db: ctx.db.clone(),
+        jwt: copilot_auth::JwtCodec::new(&copilot_core::config::Secret::new(SECRET)),
+        connectors: ctx.connectors.clone(),
+        audit: ctx.audit.clone(),
+        notifications: Arc::new(sink.clone()) as SharedNotificationSink,
+        notification_defaults: ctx.notification_defaults.clone(),
+        http: ctx.http.clone(),
+        log_handled_errors: false,
+    };
+    (AppContext::new(deps), sink)
+}
+
 #[tokio::test]
-async fn report_falls_through_to_python() {
+async fn notifier_claims_then_sends_once_per_clock() {
+    let h = harness_or_skip!(None);
+    let items = seed(&h).await;
+    let (ctx, sink) = recording_ctx(&h);
+    let mine = |ids: &[i64]| {
+        let mut events: Vec<(i64, NotificationTrigger, String, String)> = sink
+            .snapshot()
+            .into_iter()
+            .filter(|e| ids.contains(&e.entity_id) && e.entity_type == "alert")
+            .map(|e| (e.entity_id, e.trigger, e.dedupe_key, e.summary))
+            .collect();
+        events.sort_by(|a, b| a.2.cmp(&b.2));
+        events
+    };
+    let ids = [items.a3, items.a4, items.a5, items.b1];
+    use copilot_soc_management::services::notifier::run_pass;
+    run_pass(&ctx, at("2026-03-03 09:20:00")).await.unwrap();
+    let events = mine(&ids);
+    let a3 = items.a3;
+    let b1 = items.b1;
+    assert_eq!(
+        events,
+        vec![
+            (
+                a3,
+                NotificationTrigger::SlaBreached,
+                format!("alert:{a3}:sla_breached:acknowledge"),
+                format!(
+                    "The acknowledge target of alert #{a3} was due at 2026-03-03 09:15 UTC \
+                     (5 min overdue)."
+                ),
+            ),
+            (
+                b1,
+                NotificationTrigger::SlaBreached,
+                format!("alert:{b1}:sla_breached:acknowledge"),
+                format!(
+                    "The acknowledge target of alert #{b1} was due at 2026-03-02 13:00 UTC \
+                     (1220 min overdue)."
+                ),
+            ),
+            (
+                b1,
+                NotificationTrigger::SlaBreached,
+                format!("alert:{b1}:sla_breached:resolve"),
+                format!(
+                    "The resolve target of alert #{b1} was due at 2026-03-02 20:00 UTC \
+                     (800 min overdue)."
+                ),
+            ),
+        ]
+    );
+    // A breach settles the at-risk notice of its clock too.
+    let stamps: (Option<NaiveDateTime>, Option<NaiveDateTime>) = sqlx::query_as(
+        "SELECT ack_at_risk_notified_at, ack_breached_notified_at FROM soc_sla_alert_tracking \
+         WHERE alert_id = ?",
+    )
+    .bind(b1)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        stamps,
+        (
+            Some(at("2026-03-03 09:20:00")),
+            Some(at("2026-03-03 09:20:00"))
+        )
+    );
+    // Told once: the next pass owes nothing on those clocks; later, a3's
+    // resolve clock enters its last quarter (1 h of 4 left).
+    run_pass(&ctx, at("2026-03-03 09:22:00")).await.unwrap();
+    assert_eq!(mine(&ids).len(), 3);
+    run_pass(&ctx, at("2026-03-03 12:30:00")).await.unwrap();
+    let events = mine(&ids);
+    assert_eq!(events.len(), 4);
+    assert!(events.iter().any(|e| {
+        e.2 == format!("alert:{a3}:sla_at_risk:resolve")
+            && e.3
+                .ends_with("is due at 2026-03-03 13:00 UTC (30 min left).")
+    }));
+    // A day later, a breach nobody was told about is stamped silently.
+    run_pass(&ctx, at("2026-03-05 13:30:00")).await.unwrap();
+    assert_eq!(mine(&ids).len(), 4);
+    let breached: Option<NaiveDateTime> = sqlx::query_scalar(
+        "SELECT resolve_breached_notified_at FROM soc_sla_alert_tracking WHERE alert_id = ?",
+    )
+    .bind(a3)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(breached, Some(at("2026-03-05 13:30:00")));
+}
+
+#[tokio::test]
+async fn report_falls_through_and_the_notifier_job_is_registered() {
     let legacy = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/api/soc_management/report"))
@@ -703,4 +819,10 @@ async fn report_falls_through_to_python() {
         .call("GET", &format!("{S}/report?{PERIOD}"), Some(&admin), None)
         .await;
     assert_eq!((status.as_u16(), body), (200, json!("%PDF-1.4 python")));
+    assert!(
+        h.app
+            .scheduler
+            .job_ids()
+            .contains(&copilot_soc_management::NOTIFY_SLA_TRANSITIONS)
+    );
 }
