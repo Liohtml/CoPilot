@@ -1,0 +1,4349 @@
+{
+ "targets": [
+  {
+   "input": "203.0.113.7",
+   "network": "203.0.113.7/32",
+   "display": "203.0.113.7",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "203.0.113.7 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.7\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 203.0.113.7',tag:'copilot-block'\""
+  },
+  {
+   "input": " 203.0.113.7 ",
+   "network": "203.0.113.7/32",
+   "display": "203.0.113.7",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "203.0.113.7 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.7\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 203.0.113.7',tag:'copilot-block'\""
+  },
+  {
+   "input": "203.0.113.7/32",
+   "network": "203.0.113.7/32",
+   "display": "203.0.113.7",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "203.0.113.7 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.7\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 203.0.113.7',tag:'copilot-block'\""
+  },
+  {
+   "input": "203.0.113.0/24",
+   "network": "203.0.113.0/24",
+   "display": "203.0.113.0/24",
+   "version": 4,
+   "prefixlen": 24,
+   "warnings": [
+    "203.0.113.0/24 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.0/24\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 203.0.113.0/24',tag:'copilot-block'\""
+  },
+  {
+   "input": "203.0.113.7/24",
+   "network": "203.0.113.0/24",
+   "display": "203.0.113.0/24",
+   "version": 4,
+   "prefixlen": 24,
+   "warnings": [
+    "203.0.113.0/24 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.0/24\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 203.0.113.0/24',tag:'copilot-block'\""
+  },
+  {
+   "input": "203.0.113.7/255.255.255.0",
+   "network": "203.0.113.0/24",
+   "display": "203.0.113.0/24",
+   "version": 4,
+   "prefixlen": 24,
+   "warnings": [
+    "203.0.113.0/24 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.0/24\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 203.0.113.0/24',tag:'copilot-block'\""
+  },
+  {
+   "input": "203.0.113.7/0.0.0.255",
+   "network": "203.0.113.0/24",
+   "display": "203.0.113.0/24",
+   "version": 4,
+   "prefixlen": 24,
+   "warnings": [
+    "203.0.113.0/24 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.0/24\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 203.0.113.0/24',tag:'copilot-block'\""
+  },
+  {
+   "input": "203.0.113.7/024",
+   "network": "203.0.113.0/24",
+   "display": "203.0.113.0/24",
+   "version": 4,
+   "prefixlen": 24,
+   "warnings": [
+    "203.0.113.0/24 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.0/24\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 203.0.113.0/24',tag:'copilot-block'\""
+  },
+  {
+   "input": "198.51.100.0/16",
+   "network": "198.51.0.0/16",
+   "display": "198.51.0.0/16",
+   "version": 4,
+   "prefixlen": 16,
+   "warnings": [],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 198.51.0.0/16\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 198.51.0.0/16',tag:'copilot-block'\""
+  },
+  {
+   "input": "198.51.100.0/15",
+   "error": "198.50.0.0/15 is too broad to block from CoPilot (IPv4 ranges must be /16 or narrower)"
+  },
+  {
+   "input": "10.0.0.0/8",
+   "error": "10.0.0.0/8 is too broad to block from CoPilot (IPv4 ranges must be /16 or narrower)"
+  },
+  {
+   "input": "10.1.2.3",
+   "network": "10.1.2.3/32",
+   "display": "10.1.2.3",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "10.1.2.3 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 10.1.2.3\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 10.1.2.3',tag:'copilot-block'\""
+  },
+  {
+   "input": "127.0.0.1",
+   "network": "127.0.0.1/32",
+   "display": "127.0.0.1",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "127.0.0.1 is a loopback/unspecified address — blocking it has no useful effect."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 127.0.0.1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 127.0.0.1',tag:'copilot-block'\""
+  },
+  {
+   "input": "0.0.0.0",
+   "network": "0.0.0.0/32",
+   "display": "0.0.0.0",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "0.0.0.0 is a loopback/unspecified address — blocking it has no useful effect."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 0.0.0.0\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 0.0.0.0',tag:'copilot-block'\""
+  },
+  {
+   "input": "0.0.0.0/16",
+   "network": "0.0.0.0/16",
+   "display": "0.0.0.0/16",
+   "version": 4,
+   "prefixlen": 16,
+   "warnings": [
+    "0.0.0.0/16 is a loopback/unspecified address — blocking it has no useful effect."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 0.0.0.0/16\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 0.0.0.0/16',tag:'copilot-block'\""
+  },
+  {
+   "input": "169.254.1.1",
+   "network": "169.254.1.1/32",
+   "display": "169.254.1.1",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "169.254.1.1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 169.254.1.1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 169.254.1.1',tag:'copilot-block'\""
+  },
+  {
+   "input": "224.0.0.1",
+   "network": "224.0.0.1/32",
+   "display": "224.0.0.1",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "224.0.0.1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 224.0.0.1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 224.0.0.1',tag:'copilot-block'\""
+  },
+  {
+   "input": "240.0.0.1",
+   "network": "240.0.0.1/32",
+   "display": "240.0.0.1",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "240.0.0.1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 240.0.0.1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 240.0.0.1',tag:'copilot-block'\""
+  },
+  {
+   "input": "255.255.255.255",
+   "network": "255.255.255.255/32",
+   "display": "255.255.255.255",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "255.255.255.255 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 255.255.255.255\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 255.255.255.255',tag:'copilot-block'\""
+  },
+  {
+   "input": "100.64.0.1",
+   "network": "100.64.0.1/32",
+   "display": "100.64.0.1",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 100.64.0.1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 100.64.0.1',tag:'copilot-block'\""
+  },
+  {
+   "input": "192.0.0.9",
+   "network": "192.0.0.9/32",
+   "display": "192.0.0.9",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 192.0.0.9\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 192.0.0.9',tag:'copilot-block'\""
+  },
+  {
+   "input": "192.0.0.10",
+   "network": "192.0.0.10/32",
+   "display": "192.0.0.10",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 192.0.0.10\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 192.0.0.10',tag:'copilot-block'\""
+  },
+  {
+   "input": "192.0.0.11",
+   "network": "192.0.0.11/32",
+   "display": "192.0.0.11",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [
+    "192.0.0.11 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 192.0.0.11\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 192.0.0.11',tag:'copilot-block'\""
+  },
+  {
+   "input": "8.8.8.8",
+   "network": "8.8.8.8/32",
+   "display": "8.8.8.8",
+   "version": 4,
+   "prefixlen": 32,
+   "warnings": [],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 8.8.8.8\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 8.8.8.8',tag:'copilot-block'\""
+  },
+  {
+   "input": "01.2.3.4",
+   "error": "'01.2.3.4' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1.2.3",
+   "error": "'1.2.3' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1.2.3.4.5",
+   "error": "'1.2.3.4.5' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "256.1.1.1",
+   "error": "'256.1.1.1' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1.2.3.4/33",
+   "error": "'1.2.3.4/33' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1.2.3.4/",
+   "error": "'1.2.3.4/' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1.2.3.4/a",
+   "error": "'1.2.3.4/a' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1.2.3.4/255.0.255.0",
+   "error": "'1.2.3.4/255.0.255.0' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1.2.3.4/1/2",
+   "error": "'1.2.3.4/1/2' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "１.2.3.4",
+   "error": "'１.2.3.4' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "",
+   "error": "'' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "   ",
+   "error": "'' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "not-an-ip",
+   "error": "'not-an-ip' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "2001:db8::1",
+   "network": "2001:db8::1/128",
+   "display": "2001:db8::1",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "2001:db8::1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 2001:db8::1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 2001:db8::1',tag:'copilot-block'\""
+  },
+  {
+   "input": "2001:db8::/48",
+   "network": "2001:db8::/48",
+   "display": "2001:db8::/48",
+   "version": 6,
+   "prefixlen": 48,
+   "warnings": [
+    "2001:db8::/48 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 2001:db8::/48\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 2001:db8::/48',tag:'copilot-block'\""
+  },
+  {
+   "input": "2001:db8::/47",
+   "error": "2001:db8::/47 is too broad to block from CoPilot (IPv6 ranges must be /48 or narrower)"
+  },
+  {
+   "input": "2001:db8:0:0:0:0:0:1",
+   "network": "2001:db8::1/128",
+   "display": "2001:db8::1",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "2001:db8::1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 2001:db8::1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 2001:db8::1',tag:'copilot-block'\""
+  },
+  {
+   "input": "2001:DB8::abcd",
+   "network": "2001:db8::abcd/128",
+   "display": "2001:db8::abcd",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "2001:db8::abcd is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 2001:db8::abcd\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 2001:db8::abcd',tag:'copilot-block'\""
+  },
+  {
+   "input": "2001:db8::1/64",
+   "network": "2001:db8::/64",
+   "display": "2001:db8::/64",
+   "version": 6,
+   "prefixlen": 64,
+   "warnings": [
+    "2001:db8::/64 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 2001:db8::/64\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 2001:db8::/64',tag:'copilot-block'\""
+  },
+  {
+   "input": "::1",
+   "network": "::1/128",
+   "display": "::1",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "::1 is a loopback/unspecified address — blocking it has no useful effect."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::1',tag:'copilot-block'\""
+  },
+  {
+   "input": "::",
+   "network": "::/128",
+   "display": "::",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    ":: is a loopback/unspecified address — blocking it has no useful effect."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::',tag:'copilot-block'\""
+  },
+  {
+   "input": "::/48",
+   "network": "::/48",
+   "display": "::/48",
+   "version": 6,
+   "prefixlen": 48,
+   "warnings": [
+    "::/48 is a loopback/unspecified address — blocking it has no useful effect."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::/48\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::/48',tag:'copilot-block'\""
+  },
+  {
+   "input": "fe80::1",
+   "network": "fe80::1/128",
+   "display": "fe80::1",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "fe80::1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch fe80::1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: fe80::1',tag:'copilot-block'\""
+  },
+  {
+   "input": "ff02::1",
+   "network": "ff02::1/128",
+   "display": "ff02::1",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "ff02::1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ff02::1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ff02::1',tag:'copilot-block'\""
+  },
+  {
+   "input": "fc00::1",
+   "network": "fc00::1/128",
+   "display": "fc00::1",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "fc00::1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch fc00::1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: fc00::1',tag:'copilot-block'\""
+  },
+  {
+   "input": "2606:4700::1111",
+   "network": "2606:4700::1111/128",
+   "display": "2606:4700::1111",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 2606:4700::1111\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 2606:4700::1111',tag:'copilot-block'\""
+  },
+  {
+   "input": "::ffff:1.2.3.4",
+   "network": "::ffff:1.2.3.4/128",
+   "display": "::ffff:1.2.3.4",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::ffff:1.2.3.4\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::ffff:1.2.3.4',tag:'copilot-block'\""
+  },
+  {
+   "input": "::ffff:10.0.0.1",
+   "network": "::ffff:10.0.0.1/128",
+   "display": "::ffff:10.0.0.1",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "::ffff:10.0.0.1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::ffff:10.0.0.1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::ffff:10.0.0.1',tag:'copilot-block'\""
+  },
+  {
+   "input": "::ffff:127.0.0.1",
+   "network": "::ffff:127.0.0.1/128",
+   "display": "::ffff:127.0.0.1",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "::ffff:127.0.0.1 is a loopback/unspecified address — blocking it has no useful effect."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::ffff:127.0.0.1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::ffff:127.0.0.1',tag:'copilot-block'\""
+  },
+  {
+   "input": "::ffff:0.0.0.0",
+   "network": "::ffff:0.0.0.0/128",
+   "display": "::ffff:0.0.0.0",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "::ffff:0.0.0.0 is a loopback/unspecified address — blocking it has no useful effect."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::ffff:0.0.0.0\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::ffff:0.0.0.0',tag:'copilot-block'\""
+  },
+  {
+   "input": "::ffff:8.8.8.8",
+   "network": "::ffff:8.8.8.8/128",
+   "display": "::ffff:8.8.8.8",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::ffff:8.8.8.8\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::ffff:8.8.8.8',tag:'copilot-block'\""
+  },
+  {
+   "input": "::ffff:0:0/96",
+   "network": "::ffff:0.0.0.0/96",
+   "display": "::ffff:0.0.0.0/96",
+   "version": 6,
+   "prefixlen": 96,
+   "warnings": [
+    "::ffff:0.0.0.0/96 is a loopback/unspecified address — blocking it has no useful effect."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::ffff:0.0.0.0/96\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::ffff:0.0.0.0/96',tag:'copilot-block'\""
+  },
+  {
+   "input": "64:ff9b::8.8.8.8",
+   "network": "64:ff9b::808:808/128",
+   "display": "64:ff9b::808:808",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "64:ff9b::808:808 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 64:ff9b::808:808\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 64:ff9b::808:808',tag:'copilot-block'\""
+  },
+  {
+   "input": "1:0:0:2:0:0:0:3",
+   "network": "1:0:0:2::3/128",
+   "display": "1:0:0:2::3",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "1:0:0:2::3 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 1:0:0:2::3\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 1:0:0:2::3',tag:'copilot-block'\""
+  },
+  {
+   "input": "1:0:0:2:0:0:3:4",
+   "network": "1::2:0:0:3:4/128",
+   "display": "1::2:0:0:3:4",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "1::2:0:0:3:4 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 1::2:0:0:3:4\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 1::2:0:0:3:4',tag:'copilot-block'\""
+  },
+  {
+   "input": "0:0:1:0:0:0:0:0",
+   "network": "0:0:1::/128",
+   "display": "0:0:1::",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "0:0:1:: is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 0:0:1::\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 0:0:1::',tag:'copilot-block'\""
+  },
+  {
+   "input": "1::2::3",
+   "error": "'1::2::3' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": ":1:2:3:4:5:6:7",
+   "error": "':1:2:3:4:5:6:7' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1:2:3:4:5:6:7:",
+   "error": "'1:2:3:4:5:6:7:' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1:2:3:4:5:6:7:8:9",
+   "error": "'1:2:3:4:5:6:7:8:9' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "12345::1",
+   "error": "'12345::1' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "g::1",
+   "error": "'g::1' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "2001:db8::1/129",
+   "error": "'2001:db8::1/129' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "2001:db8::1/ 64",
+   "error": "'2001:db8::1/ 64' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "2001:db8::1/255.255.255.0",
+   "error": "'2001:db8::1/255.255.255.0' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "1:2:3:4:5:6:1.2.3.4",
+   "network": "1:2:3:4:5:6:102:304/128",
+   "display": "1:2:3:4:5:6:102:304",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "1:2:3:4:5:6:102:304 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 1:2:3:4:5:6:102:304\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 1:2:3:4:5:6:102:304',tag:'copilot-block'\""
+  },
+  {
+   "input": "1:2:3:4:5:6:7:1.2.3.4",
+   "error": "'1:2:3:4:5:6:7:1.2.3.4' is not an IPv4/IPv6 address or CIDR range"
+  },
+  {
+   "input": "::1.2.3.4",
+   "network": "::102:304/128",
+   "display": "::102:304",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "::102:304 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch ::102:304\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: ::102:304',tag:'copilot-block'\""
+  },
+  {
+   "input": "2001:0db8:0000:0000:0000:0000:0000:0001/128",
+   "network": "2001:db8::1/128",
+   "display": "2001:db8::1",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "2001:db8::1 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 2001:db8::1\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 2001:db8::1',tag:'copilot-block'\""
+  },
+  {
+   "input": "2001:db8::1%eth0",
+   "network": "2001:db8::1%eth0/128",
+   "display": "2001:db8::1%eth0",
+   "version": 6,
+   "prefixlen": 128,
+   "warnings": [
+    "2001:db8::1%eth0 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch 2001:db8::1%eth0\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: 2001:db8::1%eth0',tag:'copilot-block'\""
+  },
+  {
+   "input": "fe80::1%eth0/64",
+   "network": "fe80::/64",
+   "display": "fe80::/64",
+   "version": 6,
+   "prefixlen": 64,
+   "warnings": [
+    "fe80::/64 is not a public address. That is expected only if the WAF sits behind a load balancer or proxy that it sees traffic from — blocking the proxy's address would block everyone behind it."
+   ],
+   "rule_text": "SecRule REMOTE_ADDR \"@ipMatch fe80::/64\" \"id:AUTO,phase:1,deny,status:403,log,msg:'CoPilot block: fe80::/64',tag:'copilot-block'\""
+  }
+ ],
+ "rules": [
+  {
+   "rule": {
+    "id": "u1",
+    "rule_id": 1001,
+    "name": "CoPilot block: 203.0.113.7",
+    "description": "x",
+    "is_enabled": true,
+    "field": "REMOTE_ADDR",
+    "operator": "@ipMatch",
+    "value": "203.0.113.7",
+    "conf_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.7\" \"id:1001,phase:1,deny,status:403,log,msg:'CoPilot block: 203.0.113.7',tag:'copilot-block'\"",
+    "created_at": "2026-01-02T03:04:05Z"
+   },
+   "networks": [
+    "203.0.113.7/32"
+   ],
+   "is_copilot": true,
+   "block": {
+    "target": "203.0.113.7",
+    "rule_uuid": "u1",
+    "rule_id": 1001,
+    "name": "CoPilot block: 203.0.113.7",
+    "description": "x",
+    "enabled": true,
+    "created_by_copilot": true,
+    "created_at": "2026-01-02T03:04:05Z"
+   }
+  },
+  {
+   "rule": {
+    "id": "u2",
+    "rule_id": 1002,
+    "name": "TI block",
+    "description": null,
+    "is_enabled": true,
+    "field": "remote_addr",
+    "operator": "@ipMatch",
+    "value": "198.51.100.0/24, 192.0.2.5 2001:db8::/48",
+    "conf_text": "SecRule REMOTE_ADDR \"@ipMatch 198.51.100.0/24,192.0.2.5\" \"id:1002,phase:1,deny,status:403\""
+   },
+   "networks": [
+    "198.51.100.0/24",
+    "192.0.2.5/32",
+    "2001:db8::/48"
+   ],
+   "is_copilot": false,
+   "block": {
+    "target": "198.51.100.0/24, 192.0.2.5, 2001:db8::/48",
+    "rule_uuid": "u2",
+    "rule_id": 1002,
+    "name": "TI block",
+    "description": "",
+    "enabled": true,
+    "created_by_copilot": false,
+    "created_at": null
+   }
+  },
+  {
+   "rule": {
+    "id": "u3",
+    "rule_id": 1003,
+    "name": "bypass",
+    "is_enabled": true,
+    "field": "REMOTE_ADDR",
+    "operator": "@ipMatch",
+    "value": "10.0.0.1",
+    "action": "deny,status:403",
+    "conf_text": "SecRule REMOTE_ADDR \"@ipMatch 10.0.0.1\" \"id:1003,phase:1,pass,ctl:ruleEngine=Off\""
+   },
+   "networks": [],
+   "is_copilot": false,
+   "block": {
+    "target": "10.0.0.1",
+    "rule_uuid": "u3",
+    "rule_id": 1003,
+    "name": "bypass",
+    "description": "",
+    "enabled": true,
+    "created_by_copilot": false,
+    "created_at": null
+   }
+  },
+  {
+   "rule": {
+    "id": "u4",
+    "rule_id": "1004",
+    "name": "chained",
+    "is_enabled": true,
+    "field": "REMOTE_ADDR",
+    "operator": "@ipMatch",
+    "value": "10.0.0.2",
+    "conf_text": "SecRule REMOTE_ADDR \"@ipMatch 10.0.0.2\" \"id:1004,phase:1,deny,chain\""
+   },
+   "networks": [],
+   "is_copilot": false,
+   "block": {
+    "target": "10.0.0.2",
+    "rule_uuid": "u4",
+    "rule_id": 1004,
+    "name": "chained",
+    "description": "",
+    "enabled": true,
+    "created_by_copilot": false,
+    "created_at": null
+   }
+  },
+  {
+   "rule": {
+    "id": "u5",
+    "rule_id": 1005,
+    "name": "CoPilot block: 203.0.113.0/24",
+    "is_enabled": false,
+    "field": "REMOTE_ADDR",
+    "operator": "@ipMatch",
+    "value": "203.0.113.0/24",
+    "conf_text": "SecRule REMOTE_ADDR \"@ipMatch 203.0.113.0/24\" \"id:1005,deny\""
+   },
+   "networks": [
+    "203.0.113.0/24"
+   ],
+   "is_copilot": true,
+   "block": {
+    "target": "203.0.113.0/24",
+    "rule_uuid": "u5",
+    "rule_id": 1005,
+    "name": "CoPilot block: 203.0.113.0/24",
+    "description": "",
+    "enabled": false,
+    "created_by_copilot": true,
+    "created_at": null
+   }
+  },
+  {
+   "rule": {
+    "id": 6,
+    "rule_id": 1006,
+    "name": null,
+    "is_enabled": 1,
+    "field": "REMOTE_ADDR",
+    "operator": "@ipMatch",
+    "value": ",,bogus  fe80::1%eth0 2001:db8:1::/48",
+    "conf_text": "deny"
+   },
+   "networks": [
+    "fe80::1%eth0/128",
+    "2001:db8:1::/48"
+   ],
+   "is_copilot": false,
+   "block": {
+    "target": "fe80::1%eth0, 2001:db8:1::/48",
+    "rule_uuid": "6",
+    "rule_id": 1006,
+    "name": "",
+    "description": "",
+    "enabled": true,
+    "created_by_copilot": false,
+    "created_at": null
+   }
+  },
+  {
+   "rule": {
+    "id": "u7",
+    "rule_id": 1007,
+    "name": "other",
+    "is_enabled": true,
+    "field": "ARGS",
+    "operator": "@rx",
+    "value": "x",
+    "conf_text": "SecRule ARGS \"@rx x\" \"deny\""
+   },
+   "networks": [],
+   "is_copilot": false,
+   "block": {
+    "target": "x",
+    "rule_uuid": "u7",
+    "rule_id": 1007,
+    "name": "other",
+    "description": "",
+    "enabled": true,
+    "created_by_copilot": false,
+    "created_at": null
+   }
+  },
+  {
+   "rule": {
+    "id": "u8",
+    "rule_id": 1008,
+    "name": "tagged",
+    "is_enabled": true,
+    "field": "REMOTE_ADDR",
+    "operator": "@ipMatch",
+    "value": "",
+    "conf_text": "SecRule REMOTE_ADDR \"@ipMatch \" \"deny,tag:'copilot-block'\""
+   },
+   "networks": [],
+   "is_copilot": true,
+   "block": {
+    "target": "",
+    "rule_uuid": "u8",
+    "rule_id": 1008,
+    "name": "tagged",
+    "description": "",
+    "enabled": true,
+    "created_by_copilot": true,
+    "created_at": null
+   }
+  },
+  {
+   "rule": {
+    "id": "u9",
+    "rule_id": 1009,
+    "is_enabled": true,
+    "field": null,
+    "operator": null,
+    "value": null,
+    "conf_text": null
+   },
+   "networks": [],
+   "is_copilot": false,
+   "block": {
+    "target": "",
+    "rule_uuid": "u9",
+    "rule_id": 1009,
+    "name": "",
+    "description": "",
+    "enabled": true,
+    "created_by_copilot": false,
+    "created_at": null
+   }
+  },
+  {
+   "rule": {
+    "id": "u10",
+    "rule_id": 1010,
+    "name": "big",
+    "is_enabled": true,
+    "field": "REMOTE_ADDR",
+    "operator": "@ipMatch",
+    "value": "203.0.0.0/16 198.51.100.7 ::ffff:1.2.3.4",
+    "conf_text": "deny"
+   },
+   "networks": [
+    "203.0.0.0/16",
+    "198.51.100.7/32",
+    "::ffff:1.2.3.4/128"
+   ],
+   "is_copilot": false,
+   "block": {
+    "target": "203.0.0.0/16, 198.51.100.7, ::ffff:1.2.3.4",
+    "rule_uuid": "u10",
+    "rule_id": 1010,
+    "name": "big",
+    "description": "",
+    "enabled": true,
+    "created_by_copilot": false,
+    "created_at": null
+   }
+  }
+ ],
+ "matrix": [
+  {
+   "rule_id": 1001,
+   "target": "203.0.113.7/32",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1001,
+   "target": "203.0.113.7/32",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1001,
+   "target": "203.0.113.7/32",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1001,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "2001:db8::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "2001:db8::abcd/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "2001:db8::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::ffff:1.2.3.4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "2001:db8::1%eth0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1001,
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "2001:db8::1/128",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "2001:db8::/48",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1002,
+   "target": "2001:db8::1/128",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "2001:db8::abcd/128",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "2001:db8::/64",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::ffff:1.2.3.4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "2001:db8::1/128",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "2001:db8::1%eth0/128",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1002,
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "2001:db8::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "2001:db8::abcd/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "2001:db8::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::ffff:1.2.3.4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "2001:db8::1%eth0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1003,
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "2001:db8::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "2001:db8::abcd/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "2001:db8::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::ffff:1.2.3.4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "2001:db8::1%eth0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": "1004",
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "203.0.113.7/32",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "203.0.113.7/32",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "203.0.113.7/32",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1005,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1005,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1005,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1005,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1005,
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "2001:db8::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "2001:db8::abcd/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "2001:db8::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::ffff:1.2.3.4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "2001:db8::1%eth0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1005,
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "2001:db8::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "2001:db8::abcd/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "2001:db8::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::ffff:1.2.3.4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "2001:db8::1%eth0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1006,
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "2001:db8::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "2001:db8::abcd/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "2001:db8::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::ffff:1.2.3.4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "2001:db8::1%eth0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1007,
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "2001:db8::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "2001:db8::abcd/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "2001:db8::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::ffff:1.2.3.4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "2001:db8::1%eth0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1008,
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "203.0.113.7/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "203.0.113.0/24",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "2001:db8::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "2001:db8::abcd/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "2001:db8::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::ffff:1.2.3.4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "2001:db8::1%eth0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1009,
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "203.0.113.7/32",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "203.0.113.7/32",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "203.0.113.7/32",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "203.0.113.0/24",
+   "covers": true,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "198.51.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "10.1.2.3/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "127.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "0.0.0.0/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "0.0.0.0/16",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "169.254.1.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "224.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "240.0.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "255.255.255.255/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "100.64.0.1/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "192.0.0.9/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "192.0.0.10/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "192.0.0.11/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "8.8.8.8/32",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "2001:db8::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "2001:db8::abcd/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "2001:db8::/64",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "::/48",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "fe80::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "ff02::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "fc00::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "2606:4700::1111/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "::ffff:1.2.3.4/128",
+   "covers": true,
+   "exact": true
+  },
+  {
+   "rule_id": 1010,
+   "target": "::ffff:10.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "::ffff:127.0.0.1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "::ffff:0.0.0.0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "::ffff:8.8.8.8/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "::ffff:0.0.0.0/96",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "64:ff9b::808:808/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "1:0:0:2::3/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "1::2:0:0:3:4/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "0:0:1::/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "1:2:3:4:5:6:102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "::102:304/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "2001:db8::1/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "2001:db8::1%eth0/128",
+   "covers": false,
+   "exact": false
+  },
+  {
+   "rule_id": 1010,
+   "target": "fe80::/64",
+   "covers": false,
+   "exact": false
+  }
+ ],
+ "split": {
+  "copilot": [
+   1001,
+   1005
+  ],
+  "other": [
+   1002,
+   1006,
+   1010
+  ]
+ },
+ "descriptions": [
+  {
+   "reason": "  brute force\n from  scanner ",
+   "username": "alice",
+   "alert_id": null,
+   "case_id": null,
+   "out": "brute force from scanner | by alice via CoPilot"
+  },
+  {
+   "reason": "x",
+   "username": "bob",
+   "alert_id": 12,
+   "case_id": null,
+   "out": "x | by bob via CoPilot | alert #12"
+  },
+  {
+   "reason": "x",
+   "username": "bob",
+   "alert_id": null,
+   "case_id": 7,
+   "out": "x | by bob via CoPilot | case #7"
+  },
+  {
+   "reason": "multi\tline reason",
+   "username": "carol",
+   "alert_id": 0,
+   "case_id": 0,
+   "out": "multi line reason | by carol via CoPilot | alert #0 | case #0"
+  }
+ ],
+ "roles": [
+  {
+   "roles": [],
+   "capabilities": {
+    "can_read": false,
+    "can_block": false,
+    "can_manage_forwarders": false
+   },
+   "summary": null
+  },
+  {
+   "roles": [
+    "viewer"
+   ],
+   "capabilities": {
+    "can_read": true,
+    "can_block": false,
+    "can_manage_forwarders": false
+   },
+   "summary": "viewer"
+  },
+  {
+   "roles": [
+    "operator"
+   ],
+   "capabilities": {
+    "can_read": false,
+    "can_block": true,
+    "can_manage_forwarders": false
+   },
+   "summary": "operator"
+  },
+  {
+   "roles": [
+    "admin"
+   ],
+   "capabilities": {
+    "can_read": true,
+    "can_block": true,
+    "can_manage_forwarders": true
+   },
+   "summary": "admin"
+  },
+  {
+   "roles": [
+    "viewer",
+    "operator"
+   ],
+   "capabilities": {
+    "can_read": true,
+    "can_block": true,
+    "can_manage_forwarders": false
+   },
+   "summary": "operator,viewer"
+  },
+  {
+   "roles": [
+    "unknown"
+   ],
+   "capabilities": {
+    "can_read": false,
+    "can_block": false,
+    "can_manage_forwarders": false
+   },
+   "summary": "unknown"
+  },
+  {
+   "roles": [
+    "admin",
+    "operator",
+    "viewer",
+    "auditor-with-a-very-long-role-name-that-goes-on"
+   ],
+   "capabilities": {
+    "can_read": true,
+    "can_block": true,
+    "can_manage_forwarders": true
+   },
+   "summary": "admin,auditor-with-a-very-long-role-name-that-g..."
+  },
+  {
+   "roles": [
+    "b",
+    "a"
+   ],
+   "capabilities": {
+    "can_read": false,
+    "can_block": false,
+    "can_manage_forwarders": false
+   },
+   "summary": "a,b"
+  }
+ ],
+ "api_urls": [
+  {
+   "input": "https://waf.example.com:8080",
+   "ok": "https://waf.example.com:8080"
+  },
+  {
+   "input": "https://waf.example.com:8080/",
+   "ok": "https://waf.example.com:8080"
+  },
+  {
+   "input": "https://waf.example.com:8080/api/v1",
+   "ok": "https://waf.example.com:8080"
+  },
+  {
+   "input": "https://waf.example.com:8080/api/v1/",
+   "ok": "https://waf.example.com:8080"
+  },
+  {
+   "input": "https://waf.example.com/prefix/api/v1/api/v1",
+   "ok": "https://waf.example.com/prefix/api/v1"
+  },
+  {
+   "input": "  http://WAF.example.com  ",
+   "ok": "http://WAF.example.com"
+  },
+  {
+   "input": "HTTPS://Waf.Example.com",
+   "ok": "HTTPS://Waf.Example.com"
+  },
+  {
+   "input": "ftp://waf.example.com",
+   "error": "api_url must be a full http:// or https:// URL, e.g. https://waf.example.com:8080"
+  },
+  {
+   "input": "waf.example.com",
+   "error": "api_url must be a full http:// or https:// URL, e.g. https://waf.example.com:8080"
+  },
+  {
+   "input": "https://",
+   "error": "api_url must be a full http:// or https:// URL, e.g. https://waf.example.com:8080"
+  },
+  {
+   "input": "https:///path",
+   "error": "api_url must be a full http:// or https:// URL, e.g. https://waf.example.com:8080"
+  },
+  {
+   "input": "",
+   "error": "api_url must be a full http:// or https:// URL, e.g. https://waf.example.com:8080"
+  },
+  {
+   "input": "https://[::1]:8443",
+   "ok": "https://[::1]:8443"
+  },
+  {
+   "input": "https://[::1",
+   "error": "Invalid IPv6 URL"
+  },
+  {
+   "input": "https://[1.2.3.4]/",
+   "error": "An IPv4 address cannot be in brackets"
+  },
+  {
+   "input": "https://user:pw@waf:8080",
+   "ok": "https://user:pw@waf:8080"
+  },
+  {
+   "input": "https://waf:99999",
+   "ok": "https://waf:99999"
+  },
+  {
+   "input": "\thttps://waf\n.example.com",
+   "ok": "https://waf\n.example.com"
+  }
+ ],
+ "tokens": [
+  {
+   "input": "wafst_abcdefghijklmnop",
+   "ok": "wafst_abcdefghijklmnop",
+   "prefix": "wafst_abcdef..."
+  },
+  {
+   "input": "  wafst_x  ",
+   "ok": "wafst_x",
+   "prefix": "wafst_x..."
+  },
+  {
+   "input": "wafst_",
+   "error": "Not a WAF service token: expected a value starting with 'wafst_' (WAF → Service Tokens). WAF login tokens and site API keys don't work here."
+  },
+  {
+   "input": "waf_abc",
+   "error": "Not a WAF service token: expected a value starting with 'wafst_' (WAF → Service Tokens). WAF login tokens and site API keys don't work here."
+  },
+  {
+   "input": "eyJhbGciOi",
+   "error": "Not a WAF service token: expected a value starting with 'wafst_' (WAF → Service Tokens). WAF login tokens and site API keys don't work here."
+  },
+  {
+   "input": "",
+   "error": "Not a WAF service token: expected a value starting with 'wafst_' (WAF → Service Tokens). WAF login tokens and site API keys don't work here."
+  },
+  {
+   "input": "WAFST_abc",
+   "error": "Not a WAF service token: expected a value starting with 'wafst_' (WAF → Service Tokens). WAF login tokens and site API keys don't work here."
+  },
+  {
+   "input": "wafst_éééééééé",
+   "ok": "wafst_éééééééé",
+   "prefix": "wafst_éééééé..."
+  }
+ ],
+ "keys": [
+  {
+   "value": null,
+   "configured": false,
+   "error": "WafKeyNotConfiguredError",
+   "message": "WAF_TOKEN_ENCRYPTION_KEY is not set, so WAF tokens cannot be stored or used. Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+  },
+  {
+   "value": "",
+   "configured": false,
+   "error": "WafKeyNotConfiguredError",
+   "message": "WAF_TOKEN_ENCRYPTION_KEY is not set, so WAF tokens cannot be stored or used. Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+  },
+  {
+   "value": "   ",
+   "configured": false,
+   "error": "WafKeyNotConfiguredError",
+   "message": "WAF_TOKEN_ENCRYPTION_KEY is not set, so WAF tokens cannot be stored or used. Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+  },
+  {
+   "value": "REPLACE_ME",
+   "configured": false,
+   "error": "WafKeyNotConfiguredError",
+   "message": "WAF_TOKEN_ENCRYPTION_KEY is not set, so WAF tokens cannot be stored or used. Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+  },
+  {
+   "value": " REPLACE_ME ",
+   "configured": false,
+   "error": "WafKeyNotConfiguredError",
+   "message": "WAF_TOKEN_ENCRYPTION_KEY is not set, so WAF tokens cannot be stored or used. Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+  },
+  {
+   "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "configured": false,
+   "error": "WafKeyMalformedError",
+   "message": "WAF_TOKEN_ENCRYPTION_KEY is malformed: expected a 32-byte url-safe base64 Fernet key (44 characters ending in '='). Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+  },
+  {
+   "value": "q83vEjmO2YW-bQjzAZp8kYC0Wf7zZcGq2hD2bGy9Xf4=",
+   "configured": true
+  },
+  {
+   "value": "  q83vEjmO2YW-bQjzAZp8kYC0Wf7zZcGq2hD2bGy9Xf4=  ",
+   "configured": true
+  },
+  {
+   "value": "q83vEjmO2YW-bQjzAZp8kYC0Wf7zZcGq2hD2bGy9Xf4",
+   "configured": false,
+   "error": "WafKeyMalformedError",
+   "message": "WAF_TOKEN_ENCRYPTION_KEY is malformed: expected a 32-byte url-safe base64 Fernet key (44 characters ending in '='). Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+  },
+  {
+   "value": "q83vEjmO2YW+bQjzAZp8kYC0Wf7zZcGq2hD2bGy9Xf4=",
+   "configured": true
+  },
+  {
+   "value": "q83vEjmO2YW-bQjzAZp8k!YC0Wf7zZcGq2hD2bGy9Xf4=",
+   "configured": true
+  },
+  {
+   "value": "c2hvcnQ=",
+   "configured": false,
+   "error": "WafKeyMalformedError",
+   "message": "WAF_TOKEN_ENCRYPTION_KEY is malformed: expected a 32-byte url-safe base64 Fernet key (44 characters ending in '='). Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+  }
+ ],
+ "times": [
+  {
+   "input": "2026-01-02T03:04:05",
+   "utc_iso": "2026-01-02T03:04:05+00:00"
+  },
+  {
+   "input": "2026-01-02T03:04:05Z",
+   "utc_iso": "2026-01-02T03:04:05+00:00"
+  },
+  {
+   "input": "2026-01-02T03:04:05.123456+02:00",
+   "utc_iso": "2026-01-02T01:04:05.123456+00:00"
+  },
+  {
+   "input": "2026-01-02T03:04:05-05:30",
+   "utc_iso": "2026-01-02T08:34:05+00:00"
+  },
+  {
+   "input": "2026-01-02",
+   "utc_iso": "2026-01-02T00:00:00+00:00"
+  },
+  {
+   "input": "1700000000",
+   "utc_iso": "2023-11-14T22:13:20+00:00"
+  },
+  {
+   "input": "1700000000123",
+   "utc_iso": "2023-11-14T22:13:20.123000+00:00"
+  },
+  {
+   "input": "2026-01-02 03:04:05.5",
+   "utc_iso": "2026-01-02T03:04:05.500000+00:00"
+  }
+ ],
+ "port_ranges": [
+  {
+   "value": null,
+   "range": [
+    5600,
+    5699
+   ]
+  },
+  {
+   "value": "",
+   "range": [
+    5600,
+    5699
+   ]
+  },
+  {
+   "value": "5600-5699",
+   "range": [
+    5600,
+    5699
+   ]
+  },
+  {
+   "value": " 6000-6000 ",
+   "range": [
+    6000,
+    6000
+   ]
+  },
+  {
+   "value": "6000",
+   "error": "WAF_SYSLOG_PORT_RANGE must look like 5600-5699, got '6000'",
+   "status": 400
+  },
+  {
+   "value": "a-b",
+   "error": "WAF_SYSLOG_PORT_RANGE must look like 5600-5699, got 'a-b'",
+   "status": 400
+  },
+  {
+   "value": "1000-2000",
+   "error": "WAF_SYSLOG_PORT_RANGE '1000-2000' is outside 1024-65535",
+   "status": 400
+  },
+  {
+   "value": "2000-1000",
+   "error": "WAF_SYSLOG_PORT_RANGE '2000-1000' is outside 1024-65535",
+   "status": 400
+  },
+  {
+   "value": "5600-65536",
+   "error": "WAF_SYSLOG_PORT_RANGE '5600-65536' is outside 1024-65535",
+   "status": 400
+  },
+  {
+   "value": "5600 - 5700",
+   "range": [
+    5600,
+    5700
+   ]
+  },
+  {
+   "value": "5600-5700-5800",
+   "error": "WAF_SYSLOG_PORT_RANGE must look like 5600-5699, got '5600-5700-5800'",
+   "status": 400
+  },
+  {
+   "value": "+5600-5700",
+   "range": [
+    5600,
+    5700
+   ]
+  }
+ ],
+ "pems": [
+  {
+   "label": "good",
+   "pem": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\n",
+   "ok": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----"
+  },
+  {
+   "label": "padded",
+   "pem": "  \n-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\n\n  ",
+   "ok": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----"
+  },
+  {
+   "label": "two",
+   "pem": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\n",
+   "ok": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----"
+  },
+  {
+   "label": "text before",
+   "pem": "issuer: test\n-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\n",
+   "ok": "issuer: test\n-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----"
+  },
+  {
+   "label": "text after",
+   "pem": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\ntrailing\n",
+   "ok": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\ntrailing"
+  },
+  {
+   "label": "crlf",
+   "pem": "-----BEGIN CERTIFICATE-----\r\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\r\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\r\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\r\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\r\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\r\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\r\niqnkHyexF0Gv\r\n-----END CERTIFICATE-----\r\n",
+   "ok": "-----BEGIN CERTIFICATE-----\r\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\r\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\r\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\r\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\r\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\r\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\r\niqnkHyexF0Gv\r\n-----END CERTIFICATE-----"
+  },
+  {
+   "label": "no final newline",
+   "pem": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----",
+   "ok": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----"
+  },
+  {
+   "label": "indented",
+   "pem": "  -----BEGIN CERTIFICATE-----\n  MIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\n  HhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\n  b3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\n  M5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\n  MBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\n  wkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\n  iqnkHyexF0Gv\n  -----END CERTIFICATE-----",
+   "error": "ca_cert_pem is not a valid PEM certificate: no start line: cadata does not contain a certificate (_ssl.c:4049)"
+  },
+  {
+   "label": "truncated",
+   "pem": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\n-----END CERTIFICATE-----",
+   "error": "ca_cert_pem is not a valid PEM certificate: no start line: cadata does not contain a certificate (_ssl.c:4049)"
+  },
+  {
+   "label": "no end",
+   "pem": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv",
+   "error": "ca_cert_pem is not a valid PEM certificate: no start line: cadata does not contain a certificate (_ssl.c:4049)"
+  },
+  {
+   "label": "good then bad",
+   "pem": "-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n",
+   "error": "ca_cert_pem is not a valid PEM certificate: [PEM] ASN1 lib (_ssl.c:4062)"
+  },
+  {
+   "label": "bad then good",
+   "pem": "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END CERTIFICATE-----\n",
+   "error": "ca_cert_pem is not a valid PEM certificate: no start line: cadata does not contain a certificate (_ssl.c:4049)"
+  },
+  {
+   "label": "bad",
+   "pem": "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n",
+   "error": "ca_cert_pem is not a valid PEM certificate: no start line: cadata does not contain a certificate (_ssl.c:4049)"
+  },
+  {
+   "label": "text",
+   "pem": "not a certificate",
+   "error": "ca_cert_pem is not a valid PEM certificate: no start line: cadata does not contain a certificate (_ssl.c:4049)"
+  },
+  {
+   "label": "private key",
+   "pem": "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n",
+   "error": "ca_cert_pem is not a valid PEM certificate: no start line: cadata does not contain a certificate (_ssl.c:4049)"
+  },
+  {
+   "label": "x509 label",
+   "pem": "-----BEGIN X509 CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END X509 CERTIFICATE-----\n",
+   "ok": "-----BEGIN X509 CERTIFICATE-----\nMIIBJTCBzKADAgECAgEHMAoGCCqGSM49BAMCMBIxEDAOBgNVBAMMB3ZlY3RvcnMw\nHhcNMjAwMTAxMDAwMDAwWhcNNDAwMTAxMDAwMDAwWjASMRAwDgYDVQQDDAd2ZWN0\nb3JzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJu/OvQ7p40pmkYfhizqRIrL3\nM5RbZJzJ+fkh6fna2BKQI4venMe7Mw0VDGdwTdJa5wVSBXRLbzG/QHB0WHLQ5qMT\nMBEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEA3cYRrbGEAUqm\nwkIakSnhKCXdGkAhNR4MmAN7n3S/9PwCIHfyT1at3VjolDaCbT8l8N0qPks0vieT\niqnkHyexF0Gv\n-----END X509 CERTIFICATE-----"
+  },
+  {
+   "label": "base64 junk",
+   "pem": "-----BEGIN CERTIFICATE-----\n!!!!\n-----END CERTIFICATE-----\n",
+   "error": "ca_cert_pem is not a valid PEM certificate: no start line: cadata does not contain a certificate (_ssl.c:4049)"
+  },
+  {
+   "label": "not ascii",
+   "pem": "é",
+   "raises": "TypeError"
+  },
+  {
+   "label": "blank",
+   "pem": "  \n ",
+   "ok": null
+  }
+ ]
+}

@@ -147,6 +147,24 @@ pub struct CopilotConfig {
     pub webauthn: WebAuthnEnv,
     /// The `SMTP_*` settings, as set.
     pub smtp: SmtpEnv,
+    /// What the WAF and provisioning modules read from the environment.
+    pub provisioning: ProvisioningEnv,
+}
+
+/// Raw values the WAF and provisioning modules read per call in Python
+/// (`os.environ.get`; `None` = unset, an empty value is still a value).
+#[derive(Clone, Debug, Default)]
+pub struct ProvisioningEnv {
+    /// `WAF_TOKEN_ENCRYPTION_KEY` (no fallback key).
+    pub waf_token_encryption_key: Option<Secret>,
+    /// `WAF_SYSLOG_PORT_RANGE`.
+    pub waf_syslog_port_range: Option<String>,
+    /// `WAF_SYSLOG_DEFAULT_HOST`.
+    pub waf_syslog_default_host: Option<String>,
+    /// `ALERT_FORWARDING_IP`.
+    pub alert_forwarding_ip: Option<String>,
+    /// `GRAYLOG_API_HEADER_VALUE`.
+    pub graylog_api_header_value: Option<Secret>,
 }
 
 /// Raw `WEBAUTHN_*` values, read like `os.environ.get` (`None` = unset).
@@ -316,6 +334,13 @@ impl CopilotConfig {
                 password: env.get_raw("SMTP_PASSWORD").map(Secret::new),
                 from: env.get_raw("SMTP_FROM"),
                 use_tls: env.get_raw("SMTP_USE_TLS"),
+            },
+            provisioning: ProvisioningEnv {
+                waf_token_encryption_key: env.get_raw("WAF_TOKEN_ENCRYPTION_KEY").map(Secret::new),
+                waf_syslog_port_range: env.get_raw("WAF_SYSLOG_PORT_RANGE"),
+                waf_syslog_default_host: env.get_raw("WAF_SYSLOG_DEFAULT_HOST"),
+                alert_forwarding_ip: env.get_raw("ALERT_FORWARDING_IP"),
+                graylog_api_header_value: env.get_raw("GRAYLOG_API_HEADER_VALUE").map(Secret::new),
             },
         })
     }

@@ -57,6 +57,7 @@ use copilot_platform::version::VersionChecker;
 use copilot_portainer::{PortainerClient, PortainerState};
 use copilot_scheduler::{OptIn, Scheduler, SchedulerState};
 use copilot_talon::{TalonConnector, TalonState};
+use copilot_waf::{WafClient, WafEnv, WafState};
 use copilot_wazuh::WazuhState;
 use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
 use copilot_web::{ApiError, AppContext, AppDeps};
@@ -172,6 +173,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // charts and wkhtmltopdf), which falls through to the legacy backend.
     "/api/soc_management",
     "/api/customer_portal/sla",
+    // The customer WAF (copilot-waf), and of the monitoring-alert catalog the
+    // two WAF alerts: any other alert name is handed to Python with its body.
+    "/api/customer_waf",
+    "POST /api/monitoring_alert/provision",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -198,6 +203,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_connectors::REQUIREMENTS);
     all.extend_from_slice(copilot_wazuh::REQUIREMENTS);
     all.extend_from_slice(copilot_portainer::REQUIREMENTS);
+    all.extend_from_slice(copilot_waf::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -262,6 +268,8 @@ pub struct App {
     pub grafana: GrafanaClient,
     /// The Portainer client (`/api/portainer`, and provisioning).
     pub portainer: PortainerClient,
+    /// The customer WAF module (`/api/customer_waf`, the WAF alerts).
+    pub waf: WafState,
 }
 
 impl App {
@@ -337,6 +345,20 @@ impl App {
             GrafanaClient::new(ctx.connectors.clone()).context("building the Grafana client")?;
         let portainer = PortainerClient::new(ctx.connectors.clone())
             .context("building the Portainer client")?;
+        let prov = &cfg.provisioning;
+        let waf = WafState {
+            ctx: ctx.clone(),
+            client: WafClient::new(prov.waf_token_encryption_key.clone()),
+            graylog: graylog.clone(),
+            env: Arc::new(WafEnv {
+                token_key: prov.waf_token_encryption_key.clone(),
+                syslog_port_range: prov.waf_syslog_port_range.clone(),
+                syslog_default_host: prov.waf_syslog_default_host.clone(),
+                alert_forwarding_ip: prov.alert_forwarding_ip.clone(),
+                graylog_api_header_value: prov.graylog_api_header_value.clone(),
+            }),
+            legacy: legacy.clone(),
+        };
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -370,6 +392,7 @@ impl App {
             influxdb,
             grafana,
             portainer,
+            waf,
         })
     }
 
@@ -516,6 +539,8 @@ impl App {
                 copilot_soc_management::router(self.ctx.clone()),
             )
             .merge(copilot_soc_management::portal_router(self.ctx.clone()))
+            .nest("/api/customer_waf", copilot_waf::router(self.waf.clone()))
+            .merge(copilot_waf::monitoring_router(self.waf.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
