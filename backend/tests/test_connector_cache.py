@@ -31,8 +31,14 @@ from app.connectors.utils import is_connector_verified  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _clean_cache():
-    """The cache is module state; every test starts from empty."""
+def _clean_cache(monkeypatch):
+    """The cache is module state; every test starts from empty.
+
+    The cross-process change check reads the real table; the tests that are
+    not about it turn it off (its own tests below turn it back on with a fake
+    table).
+    """
+    monkeypatch.setattr(connector_cache, "CHECK_SECONDS", 0)
     connector_cache.invalidate_all()
     connector_cache.reset_stats()
     yield
@@ -467,6 +473,170 @@ def test_the_cache_can_be_turned_off(monkeypatch):
     asyncio.run(scenario())
 
     assert len(session.executed) == 3
+
+
+# ── the change check: a write by the other process (Rust, or by hand) ───────
+#
+# With the Rust service in front, a connector row can be written by a process
+# whose `invalidate()` cannot reach this one. Each process therefore re-reads
+# the table at most every CHECK_SECONDS and drops the rows that changed.
+
+
+def _row(connector):
+    return {column.name: getattr(connector, column.name) for column in Connectors.__table__.columns}
+
+
+class _Table:
+    """The `connectors` table as `_read_rows` sees it; counts the checks."""
+
+    def __init__(self, *connectors):
+        self.rows = {c.connector_name: _row(c) for c in connectors}
+        self.reads = 0
+        self.fail = False
+
+    async def read(self):
+        self.reads += 1
+        if self.fail:
+            raise RuntimeError("MySQL server has gone away")
+        return {name: dict(row) for name, row in self.rows.items()}
+
+
+@pytest.fixture
+def checked(monkeypatch):
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(connector_cache.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(connector_cache, "CHECK_SECONDS", 5.0)
+    table = _Table(_connector(api_key="key-one"))
+    monkeypatch.setattr(connector_cache, "_read_rows", table.read)
+    return clock, table
+
+
+def test_a_row_the_other_process_rotated_is_dropped_within_the_check_interval(checked):
+    clock, table = checked
+    old = _Session(_connector(api_key="key-one"))
+    new = _Session(_connector(api_key="key-two"))
+
+    async def scenario():
+        first = await get_connector_info_from_db("Wazuh-Indexer", old)
+        # The Rust service saves a new key: this process is not told.
+        table.rows["Wazuh-Indexer"] = _row(_connector(api_key="key-two"))
+        clock["t"] += connector_cache.CHECK_SECONDS - 1
+        still_cached = await get_connector_info_from_db("Wazuh-Indexer", new)
+        clock["t"] += 1
+        after_check = await get_connector_info_from_db("Wazuh-Indexer", new)
+        return first, still_cached, after_check
+
+    first, still_cached, after_check = asyncio.run(scenario())
+
+    assert first["connector_api_key"] == "key-one"
+    assert still_cached["connector_api_key"] == "key-one", "the check ran before its interval was up"
+    assert after_check["connector_api_key"] == "key-two", "a rotated credential outlived the check interval"
+    assert len(new.executed) == 1
+    assert connector_cache.stats()["stale_dropped"] == 1
+
+
+def test_an_unchanged_row_survives_the_check_without_a_reload(checked):
+    clock, table = checked
+    session = _Session(_connector(api_key="key-one"))
+
+    async def scenario():
+        for _ in range(4):
+            await get_connector_info_from_db("Wazuh-Indexer", session)
+            clock["t"] += connector_cache.CHECK_SECONDS
+
+    asyncio.run(scenario())
+
+    assert len(session.executed) == 1, "a confirmed row was loaded again"
+    assert table.reads == 4, "one table read per interval, no more"
+    assert connector_cache.stats()["stale_dropped"] == 0
+
+
+def test_a_check_inside_the_interval_costs_nothing(checked):
+    clock, table = checked
+    session = _Session(_connector(api_key="key-one"))
+
+    async def scenario():
+        for _ in range(10):
+            await get_connector_info_from_db("Wazuh-Indexer", session)
+
+    asyncio.run(scenario())
+
+    assert table.reads == 1
+    assert len(session.executed) == 1
+
+
+def test_a_deleted_row_is_dropped(checked):
+    clock, table = checked
+    session = _Session(_connector(api_key="key-one"))
+
+    async def scenario():
+        await get_connector_info_from_db("Wazuh-Indexer", session)
+        table.rows.clear()
+        clock["t"] += connector_cache.CHECK_SECONDS
+        await get_connector_info_from_db("Wazuh-Indexer", session)
+
+    asyncio.run(scenario())
+
+    assert len(session.executed) == 2
+
+
+def test_a_failed_check_serves_nothing_from_cache(checked):
+    """A credential that cannot be confirmed is not served: fail closed."""
+    clock, table = checked
+    session = _Session(_connector(api_key="key-one"))
+
+    async def scenario():
+        await get_connector_info_from_db("Wazuh-Indexer", session)
+        table.fail = True
+        clock["t"] += connector_cache.CHECK_SECONDS
+        await get_connector_info_from_db("Wazuh-Indexer", session)
+
+    asyncio.run(scenario())
+
+    assert len(session.executed) == 2
+
+
+def test_a_load_older_than_the_last_check_is_not_served(checked):
+    """A load that began before a check and landed after it was never confirmed."""
+    clock, table = checked
+    session = _Session(_connector(api_key="key-one"))
+
+    async def scenario():
+        await get_connector_info_from_db("Wazuh-Indexer", session)
+        loaded_at, _confirmed, payload = connector_cache._entries["Wazuh-Indexer"]
+        # As if the load had started before the check that follows it.
+        connector_cache._entries["Wazuh-Indexer"] = (loaded_at - 1, loaded_at - 1, payload)
+        await get_connector_info_from_db("Wazuh-Indexer", session)
+
+    asyncio.run(scenario())
+
+    assert len(session.executed) == 2
+
+
+def test_the_check_can_be_turned_off(checked, monkeypatch):
+    clock, table = checked
+    monkeypatch.setattr(connector_cache, "CHECK_SECONDS", 0)
+    session = _Session(_connector(api_key="key-one"))
+
+    async def scenario():
+        await get_connector_info_from_db("Wazuh-Indexer", session)
+        table.rows["Wazuh-Indexer"] = _row(_connector(api_key="key-two"))
+        clock["t"] += 60
+        return await get_connector_info_from_db("Wazuh-Indexer", session)
+
+    second = asyncio.run(scenario())
+
+    assert table.reads == 0
+    assert second["connector_api_key"] == "key-one"
+
+
+def test_the_check_compares_every_column_the_payload_carries():
+    """`_read_rows` must name the table's columns, which are the payload's keys."""
+    from app.connectors.schema import ConnectorResponse
+
+    payload_keys = set(ConnectorResponse.model_fields) - {"history_logs"}
+
+    assert payload_keys == {column.name for column in Connectors.__table__.columns}
 
 
 # ── measurement, so the next session can see the effect ─────────────────────

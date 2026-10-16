@@ -21,6 +21,7 @@
 //! | `COPILOT_URL` | *(unset)* | public base URL, for notification deep links |
 //! | `DEFAULT_ALERT_SEVERITY` | `High` | notification severity fallback |
 //! | `CONNECTOR_CACHE_TTL_SECONDS` | `600` | `connectors` row cache; `0` disables |
+//! | `CONNECTOR_CACHE_CHECK_SECONDS` | `5` | how stale a cached `connectors` row may get when another process wrote it (the change check, `copilot_db::connectors`); `0` disables the check |
 //! | `COPILOT_RS_PALACE_JOBS` | `false` | run the palace-lesson drainer/sweeper here instead of in APScheduler |
 //! | `COPILOT_RS_JOBS` | *(unset)* | scheduled jobs this service may take over (ids, comma-separated, or `all`); each runs only while its `scheduled_job_metadata` row is disabled |
 //! | `AUDIT_LOG_RETENTION_DAYS` | `90` | `prune_audit_log`'s window, read as Python reads it (`<= 0` keeps everything) |
@@ -119,6 +120,9 @@ pub struct CopilotConfig {
     pub notifications: NotificationDefaults,
     /// Connector-row cache TTL (`0` = disabled).
     pub connector_cache_ttl: Duration,
+    /// Interval of the connector cache's cross-process change check (`0` =
+    /// no check).
+    pub connector_cache_check: Duration,
     /// Run the palace-lesson jobs in this process.
     pub palace_jobs: bool,
     /// `COPILOT_RS_JOBS`, as set: the scheduled jobs this process may take
@@ -278,6 +282,11 @@ impl CopilotConfig {
                 600,
                 0,
             )),
+            connector_cache_check: Duration::from_secs(env.get_u64(
+                "CONNECTOR_CACHE_CHECK_SECONDS",
+                5,
+                0,
+            )),
             palace_jobs: env.get_bool("COPILOT_RS_PALACE_JOBS"),
             rust_jobs: env.get("COPILOT_RS_JOBS"),
             audit_log_retention_days: env.get_raw("AUDIT_LOG_RETENTION_DAYS"),
@@ -374,6 +383,7 @@ mod tests {
         assert_eq!(cfg.access_token_expire_minutes, 1440);
         assert!(cfg.totp_encryption_key.is_none());
         assert_eq!(cfg.connector_cache_ttl, Duration::from_secs(600));
+        assert_eq!(cfg.connector_cache_check, Duration::from_secs(5));
         assert!(cfg.legacy_url.is_none());
         assert!(!cfg.palace_jobs);
         assert_eq!(

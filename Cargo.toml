@@ -33,6 +33,7 @@ copilot-sla = { path = "crates/copilot-sla" }
 copilot-scheduler = { path = "crates/copilot-scheduler" }
 copilot-markdown = { path = "crates/copilot-markdown" }
 copilot-notifications = { path = "crates/copilot-notifications" }
+copilot-connectors = { path = "crates/copilot-connectors" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

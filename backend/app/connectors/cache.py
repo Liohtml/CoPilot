@@ -31,6 +31,19 @@ immediately after its commit. The TTL is a backstop for the one case
 invalidation cannot see — someone editing the table directly — not the primary
 correctness mechanism.
 
+**Across processes.** With the Rust service in front (`crates/`), connector
+rows are written by two processes, and neither can reach the other's cache.
+So each one *checks*: before serving a cached row, a process whose last look at
+the table is older than `CONNECTOR_CACHE_CHECK_SECONDS` (5 s) reads every row
+once — a single small statement — and drops the cached rows that no longer
+match. A row is served only if MySQL confirmed it, by its load or by a check, no
+earlier than the last check began. After any committed write, by either
+backend, the startup sync or someone with a MySQL shell, no process serves the
+old row for longer than the interval plus one query, and the writer forgets it
+at once (`invalidate()` after its commit). The Rust cache
+(`crates/copilot-db/src/connectors.rs`) follows the same rule. `0` turns the
+check off (the TTL alone then bounds staleness).
+
 Two deliberate non-features:
 
 * **Misses are not cached.** A `None` means the connector row does not exist yet;
@@ -65,11 +78,32 @@ def _ttl_seconds() -> int:
 
 TTL_SECONDS = _ttl_seconds()
 
+
+def _check_seconds() -> float:
+    """Read at import; `0` turns the cross-process change check off."""
+    raw = os.getenv("CONNECTOR_CACHE_CHECK_SECONDS", "5")
+    try:
+        return max(float(int(raw)), 0.0)
+    except ValueError:
+        logger.warning(f"CONNECTOR_CACHE_CHECK_SECONDS={raw!r} is not an integer; falling back to 5s")
+        return 5.0
+
+
+CHECK_SECONDS = _check_seconds()
+
 # `time.monotonic`, not `datetime.utcnow`: an NTP step backwards would otherwise
 # leave an entry that never expires, and credentials are the wrong thing to be
 # wrong about indefinitely.
-_entries: Dict[str, tuple[float, Dict[str, Any]]] = {}
+#
+# Each entry is `(loaded_at, confirmed_at, payload)`: when its load began (the
+# TTL counts from there), and the latest moment MySQL confirmed the row — its
+# load, or a change check that found it unchanged.
+_entries: Dict[str, tuple[float, float, Dict[str, Any]]] = {}
 _locks: Dict[str, asyncio.Lock] = {}
+
+# When the last successful change check began (`None` before the first).
+_checked_at: Optional[float] = None
+_check_lock = asyncio.Lock()
 
 # `connector_id` → `connector_name`, for the minority of call sites that address
 # a connector by id (`get_connector_attribute(connector_id=10, …)`). Kept
@@ -81,6 +115,8 @@ _names_by_id: Dict[int, str] = {}
 _hits = 0
 _misses = 0
 _invalidations = 0
+_checks = 0
+_stale_dropped = 0
 
 
 def _copy(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -104,13 +140,77 @@ def _peek(connector_name: str) -> Optional[Dict[str, Any]]:
     if entry is None:
         return None
 
-    stored_at, payload = entry
-    if time.monotonic() - stored_at >= TTL_SECONDS:
+    loaded_at, confirmed_at, payload = entry
+    if time.monotonic() - loaded_at >= TTL_SECONDS:
         # Expired: drop it rather than leave it for the next caller to re-check.
+        _entries.pop(connector_name, None)
+        return None
+    if CHECK_SECONDS > 0 and _checked_at is not None and confirmed_at < _checked_at:
+        # Loaded before the last check began and not confirmed by it (a load
+        # that raced the check): MySQL may hold something newer.
         _entries.pop(connector_name, None)
         return None
 
     return _copy(payload)
+
+
+async def _read_rows() -> Dict[str, Dict[str, Any]]:
+    """Every connector row's columns, keyed by name (the lowest id wins, as
+    `select(...).where(name == …).first()` picks it). One statement, on its own
+    session so that the caller's transaction snapshot cannot hide a change."""
+    from sqlalchemy import select
+
+    from app.connectors.models import Connectors
+    from app.db.db_session import AsyncSessionLocal
+
+    table = Connectors.__table__
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(table).order_by(table.c.id))
+        rows = result.mappings().all()
+    current: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        current.setdefault(row["connector_name"], dict(row))
+    return current
+
+
+def _check_due() -> bool:
+    if TTL_SECONDS == 0 or CHECK_SECONDS <= 0:
+        return False
+    return _checked_at is None or time.monotonic() - _checked_at >= CHECK_SECONDS
+
+
+async def revalidate() -> None:
+    """The cross-process change check (see the module docstring).
+
+    Reads the table once and drops every cached row that differs from its row
+    (or whose row is gone). A failed read drops everything: a credential that
+    cannot be confirmed is not served.
+    """
+    global _checked_at, _checks, _stale_dropped
+
+    if not _check_due():
+        return
+    async with _check_lock:
+        if not _check_due():
+            return
+        started = time.monotonic()
+        _checks += 1
+        try:
+            current = await _read_rows()
+        except Exception as e:  # noqa: BLE001 - fail closed, whatever the driver raised
+            logger.warning(f"Connector cache check failed ({e}); dropping cached rows")
+            _stale_dropped += len(_entries)
+            _entries.clear()
+            return
+        for name, (loaded_at, _confirmed, payload) in list(_entries.items()):
+            row = current.get(name)
+            if row is None or any(payload.get(column) != value for column, value in row.items()):
+                _entries.pop(name, None)
+                _stale_dropped += 1
+                logger.debug(f"Connector cache: {name} changed in the database; dropped")
+            else:
+                _entries[name] = (loaded_at, started, payload)
+        _checked_at = started
 
 
 def lock_for(connector_name: str) -> asyncio.Lock:
@@ -145,6 +245,7 @@ async def get_or_load(connector_name: str, loader) -> Optional[Dict[str, Any]]:
     """
     global _hits, _misses
 
+    await revalidate()
     cached = _peek(connector_name)
     if cached is not None:
         _hits += 1
@@ -159,6 +260,7 @@ async def get_or_load(connector_name: str, loader) -> Optional[Dict[str, Any]]:
             return cached
 
         _misses += 1
+        started = time.monotonic()
         payload = await loader()
         if payload is None:
             # Deliberately not cached — a missing row usually means "not created
@@ -166,7 +268,7 @@ async def get_or_load(connector_name: str, loader) -> Optional[Dict[str, Any]]:
             return None
 
         if TTL_SECONDS > 0:
-            _entries[connector_name] = (time.monotonic(), _copy(payload))
+            _entries[connector_name] = (started, started, _copy(payload))
         remember_id(payload.get("id"), connector_name)
         return _copy(payload)
 
@@ -209,9 +311,10 @@ def invalidate_all() -> None:
 
 def reset_stats() -> None:
     """Test seam. Production never needs this; the counters are cumulative."""
-    global _hits, _misses, _invalidations
+    global _hits, _misses, _invalidations, _checks, _stale_dropped, _checked_at
 
-    _hits = _misses = _invalidations = 0
+    _hits = _misses = _invalidations = _checks = _stale_dropped = 0
+    _checked_at = None
 
 
 def stats() -> Dict[str, Any]:
@@ -224,4 +327,7 @@ def stats() -> Dict[str, Any]:
         "invalidations": _invalidations,
         "hit_ratio": round(_hits / looked_up, 4) if looked_up else None,
         "ttl_seconds": TTL_SECONDS,
+        "checks": _checks,
+        "stale_dropped": _stale_dropped,
+        "check_seconds": CHECK_SECONDS,
     }

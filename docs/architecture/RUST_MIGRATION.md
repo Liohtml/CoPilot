@@ -93,6 +93,7 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-notifications` | `app/notifications/` (routes, services, channels, schemas); `app/customer_portal/services/branding.py` merge and the report palette (moved here from `copilot-identity`, which re-exports them) | every notification route (customer and internal routes, Shuffle integrations, the dispatch log, channel catalog, Resend quota, named templates and preview, manual send, Talon's dispatch, `POST /notifications/events`); the dispatch pipeline and its log; the webhook, Teams, Resend and Shuffle providers; `DispatchingSink`, the in-process `NotificationSink` |
 | `copilot-markdown` | `app/notifications/utils/markdown_html.py` (markdown-it-py 4.2 `gfm-like`, `html=False`; mdurl; CPython punycode) | Markdown → inline-styled HTML for emails, a line-by-line port pinned by `markdown_vectors.json` (`scripts/gen-markdown-vectors.py`; character tables by `gen-markdown-tables.py`) |
 | `copilot-scheduler` | `app/schedulers/` (`scheduler.py`, `routes/scheduler.py`, `utils/universal.py:record_job_success`), `app/audit/services/retention.py` | the job runner (APScheduler's interval semantics on tokio: fixed grid, coalesce, one instance, 1 s misfire grace), the hand-over rule and run lock, `/api/scheduler/*` (reads from APScheduler's `apscheduler_jobs` store through a read-only pickle decoder pinned by `apscheduler_vectors.json`, `scripts/gen-apscheduler-vectors.py`; run/start/pause), `prune_audit_log`; the palace jobs register from `copilot-ai-analyst`; `copilot jobs` and `doctor` list each job's owner |
+| `copilot-connectors` | `app/connectors/{routes,services,schema,utils,cache}.py` | `/api/connectors` reads (list, one row with `history_logs`); the verifier registry tool crates plug into; the YAML upload (a file on the Python host) stays in Python |
 | `copilot-gateway` | — | legacy proxy (its notification bridge sink is no longer wired); deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
 
@@ -441,9 +442,21 @@ restarted daily still runs. Ported: `prune_audit_log`,
 guarded on the previous status, so a lesson is never ingested or expired
 twice). Run a single Rust instance with the opt-in.
 
-**Connector cache.** The Python backend invalidates its connector cache after
-each write but cannot reach the Rust process, so while a legacy backend is
-configured the Rust TTL is capped at 60 s.
+**Connector cache.** Both backends cache `connectors` rows in-process and
+neither can reach the other's cache, so each one *checks*: before serving a
+cached row, a process whose last look at the table is older than
+`CONNECTOR_CACHE_CHECK_SECONDS` (5 s, both sides) reads every row once (one
+statement) and drops the cached rows that differ or are gone. A row is served
+only if MySQL confirmed it — by its load or by a check — no earlier than the
+last check began; a failed check drops everything. The guarantee: after a
+committed write to `connectors` by either backend, the startup sync or by hand,
+the writer forgets the row at once and every other process within 5 s plus one
+query (`e2e_connectors.rs`, `test_connector_cache.py`, and the parity suite,
+which rotates a row behind each process's back). While a legacy backend is
+configured the Rust TTL stays capped at 60 s as a second bound.
+`copilot-connectors` serves `GET /api/connectors` and `/{id}` (`history_logs`
+read as `selectinload` reads them); the YAML upload writes a file on the
+Python host and stays there.
 
 ---
 

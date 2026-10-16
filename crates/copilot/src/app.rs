@@ -36,6 +36,7 @@ use axum::routing::get;
 use serde_json::json;
 
 use copilot_auth::{Fernet, JwtCodec};
+use copilot_connectors::{ConnectorsState, Verifiers};
 use copilot_core::config::CopilotConfig;
 use copilot_core::notify::SharedNotificationSink;
 use copilot_db::Db;
@@ -105,6 +106,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customers/{customer_code}/notification_routes",
     "/api/customers/{customer_code}/notification_dispatch_log",
     "/api/customers/{customer_code}/shuffle_integrations",
+    // The connector list and rows; the YAML upload (a file on the Python
+    // host) stays in Python.
+    "GET /api/connectors",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -127,6 +131,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_incidents::REQUIREMENTS);
     all.extend_from_slice(copilot_sla::REQUIREMENTS);
     all.extend_from_slice(copilot_notifications::db::REQUIREMENTS);
+    all.extend_from_slice(copilot_connectors::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -179,6 +184,8 @@ pub struct App {
     pub legacy: Option<LegacyProxy>,
     /// The scheduled jobs this build can take over from APScheduler.
     pub scheduler: Scheduler,
+    /// The connectors this build verifies itself (`/api/connectors`).
+    pub verifiers: Verifiers,
 }
 
 impl App {
@@ -195,7 +202,8 @@ impl App {
         } else {
             cfg.connector_cache_ttl
         };
-        let connectors = ConnectorCache::new(db.clone(), ttl);
+        let connectors =
+            ConnectorCache::new(db.clone(), ttl).with_check_interval(cfg.connector_cache_check);
         // Notifications are dispatched in-process, whatever else is ported.
         let dispatcher = Dispatcher::new(db.clone(), connectors.clone(), cfg.notifications.clone())
             .context("building the notification clients")?;
@@ -270,6 +278,7 @@ impl App {
             dispatcher,
             legacy,
             scheduler,
+            verifiers: Verifiers::default(),
         })
     }
 
@@ -347,6 +356,14 @@ impl App {
                 ctx: self.ctx.clone(),
                 dispatcher: self.dispatcher.clone(),
             }))
+            .nest(
+                "/api/connectors",
+                copilot_connectors::router(ConnectorsState {
+                    ctx: self.ctx.clone(),
+                    verifiers: self.verifiers.clone(),
+                    legacy: self.legacy.clone(),
+                }),
+            )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
