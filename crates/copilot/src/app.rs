@@ -43,6 +43,7 @@ use copilot_db::audit::DbAuditSink;
 use copilot_db::connectors::ConnectorCache;
 use copilot_db::schema::{self, TableRequirement};
 use copilot_gateway::LegacyProxy;
+use copilot_graylog::{GraylogClient, GraylogState};
 use copilot_identity::{IdentityState, SsoClient, TwoFactorLimiter};
 use copilot_notifications::{Dispatcher, DispatchingSink, NotificationsState};
 use copilot_platform::PlatformState;
@@ -105,6 +106,21 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customers/{customer_code}/notification_routes",
     "/api/customers/{customer_code}/notification_dispatch_log",
     "/api/customers/{customer_code}/shuffle_integrations",
+    // The Graylog connector (copilot-graylog); `POST /api/graylog/invoke`,
+    // the active-response webhook, is not part of it and stays in Python.
+    "GET /api/graylog/indices",
+    "GET /api/graylog/inputs",
+    "/api/graylog/event",
+    "GET /api/graylog/url_whitelist",
+    "DELETE /api/graylog/index",
+    "POST /api/graylog/input",
+    "POST /api/graylog/stream",
+    "GET /api/graylog/messages",
+    "GET /api/graylog/metrics",
+    "GET /api/graylog/event_notifications",
+    "GET /api/graylog/streams",
+    "GET /api/graylog/pipeline",
+    "POST /api/graylog/receiver",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -179,6 +195,8 @@ pub struct App {
     pub legacy: Option<LegacyProxy>,
     /// The scheduled jobs this build can take over from APScheduler.
     pub scheduler: Scheduler,
+    /// The Graylog client (`/api/graylog`, and later ports' provisioning).
+    pub graylog: GraylogClient,
 }
 
 impl App {
@@ -243,6 +261,8 @@ impl App {
             OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
             scheduled_jobs(&ctx, &talon, cfg),
         );
+        let graylog =
+            GraylogClient::new(ctx.connectors.clone()).context("building the Graylog client")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -270,6 +290,7 @@ impl App {
             dispatcher,
             legacy,
             scheduler,
+            graylog,
         })
     }
 
@@ -347,6 +368,15 @@ impl App {
                 ctx: self.ctx.clone(),
                 dispatcher: self.dispatcher.clone(),
             }))
+            // Only the Graylog connector's routes; `POST /invoke` (active
+            // response) falls through to the legacy backend.
+            .nest(
+                "/api/graylog",
+                copilot_graylog::router(GraylogState {
+                    ctx: self.ctx.clone(),
+                    client: self.graylog.clone(),
+                }),
+            )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

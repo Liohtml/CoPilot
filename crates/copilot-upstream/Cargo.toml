@@ -1,0 +1,29 @@
+[package]
+name = "copilot-upstream"
+description = "What CoPilot's Python connector helpers did with a tool's answers: requests/niquests/aiohttp semantics, CPython JSON, Pydantic response models"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
+url = { workspace = true }
+bytes = { workspace = true }
+http = { workspace = true }
+axum = { workspace = true }
+speedate = { workspace = true }
+chrono = { workspace = true }
+base64 = { workspace = true }
+tokio = { workspace = true }
+strum = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

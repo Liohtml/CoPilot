@@ -1,0 +1,490 @@
+//! End-to-end tests of the Graylog connector port (`copilot-graylog`):
+//! `/api/graylog` through the production router on a real MySQL, Graylog
+//! (6.x and 7.x) and the Event Shipper replaced by local stand-ins.
+//!
+//! ```text
+//! COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13308/copilot \
+//!   cargo test -p copilot --test e2e_graylog -- --test-threads=1
+//! ```
+//!
+//! The `Graylog` and `Event Shipper` connector rows are replaced for each
+//! test and removed again (run single-threaded).
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+use http::StatusCode;
+use serde_json::{Value, json};
+use tokio::io::AsyncReadExt;
+use wiremock::matchers::{method, path, query_param};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+use copilot_auth::pyvalue::loads;
+use copilot_graylog::client::EntityKind;
+
+#[macro_use]
+mod common;
+use common::*;
+
+async fn set_connector(h: &Harness, name: &str, url: Option<&str>, extra: Option<&str>) {
+    sqlx::query("DELETE FROM connectors WHERE connector_name = ?")
+        .bind(name)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    if let Some(url) = url {
+        sqlx::query(
+            "INSERT INTO connectors (connector_name, connector_type, connector_url, \
+             connector_last_updated, connector_username, connector_password, connector_api_key, \
+             connector_description, connector_supports, connector_configured, connector_verified, \
+             connector_accepts_host_only, connector_accepts_api_key, \
+             connector_accepts_username_password, connector_accepts_file, \
+             connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES \
+             (?, '3', ?, UTC_TIMESTAMP(), 'admin', 'secret', NULL, 'e2e', 'e2e', 1, 1, 0, 0, 1, 0, \
+             1, ?, 1)",
+        )
+        .bind(name)
+        .bind(url)
+        .bind(extra)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+}
+
+async fn users(h: &Harness) -> (String, String, String) {
+    let s = &h.suffix;
+    for (name, role) in [("gadmin", 1), ("ganalyst", 2), ("gportal", 4)] {
+        h.exec(&format!(
+            "INSERT INTO `user` (username, password, email, created_at, role_id) \
+             VALUES ('{name}{s}', 'x', '{name}@example.com', UTC_TIMESTAMP(), {role})"
+        ))
+        .await;
+    }
+    (
+        h.token(&format!("gadmin{s}"), "admin"),
+        h.token(&format!("ganalyst{s}"), "analyst"),
+        h.token(&format!("gportal{s}"), "customer_user"),
+    )
+}
+
+fn stream(id: &str, title: &str) -> Value {
+    json!({
+        "id": id, "creator_user_id": "admin", "outputs": [], "matching_type": "AND",
+        "description": null, "created_at": "2026-01-01T00:00:00.000Z", "disabled": false,
+        "rules": [{"field": "f", "stream_id": id, "id": "r1", "type": 1, "inverted": false, "value": "v"}],
+        "title": title, "content_pack": null, "remove_matches_from_default_stream": false,
+        "index_set_id": "is1", "is_default": false, "is_editable": true, "categories": []
+    })
+}
+
+fn input(id: &str, tls_password: Value) -> Value {
+    json!({
+        "title": "GELF", "global": true, "name": "GELF TCP", "content_pack": null,
+        "created_at": "2026-01-01T00:00:00.000Z", "type": "gelf", "creator_user_id": "admin",
+        "attributes": {"recv_buffer_size": 1048576, "number_worker_threads": 2,
+            "bind_address": "0.0.0.0", "port": 12201, "tls_key_password": tls_password,
+            "max_message_size": 2097152},
+        "static_fields": {}, "node": null, "id": id
+    })
+}
+
+#[tokio::test]
+async fn reads_follow_the_python_models() {
+    let h = harness_or_skip!(None);
+    let (_, analyst, portal) = users(&h).await;
+    let graylog = MockServer::start().await;
+    set_connector(&h, "Graylog", Some(&graylog.uri()), None).await;
+    let mut s2 = stream("s2", "Two");
+    s2.as_object_mut().unwrap().remove("description");
+    Mock::given(method("GET"))
+        .and(path("/api/streams"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "total": "2",
+            "streams": [stream("s1", "One"), s2]
+        })))
+        .mount(&graylog)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/system/inputs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "inputs": [input("i6", json!("")), input("i7", json!({"is_set": true}))]
+        })))
+        .mount(&graylog)
+        .await;
+
+    let (status, body) = h
+        .call("GET", "/api/graylog/streams", Some(&analyst), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["total"], 2, "lax int");
+    assert_eq!(body["streams"][0]["description"], Value::Null);
+    assert_eq!(body["streams"][1]["description"], "No description provided");
+    let keys: Vec<&str> = body["streams"][0]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys[..4],
+        [
+            "content_pack",
+            "created_at",
+            "creator_user_id",
+            "description"
+        ]
+    );
+    assert!(!keys.contains(&"categories"), "extra keys are dropped");
+
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/graylog/inputs/configured",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let attrs = |i: usize| body["configured_inputs"][i]["attributes"].clone();
+    assert_eq!(attrs(0)["tls_key_password"], "");
+    assert_eq!(
+        attrs(1)["tls_key_password"],
+        "***",
+        "Graylog 7's EncryptedValue"
+    );
+    assert_eq!(body["configured_inputs"][0]["global"], true, "by alias");
+
+    let (status, body) = h
+        .call("GET", "/api/graylog/streams", Some(&portal), None)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        body["message"],
+        "Insufficient permissions. Required one of: admin, analyst"
+    );
+
+    // A model Graylog's answer does not fit: the ValueError handler's 400.
+    graylog.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/api/system/inputs"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"inputs": [{"title": 5}]})))
+        .mount(&graylog)
+        .await;
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/graylog/inputs/configured",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["message"].as_str().unwrap().starts_with(
+            "9 validation errors for ConfiguredInput\ntitle\n  Input should be a valid string"
+        ),
+        "{body}"
+    );
+    set_connector(&h, "Graylog", None, None).await;
+    let (status, body) = h
+        .call("GET", "/api/graylog/streams", Some(&analyst), None)
+        .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(body["message"], "Connector Graylog not found");
+}
+
+#[tokio::test]
+async fn url_allowlist_falls_back_to_the_6x_path() {
+    let h = harness_or_skip!(None);
+    let (admin, analyst, _) = users(&h).await;
+    let graylog = MockServer::start().await;
+    set_connector(&h, "Graylog", Some(&graylog.uri()), None).await;
+    let entries = json!({"entries": [{"id": "1", "value": "https://x", "title": "x", "type": "literal"}], "disabled": false});
+    Mock::given(method("GET"))
+        .and(path("/api/system/urlallowlist"))
+        .respond_with(
+            ResponseTemplate::new(404).set_body_json(json!({"message": "HTTP 404 Not Found"})),
+        )
+        .mount(&graylog)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/system/urlwhitelist"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(entries.clone()))
+        .mount(&graylog)
+        .await;
+    let (status, body) = h
+        .call("GET", "/api/graylog/url_whitelist", Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["url_whitelist_entries"], entries);
+    let paths: Vec<String> = graylog
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| r.url.path().to_string())
+        .collect();
+    assert_eq!(
+        paths,
+        ["/api/system/urlallowlist", "/api/system/urlwhitelist"]
+    );
+    // get_current_user(scopes=["admin"]) words a missing scope differently.
+    let (status, body) = h
+        .call("GET", "/api/graylog/url_whitelist", Some(&analyst), None)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        body["message"],
+        "Insufficient permissions. Required scope: admin"
+    );
+    set_connector(&h, "Graylog", None, None).await;
+}
+
+#[tokio::test]
+async fn management_verifies_ids_against_graylog() {
+    let h = harness_or_skip!(None);
+    let (admin, _, _) = users(&h).await;
+    let graylog = MockServer::start().await;
+    set_connector(&h, "Graylog", Some(&graylog.uri()), None).await;
+    Mock::given(method("GET"))
+        .and(path("/api/streams"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"total": 1, "streams": [stream("s1", "One")]})),
+        )
+        .mount(&graylog)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/streams/s1/pause"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&graylog)
+        .await;
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/graylog/stream/stop",
+            Some(&admin),
+            Some(json!({"stream_id": " s1\u{1f}"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true, "message": "Successfully stopped stream s1"})
+    );
+    let pause = graylog.received_requests().await.unwrap();
+    let pause = pause.last().unwrap();
+    assert_eq!(pause.headers["x-requested-by"], "CoPilot");
+    assert_eq!(pause.headers["content-length"], "0");
+    assert_eq!(
+        pause.headers["authorization"], "Basic YWRtaW46c2VjcmV0",
+        "admin:secret"
+    );
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/graylog/stream/start",
+            Some(&admin),
+            Some(json!({"stream_id": "nope"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body["message"],
+        "Stream ID 'nope' is not managed by Graylog or no longer exists."
+    );
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/graylog/stream/start",
+            Some(&admin),
+            Some(json!({"stream": 1})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["details"][0]["field"], "stream_id");
+    set_connector(&h, "Graylog", None, None).await;
+}
+
+async fn graylog_with_version(version: Option<&str>) -> MockServer {
+    let graylog = MockServer::start().await;
+    let system = match version {
+        Some(v) => ResponseTemplate::new(200).set_body_json(json!({"version": v})),
+        None => ResponseTemplate::new(500).set_body_string("down"),
+    };
+    Mock::given(method("GET"))
+        .and(path("/api/system"))
+        .respond_with(system)
+        .mount(&graylog)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/streams"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"stream_id": "new"})))
+        .mount(&graylog)
+        .await;
+    graylog
+}
+
+#[tokio::test]
+async fn entity_creation_is_wrapped_for_graylog_7_only() {
+    for (version, wrapped) in [
+        (Some("7.0.1+abc"), true),
+        (Some("6.1.4"), false),
+        (Some("8.0.0"), true),
+        (None, false),
+    ] {
+        let h = harness_or_skip!(None);
+        let graylog = graylog_with_version(version).await;
+        set_connector(&h, "Graylog", Some(&graylog.uri()), None).await;
+        let entity = loads(r#"{"title": "ACME", "index_set_id": "is1"}"#).unwrap();
+        let reply = h
+            .app
+            .graylog
+            .create_entity("Graylog", &EntityKind::Stream, entity, None)
+            .await
+            .unwrap();
+        assert_eq!(reply.message, "Successfully created data");
+        let requests = graylog.received_requests().await.unwrap();
+        let post = requests
+            .iter()
+            .find(|r| r.method.as_str() == "POST")
+            .unwrap();
+        let body = String::from_utf8(post.body.clone()).unwrap();
+        let want = if wrapped {
+            r#"{"entity": {"title": "ACME", "index_set_id": "is1"}}"#
+        } else {
+            r#"{"title": "ACME", "index_set_id": "is1"}"#
+        };
+        assert_eq!(body, want, "{version:?}");
+        // The probe is cached: a second creation does not ask again.
+        let entity = loads(r#"{"title": "B"}"#).unwrap();
+        h.app
+            .graylog
+            .create_entity("Graylog", &EntityKind::Stream, entity, None)
+            .await
+            .unwrap();
+        let probes = graylog
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.path() == "/api/system")
+            .count();
+        assert_eq!(probes, 1, "{version:?}");
+        set_connector(&h, "Graylog", None, None).await;
+    }
+}
+
+#[tokio::test]
+async fn event_definitions_are_paged_until_the_total() {
+    let h = harness_or_skip!(None);
+    let (_, analyst, _) = users(&h).await;
+    let graylog = MockServer::start().await;
+    set_connector(&h, "Graylog", Some(&graylog.uri()), None).await;
+    let def = |id: &str| {
+        json!({"id": id, "title": id, "description": "d", "priority": 1, "alert": true,
+            "config": {"conditions": {"expression": {"expr": ">", "left": {"expr": "number-ref", "ref": "x"}, "right": {"expr": "number", "value": 1}}}},
+            "field_spec": {}, "key_spec": [], "notification_settings": {"grace_period_ms": 0, "backlog_size": 0},
+            "storage": [{"type": "persist", "streams": []}], "_scope": "DEFAULT"})
+    };
+    for (page, items) in [("1", vec![def("a"), def("b")]), ("2", vec![def("c")])] {
+        Mock::given(method("GET"))
+            .and(path("/api/events/definitions"))
+            .and(query_param("page", page))
+            .and(query_param("per_page", "500"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"event_definitions": items, "total": 3})),
+            )
+            .mount(&graylog)
+            .await;
+    }
+    let (status, body) = h
+        .call(
+            "GET",
+            "/api/graylog/event/definitions",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let ids: Vec<&str> = body["event_definitions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["a", "b", "c"]);
+    assert_eq!(
+        body["event_definitions"][0]["config"]["conditions"]["expression"]["left"],
+        json!({"expr": "number-ref", "ref": "x", "value": null, "left": null, "right": null})
+    );
+    assert!(body["event_definitions"][0].get("_scope").is_none());
+    set_connector(&h, "Graylog", None, None).await;
+}
+
+#[tokio::test]
+async fn the_receiver_ships_one_gelf_frame() {
+    let h = harness_or_skip!(None);
+    let (admin, _, _) = users(&h).await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    set_connector(&h, "Event Shipper", Some("127.0.0.1"), Some(&port)).await;
+    let accept = tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut buf = Vec::new();
+        sock.read_to_end(&mut buf).await.unwrap();
+        buf
+    });
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/graylog/receiver",
+            Some(&admin),
+            Some(json!({"integration": "mimecast", "customer_code": "acme", "drop": null, "x": 1})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({"message": "Message forwarded to Graylog", "success": true})
+    );
+    let frame = String::from_utf8(accept.await.unwrap()).unwrap();
+    let host = copilot_graylog::gelf::getfqdn();
+    assert_eq!(
+        frame,
+        format!(
+            "{{\"version\": 1.1, \"host\": \"{host}\", \"short_message\": \"{{\\\"integration\\\": \
+             \\\"mimecast\\\", \\\"customer_code\\\": \\\"acme\\\", \\\"x\\\": 1}}\", \"level\": 1}}\0"
+        )
+    );
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/graylog/receiver",
+            Some(&admin),
+            Some(json!({"integration": "x"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["message"].as_str().unwrap().starts_with(
+            "1 validation error for EventShipperPayload\ncustomer_code\n  Field required"
+        ),
+        "{body}"
+    );
+    set_connector(&h, "Event Shipper", None, None).await;
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/graylog/receiver",
+            Some(&admin),
+            Some(json!({"integration": "x", "customer_code": "y"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        body["message"],
+        "Failed to initialize GelfLogger: 'NoneType' object is not subscriptable"
+    );
+}

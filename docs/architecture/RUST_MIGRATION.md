@@ -93,6 +93,8 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-notifications` | `app/notifications/` (routes, services, channels, schemas); `app/customer_portal/services/branding.py` merge and the report palette (moved here from `copilot-identity`, which re-exports them) | every notification route (customer and internal routes, Shuffle integrations, the dispatch log, channel catalog, Resend quota, named templates and preview, manual send, Talon's dispatch, `POST /notifications/events`); the dispatch pipeline and its log; the webhook, Teams, Resend and Shuffle providers; `DispatchingSink`, the in-process `NotificationSink` |
 | `copilot-markdown` | `app/notifications/utils/markdown_html.py` (markdown-it-py 4.2 `gfm-like`, `html=False`; mdurl; CPython punycode) | Markdown → inline-styled HTML for emails, a line-by-line port pinned by `markdown_vectors.json` (`scripts/gen-markdown-vectors.py`; character tables by `gen-markdown-tables.py`) |
 | `copilot-scheduler` | `app/schedulers/` (`scheduler.py`, `routes/scheduler.py`, `utils/universal.py:record_job_success`), `app/audit/services/retention.py` | the job runner (APScheduler's interval semantics on tokio: fixed grid, coalesce, one instance, 1 s misfire grace), the hand-over rule and run lock, `/api/scheduler/*` (reads from APScheduler's `apscheduler_jobs` store through a read-only pickle decoder pinned by `apscheduler_vectors.json`, `scripts/gen-apscheduler-vectors.py`; run/start/pause), `prune_audit_log`; the palace jobs register from `copilot-ai-analyst`; `copilot jobs` and `doctor` list each job's owner |
+| `copilot-upstream` | what the connector helpers did with a tool's answers: `requests`/`niquests` (`PreparedRequest`, urllib3's URL parsing and error texts), CPython's `json` (`dumps`, `JSONDecodeError`), Pydantic models, FastAPI's `serialize_json` | shared by the connector crates: a `requests`-like client (`http.rs`), a Pydantic engine (`model.rs`: lax coercion, smart unions, aliases, defaults, validators, `ValidationError` text, JSON-mode dumps; `model_vectors.json` pins 905 probes, `scripts/gen-connector-model-vectors.py`), Python exceptions as values (`py.rs`: `KeyError`, `TypeError`, … and what the handlers make of them), pydantic-core's JSON writer and FastAPI's 422 (`respond.rs`) |
+| `copilot-graylog` | `app/connectors/graylog/` (routes, services, schema, `utils/universal.py`, `utils/routing.py`), `app/connectors/event_shipper/` and `app/integrations/utils/event_shipper.py` (GELF over TCP) | `/api/graylog/*` (21 routes); `GraylogClient` for later ports: the four helpers with Python's error behaviour, the 6.x/7.x version probe and `EntityKind` (the four wrapped creation endpoints), the URL allowlist fallback |
 | `copilot-gateway` | — | legacy proxy (its notification bridge sink is no longer wired); deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
 
@@ -441,6 +443,43 @@ restarted daily still runs. Ported: `prune_audit_log`,
 guarded on the previous status, so a lesson is never ingested or expired
 twice). Run a single Rust instance with the opt-in.
 
+**Connectors (Graylog).** `copilot-graylog` answers every route of
+`app/connectors/graylog/routes/` but `POST /api/graylog/invoke` (the
+active-response webhook, another module). A connector route is a call to the
+tool, subscripts into its JSON, Pydantic models and an answer, and each of
+those is reproduced rather than approximated: the request is `requests`'
+(`f"{connector_url}{endpoint}"`, urllib3's URL normalisation, `params=`
+appended with `urlencode`, HTTP Basic over latin-1 with `None` sent as
+`"None"`, `X-Requested-By: CoPilot`, `Content-Length: 0` on a bodiless
+non-GET, `json=` as `json.dumps`), certificates are not verified (Python's
+`verify=False`: Graylog in a SOCFortress stack serves a self-signed
+certificate), and every failure is worded as the library words it — URL
+errors (`MissingSchema`, `InvalidSchema`, `InvalidURL`), urllib3's
+connection errors, CPython's `JSONDecodeError`, a subscript's `KeyError` /
+`TypeError`, a model's `ValidationError` — and handled where Python catches it
+(a helper's `HTTPException`, a service's `except KeyError` then `except
+Exception`, or nobody: the `ValueError` handler's 400 or a bare 500). The
+models (`copilot_upstream::model`) follow Pydantic 2's lax mode and smart
+unions and are serialized as FastAPI 0.136 does it, through pydantic-core's
+`serialize_json` (its float format is `serde_json`'s, `NaN` is `null`); 33
+samples of Graylog 6.1 and 7.0 answers and 1,440 mutations of them pin each
+model (`copilot-graylog/src/model_vectors.json`). One Python quirk the models
+keep: `typing` caches `Dict[str, Union[…]]` by set equality, so the member
+order of a union — and the order of its errors in a 422 — is whatever the
+first importing module spelled; Rust follows `copilot.py`'s import order
+(`AlertQuery.filter`: `str` before `list[str]`). Graylog 7.0 is handled as
+in Python: `EntityKind` names the four creation endpoints 7.0 wraps in a
+`CreateEntityRequest` (`/api/streams`, `/api/events/definitions`,
+`/api/events/notifications`, content-pack installation), wrapped only when
+`GET /api/system` reports 7 or more (cached five minutes per connector; a
+failed probe counts as 6, cached too), and the URL allowlist is read from
+`/api/system/urlallowlist`, else `/urlwhitelist`. The receiver ships one GELF
+frame per request to the Event Shipper exactly as asyncgelf builds it
+(`socket.getfqdn()` as the host); as in asyncgelf, an unreachable shipper
+is not an error. `rust_parity_graylog_e2e.py` runs both backends against a
+Graylog stand-in with a 6.x and a 7.x personality and a GELF listener, and
+compares status, response bytes and every request sent to Graylog.
+
 **Connector cache.** The Python backend invalidates its connector cache after
 each write but cannot reach the Rust process, so while a legacy backend is
 configured the Rust TTL is capped at 60 s.
@@ -501,6 +540,11 @@ not provoked.
 | a delivery with an invalid header (webhook `headers`, a Shuffle `Org-Id`, an API key) to an unreachable host | h11 checks headers after connecting: the connection error | checked before connecting: the header error | same texts whenever the host answers |
 | a header value with a control character other than tab | sent (h11 allows `\x01`–`\x08`, `\x0e`–`\x1f`) | `LocalProtocolError: Illegal header value …` | the `http` crate cannot carry them |
 | an `xn--` autolink host that decodes to a lone surrogate | the surrogate in the link text | the label left encoded | a Rust string cannot hold one |
+| a connector call that cannot connect (`/graylog/*`) | urllib3's text with the address of a Python object (`<urllib3.connection.HTTPConnection object at 0x7f…>`) | the same text with `0x7f0000000000` | the address differs between any two processes; the parity suite masks it |
+| `GET /graylog/metrics` when both Graylog calls fail | the error of whichever `asyncio.gather` call failed first (timing) | the `/api/system/metrics` call's error | deterministic; both are sent, as in Python |
+| `GET /graylog/event/definitions` against a Graylog that never reaches its own `total` | pages for ever | stops after 20,000 pages | a request cannot hold a worker (not provoked) |
+| the GELF `host` of `POST /graylog/receiver` when the host name is only in DNS | `socket.getfqdn()` asks DNS for the canonical name | the host name (`/etc/hosts` is read, DNS is not) | equal in a container, where `/etc/hosts` names the host (not provoked) |
+| an Event Shipper port that is a service name (`http`) | resolved by `getaddrinfo` | not a port: nothing is sent (still answered as forwarded) | only numeric ports are configured (not provoked) |
 
 ---
 
@@ -541,7 +585,7 @@ Python backend today: ~200 k lines in 930 files.
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
 | **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer, MinIO and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (and with them the exclusion draft and dry-run) wait for an indexer port, the DOCX/PDF reports and customer report generation, download and deletion for MinIO and a PDF renderer |
-| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs; `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time; `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
+| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run), the incidents' MinIO routes and DOCX/PDF reports, the connector-bound scheduler jobs; `agents` (9.8 k), `soc_management` (4.4 k), `customer_waf`, `file_analysis`, `customer_provisioning`, `stack_provisioning`, then `connectors` (29.6 k: Wazuh, Graylog, Velociraptor gRPC, …) and `integrations` (37.5 k), one vendor at a time — **Graylog done** (`copilot-graylog` on `copilot-upstream`, `rust_parity_graylog_e2e.py`); `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the

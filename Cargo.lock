@@ -470,6 +470,7 @@ dependencies = [
  "copilot-customers",
  "copilot-db",
  "copilot-gateway",
+ "copilot-graylog",
  "copilot-healthchecks",
  "copilot-identity",
  "copilot-incidents",
@@ -616,6 +617,27 @@ dependencies = [
  "tower",
  "tracing",
  "url",
+ "wiremock",
+]
+
+[[package]]
+name = "copilot-graylog"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-upstream",
+ "copilot-web",
+ "hex",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
  "wiremock",
 ]
 
@@ -805,6 +827,27 @@ dependencies = [
  "tokio",
  "tracing",
  "wiremock",
+]
+
+[[package]]
+name = "copilot-upstream"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "copilot-auth",
+ "copilot-web",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "speedate",
+ "strum",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]
