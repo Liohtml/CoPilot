@@ -3,8 +3,8 @@
 //! Playwright browser and the licence check, still Python) and `user.py`
 //! under `/api/user` (`/user/organization/add`), all
 //! `require_any_scope("admin", "analyst")`. `POST /api/grafana/dashboards`
-//! (`dashboards.py`) is not ported: it provisions from the 4.6 MB of
-//! dashboard templates under `backend/`, which only the Python image holds.
+//! (`dashboards.py`) is `copilot-grafana-dashboards`' (the templates compiled
+//! in from `backend/`).
 //! Grafana data is deployment-wide: no route is tenant-scoped, as in Python.
 
 use axum::Router;

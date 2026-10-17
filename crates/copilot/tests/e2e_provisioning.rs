@@ -1282,7 +1282,6 @@ async fn template_bound_provisioning_stays_in_python() {
     h.seed().await;
     let routes = [
         "/api/customer_provisioning/provision",
-        "/api/customer_provisioning/provision/dashboards",
         "/api/customer_provisioning/provision/wazuh_worker",
         "/api/stack_provisioning/graylog/provision/fortinet",
         "/api/stack_provisioning/graylog/provision/sonicwall",

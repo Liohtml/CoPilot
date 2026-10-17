@@ -1,0 +1,2693 @@
+{
+ "files": [
+  "Bitdefender/summary.json",
+  "CarbonBlack/summary.json",
+  "Cato/summary.json",
+  "Crowdstrike/summary.json",
+  "Darktrace/summary.json",
+  "DefenderForEndpoint/summary.json",
+  "Duo/duo_auth.json",
+  "Fortinet/fortinet_system_logs.json",
+  "Fortinet/fortinet_utm_anomalies.json",
+  "Fortinet/fortinet_utm_app_control.json",
+  "Fortinet/fortinet_utm_dlp.json",
+  "Fortinet/fortinet_utm_dns.json",
+  "Fortinet/fortinet_utm_ips.json",
+  "Fortinet/fortinet_utm_ssl.json",
+  "Fortinet/fortinet_utm_summary.json",
+  "Fortinet/fortinet_utm_virus.json",
+  "Fortinet/fortinet_utm_webfilter.json",
+  "Fortinet/fortinet_vpn.json",
+  "Huntress/summary.json",
+  "Mimecast/summary.json",
+  "Office365/active_directory.json",
+  "Office365/applications.json",
+  "Office365/compliance_center.json",
+  "Office365/defender_for_identity.json",
+  "Office365/dlp.json",
+  "Office365/endpoint.json",
+  "Office365/exchange.json",
+  "Office365/forms.json",
+  "Office365/mitre.json",
+  "Office365/onedrive.json",
+  "Office365/powerbi.json",
+  "Office365/sharepoint.json",
+  "Office365/summary.json",
+  "Office365/teams.json",
+  "Office365/threat_intelligence.json",
+  "SapSiem/users_auth.json",
+  "Sentinelone/sentinelone_epp_administrative.json",
+  "Sentinelone/sentinelone_epp_malware.json",
+  "Sentinelone/sentinelone_epp_mitigation.json",
+  "Sentinelone/sentinelone_epp_operations.json",
+  "Sentinelone/sentinelone_epp_ranger.json",
+  "Sentinelone/sentinelone_epp_summary.json",
+  "Sentinelone/sentinelone_epp_whitelistblacklist.json",
+  "Sonicwall/sonicwall_app_control.json",
+  "Sonicwall/sonicwall_ips.json",
+  "Sonicwall/sonicwall_sdwan.json",
+  "Sonicwall/sonicwall_summary.json",
+  "Sonicwall/sonicwall_vpn.json",
+  "Sonicwall/sonicwall_web_control.json",
+  "Wazuh/edr_ad_inventory.json",
+  "Wazuh/edr_agent_inventory.json",
+  "Wazuh/edr_av_malware_ioc.json",
+  "Wazuh/edr_compliance.json",
+  "Wazuh/edr_dll_side_loading.json",
+  "Wazuh/edr_dns_requests.json",
+  "Wazuh/edr_docker_monitoring.json",
+  "Wazuh/edr_fim.json",
+  "Wazuh/edr_mitre.json",
+  "Wazuh/edr_network_connections.json",
+  "Wazuh/edr_network_scan.json",
+  "Wazuh/edr_open_audit.json",
+  "Wazuh/edr_process_injection.json",
+  "Wazuh/edr_system_processes.json",
+  "Wazuh/edr_system_security_audit.json",
+  "Wazuh/edr_system_vulnerabilities.json",
+  "Wazuh/edr_system_vulnerabilities_new.json",
+  "Wazuh/edr_users_and_groups.json",
+  "Wazuh/edr_wazuh_inventory.json",
+  "Wazuh/edr_windows_event_logs.json",
+  "Wazuh/summary.json"
+ ],
+ "classes": [
+  {
+   "name": "WazuhDashboard",
+   "members": [
+    [
+     "WAZUH_SUMMARY",
+     "Wazuh",
+     "summary.json"
+    ],
+    [
+     "EDR_WINDOWS_EVENT_LOGS",
+     "Wazuh",
+     "edr_windows_event_logs.json"
+    ],
+    [
+     "EDR_USERS_AND_GROUPS",
+     "Wazuh",
+     "edr_users_and_groups.json"
+    ],
+    [
+     "EDR_SYSTEM_SECURITY_AUDIT",
+     "Wazuh",
+     "edr_system_security_audit.json"
+    ],
+    [
+     "EDR_SYSTEM_PROCESSES",
+     "Wazuh",
+     "edr_system_processes.json"
+    ],
+    [
+     "EDR_PROCESS_INJECTION",
+     "Wazuh",
+     "edr_process_injection.json"
+    ],
+    [
+     "EDR_OPEN_AUDIT",
+     "Wazuh",
+     "edr_open_audit.json"
+    ],
+    [
+     "EDR_NETWORK_SCAN",
+     "Wazuh",
+     "edr_network_scan.json"
+    ],
+    [
+     "EDR_NETWORK_CONNECTIONS",
+     "Wazuh",
+     "edr_network_connections.json"
+    ],
+    [
+     "EDR_MITRE",
+     "Wazuh",
+     "edr_mitre.json"
+    ],
+    [
+     "EDR_FIM",
+     "Wazuh",
+     "edr_fim.json"
+    ],
+    [
+     "EDR_DOCKER_MONITORING",
+     "Wazuh",
+     "edr_docker_monitoring.json"
+    ],
+    [
+     "EDR_DNS_REQUESTS",
+     "Wazuh",
+     "edr_dns_requests.json"
+    ],
+    [
+     "EDR_DLL_SIDE_LOADING",
+     "Wazuh",
+     "edr_dll_side_loading.json"
+    ],
+    [
+     "EDR_COMPLIANCE",
+     "Wazuh",
+     "edr_compliance.json"
+    ],
+    [
+     "EDR_AV_MALWARE_IOC",
+     "Wazuh",
+     "edr_av_malware_ioc.json"
+    ],
+    [
+     "EDR_AGENT_INVENTORY",
+     "Wazuh",
+     "edr_agent_inventory.json"
+    ],
+    [
+     "EDR_AD_INVENTORY",
+     "Wazuh",
+     "edr_ad_inventory.json"
+    ]
+   ]
+  },
+  {
+   "name": "Office365Dashboard",
+   "members": [
+    [
+     "ACTIVE_DIRECTORY",
+     "Office365",
+     "active_directory.json"
+    ],
+    [
+     "APPLICATIONS",
+     "Office365",
+     "applications.json"
+    ],
+    [
+     "COMPLIANCE_CENTER",
+     "Office365",
+     "compliance_center.json"
+    ],
+    [
+     "DEFENDER_FOR_IDENTITIY",
+     "Office365",
+     "defender_for_identity.json"
+    ],
+    [
+     "DLP",
+     "Office365",
+     "dlp.json"
+    ],
+    [
+     "ENDPOINT",
+     "Office365",
+     "endpoint.json"
+    ],
+    [
+     "EXCHANGE",
+     "Office365",
+     "exchange.json"
+    ],
+    [
+     "FORMS",
+     "Office365",
+     "forms.json"
+    ],
+    [
+     "MITRE",
+     "Office365",
+     "mitre.json"
+    ],
+    [
+     "ONEDRIVE",
+     "Office365",
+     "onedrive.json"
+    ],
+    [
+     "POWERBI",
+     "Office365",
+     "powerbi.json"
+    ],
+    [
+     "SHAREPOINT",
+     "Office365",
+     "sharepoint.json"
+    ],
+    [
+     "OFFICE365_SUMMARY",
+     "Office365",
+     "summary.json"
+    ],
+    [
+     "TEAMS",
+     "Office365",
+     "teams.json"
+    ],
+    [
+     "THREAT_INTELLIGENCE",
+     "Office365",
+     "threat_intelligence.json"
+    ]
+   ]
+  },
+  {
+   "name": "MimecastDashboard",
+   "members": [
+    [
+     "MIMECAST_SUMMARY",
+     "Mimecast",
+     "summary.json"
+    ]
+   ]
+  },
+  {
+   "name": "SapSiemDashboard",
+   "members": [
+    [
+     "USERS_AUTH",
+     "SapSiem",
+     "users_auth.json"
+    ]
+   ]
+  },
+  {
+   "name": "HuntressDashboard",
+   "members": [
+    [
+     "HUNTRESS_SUMMARY",
+     "Huntress",
+     "summary.json"
+    ]
+   ]
+  },
+  {
+   "name": "CarbonBlackDashboard",
+   "members": [
+    [
+     "CARBONBLACK_SUMMARY",
+     "CarbonBlack",
+     "summary.json"
+    ]
+   ]
+  },
+  {
+   "name": "FortinetDashboard",
+   "members": [
+    [
+     "FORTINET_SYSTEM_LOGS",
+     "Fortinet",
+     "fortinet_system_logs.json"
+    ],
+    [
+     "FORTINET_UTM_ANOMALIES",
+     "Fortinet",
+     "fortinet_utm_anomalies.json"
+    ],
+    [
+     "FORTINET_UTM_APP_CONTROL",
+     "Fortinet",
+     "fortinet_utm_app_control.json"
+    ],
+    [
+     "FOTINET_UTM_DLP",
+     "Fortinet",
+     "fortinet_utm_dlp.json"
+    ],
+    [
+     "FORTINET_UTM_DNS",
+     "Fortinet",
+     "fortinet_utm_dns.json"
+    ],
+    [
+     "FORTINET_UTM_IPS",
+     "Fortinet",
+     "fortinet_utm_ips.json"
+    ],
+    [
+     "FORTINET_UTM_SSL",
+     "Fortinet",
+     "fortinet_utm_ssl.json"
+    ],
+    [
+     "FORTINET_UTM_SUMMARY",
+     "Fortinet",
+     "fortinet_utm_summary.json"
+    ],
+    [
+     "FORTINET_UTM_VIRUS",
+     "Fortinet",
+     "fortinet_utm_virus.json"
+    ],
+    [
+     "FORTINET_UTM_WEBFILTER",
+     "Fortinet",
+     "fortinet_utm_webfilter.json"
+    ],
+    [
+     "FORTINET_VPN",
+     "Fortinet",
+     "fortinet_vpn.json"
+    ]
+   ]
+  },
+  {
+   "name": "CrowdstrikeDashboard",
+   "members": [
+    [
+     "CROWDSTRIKE_SUMMARY",
+     "Crowdstrike",
+     "summary.json"
+    ]
+   ]
+  },
+  {
+   "name": "DuoDashboard",
+   "members": [
+    [
+     "DUO_AUTH",
+     "Duo",
+     "duo_auth.json"
+    ]
+   ]
+  },
+  {
+   "name": "DarktraceDashboard",
+   "members": [
+    [
+     "DARKTRACE_SUMMARY",
+     "Darktrace",
+     "summary.json"
+    ]
+   ]
+  },
+  {
+   "name": "BitdefenderDashboard",
+   "members": [
+    [
+     "BITDEFENDER_SUMMARY",
+     "Bitdefender",
+     "summary.json"
+    ]
+   ]
+  },
+  {
+   "name": "CatoDashboard",
+   "members": [
+    [
+     "CATO_SUMMARY",
+     "Cato",
+     "summary.json"
+    ]
+   ]
+  },
+  {
+   "name": "DefenderForEndpointDashboard",
+   "members": [
+    [
+     "DEFENDERFORENDPOINT_SUMMARY",
+     "DefenderForEndpoint",
+     "summary.json"
+    ]
+   ]
+  },
+  {
+   "name": "SonicwallDashboard",
+   "members": [
+    [
+     "SONICWALL_SUMMARY",
+     "Sonicwall",
+     "sonicwall_summary.json"
+    ],
+    [
+     "SONICWALL_VPN",
+     "Sonicwall",
+     "sonicwall_vpn.json"
+    ],
+    [
+     "SONICWALL_APP_CONTROL",
+     "Sonicwall",
+     "sonicwall_app_control.json"
+    ],
+    [
+     "SONICWALL_SD_WAN",
+     "Sonicwall",
+     "sonicwall_sdwan.json"
+    ],
+    [
+     "SONICWALL_IPS",
+     "Sonicwall",
+     "sonicwall_ips.json"
+    ]
+   ]
+  },
+  {
+   "name": "SentinelOneDashboard",
+   "members": [
+    [
+     "SENTINELONE_EPP_ADMINISTRATIVE",
+     "Sentinelone",
+     "sentinelone_epp_administrative.json"
+    ],
+    [
+     "SENTINELONE_EPP_MITIGATION",
+     "Sentinelone",
+     "sentinelone_epp_mitigation.json"
+    ],
+    [
+     "SENTINELONE_EPP_RANGER",
+     "Sentinelone",
+     "sentinelone_epp_ranger.json"
+    ],
+    [
+     "SENTINELONE_EPP_WHITELISTBLACKLIST",
+     "Sentinelone",
+     "sentinelone_epp_whitelistblacklist.json"
+    ],
+    [
+     "SENTINELONE_EPP_MALWARE",
+     "Sentinelone",
+     "sentinelone_epp_malware.json"
+    ],
+    [
+     "SENTINELONE_EPP_OPERATIONS",
+     "Sentinelone",
+     "sentinelone_epp_operations.json"
+    ],
+    [
+     "SENTINELONE_EPP_SUMMARY",
+     "Sentinelone",
+     "sentinelone_epp_summary.json"
+    ]
+   ]
+  }
+ ],
+ "valid": [
+  [
+   "WAZUH_SUMMARY",
+   "Wazuh",
+   "summary.json"
+  ],
+  [
+   "EDR_WINDOWS_EVENT_LOGS",
+   "Wazuh",
+   "edr_windows_event_logs.json"
+  ],
+  [
+   "EDR_USERS_AND_GROUPS",
+   "Wazuh",
+   "edr_users_and_groups.json"
+  ],
+  [
+   "EDR_SYSTEM_SECURITY_AUDIT",
+   "Wazuh",
+   "edr_system_security_audit.json"
+  ],
+  [
+   "EDR_SYSTEM_PROCESSES",
+   "Wazuh",
+   "edr_system_processes.json"
+  ],
+  [
+   "EDR_PROCESS_INJECTION",
+   "Wazuh",
+   "edr_process_injection.json"
+  ],
+  [
+   "EDR_OPEN_AUDIT",
+   "Wazuh",
+   "edr_open_audit.json"
+  ],
+  [
+   "EDR_NETWORK_SCAN",
+   "Wazuh",
+   "edr_network_scan.json"
+  ],
+  [
+   "EDR_NETWORK_CONNECTIONS",
+   "Wazuh",
+   "edr_network_connections.json"
+  ],
+  [
+   "EDR_MITRE",
+   "Wazuh",
+   "edr_mitre.json"
+  ],
+  [
+   "EDR_FIM",
+   "Wazuh",
+   "edr_fim.json"
+  ],
+  [
+   "EDR_DOCKER_MONITORING",
+   "Wazuh",
+   "edr_docker_monitoring.json"
+  ],
+  [
+   "EDR_DNS_REQUESTS",
+   "Wazuh",
+   "edr_dns_requests.json"
+  ],
+  [
+   "EDR_DLL_SIDE_LOADING",
+   "Wazuh",
+   "edr_dll_side_loading.json"
+  ],
+  [
+   "EDR_COMPLIANCE",
+   "Wazuh",
+   "edr_compliance.json"
+  ],
+  [
+   "EDR_AV_MALWARE_IOC",
+   "Wazuh",
+   "edr_av_malware_ioc.json"
+  ],
+  [
+   "EDR_AGENT_INVENTORY",
+   "Wazuh",
+   "edr_agent_inventory.json"
+  ],
+  [
+   "EDR_AD_INVENTORY",
+   "Wazuh",
+   "edr_ad_inventory.json"
+  ],
+  [
+   "ACTIVE_DIRECTORY",
+   "Office365",
+   "active_directory.json"
+  ],
+  [
+   "APPLICATIONS",
+   "Office365",
+   "applications.json"
+  ],
+  [
+   "COMPLIANCE_CENTER",
+   "Office365",
+   "compliance_center.json"
+  ],
+  [
+   "DEFENDER_FOR_IDENTITIY",
+   "Office365",
+   "defender_for_identity.json"
+  ],
+  [
+   "DLP",
+   "Office365",
+   "dlp.json"
+  ],
+  [
+   "ENDPOINT",
+   "Office365",
+   "endpoint.json"
+  ],
+  [
+   "EXCHANGE",
+   "Office365",
+   "exchange.json"
+  ],
+  [
+   "FORMS",
+   "Office365",
+   "forms.json"
+  ],
+  [
+   "MITRE",
+   "Office365",
+   "mitre.json"
+  ],
+  [
+   "ONEDRIVE",
+   "Office365",
+   "onedrive.json"
+  ],
+  [
+   "POWERBI",
+   "Office365",
+   "powerbi.json"
+  ],
+  [
+   "SHAREPOINT",
+   "Office365",
+   "sharepoint.json"
+  ],
+  [
+   "OFFICE365_SUMMARY",
+   "Office365",
+   "summary.json"
+  ],
+  [
+   "TEAMS",
+   "Office365",
+   "teams.json"
+  ],
+  [
+   "THREAT_INTELLIGENCE",
+   "Office365",
+   "threat_intelligence.json"
+  ],
+  [
+   "MIMECAST_SUMMARY",
+   "Mimecast",
+   "summary.json"
+  ],
+  [
+   "USERS_AUTH",
+   "SapSiem",
+   "users_auth.json"
+  ],
+  [
+   "HUNTRESS_SUMMARY",
+   "Huntress",
+   "summary.json"
+  ],
+  [
+   "CARBONBLACK_SUMMARY",
+   "CarbonBlack",
+   "summary.json"
+  ],
+  [
+   "FORTINET_SYSTEM_LOGS",
+   "Fortinet",
+   "fortinet_system_logs.json"
+  ],
+  [
+   "FORTINET_UTM_ANOMALIES",
+   "Fortinet",
+   "fortinet_utm_anomalies.json"
+  ],
+  [
+   "FORTINET_UTM_APP_CONTROL",
+   "Fortinet",
+   "fortinet_utm_app_control.json"
+  ],
+  [
+   "FOTINET_UTM_DLP",
+   "Fortinet",
+   "fortinet_utm_dlp.json"
+  ],
+  [
+   "FORTINET_UTM_DNS",
+   "Fortinet",
+   "fortinet_utm_dns.json"
+  ],
+  [
+   "FORTINET_UTM_IPS",
+   "Fortinet",
+   "fortinet_utm_ips.json"
+  ],
+  [
+   "FORTINET_UTM_SSL",
+   "Fortinet",
+   "fortinet_utm_ssl.json"
+  ],
+  [
+   "FORTINET_UTM_SUMMARY",
+   "Fortinet",
+   "fortinet_utm_summary.json"
+  ],
+  [
+   "FORTINET_UTM_VIRUS",
+   "Fortinet",
+   "fortinet_utm_virus.json"
+  ],
+  [
+   "FORTINET_UTM_WEBFILTER",
+   "Fortinet",
+   "fortinet_utm_webfilter.json"
+  ],
+  [
+   "FORTINET_VPN",
+   "Fortinet",
+   "fortinet_vpn.json"
+  ],
+  [
+   "CROWDSTRIKE_SUMMARY",
+   "Crowdstrike",
+   "summary.json"
+  ],
+  [
+   "DUO_AUTH",
+   "Duo",
+   "duo_auth.json"
+  ],
+  [
+   "DARKTRACE_SUMMARY",
+   "Darktrace",
+   "summary.json"
+  ],
+  [
+   "BITDEFENDER_SUMMARY",
+   "Bitdefender",
+   "summary.json"
+  ],
+  [
+   "CATO_SUMMARY",
+   "Cato",
+   "summary.json"
+  ],
+  [
+   "DEFENDERFORENDPOINT_SUMMARY",
+   "DefenderForEndpoint",
+   "summary.json"
+  ],
+  [
+   "SONICWALL_SUMMARY",
+   "Sonicwall",
+   "sonicwall_summary.json"
+  ],
+  [
+   "SONICWALL_VPN",
+   "Sonicwall",
+   "sonicwall_vpn.json"
+  ],
+  [
+   "SONICWALL_APP_CONTROL",
+   "Sonicwall",
+   "sonicwall_app_control.json"
+  ],
+  [
+   "SONICWALL_SD_WAN",
+   "Sonicwall",
+   "sonicwall_sdwan.json"
+  ],
+  [
+   "SONICWALL_IPS",
+   "Sonicwall",
+   "sonicwall_ips.json"
+  ],
+  [
+   "SENTINELONE_EPP_ADMINISTRATIVE",
+   "Sentinelone",
+   "sentinelone_epp_administrative.json"
+  ],
+  [
+   "SENTINELONE_EPP_MITIGATION",
+   "Sentinelone",
+   "sentinelone_epp_mitigation.json"
+  ],
+  [
+   "SENTINELONE_EPP_RANGER",
+   "Sentinelone",
+   "sentinelone_epp_ranger.json"
+  ],
+  [
+   "SENTINELONE_EPP_WHITELISTBLACKLIST",
+   "Sentinelone",
+   "sentinelone_epp_whitelistblacklist.json"
+  ],
+  [
+   "SENTINELONE_EPP_MALWARE",
+   "Sentinelone",
+   "sentinelone_epp_malware.json"
+  ],
+  [
+   "SENTINELONE_EPP_OPERATIONS",
+   "Sentinelone",
+   "sentinelone_epp_operations.json"
+  ],
+  [
+   "SENTINELONE_EPP_SUMMARY",
+   "Sentinelone",
+   "sentinelone_epp_summary.json"
+  ]
+ ],
+ "bodies": [
+  {
+   "name": "WAZUH_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "a8c0bc25ba29541fcc6086322f013c3873da0b6add679c6d7199db596a6bb3f0",
+   "len": 47903
+  },
+  {
+   "name": "WAZUH_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "85fddf0e2764777cb60203969dcdf5797f14f9631904be7fd5efec6520cb4167",
+   "len": 47847
+  },
+  {
+   "name": "WAZUH_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "fe08437b74300cbe0323bcade4231546812193adb885c3e5a0eaa9fbfee53e8a",
+   "len": 47478
+  },
+  {
+   "name": "EDR_WINDOWS_EVENT_LOGS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "0c686866353ee700d864f1e635f57e22ee81a7e8a76db265750fb62f27e188e3",
+   "len": 109671
+  },
+  {
+   "name": "EDR_WINDOWS_EVENT_LOGS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "e9ed9fefd160ad40cb8f7b9146ded3613a1853b2ecdbee54e8c4aa323c4c8d96",
+   "len": 109481
+  },
+  {
+   "name": "EDR_WINDOWS_EVENT_LOGS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "04cfa4df53115b38bfb3a21d5f8b725769dd79892019d1776023a5ed7079b8fd",
+   "len": 108386
+  },
+  {
+   "name": "EDR_USERS_AND_GROUPS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "45f374e7cc8e2a7121fc3bfb90cafd6e21efdb1055f8903d74e69b4876ed8d4b",
+   "len": 40642
+  },
+  {
+   "name": "EDR_USERS_AND_GROUPS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "9a8b6cdd347fb9465f31e99b36ef26b057806768c91fcae9513a2f069675fed8",
+   "len": 40539
+  },
+  {
+   "name": "EDR_USERS_AND_GROUPS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "bbdb6094f72ac2451789bb295695103e2e2efeece97f769fffb2c2d0c10c3ecd",
+   "len": 39963
+  },
+  {
+   "name": "EDR_SYSTEM_SECURITY_AUDIT",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "41b12c9181bef74eb8dc0bb768446f80522c9e33f822b1a21bb5545ea3ab59cc",
+   "len": 22799
+  },
+  {
+   "name": "EDR_SYSTEM_SECURITY_AUDIT",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "ef2adac0dabb32f1c8b354886e4e34f8433d5079881af9c798e6898b9d0c4298",
+   "len": 22755
+  },
+  {
+   "name": "EDR_SYSTEM_SECURITY_AUDIT",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "75e8b80ca8a750546890aa5aa1aebf9cca6dd2621b487ba1a0e9f4615372ca67",
+   "len": 22530
+  },
+  {
+   "name": "EDR_SYSTEM_PROCESSES",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "653e311303b057c9b70ffdf31b46bcc47d1a940da989581bd0a7efd0b89fee5e",
+   "len": 28831
+  },
+  {
+   "name": "EDR_SYSTEM_PROCESSES",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "c8b2811998dd308d094186e5f463b4a469ee65d1aaafeb820796dcf52089e1f7",
+   "len": 28723
+  },
+  {
+   "name": "EDR_SYSTEM_PROCESSES",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "67adf0a580e929e295ce993d146584dd5d6a8e5cc0bc1497fe26124f20b7ff6e",
+   "len": 28150
+  },
+  {
+   "name": "EDR_PROCESS_INJECTION",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "7354af020dace70e6735a30e43796020943ef18d64595e040219081068a1d998",
+   "len": 18881
+  },
+  {
+   "name": "EDR_PROCESS_INJECTION",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "d4b870be0a4bd2c90ee946b3707314e1c504ec0fb13be624a3341895e258ae23",
+   "len": 18836
+  },
+  {
+   "name": "EDR_PROCESS_INJECTION",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "e40aa1145c93f037a8eec10d160179b88ceb272178b4128c6deb0705e8b9860a",
+   "len": 18578
+  },
+  {
+   "name": "EDR_OPEN_AUDIT",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "a9d17a653c47881999fd80994972995b0b44b608a479e6fe1405d257265bc8a2",
+   "len": 178369
+  },
+  {
+   "name": "EDR_OPEN_AUDIT",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "41d2d31502de181293282fec957a014a1040b73a00c2fc0aca5fde77ab43285a",
+   "len": 178127
+  },
+  {
+   "name": "EDR_OPEN_AUDIT",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "c2c4f3171a33ed8e0e8c4547927bb7ca01b34bebef10383ab05283a14ea1e536",
+   "len": 176912
+  },
+  {
+   "name": "EDR_NETWORK_SCAN",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "75987c6289dd54eb875a3b700bbf825460dc0b6708208a6fd57317a2b298bd8e",
+   "len": 25859
+  },
+  {
+   "name": "EDR_NETWORK_SCAN",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "f676c4f1451f20d87afa6e36dc88b32551b903527fdbb500d3c85013234236f5",
+   "len": 25763
+  },
+  {
+   "name": "EDR_NETWORK_SCAN",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "85a68643fc540f5598706e85c076efa3793e2f9f184889aa891ba3d7278fb21b",
+   "len": 25250
+  },
+  {
+   "name": "EDR_NETWORK_CONNECTIONS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "87940fcc2d2c96dc5a806ee0c8e23646f969af3731d8f509d2dad4c1fc372146",
+   "len": 27623
+  },
+  {
+   "name": "EDR_NETWORK_CONNECTIONS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "06ffb21c0a80db819f1737cd8f36a3fb7246a3c610b069d08db3416c91c00691",
+   "len": 27527
+  },
+  {
+   "name": "EDR_NETWORK_CONNECTIONS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "d8a6963cdbba6b4c442b84cbcccd7382c468a833107f239aa465198ec096daee",
+   "len": 27014
+  },
+  {
+   "name": "EDR_MITRE",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "032b959d2b1bc65c80c4d7e89edfa80c5cc67362882df8e64a612cee4f022004",
+   "len": 21373
+  },
+  {
+   "name": "EDR_MITRE",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "0e90a2d293068a1f02cee365559823d68c8ef3d9091f68ce74c2803cb03bef39",
+   "len": 21319
+  },
+  {
+   "name": "EDR_MITRE",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "e385daeb36947e0660616033e8fea3af52b64c106b868edb1d561895a95daaf4",
+   "len": 21016
+  },
+  {
+   "name": "EDR_FIM",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "cb0770fa4f3e872479760749af0d90a633bd2920c89a13528ab435c011cce87e",
+   "len": 98536
+  },
+  {
+   "name": "EDR_FIM",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "24503cc343d51bdc5e20a6dca1c7ed6173ce50d5f341dba0aacd281f510d72aa",
+   "len": 98368
+  },
+  {
+   "name": "EDR_FIM",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "d280c653f406259eed2f894dd7981671e0d92a9e73473ecc9d65a55157434394",
+   "len": 97411
+  },
+  {
+   "name": "EDR_DOCKER_MONITORING",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "ec2ee42f94fdd3949b7907627086ae1d40848f9b7bb9cab6fdca2cf45c3188dd",
+   "len": 40282
+  },
+  {
+   "name": "EDR_DOCKER_MONITORING",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "076b06b3cb983cdb5bae073e5797bd272cbccf2886580a3fb84eb1beab262d99",
+   "len": 40230
+  },
+  {
+   "name": "EDR_DOCKER_MONITORING",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "192b7d9f5f1c15dea4e9c0e8e19c9deb7cc2454226d865e3ba269b61e7733a1b",
+   "len": 39909
+  },
+  {
+   "name": "EDR_DNS_REQUESTS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "f25141e9d7092a60c81cf7d2bbcfb80780d314c1d239fb7ea5128cddd0958f93",
+   "len": 17675
+  },
+  {
+   "name": "EDR_DNS_REQUESTS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "e575744474bae6a1a920c432a7b533ad445c3cd8029179a44c17a523e19c3bbe",
+   "len": 17615
+  },
+  {
+   "name": "EDR_DNS_REQUESTS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "2618df4fee8481c611ff0fc8f7976a0c476e53be4473e2858f00352fa8166a07",
+   "len": 17282
+  },
+  {
+   "name": "EDR_DLL_SIDE_LOADING",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "2f917d6be1cfef36aa9230de4579e0adb5731fbeefd19daf60cc200966c3d4f4",
+   "len": 32097
+  },
+  {
+   "name": "EDR_DLL_SIDE_LOADING",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "e8eba461421a4ea32294bacfd2e0ec60162d752bd0957ecd8d331580e63459c9",
+   "len": 32007
+  },
+  {
+   "name": "EDR_DLL_SIDE_LOADING",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "136403d41eb2bd7b00f050dc343b4cd3028941b08147b3ff1d086e92b5fe5a05",
+   "len": 31524
+  },
+  {
+   "name": "EDR_COMPLIANCE",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "8e6bab747cd0de6eaea027428f28a22c92cbdf2c78094b518790dfa972c57f19",
+   "len": 54001
+  },
+  {
+   "name": "EDR_COMPLIANCE",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "c36a6492fa7529621fa9419628135b16c3fac77727dad60ee6689dfd98d1eee6",
+   "len": 53882
+  },
+  {
+   "name": "EDR_COMPLIANCE",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "61ff05d26bcfc7a8978b89fcbdc6daa4f0de182d4e726482325145fd27b12027",
+   "len": 53282
+  },
+  {
+   "name": "EDR_AV_MALWARE_IOC",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "d272e4cf829ffe71749015de3b059b942c05c9dc724c2956fcc09ea0d58deab4",
+   "len": 112479
+  },
+  {
+   "name": "EDR_AV_MALWARE_IOC",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "8d24d35f005e0b403f482988dcdd8527a3e104feefe3c142fe20acb15dc19f67",
+   "len": 112277
+  },
+  {
+   "name": "EDR_AV_MALWARE_IOC",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "a5e8da637d36fffc2dccee06284eb97c348c278dd082809b45327bf973ccf907",
+   "len": 111122
+  },
+  {
+   "name": "EDR_AGENT_INVENTORY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "55b166f4979b73b101afcb86a81a0d0747bffbffcaf4cd88ca20c4c50afc02a0",
+   "len": 187646
+  },
+  {
+   "name": "EDR_AGENT_INVENTORY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "bfe5ac8a81c754574f16116fea2a4d0491d8a69623a2176bf8b1b16e4a073bf8",
+   "len": 187281
+  },
+  {
+   "name": "EDR_AGENT_INVENTORY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "e2f226a6fc597ef7268c3e83a981396bb8ac575c53345286a9b01435c30d1761",
+   "len": 185451
+  },
+  {
+   "name": "EDR_AD_INVENTORY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "0d047063aa9f747343594bba6b057598fafe7417ce1f49367a6ee69d6212dd5d",
+   "len": 11353
+  },
+  {
+   "name": "EDR_AD_INVENTORY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "a2b56e746665bba0da6525548460e8cd6255f7d892b6feb57c6ccca717ba64c1",
+   "len": 11312
+  },
+  {
+   "name": "EDR_AD_INVENTORY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "2582a1eaf97af18db0e834860d0b81494ccc84985200ed33e22aaf485b6f7cd1",
+   "len": 11102
+  },
+  {
+   "name": "ACTIVE_DIRECTORY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "888d9f9877525628a92a802b793ea7e798738af77c0240ae7fca037adcd83c8b",
+   "len": 68392
+  },
+  {
+   "name": "ACTIVE_DIRECTORY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "78063ed3b90c78725b9c40dc86962cedcaf63e163e184b33bca2fbd05c97daf7",
+   "len": 68218
+  },
+  {
+   "name": "ACTIVE_DIRECTORY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "6dde38486ff6adf6c1f7498a18f981647d1fabbf33d10b70548834fbd02504cc",
+   "len": 67315
+  },
+  {
+   "name": "APPLICATIONS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "deaa608f4d39c50a8b30d6af4da5a2715a6ac030e54b80798c740cc2a81f1387",
+   "len": 48233
+  },
+  {
+   "name": "APPLICATIONS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "ceb51373453eb48e8631fdd53f5d8143bcb731e202ac466f3213de29d0f40d9f",
+   "len": 48161
+  },
+  {
+   "name": "APPLICATIONS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "b15c5ff68cedff4671a134d61fd4285494e30297f566636de01859477e2302b2",
+   "len": 47768
+  },
+  {
+   "name": "COMPLIANCE_CENTER",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "1a483f3ee6b3223c1291d2a1d396b8c0cba29a8032387acbab786958632aad68",
+   "len": 28081
+  },
+  {
+   "name": "COMPLIANCE_CENTER",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "772153c6dfb06aa71e8d1fda0e00b8253e8d1c1a9efbcda7ace2e6a3a518a032",
+   "len": 28021
+  },
+  {
+   "name": "COMPLIANCE_CENTER",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "1a6c3b4399dc3d076d3e0f45f285207a4ccdecea9f1d5b93ce75b6179eb15b93",
+   "len": 27688
+  },
+  {
+   "name": "DEFENDER_FOR_IDENTITIY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "813e9b3867eaff1f0516ec30a7eb6ca8a2ff92ff514ab5e15fdaac4f27d80cd8",
+   "len": 44598
+  },
+  {
+   "name": "DEFENDER_FOR_IDENTITIY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "a41135901f3a60911ddf5c16c967cc55e5ed8e526dfa5af48b3613cfa274fbda",
+   "len": 44532
+  },
+  {
+   "name": "DEFENDER_FOR_IDENTITIY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "06c12e385e015c1be7f1777c62355ea24c3c05dad3ce95f1fb096faa3261c060",
+   "len": 44169
+  },
+  {
+   "name": "DLP",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "6a2b94a89f2aff8702305ed6885a60f27c7228f7641e13a35eae7746a2058eba",
+   "len": 38095
+  },
+  {
+   "name": "DLP",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "4fc78795384fbbfb203190c21187165ef41c3d3201071b74ae2f7a33fd64e504",
+   "len": 38029
+  },
+  {
+   "name": "DLP",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "d9a0639657a50d83a50a99b6c1038ad1006d6f72e86ba6331b627fe0cff7a099",
+   "len": 37666
+  },
+  {
+   "name": "ENDPOINT",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "bda01436ca4e431c76f46740fd237916fd5c133e29f6d2904197fa8de0acb991",
+   "len": 45987
+  },
+  {
+   "name": "ENDPOINT",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "db1ad6d8eea43e591d438b85119b6d045c804fb88a7926e55c4680ea0b5ef1f9",
+   "len": 45915
+  },
+  {
+   "name": "ENDPOINT",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "12d2a27548aa66eb8f818e5be6556ad6b88b46c0f4f8e18b0c61be91afbd745d",
+   "len": 45522
+  },
+  {
+   "name": "EXCHANGE",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "2ba2fb0f9cc88afd27241e1c25f8ac6f38350cbdc4d2c23d55c89386abfd7783",
+   "len": 42762
+  },
+  {
+   "name": "EXCHANGE",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "9a6764db43a83b065c7ae79dd2e918349d268b645b2939652a58bee6bdc31eab",
+   "len": 42690
+  },
+  {
+   "name": "EXCHANGE",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "ca89d2ed4158d47958ecd66f6e5b3cd5ca1edd366ab2156bc67e9d6fe463dba5",
+   "len": 42297
+  },
+  {
+   "name": "FORMS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "f11821cca3074c15b6ae8a624c20fad407217c24374638a3bfac4ea90d94a673",
+   "len": 47159
+  },
+  {
+   "name": "FORMS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "30cf89619c9b8945bdeb2d309824ed5d8fddd325a71c8ee146e16445590b7c09",
+   "len": 47087
+  },
+  {
+   "name": "FORMS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "22948393a4c845ba6ee544c4edb6ab1695b513c9dbdb32baf1b390138cf3cda5",
+   "len": 46694
+  },
+  {
+   "name": "MITRE",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "40e3811e09378457a4bf5dfadd71aa0fdf77f8fd749db54da67b880864982e7d",
+   "len": 24026
+  },
+  {
+   "name": "MITRE",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "a5dd7047d0fed6b59a7224a086edb026504831bf04604b218eb267e89d8902a3",
+   "len": 23939
+  },
+  {
+   "name": "MITRE",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "686da40d09e1f9bd2b9bbe9c919c19ad93d0eff8cfaadfe9b45cee910748f81b",
+   "len": 23471
+  },
+  {
+   "name": "ONEDRIVE",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "64f1f11e775e3861ffcedbf1148af824601c46afa85ddfe4e936da2cd4202849",
+   "len": 44623
+  },
+  {
+   "name": "ONEDRIVE",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "f98c7e55dd8a7507e1e9c2107a135aa29f52800e94e28e67444ff3f5550783fc",
+   "len": 44551
+  },
+  {
+   "name": "ONEDRIVE",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "64647981cc8b95f5c0a00023c0a393c3b77b5706429ae54edf3c77f80c0bf1b7",
+   "len": 44158
+  },
+  {
+   "name": "POWERBI",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "2293255c28ea41a0892f0fc06af7f05d94a450ed0afb2540fbe7411803a4edda",
+   "len": 47547
+  },
+  {
+   "name": "POWERBI",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "fa10751750db0f6a158b3c4b5edfed196b1b661f20aeebecb43359c9c21a2210",
+   "len": 47475
+  },
+  {
+   "name": "POWERBI",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "8594718245a15f207625d33afea1184bf562756ff074b98ec8eb451c80cb51c3",
+   "len": 47082
+  },
+  {
+   "name": "SHAREPOINT",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "e67d0fbecd5b0b15fceba827f879a6c48ed8c32ba6ba246ed74510e938fb8357",
+   "len": 46969
+  },
+  {
+   "name": "SHAREPOINT",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "ca7dea70bd32b29386578a1a1918657abc1e8d389d6b08db77ec9616c19077de",
+   "len": 46897
+  },
+  {
+   "name": "SHAREPOINT",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "e912595041203ef361da448369abccc909f69256fa5bbee32a2ff6a353d4d272",
+   "len": 46504
+  },
+  {
+   "name": "OFFICE365_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "e331a6f8d7e24e4ab8f8fcebc1b5d6ac9b6de8bfc2fd86718448380c3e48e84a",
+   "len": 55724
+  },
+  {
+   "name": "OFFICE365_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "c5bd737dcae1aaf23cc9809269d2a63d2cf2ebb1c06f3c2feeec2a7ff39cb5b6",
+   "len": 55640
+  },
+  {
+   "name": "OFFICE365_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "60a3736814c2dfe0a57dcad51c5b79c0aa7f0991dbc149106b37f47760cf4ad7",
+   "len": 55187
+  },
+  {
+   "name": "TEAMS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "2062e9ef807bc617db28767223ca612515358015c90e672bcbf42f19c6b9255c",
+   "len": 41022
+  },
+  {
+   "name": "TEAMS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "d9f155dd9a8eedeb4f6dd9c38ae49d708a4d64bd84aa743b089e31b0ae484f4e",
+   "len": 40950
+  },
+  {
+   "name": "TEAMS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "8b773134d5f9733e2f75635f24563c2150ae8f6c98cc9d5bb465f477ac9e41ba",
+   "len": 40557
+  },
+  {
+   "name": "THREAT_INTELLIGENCE",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "1b0ba26c102410cd960dc2372a896d7766d44a93ff044c13f13991ca29a7e39e",
+   "len": 47031
+  },
+  {
+   "name": "THREAT_INTELLIGENCE",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "ee8b83d24aecf6e00e25791299043f8e9a954d9931439864c1c4d6b42aa4f5fe",
+   "len": 46953
+  },
+  {
+   "name": "THREAT_INTELLIGENCE",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "7754162f2dd203828e9ffe6bfd1121a140671d10af985a6a450b3e85cac8d4c6",
+   "len": 46530
+  },
+  {
+   "name": "MIMECAST_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "ddefb4d9c8b6ec598b1f256d427df9042dcbd2c10d267842718595f13b26551f",
+   "len": 67871
+  },
+  {
+   "name": "MIMECAST_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "d9b8ec3610fa2b2974d87ac54a3a5e7410bc40096f9bda6fb46b99ff770a8346",
+   "len": 67641
+  },
+  {
+   "name": "MIMECAST_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "cd44d45048e6c58d87b3d83a661a718ce65a1f658fb234a8304e537ccac1dd0d",
+   "len": 66486
+  },
+  {
+   "name": "USERS_AUTH",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "0d345c073101c31ea22b3c6a5c4146f860c9596868568f29be324347fd6ee138",
+   "len": 39916
+  },
+  {
+   "name": "USERS_AUTH",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "efcc835d30811eefbad3be1a5970bf443ad20f5e3a540f314754b1fb736b8a91",
+   "len": 39845
+  },
+  {
+   "name": "USERS_AUTH",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "92408b53096041b83ef20911f7c7723fd022bb4cdb5bc69d3f8150539bf32961",
+   "len": 39485
+  },
+  {
+   "name": "HUNTRESS_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "4861e380bab29ce1217ebdd99a112a040f97c7065bf1fba037e4f197a063164c",
+   "len": 15430
+  },
+  {
+   "name": "HUNTRESS_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "f9a128bb4020ca7138695c583b31d94c8eae906324fc326bbceaf1da942f364f",
+   "len": 15373
+  },
+  {
+   "name": "HUNTRESS_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "fc1f43774abb766491b8aba6d17ca4bd5e98186340e8d4527760efb3d44f97fd",
+   "len": 15055
+  },
+  {
+   "name": "CARBONBLACK_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "4b8548aba384706df1f8faeec8e1d9740d05925a55dec4446e399d16f723d0d0",
+   "len": 23331
+  },
+  {
+   "name": "CARBONBLACK_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "7cc5ab270729719d9dbc1d3dd79939bbb8c06d2c45b441520cf05868ebf158ae",
+   "len": 23259
+  },
+  {
+   "name": "CARBONBLACK_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "e42d4196e2059164fb7a2e4f85b6856403d147879654d08137d89e12e33be0b2",
+   "len": 22866
+  },
+  {
+   "name": "FORTINET_SYSTEM_LOGS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "20d279a6bf61c3d5c1f9c950e8764f3b89440c858af04320f64b85ec61fbdf79",
+   "len": 23425
+  },
+  {
+   "name": "FORTINET_SYSTEM_LOGS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "332a673403591100ad78c40cd27864e67170c04e55fdd3bc07b71c9d9867f47f",
+   "len": 23347
+  },
+  {
+   "name": "FORTINET_SYSTEM_LOGS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "6d295257c541107932195430bafd36510ddbda0b342c00170257c07795d97a42",
+   "len": 22924
+  },
+  {
+   "name": "FORTINET_UTM_ANOMALIES",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "960b934cc6ae7991535cb64b3a58b0d3483b0907da9f649471314198fe98681f",
+   "len": 24994
+  },
+  {
+   "name": "FORTINET_UTM_ANOMALIES",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "41b417711c49243a0bded47e6ea17ce039cfe560d0c962f40fba9eab3cc35714",
+   "len": 24910
+  },
+  {
+   "name": "FORTINET_UTM_ANOMALIES",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "68591eec1997992f460a2647823ac43cbe83a343c1d2956e489a79d8dbb411ea",
+   "len": 24457
+  },
+  {
+   "name": "FORTINET_UTM_APP_CONTROL",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "5f4827259eb7d23803ef87cbb0372f2e59988320091ed292daa3f1d43ef43c75",
+   "len": 24943
+  },
+  {
+   "name": "FORTINET_UTM_APP_CONTROL",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "3b8caa8dff6c51f08da478cb22debb64090dde1780bad27ae994852fe6150b22",
+   "len": 24859
+  },
+  {
+   "name": "FORTINET_UTM_APP_CONTROL",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "30092586f1a69c2affe25dc51a8f45030c4f5d6f3df23fd4a8679d9530ce4395",
+   "len": 24406
+  },
+  {
+   "name": "FOTINET_UTM_DLP",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "b8cc62040762146b92e23dc6d9165c00ca4c9b6335dff25df847e8466e1130c7",
+   "len": 24956
+  },
+  {
+   "name": "FOTINET_UTM_DLP",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "a0b6a2128587dd31aab76dcd58f75a9b10d6236636fc6c4cf8f151584010c4e0",
+   "len": 24872
+  },
+  {
+   "name": "FOTINET_UTM_DLP",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "98be267272e05509cd7d458e17a49f8d6e5b7cbb05b3792c58325cfad4073e94",
+   "len": 24419
+  },
+  {
+   "name": "FORTINET_UTM_DNS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "44a0fd37a38049a12d497bfe1737c65f9cd1b54d501e1c8c49e1bac477415eb3",
+   "len": 28425
+  },
+  {
+   "name": "FORTINET_UTM_DNS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "340938f1ebb9c466fa35aa8aae3df54bfa3c865752c5d850e4abfb807654481c",
+   "len": 28335
+  },
+  {
+   "name": "FORTINET_UTM_DNS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "1d1d14ed632351d157876f98ef7560f423534b802ec3bf91c11f0ff21d0ee29a",
+   "len": 27852
+  },
+  {
+   "name": "FORTINET_UTM_IPS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "f0418d39ff81ec1e56aa6d7e833b57a789bec6b9b5fc5a257f4e4ef8aebbe64a",
+   "len": 24862
+  },
+  {
+   "name": "FORTINET_UTM_IPS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "1d850216f32c7bfaca10ae0e8c5d623f20398d8ff8b5b40e0083e2aeb77e2eda",
+   "len": 24778
+  },
+  {
+   "name": "FORTINET_UTM_IPS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "7d368f4ae0d4264819424ba0620525dc497ad476a6cb67964945812ca46b757a",
+   "len": 24325
+  },
+  {
+   "name": "FORTINET_UTM_SSL",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "202c216a001d7134ac5e6fa4638d696f4d5f98305c6c7029ec4f3d8c37d628c3",
+   "len": 24694
+  },
+  {
+   "name": "FORTINET_UTM_SSL",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "bcfc2e2fd671b52fd56c2e08688518a8f8d095a277cbb39a2fe8ce0edec5caf2",
+   "len": 24610
+  },
+  {
+   "name": "FORTINET_UTM_SSL",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "fb31adb75a57cb33adc278eaa483f367f51fdd7681bb7ce3131f723bd18ab10e",
+   "len": 24157
+  },
+  {
+   "name": "FORTINET_UTM_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "ace3aa3068879087eacd5747efc8078a1d819712e377e31ad5beccf6cb16b41f",
+   "len": 15559
+  },
+  {
+   "name": "FORTINET_UTM_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "d47697e31cf56178de9927a7fb7f8764b668f216bc10f9a963f611752b286311",
+   "len": 15491
+  },
+  {
+   "name": "FORTINET_UTM_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "c9fce9bb43225474e41289b7c28a284109481c5481245f361e7e63ec9d732f97",
+   "len": 15146
+  },
+  {
+   "name": "FORTINET_UTM_VIRUS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "c1e6578ea10d3c51e561c65de279abce1e9795e3e0525d803e04efd627e5ea5a",
+   "len": 24687
+  },
+  {
+   "name": "FORTINET_UTM_VIRUS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "63bd19ea345bfefbfa5f37ab4d9d52b77d2b606c10af6916bc08f560a93581e1",
+   "len": 24603
+  },
+  {
+   "name": "FORTINET_UTM_VIRUS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "3c92d1f73a51a8e2b8d9924b2d1bee716ba36b029cfebffd7d8c3e0c502ad97b",
+   "len": 24150
+  },
+  {
+   "name": "FORTINET_UTM_WEBFILTER",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "5062c640a5ec23ca8d4842eec0fea0971e48988f628333c8263f0484b0a25f8f",
+   "len": 27646
+  },
+  {
+   "name": "FORTINET_UTM_WEBFILTER",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "e298ffe33a18c3064be21cb7026f5a1dc221db4664eedaba17ea7b9b1140ad76",
+   "len": 27556
+  },
+  {
+   "name": "FORTINET_UTM_WEBFILTER",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "dda172bb3eb1cf9ad7bef5f59b6f0375ae118ba42e2cdb5b43b4784949c54a9a",
+   "len": 27073
+  },
+  {
+   "name": "FORTINET_VPN",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "7a009266705dddba60bea0c268ea88ea18c8e836c56c25ece150f3f2c790b7c2",
+   "len": 51263
+  },
+  {
+   "name": "FORTINET_VPN",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "1abd908a361c77510e8b569bc8b542eda7b47e578d079c744b63198cc48a44ef",
+   "len": 51098
+  },
+  {
+   "name": "FORTINET_VPN",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "029eb2c0c749211ed291aa2b82dc5240dc6bb768a48b0d6b526427249f5d7fcd",
+   "len": 50240
+  },
+  {
+   "name": "CROWDSTRIKE_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "9888f64d4dfebfd6f1d514d75d0cd007159570d6f7450b6cf172be9a5a00d9ec",
+   "len": 66078
+  },
+  {
+   "name": "CROWDSTRIKE_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "61b15cee3865a53a561a8b82c96d6f9f73b9e51879446582a71f0bd4e628b529",
+   "len": 65986
+  },
+  {
+   "name": "CROWDSTRIKE_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "163d7ba6343367bbc500fa77ed69bf2a5c6f6835fe50e91307d8ec02b132fe0a",
+   "len": 65437
+  },
+  {
+   "name": "DUO_AUTH",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "f8edffd9006ac9f6293abc8d651650eec4588ccfe01565bfdf7fd91b24996daf",
+   "len": 26542
+  },
+  {
+   "name": "DUO_AUTH",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "fdd5e71432814364ac6e2416a522d44fc578098e1e32d2690580f712a3314a20",
+   "len": 26467
+  },
+  {
+   "name": "DUO_AUTH",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "8838a7ca375265627d66efefed25bd3234925596bc7f4292172008e50f2d988c",
+   "len": 26059
+  },
+  {
+   "name": "DARKTRACE_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "087d527b981e978df8c2c95848e104e4f2c22869cea345b886a0843811c5bb5e",
+   "len": 20778
+  },
+  {
+   "name": "DARKTRACE_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "27eefebc7f72ef9069213dfd20c2a0050b594f3dc259d7a929b8a66d53ffe757",
+   "len": 20717
+  },
+  {
+   "name": "DARKTRACE_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "216ef972e12e733ccd72737cf70a5a9eba40c02164e485c9595fe0ad0203e56e",
+   "len": 20351
+  },
+  {
+   "name": "BITDEFENDER_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "f86d0cc1ed7d6bd50122c62dc0bfbcb2e0caecff608c7f0751e4268dbfceb84e",
+   "len": 49499
+  },
+  {
+   "name": "BITDEFENDER_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "1369935d25318784d795f0808f1854601b67028e2993ecf77ae0cea63b5b57f0",
+   "len": 49417
+  },
+  {
+   "name": "BITDEFENDER_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "0b502d6686ea0465e4a76cf44aa732aad3374c67810cbe29d1ac51de16ec370f",
+   "len": 48946
+  },
+  {
+   "name": "CATO_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "7afa4aae90953c3c48252d0a2ea0e358792882cfa9f03ec511dd8c39edeac4aa",
+   "len": 28850
+  },
+  {
+   "name": "CATO_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "78f8f4400d2763cecc9cbd936aaab4c60cafddcf643cf8f3450ef32d3b281ce9",
+   "len": 28751
+  },
+  {
+   "name": "CATO_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "1bcabdfdcc75cdf912d9cce862e71d7a919ff27fe2fb69b2aa5e5c971c5572cc",
+   "len": 28223
+  },
+  {
+   "name": "DEFENDERFORENDPOINT_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "2131771f2ea25af9609ba42cb6e843a73795200b1abe5b8b574f27af186f8ad5",
+   "len": 12683
+  },
+  {
+   "name": "DEFENDERFORENDPOINT_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "f5346ea7881e028f208f250fab6041361202690685c9159591590c2ea4960d6c",
+   "len": 12654
+  },
+  {
+   "name": "DEFENDERFORENDPOINT_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "fb16e1f7127705fbdf97d0cea6739da76a414c88724a1acf21b93e26839d116d",
+   "len": 12504
+  },
+  {
+   "name": "SONICWALL_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "09f4bf1cd85934c015e88527e48f799ce96f2044f04832619ce64b6828e3696d",
+   "len": 22594
+  },
+  {
+   "name": "SONICWALL_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "5180a46ee82d714ae432fae55ddbcfce7f153f94b74c7098190f70046c12d6db",
+   "len": 22531
+  },
+  {
+   "name": "SONICWALL_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "8ea3ae2242f94f131d625ba25ca92da9fa102aededd0ee08c062664e869cdda2",
+   "len": 22183
+  },
+  {
+   "name": "SONICWALL_VPN",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "68b5283812d36c188f4ae831382484a1943f638d069b37961ec3de29916839e9",
+   "len": 29658
+  },
+  {
+   "name": "SONICWALL_VPN",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "b3712368bfcfb7087e6b0d9b069d0f84b0824379b6c171676c8a07998998a04b",
+   "len": 29571
+  },
+  {
+   "name": "SONICWALL_VPN",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "12be376dac5b0fb80e9e4b2b97b1e987986e6af09cd55ab3cac7047d1bd7bb3f",
+   "len": 29103
+  },
+  {
+   "name": "SONICWALL_APP_CONTROL",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "71c54091cf0b406278525ff5c1d109df50b9623db43158037f9c1d1227efbd7b",
+   "len": 32282
+  },
+  {
+   "name": "SONICWALL_APP_CONTROL",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "746f9fedac56c57999b064c126fb48440fb0035cf10d7e7306624abc781ba0ff",
+   "len": 32183
+  },
+  {
+   "name": "SONICWALL_APP_CONTROL",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "7b0f90e8ad7fb5d7dbf067fe62637ecd1b88042ea9a61d4ee832bec218db804e",
+   "len": 31655
+  },
+  {
+   "name": "SONICWALL_SD_WAN",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "f6b80b3d11a90cada20700dd7a45d39ab4838b01935c040ff5c54094e4577048",
+   "len": 18416
+  },
+  {
+   "name": "SONICWALL_SD_WAN",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "b6acf89403054331fcfa0caa09bc3308bd72c06673bcaaea008366dddafde4e0",
+   "len": 18371
+  },
+  {
+   "name": "SONICWALL_SD_WAN",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "25ae62475ce65336b43b7c205d2fcb6387ed8c52f2b176eb4da5217d009d2bef",
+   "len": 18113
+  },
+  {
+   "name": "SONICWALL_IPS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "ebb8d847db8eba442a75d077f169beca212d3f508102ac3732fe185ad9383a7a",
+   "len": 30803
+  },
+  {
+   "name": "SONICWALL_IPS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "84c25524402ecbb7abdf1e0f00db0a9689e055918843e61a08050136b017cf25",
+   "len": 30710
+  },
+  {
+   "name": "SONICWALL_IPS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "797741b6192adb7b37e251372dee83af5be05931d7ead0688fe627ea0c4d53d9",
+   "len": 30212
+  },
+  {
+   "name": "SENTINELONE_EPP_ADMINISTRATIVE",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "14ba1b0fa1f41ec29d634a19dfb985e4e95f020de87c7d823aeb97eab0beb92a",
+   "len": 36258
+  },
+  {
+   "name": "SENTINELONE_EPP_ADMINISTRATIVE",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "74f8b56e62645cf42e230456b9ab2e146df3373c6e4d2999b2d1668d4b2db8ce",
+   "len": 36225
+  },
+  {
+   "name": "SENTINELONE_EPP_ADMINISTRATIVE",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "a0a00679282ca33edd28a09f8d70e2a9ab17420b96fe8b814f1884cdced5ae2d",
+   "len": 36027
+  },
+  {
+   "name": "SENTINELONE_EPP_MITIGATION",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "743758fa5e0397c44fe867e6b808cbdfb5cf888d065b7b7c0dfb38b4d9db62d9",
+   "len": 62748
+  },
+  {
+   "name": "SENTINELONE_EPP_MITIGATION",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "fd91a63093730cb939844ec71fba56adafe0942a0f5ea8417e1bcf0777342bd9",
+   "len": 62657
+  },
+  {
+   "name": "SENTINELONE_EPP_MITIGATION",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "ede19ebfe3696d49636b825e85b0e0109310707a7d26b19dbad63392bbee5a36",
+   "len": 62141
+  },
+  {
+   "name": "SENTINELONE_EPP_RANGER",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "889ebf0fff47bac8c78c469643558c78dacb8533eccb3c21686fb5e36f0158b2",
+   "len": 36194
+  },
+  {
+   "name": "SENTINELONE_EPP_RANGER",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "b2f3692b729a060a8d9dad3ad4f8bf1381ca3e59eae8ba4bdd78e48354099211",
+   "len": 36161
+  },
+  {
+   "name": "SENTINELONE_EPP_RANGER",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "74b446ca0db6e2f33b76af35a176c38c0f26d6c79a46d6feb9875adb075502bf",
+   "len": 35963
+  },
+  {
+   "name": "SENTINELONE_EPP_WHITELISTBLACKLIST",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "2d0bfe3cd7419ea86474624138c2663c40a39efdb6dd495575d0de2670402b77",
+   "len": 36290
+  },
+  {
+   "name": "SENTINELONE_EPP_WHITELISTBLACKLIST",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "803ca10ad789c0ec8bf630e385d906265e0460398107f2e969f09081ebf9eae4",
+   "len": 36257
+  },
+  {
+   "name": "SENTINELONE_EPP_WHITELISTBLACKLIST",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "ce4d29f4deb5ad38ac924405d5eeb5d81ac7c16390898fe442103634e5d5b952",
+   "len": 36059
+  },
+  {
+   "name": "SENTINELONE_EPP_MALWARE",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "b6fe16e2448c88fab04fb16e394e118534a110a59d3fb18ddb4055d56b61a6eb",
+   "len": 62685
+  },
+  {
+   "name": "SENTINELONE_EPP_MALWARE",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "a3666ca8f0beac31d6a1b80afbd7e8e561c410a80c41b51790866c589e1d4af3",
+   "len": 62594
+  },
+  {
+   "name": "SENTINELONE_EPP_MALWARE",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "5d0353e5546b00e8ea6356936254b9d7981ca6f0ba68e47827523f223ff49902",
+   "len": 62078
+  },
+  {
+   "name": "SENTINELONE_EPP_OPERATIONS",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "bd03b7b577b80532603e7a19993feff09bf5f552c359f31498241454845dbeaf",
+   "len": 36226
+  },
+  {
+   "name": "SENTINELONE_EPP_OPERATIONS",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "cabf00393b3e964db794b31e06cdf80634adac6fe35f58e23077acae82c16de5",
+   "len": 36193
+  },
+  {
+   "name": "SENTINELONE_EPP_OPERATIONS",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "a42ffce76c2071bb56200ff0e5a567d26ca73185f68902315ae1e559dbee2507",
+   "len": 35995
+  },
+  {
+   "name": "SENTINELONE_EPP_SUMMARY",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "folder": 0,
+   "sha256": "3cfb679f4dc42360b2906c4496d91bc62caa5d0254c87c469496c0c52741df31",
+   "len": 62294
+  },
+  {
+   "name": "SENTINELONE_EPP_SUMMARY",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "folder": 12,
+   "sha256": "239752ad34cf528e03db4c37b725c28a8fd41c12f69619e086b03a1098476cf6",
+   "len": 62203
+  },
+  {
+   "name": "SENTINELONE_EPP_SUMMARY",
+   "uid": "",
+   "url": "http://g:3000",
+   "folder": -1,
+   "sha256": "e43264ef3304388dbfebf67c8e770efb33e0ec0f44e9f9d69fff97b45567eb09",
+   "len": 61687
+  }
+ ],
+ "edits": [
+  {
+   "input": "{\"uid\": \"replace_datasource_uid\", \"x\": [{\"uid\": \"replace_datasource_uid\"}, {\"uid\": 5}, [\"replace_datasource_uid\"]]}",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "out": "{\"uid\": \"uid-to-be-replaced\", \"x\": [{\"uid\": \"uid-to-be-replaced\"}, {\"uid\": 5}, [\"replace_datasource_uid\"]]}"
+  },
+  {
+   "input": "{\"uid\": \"replace_datasource_uid\", \"x\": [{\"uid\": \"replace_datasource_uid\"}, {\"uid\": 5}, [\"replace_datasource_uid\"]]}",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "out": "{\"uid\": \"ds-\\u00fc\\\"x\\\\y\", \"x\": [{\"uid\": \"ds-\\u00fc\\\"x\\\\y\"}, {\"uid\": 5}, [\"replace_datasource_uid\"]]}"
+  },
+  {
+   "input": "{\"uid\": \"replace_datasource_uid\", \"x\": [{\"uid\": \"replace_datasource_uid\"}, {\"uid\": 5}, [\"replace_datasource_uid\"]]}",
+   "uid": "",
+   "url": "http://g:3000",
+   "out": "{\"uid\": \"\", \"x\": [{\"uid\": \"\"}, {\"uid\": 5}, [\"replace_datasource_uid\"]]}"
+  },
+  {
+   "input": "{\"a\": {\"uid\": \"replace_datasource_uid_2\", \"b\": {\"uid\": \"replace_datasource_uid\", \"uid2\": \"replace_datasource_uid\"}}}",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "out": "{\"a\": {\"uid\": \"replace_datasource_uid_2\", \"b\": {\"uid\": \"uid-to-be-replaced\", \"uid2\": \"replace_datasource_uid\"}}}"
+  },
+  {
+   "input": "{\"a\": {\"uid\": \"replace_datasource_uid_2\", \"b\": {\"uid\": \"replace_datasource_uid\", \"uid2\": \"replace_datasource_uid\"}}}",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "out": "{\"a\": {\"uid\": \"replace_datasource_uid_2\", \"b\": {\"uid\": \"ds-\\u00fc\\\"x\\\\y\", \"uid2\": \"replace_datasource_uid\"}}}"
+  },
+  {
+   "input": "{\"a\": {\"uid\": \"replace_datasource_uid_2\", \"b\": {\"uid\": \"replace_datasource_uid\", \"uid2\": \"replace_datasource_uid\"}}}",
+   "uid": "",
+   "url": "http://g:3000",
+   "out": "{\"a\": {\"uid\": \"replace_datasource_uid_2\", \"b\": {\"uid\": \"\", \"uid2\": \"replace_datasource_uid\"}}}"
+  },
+  {
+   "input": "{\"uid\": {\"uid\": \"replace_datasource_uid\"}}",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "out": "{\"uid\": {\"uid\": \"uid-to-be-replaced\"}}"
+  },
+  {
+   "input": "{\"uid\": {\"uid\": \"replace_datasource_uid\"}}",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "out": "{\"uid\": {\"uid\": \"ds-\\u00fc\\\"x\\\\y\"}}"
+  },
+  {
+   "input": "{\"uid\": {\"uid\": \"replace_datasource_uid\"}}",
+   "uid": "",
+   "url": "http://g:3000",
+   "out": "{\"uid\": {\"uid\": \"\"}}"
+  },
+  {
+   "input": "{\"url\": \"https://grafana.company.local/d/x?var=https://grafana.company.local\", \"u\": \"https://grafana.company.local\"}",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "out": "{\"url\": \"https://grafana.company.local/d/x?var=https://grafana.company.local\", \"u\": \"https://grafana.company.local\"}"
+  },
+  {
+   "input": "{\"url\": \"https://grafana.company.local/d/x?var=https://grafana.company.local\", \"u\": \"https://grafana.company.local\"}",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "out": "{\"url\": \"https://grafana.company.local/x/d/x?var=https://grafana.company.local/x\", \"u\": \"https://grafana.company.local\"}"
+  },
+  {
+   "input": "{\"url\": \"https://grafana.company.local/d/x?var=https://grafana.company.local\", \"u\": \"https://grafana.company.local\"}",
+   "uid": "",
+   "url": "http://g:3000",
+   "out": "{\"url\": \"http://g:3000/d/x?var=http://g:3000\", \"u\": \"https://grafana.company.local\"}"
+  },
+  {
+   "input": "{\"links\": [{\"url\": \"https://grafana.company.localhost/x\"}, {\"url\": \"http://grafana.company.local\"}, {\"url\": 5}]}",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "out": "{\"links\": [{\"url\": \"https://grafana.company.localhost/x\"}, {\"url\": \"http://grafana.company.local\"}, {\"url\": 5}]}"
+  },
+  {
+   "input": "{\"links\": [{\"url\": \"https://grafana.company.localhost/x\"}, {\"url\": \"http://grafana.company.local\"}, {\"url\": 5}]}",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "out": "{\"links\": [{\"url\": \"https://grafana.company.local/xhost/x\"}, {\"url\": \"http://grafana.company.local\"}, {\"url\": 5}]}"
+  },
+  {
+   "input": "{\"links\": [{\"url\": \"https://grafana.company.localhost/x\"}, {\"url\": \"http://grafana.company.local\"}, {\"url\": 5}]}",
+   "uid": "",
+   "url": "http://g:3000",
+   "out": "{\"links\": [{\"url\": \"http://g:3000host/x\"}, {\"url\": \"http://grafana.company.local\"}, {\"url\": 5}]}"
+  },
+  {
+   "input": "{\"url\": {\"url\": \"https://grafana.company.local\"}}",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "out": "{\"url\": {\"url\": \"https://grafana.company.local\"}}"
+  },
+  {
+   "input": "{\"url\": {\"url\": \"https://grafana.company.local\"}}",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "out": "{\"url\": {\"url\": \"https://grafana.company.local/x\"}}"
+  },
+  {
+   "input": "{\"url\": {\"url\": \"https://grafana.company.local\"}}",
+   "uid": "",
+   "url": "http://g:3000",
+   "out": "{\"url\": {\"url\": \"http://g:3000\"}}"
+  },
+  {
+   "input": "[{\"url\": \"https://grafana.company.local\"}, \"https://grafana.company.local\", [{\"uid\": \"replace_datasource_uid\"}]]",
+   "uid": "uid-to-be-replaced",
+   "url": "https://grafana.company.local",
+   "out": "[{\"url\": \"https://grafana.company.local\"}, \"https://grafana.company.local\", [{\"uid\": \"uid-to-be-replaced\"}]]"
+  },
+  {
+   "input": "[{\"url\": \"https://grafana.company.local\"}, \"https://grafana.company.local\", [{\"uid\": \"replace_datasource_uid\"}]]",
+   "uid": "ds-ü\"x\\y",
+   "url": "https://grafana.company.local/x",
+   "out": "[{\"url\": \"https://grafana.company.local/x\"}, \"https://grafana.company.local\", [{\"uid\": \"ds-\\u00fc\\\"x\\\\y\"}]]"
+  },
+  {
+   "input": "[{\"url\": \"https://grafana.company.local\"}, \"https://grafana.company.local\", [{\"uid\": \"replace_datasource_uid\"}]]",
+   "uid": "",
+   "url": "http://g:3000",
+   "out": "[{\"url\": \"http://g:3000\"}, \"https://grafana.company.local\", [{\"uid\": \"\"}]]"
+  }
+ ],
+ "requests": {
+  "grafana": [
+   {
+    "input": "{\"dashboards\": [\"WAZUH_SUMMARY\"]}",
+    "status": 200,
+    "dump": "{\"dashboards\": [\"WAZUH_SUMMARY\"], \"organizationId\": 0, \"folderId\": 0, \"datasourceUid\": \"uid-to-be-replaced\", \"grafana_url\": \"https://grafana.company.local\"}"
+   },
+   {
+    "input": "{\"dashboards\": [], \"organizationId\": \"7\", \"folderId\": 3.0, \"datasourceUid\": \"ds\", \"grafana_url\": \"https://g\"}",
+    "status": 200,
+    "dump": "{\"dashboards\": [], \"organizationId\": 7, \"folderId\": 3, \"datasourceUid\": \"ds\", \"grafana_url\": \"https://g\"}"
+   },
+   {
+    "input": "{\"dashboards\": [\"WAZUH_SUMMARY\", \"SENTINELONE_EPP_SUMMARY\", \"WAZUH_SUMMARY\"], \"organizationId\": true}",
+    "status": 200,
+    "dump": "{\"dashboards\": [\"WAZUH_SUMMARY\", \"SENTINELONE_EPP_SUMMARY\", \"WAZUH_SUMMARY\"], \"organizationId\": 1, \"folderId\": 0, \"datasourceUid\": \"uid-to-be-replaced\", \"grafana_url\": \"https://grafana.company.local\"}"
+   },
+   {
+    "input": "{\"dashboards\": [\"NOPE\"]}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards: Dashboard identifier \\\"NOPE\\\" is not recognized.\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"value_error\",\"message\":\"dashboards: Dashboard identifier \\\"NOPE\\\" is not recognized.\"}]}"
+   },
+   {
+    "input": "{\"dashboards\": [\"WAZUH_SUMMARY\", \"Nope\", \"x\"]}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards: Dashboard identifier \\\"Nope\\\" is not recognized.\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"value_error\",\"message\":\"dashboards: Dashboard identifier \\\"Nope\\\" is not recognized.\"}]}"
+   },
+   {
+    "input": "{\"dashboards\": [\"wazuh_summary\"]}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards: Dashboard identifier \\\"wazuh_summary\\\" is not recognized.\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"value_error\",\"message\":\"dashboards: Dashboard identifier \\\"wazuh_summary\\\" is not recognized.\"}]}"
+   },
+   {
+    "input": "{\"dashboards\": [\"EDR_WAZUH_INVENOTRY\"]}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards: Dashboard identifier \\\"EDR_WAZUH_INVENOTRY\\\" is not recognized.\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"value_error\",\"message\":\"dashboards: Dashboard identifier \\\"EDR_WAZUH_INVENOTRY\\\" is not recognized.\"}]}"
+   },
+   {
+    "input": "{\"dashboards\": \"WAZUH_SUMMARY\"}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards: Input should be a valid list\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"value_error\",\"message\":\"dashboards: Input should be a valid list\"}]}"
+   },
+   {
+    "input": "{\"dashboards\": [1, \"WAZUH_SUMMARY\"]}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards.0: Input should be a valid string\",\"details\":[{\"field\":\"0\",\"error_type\":\"value_error\",\"message\":\"dashboards.0: Input should be a valid string\"}]}"
+   },
+   {
+    "input": "{\"dashboards\": null}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards: Input should be a valid list\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"value_error\",\"message\":\"dashboards: Input should be a valid list\"}]}"
+   },
+   {
+    "input": "{}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{\"dashboards\": [\"WAZUH_SUMMARY\"], \"organizationId\": \"x\", \"folderId\": 1.5, \"datasourceUid\": 5, \"grafana_url\": null}",
+    "status": 422,
+    "body": "{\"message\":\"Input is not a valid integer.\",\"details\":[{\"field\":\"organizationId\",\"error_type\":\"int_parsing\",\"message\":\"Input is not a valid integer.\"},{\"field\":\"folderId\",\"error_type\":\"value_error\",\"message\":\"folderId: Input should be a valid integer, got a number with a fractional part\"},{\"field\":\"datasourceUid\",\"error_type\":\"value_error\",\"message\":\"datasourceUid: Input should be a valid string\"},{\"field\":\"grafana_url\",\"error_type\":\"value_error\",\"message\":\"grafana_url: Input should be a valid string\"}]}"
+   },
+   {
+    "input": "{\"dashboards\": [\"WAZUH_SUMMARY\"], \"organizationId\": 100000000000000000000}",
+    "status": 200,
+    "dump": "{\"dashboards\": [\"WAZUH_SUMMARY\"], \"organizationId\": 100000000000000000000, \"folderId\": 0, \"datasourceUid\": \"uid-to-be-replaced\", \"grafana_url\": \"https://grafana.company.local\"}"
+   },
+   {
+    "input": "{\"dashboards\": [\"MIMECAST_SUMMARY\"], \"unknown\": 1}",
+    "status": 200,
+    "dump": "{\"dashboards\": [\"MIMECAST_SUMMARY\"], \"organizationId\": 0, \"folderId\": 0, \"datasourceUid\": \"uid-to-be-replaced\", \"grafana_url\": \"https://grafana.company.local\"}"
+   },
+   {
+    "input": "[]",
+    "status": 422,
+    "body": "{\"message\":\"Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"body\",\"error_type\":\"value_error\",\"message\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+   },
+   {
+    "input": "\"x\"",
+    "status": 422,
+    "body": "{\"message\":\"Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"body\",\"error_type\":\"value_error\",\"message\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+   },
+   {
+    "input": "5",
+    "status": 422,
+    "body": "{\"message\":\"Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"body\",\"error_type\":\"value_error\",\"message\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+   }
+  ],
+  "customer": [
+   {
+    "input": "{\"customer_name\": \"Acme\", \"dashboards_to_include\": {\"dashboards\": [\"HUNTRESS_SUMMARY\"], \"organizationId\": 9}, \"grafana_org_id\": 3, \"grafana_datasource_uid\": \"ds-1\", \"grafana_folder_id\": 4, \"grafana_url\": \"https://grafana.example.com\"}",
+    "status": 200,
+    "dump": "{\"customer_name\": \"Acme\", \"dashboards_to_include\": {\"dashboards\": [\"HUNTRESS_SUMMARY\"], \"organizationId\": 9, \"folderId\": 0, \"datasourceUid\": \"uid-to-be-replaced\", \"grafana_url\": \"https://grafana.company.local\"}, \"grafana_org_id\": 3, \"grafana_datasource_uid\": \"ds-1\", \"grafana_folder_id\": 4, \"grafana_url\": \"https://grafana.example.com\"}"
+   },
+   {
+    "input": "{\"customer_name\": \"Acme\", \"dashboards_to_include\": {\"dashboards\": [\"NOPE\"]}, \"grafana_org_id\": \"x\", \"grafana_datasource_uid\": \"ds-1\", \"grafana_folder_id\": 4, \"grafana_url\": \"u\"}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards_to_include.dashboards: Dashboard identifier \\\"NOPE\\\" is not recognized.\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"value_error\",\"message\":\"dashboards_to_include.dashboards: Dashboard identifier \\\"NOPE\\\" is not recognized.\"},{\"field\":\"grafana_org_id\",\"error_type\":\"int_parsing\",\"message\":\"Input is not a valid integer.\"}]}"
+   },
+   {
+    "input": "{\"customer_name\": \"Acme\", \"dashboards_to_include\": null, \"grafana_org_id\": 3}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards_to_include: Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"dashboards_to_include\",\"error_type\":\"value_error\",\"message\":\"dashboards_to_include: Input should be a valid dictionary or object to extract fields from\"},{\"field\":\"grafana_datasource_uid\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_folder_id\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_url\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{\"customer_name\": \"Acme\", \"dashboards_to_include\": [], \"grafana_org_id\": 3, \"grafana_folder_id\": \"1\"}",
+    "status": 422,
+    "body": "{\"message\":\"dashboards_to_include: Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"dashboards_to_include\",\"error_type\":\"value_error\",\"message\":\"dashboards_to_include: Input should be a valid dictionary or object to extract fields from\"},{\"field\":\"grafana_datasource_uid\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_url\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{\"dashboards_to_include\": {\"dashboards\": [\"DUO_AUTH\"]}}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_org_id\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_datasource_uid\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_folder_id\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_url\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"dashboards_to_include\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_org_id\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_datasource_uid\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_folder_id\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_url\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{\"customer_name\": 1, \"dashboards_to_include\": {\"dashboards\": [\"DUO_AUTH\"], \"folderId\": \"z\"}, \"grafana_org_id\": \"3\", \"grafana_datasource_uid\": \"d\", \"grafana_folder_id\": 1, \"grafana_url\": \"\"}",
+    "status": 422,
+    "body": "{\"message\":\"customer_name: Input should be a valid string\",\"details\":[{\"field\":\"customer_name\",\"error_type\":\"value_error\",\"message\":\"customer_name: Input should be a valid string\"},{\"field\":\"folderId\",\"error_type\":\"int_parsing\",\"message\":\"Input is not a valid integer.\"}]}"
+   }
+  ]
+ },
+ "answers": [
+  {
+   "input": "{\"id\": 41, \"slug\": \"summary\", \"status\": \"success\", \"uid\": \"abc\", \"url\": \"/d/abc/summary\", \"version\": 1, \"folderUid\": \"f\"}",
+   "ok": "{\"id\": 41, \"slug\": \"summary\", \"status\": \"success\", \"uid\": \"abc\", \"url\": \"/d/abc/summary\", \"version\": 1}"
+  },
+  {
+   "input": "{\"id\": \"41\", \"slug\": \"s\", \"status\": \"success\", \"uid\": \"abc\", \"url\": \"/d/abc/s\", \"version\": 2.0}",
+   "ok": "{\"id\": 41, \"slug\": \"s\", \"status\": \"success\", \"uid\": \"abc\", \"url\": \"/d/abc/s\", \"version\": 2}"
+  },
+  {
+   "input": "{\"id\": 41, \"slug\": \"s\", \"status\": \"success\", \"uid\": 5, \"url\": \"/d\", \"version\": \"x\"}",
+   "exc": "ValidationError",
+   "text": "2 validation errors for GrafanaDashboard\nuid\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nversion\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
+  },
+  {
+   "input": "{\"message\": \"Dashboard not found\"}",
+   "exc": "ValidationError",
+   "text": "6 validation errors for GrafanaDashboard\nid\n  Field required [type=missing, input_value={'message': 'Dashboard not found'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nslug\n  Field required [type=missing, input_value={'message': 'Dashboard not found'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nstatus\n  Field required [type=missing, input_value={'message': 'Dashboard not found'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nuid\n  Field required [type=missing, input_value={'message': 'Dashboard not found'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nurl\n  Field required [type=missing, input_value={'message': 'Dashboard not found'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nversion\n  Field required [type=missing, input_value={'message': 'Dashboard not found'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  },
+  {
+   "input": "{}",
+   "exc": "ValidationError",
+   "text": "6 validation errors for GrafanaDashboard\nid\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nslug\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nstatus\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nuid\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nurl\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nversion\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  },
+  {
+   "input": "\"not-a-dict\"",
+   "exc": "TypeError",
+   "text": "app.connectors.grafana.schema.dashboards.GrafanaDashboard() argument after ** must be a mapping, not str"
+  },
+  {
+   "input": "null",
+   "exc": "TypeError",
+   "text": "app.connectors.grafana.schema.dashboards.GrafanaDashboard() argument after ** must be a mapping, not NoneType"
+  },
+  {
+   "input": "[1]",
+   "exc": "TypeError",
+   "text": "app.connectors.grafana.schema.dashboards.GrafanaDashboard() argument after ** must be a mapping, not list"
+  }
+ ]
+}

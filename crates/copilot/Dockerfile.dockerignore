@@ -1,8 +1,10 @@
-# Allowlist: only the Cargo workspace is sent to the builder.
+# Allowlist: only the Cargo workspace (and the Grafana dashboard templates
+# copilot-grafana-dashboards embeds) is sent to the builder.
 *
 !Cargo.toml
 !Cargo.lock
 !rustfmt.toml
 !clippy.toml
 !crates/
+!backend/app/connectors/grafana/dashboards/
 crates/**/target/

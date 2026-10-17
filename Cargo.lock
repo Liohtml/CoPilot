@@ -474,6 +474,7 @@ dependencies = [
  "copilot-db",
  "copilot-gateway",
  "copilot-grafana",
+ "copilot-grafana-dashboards",
  "copilot-graylog",
  "copilot-healthchecks",
  "copilot-identity",
@@ -737,6 +738,25 @@ dependencies = [
  "http",
  "pretty_assertions",
  "reqwest",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-grafana-dashboards"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-grafana",
+ "copilot-monitoring-alerts",
+ "copilot-upstream",
+ "copilot-web",
+ "hex",
+ "http",
  "serde_json",
  "sha2",
  "tokio",
