@@ -189,11 +189,18 @@ fn int_ge(left: usize, right: &PyValue) -> PyResult<bool> {
 
 /// `get_event_definitions()`: every page of `/api/events/definitions`.
 pub async fn event_definitions(c: &GraylogClient) -> PyResult<PyValue> {
+    event_definitions_on(c, crate::client::DEFAULT_CONNECTOR).await
+}
+
+/// `get_event_definitions()` under a Graylog context (`set_graylog_context`):
+/// the same pages from `connector`.
+pub async fn event_definitions_on(c: &GraylogClient, connector: &str) -> PyResult<PyValue> {
     let mut all: Vec<PyValue> = Vec::new();
     let mut page: u64 = 1;
     loop {
         let reply = c
-            .get(
+            .get_on(
+                connector,
                 "/api/events/definitions",
                 &[("per_page", "500".to_string()), ("page", page.to_string())],
             )

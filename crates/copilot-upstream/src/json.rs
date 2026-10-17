@@ -100,11 +100,20 @@ impl std::fmt::Display for NanError {
 /// CPython's `json.dumps(value, allow_nan=False, …)`.
 pub fn py_dumps(value: &PyValue, opts: Dumps) -> Result<String, NanError> {
     let mut out = String::new();
-    encode(value, opts, &mut out)?;
+    encode(value, opts, false, &mut out)?;
     Ok(out)
 }
 
-fn encode(value: &PyValue, opts: Dumps, out: &mut String) -> Result<(), NanError> {
+/// CPython's `json.dumps(value, …)` with its default `allow_nan=True`:
+/// `NaN`, `Infinity` and `-Infinity` written as such.
+pub fn py_dumps_allow_nan(value: &PyValue, opts: Dumps) -> String {
+    let mut out = String::new();
+    // Cannot fail: non-finite floats are written, not refused.
+    let _ = encode(value, opts, true, &mut out);
+    out
+}
+
+fn encode(value: &PyValue, opts: Dumps, allow_nan: bool, out: &mut String) -> Result<(), NanError> {
     let (item_sep, key_sep) = if opts.compact {
         (",", ":")
     } else {
@@ -116,10 +125,15 @@ fn encode(value: &PyValue, opts: Dumps, out: &mut String) -> Result<(), NanError
         PyValue::Bool(false) => out.push_str("false"),
         PyValue::Int(i) => out.push_str(i),
         PyValue::Float(f) => {
-            if !f.is_finite() {
+            if f.is_nan() && allow_nan {
+                out.push_str("NaN");
+            } else if f.is_infinite() && allow_nan {
+                out.push_str(if *f > 0.0 { "Infinity" } else { "-Infinity" });
+            } else if !f.is_finite() {
                 return Err(NanError);
+            } else {
+                out.push_str(&float_repr(*f));
             }
-            out.push_str(&float_repr(*f));
         }
         PyValue::Str(s) => encode_str(s, opts.ensure_ascii, out),
         PyValue::List(items) => {
@@ -128,7 +142,7 @@ fn encode(value: &PyValue, opts: Dumps, out: &mut String) -> Result<(), NanError
                 if i > 0 {
                     out.push_str(item_sep);
                 }
-                encode(item, opts, out)?;
+                encode(item, opts, allow_nan, out)?;
             }
             out.push(']');
         }
@@ -140,7 +154,7 @@ fn encode(value: &PyValue, opts: Dumps, out: &mut String) -> Result<(), NanError
                 }
                 encode_str(k, opts.ensure_ascii, out);
                 out.push_str(key_sep);
-                encode(v, opts, out)?;
+                encode(v, opts, allow_nan, out)?;
             }
             out.push('}');
         }

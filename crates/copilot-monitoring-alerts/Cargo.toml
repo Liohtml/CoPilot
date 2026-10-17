@@ -1,0 +1,29 @@
+[package]
+name = "copilot-monitoring-alerts"
+description = "The monitoring-alert catalog (/api/monitoring_alert): Graylog event definitions for every catalog alert and custom alerts, on Graylog 6.x and 7.x, and the Event Shipper test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-auth = { workspace = true }
+copilot-db = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-graylog = { workspace = true }
+copilot-waf = { workspace = true }
+copilot-provisioning = { workspace = true }
+copilot-jinja = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

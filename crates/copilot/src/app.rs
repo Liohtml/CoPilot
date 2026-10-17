@@ -30,6 +30,8 @@
 //!                      │                                                      │   api.first.org
 //!                      │ /api/vulnerabilities/*, /api/sca/*,                  │
 //!                      │ /api/syscollector/* → copilot-agent-reports          │
+//!                      │ /api/monitoring_alert/*                              │
+//!                      │                    → copilot-monitoring-alerts ──────► Graylog, Event Shipper
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -191,10 +193,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // charts and wkhtmltopdf), which falls through to the legacy backend.
     "/api/soc_management",
     "/api/customer_portal/sla",
-    // The customer WAF (copilot-waf), and of the monitoring-alert catalog the
-    // two WAF alerts: any other alert name is handed to Python with its body.
+    // The customer WAF (copilot-waf).
     "/api/customer_waf",
-    "POST /api/monitoring_alert/provision",
+    // The monitoring-alert catalog (copilot-monitoring-alerts; the two WAF
+    // alerts through copilot-waf).
+    "/api/monitoring_alert",
     // Stack provisioning (copilot-provisioning): the content packs and the
     // InfluxDB checks, and network-connector decommissioning; the Fortinet /
     // SonicWall / SentinelOne provisioning (Grafana dashboards) stays Python.
@@ -482,7 +485,6 @@ impl App {
                 alert_forwarding_ip: prov.alert_forwarding_ip.clone(),
                 graylog_api_header_value: prov.graylog_api_header_value.clone(),
             }),
-            legacy: legacy.clone(),
         };
         let threat_intel = copilot_threat_intel::ThreatIntelState::new(
             ctx.clone(),
@@ -736,7 +738,16 @@ impl App {
             )
             .merge(copilot_soc_management::portal_router(self.ctx.clone()))
             .nest("/api/customer_waf", copilot_waf::router(self.waf.clone()))
-            .merge(copilot_waf::monitoring_router(self.waf.clone()))
+            .nest(
+                "/api/monitoring_alert",
+                copilot_monitoring_alerts::router(
+                    copilot_monitoring_alerts::MonitoringAlertState {
+                        ctx: self.ctx.clone(),
+                        graylog: self.graylog.clone(),
+                        waf: self.waf.clone(),
+                    },
+                ),
+            )
             .merge(copilot_provisioning::router(
                 copilot_provisioning::StackState {
                     ctx: self.ctx.clone(),

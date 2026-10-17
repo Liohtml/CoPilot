@@ -481,6 +481,7 @@ dependencies = [
  "copilot-influxdb",
  "copilot-ingest",
  "copilot-integrations",
+ "copilot-monitoring-alerts",
  "copilot-notifications",
  "copilot-objectstore",
  "copilot-platform",
@@ -927,6 +928,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-monitoring-alerts"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "copilot-auth",
+ "copilot-db",
+ "copilot-graylog",
+ "copilot-jinja",
+ "copilot-provisioning",
+ "copilot-upstream",
+ "copilot-waf",
+ "copilot-web",
+ "http",
+ "pretty_assertions",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "copilot-notifications"
 version = "0.2.0"
 dependencies = [
@@ -1301,7 +1323,6 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-graylog",
  "copilot-incidents",
  "copilot-upstream",

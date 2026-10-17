@@ -2,7 +2,8 @@
 //!
 //! Port of `app/customer_waf/` (`routes / services / schema`, and
 //! `utils/universal.py` as [`client`]), mounted at `/api/customer_waf`, plus
-//! the WAF half of `POST /api/monitoring_alert/provision` ([`alerts`]).
+//! the two WAF monitoring alerts ([`alerts`]), which
+//! `POST /api/monitoring_alert/provision` (`copilot-monitoring-alerts`) calls.
 //!
 //! - [`crypto`]     — the service token, Fernet under `WAF_TOKEN_ENCRYPTION_KEY`
 //!   (no fallback key)
@@ -17,7 +18,7 @@
 //! - [`blocks`]     — IP blocks (one rule shape, idempotent, unblock disables)
 //! - [`forwarding`] — event forwarding into Graylog, with rollback
 //! - [`alerts`]     — the two WAF monitoring alerts
-//! - [`routes`]     — the 16 routes and the monitoring-alert hand-off
+//! - [`routes`]     — the 16 routes
 
 #![warn(missing_docs)]
 
@@ -36,7 +37,7 @@ pub mod services;
 pub mod store;
 
 pub use client::WafClient;
-pub use routes::{monitoring_router, router};
+pub use routes::router;
 pub use services::{WafEnv, WafState};
 
 /// The columns this crate reads or writes.

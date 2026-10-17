@@ -89,6 +89,43 @@ pub enum Ty {
     /// A `str`-valued `Enum` (`class E(str, Enum)`): one of its values, as
     /// the value (`use_enum_values` or a JSON-mode dump).
     Enum(&'static EnumTy),
+    /// An `int`-valued plain `Enum` (`class E(Enum): A = 1`): an input equal
+    /// to one of its values (`2`, `2.0`, `True` for `1`), as the value.
+    IntEnum(&'static IntEnumTy),
+}
+
+/// An `int`-valued plain `Enum`: its class name and values in declaration
+/// order.
+#[derive(Debug)]
+pub struct IntEnumTy {
+    /// The class name (a union member's label).
+    pub name: &'static str,
+    /// The values, in declaration order.
+    pub values: &'static [i64],
+}
+
+impl IntEnumTy {
+    /// Pydantic's `Input should be 1, 2 or 3`.
+    pub fn expected(&self) -> String {
+        let shown: Vec<String> = self.values.iter().map(ToString::to_string).collect();
+        match shown.split_last() {
+            None => String::new(),
+            Some((last, [])) => last.clone(),
+            Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+        }
+    }
+
+    /// The member an input selects: Python's `==` (and hash) against the
+    /// values, so `2.0` and `True` (`== 1`) match and `"2"` does not.
+    pub fn lookup(&self, input: &PyValue) -> Option<i64> {
+        let n = match input {
+            PyValue::Int(i) => i.parse::<i64>().ok()?,
+            PyValue::Bool(b) => i64::from(*b),
+            PyValue::Float(f) if f.is_finite() && f.fract() == 0.0 && f.abs() < 9.0e15 => *f as i64,
+            _ => return None,
+        };
+        self.values.contains(&n).then_some(n)
+    }
 }
 
 /// A `str`-valued `Enum`: its class name and values in declaration order.
@@ -418,6 +455,21 @@ fn check(ty: &Ty, input: &PyValue, loc: &mut Vec<Loc>, ctx: &mut Ctx) -> Option<
                 None
             }
         },
+        Ty::IntEnum(e) => match e.lookup(input) {
+            Some(n) => {
+                ctx.floor(Exactness::Lax);
+                Some(PyValue::Int(n.to_string()))
+            }
+            None => {
+                ctx.push(
+                    loc,
+                    "enum",
+                    format!("Input should be {}", e.expected()),
+                    input,
+                );
+                None
+            }
+        },
     }
 }
 
@@ -530,6 +582,7 @@ fn label(ty: &Ty) -> String {
             members.iter().map(label).collect::<Vec<_>>().join(",")
         ),
         Ty::Enum(e) => e.name.into(),
+        Ty::IntEnum(e) => e.name.into(),
     }
 }
 
@@ -1042,6 +1095,40 @@ mod tests {
         );
         let ok = validate(&PAINT, &loads(r#"{"c": "red"}"#).unwrap()).unwrap();
         assert_eq!(ok.py_repr(), "{'c': 'red', 'd': None}");
+    }
+
+    #[test]
+    fn int_enums_take_equal_values() {
+        // Recorded with pydantic 2.13: `class AlertPriority(Enum): LOW = 1;
+        // NORMAL = 2; HIGH = 3`, validated from a request body.
+        static PRIORITY: IntEnumTy = IntEnumTy {
+            name: "AlertPriority",
+            values: &[1, 2, 3],
+        };
+        static M: Model = Model::new("M", &[Field::req("p", Ty::IntEnum(&PRIORITY))]);
+        for (input, want) in [
+            ("1", Some("1")),
+            ("2.0", Some("2")),
+            ("true", Some("1")),
+            ("\"2\"", None),
+            ("2.5", None),
+            ("\"NORMAL\"", None),
+            ("null", None),
+            ("[]", None),
+            ("4", None),
+            ("false", None),
+            ("1e300", None),
+        ] {
+            let body = loads(&format!("{{\"p\": {input}}}")).unwrap();
+            match (validate_body(&Ty::Model(&M), &body), want) {
+                (Ok(dump), Some(n)) => assert_eq!(dump.py_repr(), format!("{{'p': {n}}}")),
+                (Err(Invalid::Errors(errs)), None) => {
+                    assert_eq!(errs[0].kind, "enum", "{input}");
+                    assert_eq!(errs[0].msg, "Input should be 1, 2 or 3", "{input}");
+                }
+                (got, _) => panic!("{input}: {got:?}"),
+            }
+        }
     }
 
     #[test]

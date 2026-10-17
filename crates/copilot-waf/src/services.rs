@@ -57,8 +57,6 @@ pub struct WafState {
     pub graylog: GraylogClient,
     /// The environment.
     pub env: Arc<WafEnv>,
-    /// The legacy backend (the monitoring-alert route hands other alerts to it).
-    pub legacy: Option<copilot_gateway::LegacyProxy>,
 }
 
 impl axum::extract::FromRef<WafState> for AppContext {

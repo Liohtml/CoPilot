@@ -1,6 +1,5 @@
 //! CoPilot alerts from SOCFortress WAF events (#1169, phase 4b) — port of
-//! `app/customer_waf/services/alerts.py` and of the part of
-//! `app/integrations/monitoring_alert/routes/provision.py` that reaches it.
+//! `app/customer_waf/services/alerts.py`.
 //!
 //! Two Monitoring Alerts catalog entries, provisioned once per Graylog (the
 //! customer comes from each event's `syslog_customer`), both pinned to the
@@ -14,13 +13,14 @@
 //!   `GRAYLOG_API_HEADER_VALUE` are required before anything is created.
 //!
 //! Both register `waf` in the incident field-mapping tables (idempotent).
-//! `POST /api/monitoring_alert/provision` is ported for these two alert names
-//! only: the route reads the body, and any other alert goes to Python whole.
+//! `POST /api/monitoring_alert/provision` (`copilot-monitoring-alerts`) calls
+//! [`provision_blocked_alert`] and [`provision_brute_force_alert`] for these
+//! two alert names, after its own existence check on the default Graylog.
 
 use copilot_auth::pyvalue::PyValue;
 use copilot_graylog::client::{DEFAULT_CONNECTOR, EntityKind};
 use copilot_incidents::requests::FieldAndAssetNames;
-use copilot_upstream::model::{field, kwargs};
+use copilot_upstream::model::kwargs;
 use copilot_upstream::py::{PyExc, PyResult, get, getitem, iterate, py_eq};
 use rand::RngCore;
 
@@ -383,23 +383,6 @@ pub async fn ensure_threshold_notification(st: &WafState) -> PyResult<PyValue> {
     Ok(getitem(&created.data, "id")?.clone())
 }
 
-/// `check_if_event_definition_exists`: 400 when the title is taken.
-pub async fn check_event_definition(st: &WafState, title: &str) -> PyResult<()> {
-    let dump = copilot_graylog::services::event_definitions(&st.graylog).await?;
-    if let PyValue::List(defs) = field(&dump, "event_definitions") {
-        if defs
-            .iter()
-            .any(|d| field(d, "title").as_str() == Some(title))
-        {
-            return Err(PyExc::http(
-                400,
-                format!("Event definition {title} already exists"),
-            ));
-        }
-    }
-    Ok(())
-}
-
 /// What the provision functions can raise.
 #[derive(Debug)]
 pub enum AlertError {
@@ -421,11 +404,22 @@ impl From<copilot_web::ApiError> for AlertError {
     }
 }
 
-/// `provision_blocked_alert`.
+/// `seconds * 1000` of a Python `int` given as its canonical decimal text
+/// (any size, as Python multiplies).
+pub fn ms_of_seconds(seconds: &str) -> PyValue {
+    PyValue::Int(if seconds == "0" {
+        "0".to_string()
+    } else {
+        format!("{seconds}000")
+    })
+}
+
+/// `provision_blocked_alert(execute_every_seconds, search_within_seconds)`:
+/// the two Python `int`s as their canonical decimal text.
 pub async fn provision_blocked_alert(
     st: &WafState,
-    execute_every_seconds: i128,
-    search_within_seconds: i128,
+    execute_every_seconds: &str,
+    search_within_seconds: &str,
 ) -> Result<(), AlertError> {
     ensure_waf_alert_source(st).await?;
     st.graylog
@@ -433,8 +427,8 @@ pub async fn provision_blocked_alert(
             DEFAULT_CONNECTOR,
             &EntityKind::EventDefinition,
             blocked_definition(
-                PyValue::Int((execute_every_seconds * 1000).to_string()),
-                PyValue::Int((search_within_seconds * 1000).to_string()),
+                ms_of_seconds(execute_every_seconds),
+                ms_of_seconds(search_within_seconds),
             ),
             None,
         )

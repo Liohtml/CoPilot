@@ -1,5 +1,6 @@
-//! `/api/customer_waf/*` — port of `app/customer_waf/routes/customer_waf.py`
-//! — and the WAF half of `POST /api/monitoring_alert/provision`.
+//! `/api/customer_waf/*` — port of `app/customer_waf/routes/customer_waf.py`.
+//! (The WAF alerts of `POST /api/monitoring_alert/provision` are
+//! `copilot-monitoring-alerts`', which calls [`crate::alerts`].)
 //!
 //! Every route but `GET ""` names its tenant in the path and carries
 //! `verify_customer_code_access`; a `{waf_id}` is resolved through
@@ -13,22 +14,20 @@
 //! customer, and the path, query and body validation together (one 422).
 
 use axum::Router;
-use axum::body::{Body, Bytes};
-use axum::extract::{FromRequest, Path, Request, State};
+use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use copilot_auth::pyvalue::PyValue;
 use copilot_upstream::json::pydantic_json;
 use copilot_upstream::py::{PyExc, getitem};
 use copilot_web::body::JsonBody;
-use copilot_web::validate::{IntRules, Loc, LocPart, StrRules, Validator, body_loc, loc};
+use copilot_web::validate::{IntRules, Loc, StrRules, Validator, body_loc, loc};
 use copilot_web::{
     AdminOnly, AdminOrAnalyst, ApiError, ApiResult, Authorized, QueryPairs, WithJson,
 };
 use http::StatusCode;
 use serde_json::{Map, Value};
 
-use crate::alerts::{self, AlertError, WAF_ALERTS};
 use crate::blocks::{self, BlockAction};
 use crate::client::WafError;
 use crate::crypto;
@@ -58,17 +57,6 @@ pub fn router(state: WafState) -> Router {
         .route(
             "/{customer_code}/{waf_id}/blocks",
             get(list_blocks).post(block).delete(unblock),
-        )
-        .with_state(state)
-}
-
-/// `POST /api/monitoring_alert/provision` for the two WAF alerts (full path:
-/// every other alert is handed to Python with its body).
-pub fn monitoring_router(state: WafState) -> Router {
-    Router::new()
-        .route(
-            "/api/monitoring_alert/provision",
-            post(provision_monitoring_alert),
         )
         .with_state(state)
 }
@@ -898,144 +886,5 @@ async fn unblock(
         ("blocks", PyValue::List(blocks_out)),
         ("success", PyValue::Bool(true)),
         ("message", message(text)),
-    ])))
-}
-
-// --- POST /api/monitoring_alert/provision -------------------------------------------
-
-/// The request's `alert_name` as the validator normalizes it, when the body
-/// is a JSON object naming one of the WAF alerts.
-fn waf_alert_name(content_type: Option<&str>, bytes: &[u8]) -> Option<String> {
-    if !content_type.is_some_and(copilot_web::body::is_json_content_type) {
-        return None;
-    }
-    let value: Value = serde_json::from_slice(bytes).ok()?;
-    let name = value.get("alert_name")?.as_str()?;
-    let normalized = name.replace(' ', "_").to_uppercase();
-    WAF_ALERTS
-        .contains(&normalized.as_str())
-        .then_some(normalized)
-}
-
-/// `ProvisionMonitoringAlertRequest` (the two `validate_non_zero` fields raise
-/// an `HTTPException` mid-validation, which ends it).
-fn read_provision_request(body: &JsonBody) -> Result<(i64, i64, String), ApiError> {
-    let mut v = Validator::new();
-    let root = body_loc();
-    let obj = match body {
-        JsonBody::Value(value) => v.object(value, &root).cloned(),
-        JsonBody::Missing => {
-            v.missing(root.clone());
-            None
-        }
-        JsonBody::NotJson => {
-            v.object(&Value::Null, &root);
-            None
-        }
-    };
-    let Some(obj) = obj else {
-        v.finish()?;
-        return Err(ApiError::internal("unreachable"));
-    };
-    let mut ints = [0i64; 2];
-    for (i, name) in ["search_within_last", "execute_every"].iter().enumerate() {
-        let at = {
-            let mut l = root.clone();
-            l.push(LocPart::Key((*name).into()));
-            l
-        };
-        match obj.get(*name) {
-            None => v.missing(at),
-            Some(raw) => {
-                if let Some(n) = v.check_int(&at, raw, IntRules::default()) {
-                    if n == 0 {
-                        return Err(ApiError::bad_request(
-                            "Invalid value: 0. Must be greater than 0.",
-                        ));
-                    }
-                    ints[i] = n;
-                }
-            }
-        }
-    }
-    let name = obj
-        .get("alert_name")
-        .and_then(Value::as_str)
-        .map(|n| n.replace(' ', "_").to_uppercase())
-        .unwrap_or_default();
-    v.enum_or(
-        &obj,
-        &root,
-        "graylog_instance",
-        &["default", "network"],
-        "default",
-    );
-    v.finish()?;
-    Ok((ints[0], ints[1], name))
-}
-
-async fn provision_monitoring_alert(State(s): State<WafState>, req: Request) -> Response {
-    let content_type = req
-        .headers()
-        .get(http::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
-    let (parts, body) = req.into_parts();
-    let bytes = match axum::body::to_bytes(body, 64 << 20).await {
-        Ok(b) => b,
-        Err(_) => {
-            return ApiError::detail(
-                StatusCode::BAD_REQUEST,
-                "There was an error parsing the body",
-            )
-            .into_response();
-        }
-    };
-    if waf_alert_name(content_type.as_deref(), &bytes).is_none() {
-        // Not a WAF alert: Python answers it, body and all.
-        return match &s.legacy {
-            Some(proxy) => {
-                proxy
-                    .forward(Request::from_parts(parts, Body::from(bytes)))
-                    .await
-            }
-            None => ApiError::RouteNotFound.into_response(),
-        };
-    }
-    let request = Request::from_parts(parts, Body::from(Bytes::clone(&bytes)));
-    let WithJson(auth, body) = match WithJson::<Reader>::from_request(request, &s).await {
-        Ok(w) => w,
-        Err(resp) => return resp,
-    };
-    let _ = auth;
-    match provision_waf_alert(&s, &body).await {
-        Ok(resp) => resp,
-        Err(e) => e.into_response(),
-    }
-}
-
-async fn provision_waf_alert(s: &WafState, body: &JsonBody) -> ApiResult {
-    let (search_within, execute_every, name) = read_provision_request(body)?;
-    // Pinned to the default Graylog, whatever `graylog_instance` asked for.
-    if let Err(e) = alerts::check_event_definition(s, &name.replace('_', " ")).await {
-        return Err(e.unhandled());
-    }
-    let result = if name == "SOCFORTRESS_WAF_BLOCKED" {
-        alerts::provision_blocked_alert(s, i128::from(execute_every), i128::from(search_within))
-            .await
-    } else {
-        alerts::provision_brute_force_alert(s).await
-    };
-    match result {
-        Ok(()) => {}
-        Err(AlertError::Py(e)) => return Err(e.unhandled()),
-        Err(AlertError::Api(e)) => return Err(e),
-    }
-    Ok(ok(dict(vec![
-        ("success", PyValue::Bool(true)),
-        (
-            "message",
-            st(format!("Monitoring alert {name} provisioned successfully.")),
-        ),
     ])))
 }

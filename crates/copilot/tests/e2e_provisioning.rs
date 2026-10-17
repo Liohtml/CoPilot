@@ -586,35 +586,18 @@ async fn forwarding_rolls_back_what_it_created() {
 }
 
 #[tokio::test]
-async fn monitoring_alerts_other_than_the_waf_go_to_python() {
+async fn a_waf_monitoring_alert_checks_its_definition_first() {
     if !configured() {
         eprintln!("COPILOT_TEST_DATABASE_URL not set; skipping");
         return;
     }
-    let legacy = stand_in(2).await;
-    let h = harness_or_skip!(Some(&legacy), &env());
+    // (Every other monitoring alert is copilot-monitoring-alerts' too now:
+    // `e2e_monitoring_alerts.rs`.)
+    let h = harness_or_skip!(None, &env());
     let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
     h.seed().await;
-    Mock::given(method("POST"))
-        .and(path("/api/monitoring_alert/provision"))
-        .and(body_string_contains("WAZUH_SYSLOG_LEVEL_ALERT"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
-        .expect(1)
-        .mount(&legacy)
-        .await;
-    let (status, body) = h
-        .call(
-            "POST",
-            "/api/monitoring_alert/provision",
-            Some(&analyst),
-            Some(json!({"search_within_last": 1, "execute_every": 1,
-                        "alert_name": "WAZUH_SYSLOG_LEVEL_ALERT"})),
-        )
-        .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!({"from": "python"}));
 
-    // A WAF alert is answered here: an existing definition is a 400.
+    // An existing definition is a 400.
     let graylog = stand_in(1).await;
     let saved = set_graylog(&h, &graylog.uri()).await;
     Mock::given(method("GET"))
