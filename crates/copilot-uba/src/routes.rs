@@ -48,6 +48,10 @@ pub fn router(state: UbaState) -> Router {
         .route("/{customer_code}/alerts", get(alerts))
         .route("/{customer_code}/alerts/{alert_id}", get(alert))
         .route(
+            "/{customer_code}/alerts/{alert_id}/feedback",
+            post(submit_feedback),
+        )
+        .route(
             "/{customer_code}/suppressions",
             get(list_suppressions)
                 .post(add_suppressions)
@@ -393,6 +397,39 @@ async fn alert(
 ) -> ApiResult {
     auth.enforce_customer(&st.ctx, &code).await?;
     Ok(answer(st.client.get_alert(&code, &alert_id).await))
+}
+
+/// `POST …/alerts/{alert_id}/feedback`: UBA first; then the verdict on the
+/// linked incident alert, best-effort (#1239), reported as `incident`.
+async fn submit_feedback(
+    State(st): State<UbaState>,
+    Path((code, alert_id)): Path<(String, String)>,
+    WithJson(auth, body): WithJson<Reader>,
+) -> ApiResult {
+    auth.enforce_customer(&st.ctx, &code).await?;
+    let mut v = Validator::new();
+    let feedback = read_body(&mut v, &body, schema::Feedback::read);
+    v.finish()?;
+    let Some(feedback) = feedback else {
+        return Ok(answer(Err(UbaError::Py(
+            copilot_upstream::py::PyExc::Other("RuntimeError", "no body".into()),
+        ))));
+    };
+    let result = match st
+        .client
+        .submit_feedback(&code, &alert_id, feedback.dump.clone(), &auth.username)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return Ok(answer(Err(e))),
+    };
+    let incident =
+        match crate::verdict::record(&st.ctx, &st.client, &code, &alert_id, &feedback, &auth).await
+        {
+            Ok(i) => i,
+            Err(e) => return Ok(answer(Err(e))),
+        };
+    Ok(answer(crate::services::with_incident(&result, incident)))
 }
 
 async fn evidence(

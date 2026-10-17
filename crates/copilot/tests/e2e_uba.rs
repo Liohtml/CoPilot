@@ -549,3 +549,130 @@ async fn status_and_the_connector_check_read_ubas_status() {
     assert_eq!(header(&headers, "x-api-key"), Some(KEY));
     restore(&h, saved).await;
 }
+
+#[tokio::test]
+async fn a_uba_verdict_is_written_back_to_its_incident_alert() {
+    if std::env::var("COPILOT_TEST_DATABASE_URL").is_err() {
+        return;
+    }
+    let uba = stand_in(3).await;
+    let h = harness_or_skip!(None);
+    let (acme_alert, beta_alert) = h.seed().await;
+    let saved = uba_connector(&h, &uba).await;
+    let (_, analyst) = tokens(&h);
+    let acme = h.code("acme");
+    let alerts = format!("/v1/tenants/{acme}/alerts");
+    for (id, linked) in [
+        ("u1", json!(acme_alert)),
+        ("u2", json!(beta_alert)),
+        ("u3", json!(null)),
+        ("u4", json!(format!("{acme_alert}"))),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(format!("{alerts}/{id}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"alert": {"id": id, "copilot_alert_id": linked, "entity_key": "upn:j"}}),
+            ))
+            .mount(&uba)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("{alerts}/{id}/feedback")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"message": "saved"})))
+            .mount(&uba)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path(alerts.clone()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"alerts": [
+            {"id": "u1", "copilot_alert_id": acme_alert},
+            {"id": "u9", "copilot_alert_id": acme_alert},
+        ]})))
+        .mount(&uba)
+        .await;
+    let feedback = |id: &str| format!("/api/uba/{acme}/alerts/{id}/feedback");
+
+    // An unsuppressed false positive while a sibling is open: left alone.
+    let (status, body) = h
+        .call(
+            "POST",
+            &feedback("u1"),
+            Some(&analyst),
+            Some(json!({"verdict": "FALSE_POSITIVE", "suppress": false})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["incident"]["status"], "skipped", "{body}");
+    assert_eq!(
+        body["incident"]["message"],
+        format!(
+            "Incident alert #{acme_alert} also holds 1 other open UBA alert(s) for this entity; a \
+             false positive there would suppress their rules, so it was left untriaged."
+        )
+    );
+    // Recorded, with CoPilot's reason vocabulary, audited.
+    let (status, body) = h
+        .call(
+            "POST",
+            &feedback("u1"),
+            Some(&analyst),
+            Some(json!({"verdict": "FALSE_POSITIVE", "reason": "noise", "note": "n"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true, "message": "saved", "incident": {
+            "status": "recorded", "incident_alert_id": acme_alert,
+            "verdict": "FALSE_POSITIVE",
+            "message": format!("Also recorded on incident alert #{acme_alert}.")}})
+    );
+    let row: (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = sqlx::query_as(
+        "SELECT verdict, verdict_reason, verdict_note, verdict_by FROM \
+         incident_management_alert WHERE id = ?",
+    )
+    .bind(acme_alert)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        row,
+        (
+            Some("FALSE_POSITIVE".into()),
+            Some("OTHER".into()),
+            Some("n".into()),
+            Some(format!("analyst{}", h.suffix))
+        )
+    );
+    let audit: (String, String) = sqlx::query_as(
+        "SELECT entity_id, CAST(JSON_UNQUOTE(JSON_EXTRACT(new_value, '$.via')) AS CHAR) FROM audit_log \
+         WHERE action = 'alert.verdict_set' AND actor_username = ? ORDER BY id DESC LIMIT 1",
+    )
+    .bind(format!("analyst{}", h.suffix))
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(audit, (acme_alert.to_string(), "uba".to_string()));
+    // Never overwritten; another customer's is skipped; none is not linked.
+    for (id, status) in [
+        ("u4", "already_set"),
+        ("u2", "skipped"),
+        ("u3", "not_linked"),
+    ] {
+        let (code, body) = h
+            .call(
+                "POST",
+                &feedback(id),
+                Some(&analyst),
+                Some(json!({"verdict": "TRUE_POSITIVE"})),
+            )
+            .await;
+        assert_eq!(code, StatusCode::OK, "{body}");
+        assert_eq!(body["incident"]["status"], status, "{id}: {body}");
+    }
+    restore(&h, saved).await;
+}

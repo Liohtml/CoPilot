@@ -15,6 +15,8 @@
 //! - [`services`] — one function per UBA endpoint
 //! - [`routes`]   — the routes, `verify_customer_code_access` on every one
 //!   but `/availability`
+//! - [`verdict`]  — a UBA verdict written back onto the linked incident
+//!   alert (#1239), audited and on its SLA clock
 //! - [`verify`]   — the `SOCFortress UBA` connector verifier
 
 #![warn(missing_docs)]
@@ -24,6 +26,7 @@ pub mod params;
 pub mod routes;
 pub mod schema;
 pub mod services;
+pub mod verdict;
 pub mod verify;
 
 #[cfg(test)]

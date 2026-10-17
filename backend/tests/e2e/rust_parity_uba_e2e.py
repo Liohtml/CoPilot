@@ -333,12 +333,51 @@ def uba_connector(url=None, key=UBA_KEY):
     set_connector("SOCFortress UBA", url if url is not None else f"http://127.0.0.1:{STUB_PORT}/uba/v1", api_key=key)
 
 
+# Incident alerts (id, customer, verdict, tag): UBA alerts link to them by `copilot_alert_id`.
+ALERT_A1, ALERT_A2, ALERT_A3, ALERT_B1, ALERT_GONE = 7_682_001, 7_682_002, 7_682_003, 7_682_011, 7_682_099
+INCIDENTS = (
+    (ALERT_A1, CUST_A, None, None),
+    (ALERT_A2, CUST_A, "TRUE_POSITIVE", None),
+    (ALERT_A3, CUST_A, None, 7_682_502),
+    (ALERT_B1, CUST_B, None, None),
+)
+TAG_SEEN, TAG_HIDDEN = 7_682_501, 7_682_502
+
+
+def wipe_incidents():
+    ids = [i[0] for i in INCIDENTS]
+    sql("DELETE FROM soc_sla_alert_tracking WHERE alert_id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM incident_management_alert_to_tag WHERE alert_id IN :i", i=ids)
+    sql("DELETE FROM incident_management_alert WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+
+
 def seed_rows(extra=None):
     """The rows every request starts from; `extra()` adjusts them."""
     uba_connector()
     set_connector("Graylog", f"http://127.0.0.1:{STUB_PORT}/graylog", "admin", "gl-pass")
     set_connector("Wazuh-Manager", f"http://127.0.0.1:{STUB_PORT}/wazuh", "wazuh-wui", "wazuh-pass")
     sql("DELETE FROM audit_log WHERE actor_username IN :u", u=list(USERS))
+    wipe_incidents()
+    for alert_id, code, verdict, tag in INCIDENTS:
+        sql(
+            "INSERT INTO incident_management_alert (id, alert_name, alert_description, status, alert_creation_time, customer_code, "
+            "source, escalated, severity, verdict, verdict_by, verdict_at) VALUES (:i, :n, 'd', 'OPEN', '2026-10-01 00:00:00', :c, "
+            "'uba', 0, 'High', :v, :by, :at)",
+            i=alert_id,
+            n=f"UBA alert {alert_id}",
+            c=code,
+            v=verdict,
+            by="someone" if verdict else None,
+            at="2026-10-02 00:00:00" if verdict else None,
+        )
+        if tag:
+            sql("INSERT INTO incident_management_alert_to_tag (alert_id, tag_id) VALUES (:a, :t)", a=alert_id, t=tag)
+        sql(
+            "INSERT INTO soc_sla_alert_tracking (alert_id, severity, opened_at, ack_due_at, resolve_due_at, tracked, updated_at, "
+            "business_hours, reopen_count, paused_seconds, pause_credit_seconds) VALUES (:a, 'High', '2026-10-01 00:00:00', "
+            "'2099-01-01 00:00:00', '2099-01-02 00:00:00', 1, '2026-10-01 00:00:00', 0, 0, 0, 0)",
+            a=alert_id,
+        )
     if extra:
         extra()
 
@@ -350,6 +389,7 @@ def seed():
             {"names": list(OUR_CONNECTORS)},
         )
         SAVED_CONNECTORS.extend(dict(r._mapping) for r in found)
+    SAVED_TAG_SETTINGS.extend(rows("SELECT * FROM incident_management_tag_access_settings"))
     for code in CUSTOMERS:
         sql("INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :n, UTC_TIMESTAMP())", c=code, n=f"Name {code}")
     for name, role in ((ADMIN, 1), (ANALYST, 2), (ANALYST_B, 2), (PORTAL, 4), (UNICODE, 2)):
@@ -364,10 +404,42 @@ def seed():
             c=code,
             n=name,
         )
+    for tag_id, name in ((TAG_SEEN, f"uba-seen-{SFX}"), (TAG_HIDDEN, f"uba-hidden-{SFX}")):
+        sql("INSERT INTO incident_management_alerttag (id, tag) VALUES (:i, :t)", i=tag_id, t=name)
+    sql(
+        "INSERT INTO user_tag_access (user_id, tag_id, created_at) SELECT id, :t, UTC_TIMESTAMP() FROM `user` WHERE username = :n",
+        t=TAG_SEEN,
+        n=ANALYST,
+    )
     seed_rows()
 
 
+SAVED_TAG_SETTINGS = []
+
+
+def restrict_tags():
+    """Tag RBAC on: the analyst sees untagged alerts and TAG_SEEN's."""
+    sql("DELETE FROM incident_management_tag_access_settings")
+    sql(
+        "INSERT INTO incident_management_tag_access_settings (id, enabled, untagged_alert_behavior, default_tag_id, updated_at, "
+        "updated_by) VALUES (1, 1, 'visible_to_all', NULL, UTC_TIMESTAMP(), 'parity')",
+    )
+
+
+def unrestrict_tags():
+    sql("DELETE FROM incident_management_tag_access_settings")
+    for row in SAVED_TAG_SETTINGS:
+        sql(
+            f"INSERT INTO incident_management_tag_access_settings ({', '.join(row)}) VALUES ({', '.join(':' + c for c in row)})",
+            **row,
+        )
+
+
 def cleanup():
+    wipe_incidents()
+    unrestrict_tags()
+    sql("DELETE FROM user_tag_access WHERE tag_id IN :t", t=[TAG_SEEN, TAG_HIDDEN])
+    sql("DELETE FROM incident_management_alerttag WHERE id IN :t", t=[TAG_SEEN, TAG_HIDDEN])
     sql("DELETE FROM audit_log WHERE actor_username IN :u", u=list(USERS))
     for name in USERS:
         sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
@@ -392,6 +464,24 @@ def state():
             )
         ],
         "uba_connector": rows("SELECT connector_verified FROM connectors WHERE connector_name = 'SOCFortress UBA'"),
+        "incidents": [
+            {**r, "verdict_at": r["verdict_at"] is not None}
+            for r in rows(
+                "SELECT id, verdict, verdict_reason, verdict_note, verdict_by, verdict_at FROM incident_management_alert "
+                "WHERE id BETWEEN :lo AND :hi ORDER BY id",
+                lo=SEED_LO,
+                hi=SEED_HI,
+            )
+        ],
+        "sla": [
+            {**r, "first_ack_at": r["first_ack_at"] is not None}
+            for r in rows(
+                "SELECT alert_id, first_ack_at, first_ack_by, first_ack_action FROM soc_sla_alert_tracking "
+                "WHERE alert_id BETWEEN :lo AND :hi ORDER BY alert_id",
+                lo=SEED_LO,
+                hi=SEED_HI,
+            )
+        ],
     }
 
 
@@ -856,6 +946,173 @@ async def proxy_checks(p, t):
     await verify("connector check, unreachable", before=lambda: uba_connector(url=f"http://127.0.0.1:{CLOSED_PORT}"))
 
 
+# --- B: the verdict on the incident alert (#1239) -----------------------------------------------------
+
+
+def uba_alert(alert_id, linked, entity_key="upn:jane@contoso.com", **extra):
+    path = f"/uba/v1/tenants/{CUST_A}/alerts/{alert_id}"
+    payload = {"alert": {"id": alert_id, "copilot_alert_id": linked, "entity_key": entity_key, **extra}}
+    return ("GET", path), reply(200, payload)
+
+
+def open_alerts(*alerts):
+    return ("GET", f"/uba/v1/tenants/{CUST_A}/alerts?*"), reply(200, {"alerts": list(alerts), "total": len(alerts)})
+
+
+async def verdict_checks(p, t):
+    def fb(alert_id):
+        return f"{U}/{CUST_A}/alerts/{alert_id}/feedback"
+
+    tp, fp = {"verdict": "TRUE_POSITIVE", "note": "seen"}, {"verdict": "FALSE_POSITIVE", "reason": "AUTHORIZED_USER"}
+    unsuppressed = {"verdict": "FALSE_POSITIVE", "suppress": False, "reason": "made up"}
+
+    def stub(*overrides):
+        return {"overrides": dict(overrides)}
+
+    await p.same("verdict recorded", "POST", fb("u1"), t["analyst"], json=tp, stub=stub(uba_alert("u1", ALERT_A1)))
+    await p.same("verdict recorded by an admin", "POST", fb("u1"), t["admin"], json=fp, stub=stub(uba_alert("u1", ALERT_A1)))
+    await p.same(
+        "false positive, a reason CoPilot does not know",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json={"verdict": "FALSE_POSITIVE", "reason": "noise", "suppress_days": 5},
+        stub=stub(uba_alert("u1", ALERT_A1)),
+    )
+    await p.same(
+        "unsuppressed false positive, an open sibling",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=unsuppressed,
+        stub=stub(
+            uba_alert("u1", ALERT_A1),
+            open_alerts(
+                {"id": "u1", "copilot_alert_id": ALERT_A1},
+                {"id": "u2", "copilot_alert_id": float(ALERT_A1)},
+                {"id": "u3", "copilot_alert_id": 1},
+            ),
+        ),
+    )
+    await p.same(
+        "unsuppressed false positive, the only open one listed",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=unsuppressed,
+        stub=stub(uba_alert("u1", ALERT_A1), open_alerts({"id": "u1", "copilot_alert_id": ALERT_A1})),
+    )
+    await p.same(
+        "unsuppressed false positive, no entity key",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=unsuppressed,
+        stub=stub(uba_alert("u1", ALERT_A1, entity_key=None), open_alerts()),
+    )
+    await p.same(
+        "unsuppressed false positive, a non-dict sibling",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=unsuppressed,
+        stub=stub(uba_alert("u1", ALERT_A1), open_alerts(5)),
+    )
+    await p.same(
+        "unsuppressed false positive, UBA's list fails",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=unsuppressed,
+        stub=stub(uba_alert("u1", ALERT_A1), (("GET", f"/uba/v1/tenants/{CUST_A}/alerts?*"), reply(503, b""))),
+    )
+    await p.same("not linked", "POST", fb("u1"), t["analyst"], json=tp, stub=stub(uba_alert("u1", None)))
+    await p.same(
+        "no alert in UBA's answer",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=tp,
+        stub=stub((("GET", f"/uba/v1/tenants/{CUST_A}/alerts/u1"), reply(200, {"other": 1}))),
+    )
+    await p.same(
+        "UBA's alert is a list",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=tp,
+        stub=stub((("GET", f"/uba/v1/tenants/{CUST_A}/alerts/u1"), reply(200, {"alert": [1]}))),
+    )
+    await p.same("the incident alert is gone", "POST", fb("u1"), t["analyst"], json=tp, stub=stub(uba_alert("u1", ALERT_GONE)))
+    await p.same("already has a verdict", "POST", fb("u1"), t["analyst"], json=fp, stub=stub(uba_alert("u1", ALERT_A2)))
+    await p.same("another customer's incident alert", "POST", fb("u1"), t["admin"], json=tp, stub=stub(uba_alert("u1", ALERT_B1)))
+    await p.same(
+        "an incident alert the analyst's tags do not reach",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=tp,
+        before=restrict_tags,
+        stub=stub(uba_alert("u1", ALERT_A3)),
+    )
+    unrestrict_tags()
+    await p.same(
+        "an incident alert reached by tags",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=tp,
+        before=restrict_tags,
+        stub=stub(uba_alert("u1", ALERT_A1)),
+    )
+    unrestrict_tags()
+    for label, linked in (
+        ("a string id", str(ALERT_A1)),
+        ("a padded string id", f" {ALERT_A1} "),
+        ("a string id MySQL reads as a number", f"{ALERT_A1}abc"),
+        ("a float id", float(ALERT_A1)),
+        ("a fractional id", ALERT_A1 + 0.5),
+        ("a list id", [ALERT_A1]),
+        ("a nested list id", [[str(ALERT_A1)]]),
+        ("a list of two ids", [ALERT_A1, ALERT_A2]),
+        ("a list of null", [None]),
+        ("a dict id", {"id": ALERT_A1}),
+        ("a huge id", 10**30),
+        ("true", True),
+    ):
+        await p.same(f"copilot_alert_id {label}", "POST", fb("u1"), t["admin"], json=tp, stub=stub(uba_alert("u1", linked)))
+    await p.same(
+        "UBA refuses the verdict",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=tp,
+        stub=stub((("POST", f"/uba/v1/tenants/{CUST_A}/alerts/u1/feedback"), reply(401, b""))),
+    )
+    await p.same(
+        "UBA answers the verdict with an incident field",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=tp,
+        stub=stub(
+            uba_alert("u1", ALERT_A1),
+            (("POST", f"/uba/v1/tenants/{CUST_A}/alerts/u1/feedback"), reply(200, {"incident": "mine"})),
+        ),
+    )
+    await p.same(
+        "UBA's alert lookup fails",
+        "POST",
+        fb("u1"),
+        t["analyst"],
+        json=tp,
+        stub=stub((("GET", f"/uba/v1/tenants/{CUST_A}/alerts/u1"), reply(404, {"detail": "gone"}))),
+    )
+    await p.same("verdict, invalid body", "POST", fb("u1"), t["analyst"], json={"verdict": "maybe", "suppress_days": 0})
+    await p.same("verdict for another tenant", "POST", f"{U}/{CUST_B}/alerts/u1/feedback", t["analyst"], json=tp)
+    await p.same("verdict without a token", "POST", fb("u1"), json=tp)
+
+
 async def main():
     server = start_stub()
     tls = start_tls_stub()
@@ -873,9 +1130,11 @@ async def main():
             "unicode": token(UNICODE, ["analyst"]),
         }
         try:
-            sections = os.environ.get("UBA_PARITY_SECTIONS", "proxy").split(",")
+            sections = os.environ.get("UBA_PARITY_SECTIONS", "proxy,verdict").split(",")
             if "proxy" in sections:
                 await proxy_checks(p, t)
+            if "verdict" in sections:
+                await verdict_checks(p, t)
         finally:
             await p.close()
             from app.db.db_session import async_engine
