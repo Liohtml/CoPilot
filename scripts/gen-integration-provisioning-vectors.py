@@ -18,15 +18,24 @@ Writes `crates/copilot-integration-provisioning/src/integration_provisioning_vec
 * `requests` — the request bodies of the provisioning routes as FastAPI validates them, the
   `mode="before"` validators included (a non-dict body is their `TypeError`: status 500);
 * `index_set` / `datasource` — `TimeBasedIndexSet(...)` and `GrafanaDatasource(...)` as the
-  services build them, `model_dump()` then `json.dumps`.
+  services build them, `model_dump()` then `json.dumps`;
+* `integrations` — for each integration's `/provision`: its request bodies as FastAPI validates
+  them, the `CreateSchedulerRequest`s of its route in order (read from the source), and the index
+  set and event stream its service builds for one customer (`get_customer` and the shard count
+  stubbed, `creation_date` masked); `provisioning_jobs` — the scheduler's hook allowlist.
 
-Re-run after a change to a content-pack template, to `stack_provisioning/graylog/schema/`,
+Re-run after a change to a content-pack template, to `stack_provisioning/graylog/schema/`, to an
+integration's provisioning,
 `customer_provisioning/schema/{graylog,grafana}.py`, or after a Pydantic or FastAPI upgrade.
 """
 
+import ast
 import hashlib
+import importlib
 import json
 import pathlib
+import re
+import types
 
 from fastapi import HTTPException
 from pydantic import TypeAdapter
@@ -34,7 +43,11 @@ from pydantic import ValidationError
 
 from app.customer_provisioning.schema import grafana as grafana_schema
 from app.customer_provisioning.schema import graylog as graylog_schema
+from app.integrations.socfortress_mdr.schema.provision import (
+    ProvisionSOCFortressMDRRequest,
+)
 from app.middleware.exception_handlers import _describe
+from app.schedulers.routes.scheduler import PROVISIONING_JOBS
 from app.stack_provisioning.graylog.schema.fortinet import ProvisionFortinetRequest
 from app.stack_provisioning.graylog.schema.provision import AvailableContentPacks
 from app.stack_provisioning.graylog.schema.provision import ReplaceContentPackKeywords
@@ -379,6 +392,89 @@ def datasource():
     return out
 
 
+INTEGRATION_MODULES = ["huntress", "darktrace", "duo", "cato", "carbonblack", "mimecast", "sap_siem"]
+CUSTOMER = types.SimpleNamespace(customer=types.SimpleNamespace(customer_name='Ä "Name" \\ x'))
+CODE = "AbÇ_9"
+STAMP = re.compile(r'"creation_date": "[^"]*"')
+
+
+def scheduled_jobs(route_file):
+    """The `CreateSchedulerRequest(...)` of a module's `/provision` route, in source order: function
+    name, job id and the interval (an int, or `"request"` for the request's `time_interval`)."""
+    jobs = []
+    tree = ast.parse(route_file.read_text())
+    route = next(
+        f
+        for f in tree.body
+        if isinstance(f, ast.AsyncFunctionDef)
+        and any(isinstance(d, ast.Call) and d.args and getattr(d.args[0], "value", None) == "/provision" for d in f.decorator_list)
+    )
+    for node in ast.walk(route):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "CreateSchedulerRequest":
+            kw = {k.arg: k.value for k in node.keywords}
+            interval = kw["time_interval"]
+            jobs.append(
+                [
+                    kw["function_name"].value,
+                    kw["job_id"].value,
+                    interval.value if isinstance(interval, ast.Constant) else "request",
+                    node.lineno,
+                ],
+            )
+    jobs.sort(key=lambda j: j[3])
+    return [j[:3] for j in jobs]
+
+
+async def integrations():
+    """For each integration: its request model's bodies, its jobs, and the index set and stream
+    `provision_<x>` builds for one customer (the customer lookup and the shard count stubbed)."""
+    out = {}
+    for name in INTEGRATION_MODULES:
+        services = importlib.import_module(f"app.integrations.{name}.services.provision")
+        schema = importlib.import_module(f"app.integrations.{name}.schema.provision")
+        request = next(getattr(schema, n) for n in dir(schema) if n.startswith("Provision") and n.endswith("Request"))
+
+        async def get_customer(code, session):
+            return CUSTOMER
+
+        async def shards():
+            return 3
+
+        services.get_customer = get_customer
+        services.output_shard_number_to_be_set_based_on_nodes = shards
+        index_set = await services.build_index_set_config(CODE, None)
+        stream = await services.build_event_stream_config(CODE, "is-1", None)
+        out[name] = {
+            "request": request.__name__,
+            "requests": [{"input": json.dumps(b), **body_outcome(request, json.loads(json.dumps(b)))} for b in INTEGRATION_BODIES],
+            "jobs": scheduled_jobs(ROOT / "backend" / "app" / "integrations" / name / "routes" / "provision.py"),
+            "index_set": STAMP.sub('"creation_date": "<t>"', json.dumps(index_set.model_dump())),
+            "stream": json.dumps(stream.model_dump()),
+        }
+    out["socfortress_mdr"] = {
+        "request": ProvisionSOCFortressMDRRequest.__name__,
+        "requests": [
+            {"input": json.dumps(b), **body_outcome(ProvisionSOCFortressMDRRequest, json.loads(json.dumps(b)))} for b in INTEGRATION_BODIES
+        ],
+    }
+    return out
+
+
+INTEGRATION_BODIES = [
+    {"customer_code": "c1", "time_interval": 5},
+    {"customer_code": "c1", "time_interval": "7", "integration_name": "Other"},
+    {"customer_code": "c1"},
+    {"customer_code": "c1", "time_interval": 1.5},
+    {"customer_code": None, "time_interval": None},
+    {"time_interval": 100000000000000000000},
+    {},
+    None,
+    [],
+    "x",
+    3,
+]
+
+
 async def main():
     doc = {
         "packs": await packs(),
@@ -392,6 +488,8 @@ async def main():
         },
         "index_set": index_set(),
         "datasource": datasource(),
+        "integrations": await integrations(),
+        "provisioning_jobs": sorted(PROVISIONING_JOBS),
     }
     OUT.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
     print(f"wrote {OUT}")

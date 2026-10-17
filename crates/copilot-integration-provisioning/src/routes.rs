@@ -20,6 +20,7 @@ use copilot_upstream::respond::model_response;
 use copilot_web::{AdminOrAnalyst, ApiError, ApiResult, Authorized};
 
 use crate::ProvisioningState;
+use crate::integrations::{self, INTEGRATIONS, Integration, PROVISION_MDR_REQUEST};
 use crate::network::{self, NETWORKS, Network, Tools};
 
 type Reader = Authorized<AdminOrAnalyst>;
@@ -41,7 +42,20 @@ pub fn router(state: ProvisioningState) -> Router {
             ),
         );
     }
-    router.with_state(state)
+    for integration in INTEGRATIONS {
+        let path = format!("/api/{}/provision", integration.route);
+        router = router.route(
+            &path,
+            post(
+                move |st: State<ProvisioningState>, body: WithPyJson<Reader>| {
+                    provision_integration(st, body, integration)
+                },
+            ),
+        );
+    }
+    router
+        .route("/api/socfortress_mdr/provision", post(provision_mdr))
+        .with_state(state)
 }
 
 /// The body validated as `model` after `values[key] = value`.
@@ -92,6 +106,49 @@ async fn provision_network(
     auth.enforce_customer(&st.ctx, &field(&request, "customer_code").py_str())
         .await?;
     network::provision(tools(&st), network, &request)
+        .await
+        .map(|dump| model_response(&dump))
+        .map_err(PyExc::unhandled)
+}
+
+async fn provision_integration(
+    State(st): State<ProvisioningState>,
+    WithPyJson(auth, body): WithPyJson<Reader>,
+    integration: &'static Integration,
+) -> ApiResult {
+    let request = read_forced(
+        &body,
+        integration.request,
+        "integration_name",
+        integration.request_name,
+    )?;
+    let code = field(&request, "customer_code").py_str();
+    auth.enforce_customer(&st.ctx, &code).await?;
+    integrations::integrations_of(&st.ctx, &code)
+        .await
+        .map_err(PyExc::unhandled)?;
+    integrations::provision(&st.ctx, tools(&st), integration, &code).await?;
+    integrations::hand_jobs(
+        st.legacy.as_ref(),
+        &auth.user,
+        integrations::jobs(integration, &request),
+    )
+    .await
+    .map_err(PyExc::unhandled)?;
+    Ok(model_response(&copilot_upstream::model::kwargs(vec![
+        ("success", PyValue::Bool(true)),
+        ("message", PyValue::Str(integration.message.into())),
+    ])))
+}
+
+async fn provision_mdr(
+    State(st): State<ProvisioningState>,
+    WithPyJson(auth, body): WithPyJson<Reader>,
+) -> ApiResult {
+    let request = body.model(&PROVISION_MDR_REQUEST)?;
+    auth.enforce_customer(&st.ctx, &field(&request, "customer_code").py_str())
+        .await?;
+    integrations::provision_mdr(&st.ctx, &request)
         .await
         .map(|dump| model_response(&dump))
         .map_err(PyExc::unhandled)

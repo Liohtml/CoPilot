@@ -2,12 +2,13 @@
 (`copilot-grafana-dashboards`, `copilot-integration-provisioning`) with this backend — NOT collected
 by pytest (needs a live MySQL and the Rust binary; run by scripts/rust-parity.sh).
 
-The real FastAPI routers (in-process) and Rust instances this suite starts answer the same requests
-on one database: `POST /api/grafana/dashboards`, `POST /api/customer_provisioning/provision/dashboards`,
-the Fortinet / SonicWall / SentinelOne stack provisioning and the integrations' `/provision` routes.
-One Rust instance meets Graylog 6, a second Graylog 7 (both backends cache the version, Python's is
-pinned to the instance in use); the Rust instances' legacy backend is the same routers served by
-uvicorn in a subprocess, which registers the APScheduler jobs the integration routes add (Rust hands
+The real FastAPI routers and the Rust instances this suite starts answer the same requests on one
+database: `POST /api/grafana/dashboards`, `POST /api/customer_provisioning/provision/dashboards`, the
+Fortinet / SonicWall / SentinelOne stack provisioning and the integrations' `/provision` routes. One
+Rust instance meets Graylog 6, a second Graylog 7 (both backends cache the version, Python's is
+pinned to the instance in use). The routers are served by uvicorn in a thread, over the real
+APScheduler on `apscheduler_jobs` started paused: that app is the Python side of every check and
+the Rust instances' legacy backend, which registers the jobs the integration routes add (Rust hands
 that step to Python). The tools are local stand-ins recording every request — method, target, every
 header the client sent and the body bytes (a dashboard is compared as it was sent, never
 re-serialised): Graylog and Graylog-Network (`/graylog`, `/graylog-net`), Grafana (`/grafanaapi`,
@@ -25,6 +26,7 @@ integrations` picks the sections.
 """
 
 import asyncio
+import contextlib
 import copy
 import datetime
 import fnmatch
@@ -56,6 +58,7 @@ sys.path.insert(0, HERE)
 import connector_samples as samples  # noqa: E402
 import httpx  # noqa: E402
 import jwt  # noqa: E402
+import uvicorn  # noqa: E402
 from fastapi import APIRouter  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
@@ -534,6 +537,7 @@ def seed():
             n=name,
         )
     seed_network()
+    seed_integrations()
 
 
 # The network connectors: (id, customer, name, service, keys); subscriptions take id + 100, keys
@@ -560,6 +564,88 @@ NET_CONNECTORS = [
     (7_650_016, CUST_C, NAME_C, "Fortinet", []),
 ]
 INDEXER_URL = f"http://127.0.0.1:{INDEXER_PORT}"
+CUST_D = f"GPD{SFX}"  # integration rows, but no `customers` row (the string key is not an FK)
+# The integrations: (id, customer, service, keys); subscriptions take id + 100, keys ids from
+# 7650700.
+INT_SERVICES = {
+    name: 7_650_500 + i
+    for i, name in enumerate(["Huntress", "Darktrace", "Duo", "CATO", "CarbonBlack", "Mimecast", "SAP SIEM", "SOCFortress MDR"])
+}
+INT_ROWS = [
+    (7_650_511, CUST_A, "Huntress", [("API_KEY", "k")]),
+    (7_650_512, CUST_A, "Darktrace", [("API_KEY", "k")]),
+    (7_650_513, CUST_A, "Duo", []),
+    (7_650_514, CUST_A, "CATO", [("API_KEY", "k")]),
+    (7_650_515, CUST_A, "CarbonBlack", []),
+    (7_650_516, CUST_A, "Mimecast", [("API_KEY", "k")]),
+    (7_650_517, CUST_A, "SAP SIEM", [("API_KEY", "k")]),
+    (7_650_518, CUST_A, "SOCFortress MDR", [("COLLECTOR_UUID", "c0ffee-collector")]),
+    (7_650_519, CUST_B, "SOCFortress MDR", [("OTHER", "x"), ("COLLECTOR_UUID", " \t\x1f ")]),
+    (7_650_520, CUST_B, "Huntress", []),
+    (7_650_521, CUST_D, "Huntress", []),
+]
+INT_IDS = [r[0] for r in INT_ROWS]
+JOB_IDS = [
+    "invoke_huntress_integration_collect",
+    "invoke_darktrace_integration_collect",
+    "invoke_duo_integration_collect",
+    "invoke_cato_integration_collect",
+    "invoke_carbonblack_integration_collection",
+    "invoke_mimecast_integration_ttp",
+    "invoke_mimecast_integration",
+    "invoke_sap_siem_integration_collection",
+    "invoke_sap_siem_integration_suspicious_logins_analysis",
+    "invoke_sap_siem_integration_multiple_logins_same_ip_analysis",
+]
+SAVED_JOBS = {}
+
+
+def seed_integrations():
+    for name, sid in INT_SERVICES.items():
+        sql("INSERT INTO integration_services (id, service_name, auth_type) VALUES (:i, :n, 'API_KEY')", i=sid, n=name)
+    key_id = 7_650_700
+    for cid, code, service, keys in INT_ROWS:
+        sql(
+            "INSERT INTO customer_integrations (id, customer_code, customer_name, integration_service_id, integration_service_name, "
+            "deployed) VALUES (:i, :c, :n, :s, :sn, 0)",
+            i=cid,
+            c=code,
+            n=f"{code} name",
+            s=INT_SERVICES[service],
+            sn=service,
+        )
+        sql(
+            "INSERT INTO integration_subscriptions (id, customer_id, integration_service_id) VALUES (:i, :c, :s)",
+            i=cid + 100,
+            c=cid,
+            s=INT_SERVICES[service],
+        )
+        for k, v in keys:
+            key_id += 1
+            sql(
+                "INSERT INTO integration_auth_keys (id, subscription_id, auth_key_name, auth_value) VALUES (:i, :s, :k, :v)",
+                i=key_id,
+                s=cid + 100,
+                k=k,
+                v=v,
+            )
+    # The provisioning jobs as the deployment had them (restored at the end).
+    SAVED_JOBS["apscheduler_jobs"] = rows("SELECT * FROM apscheduler_jobs WHERE id IN :j", j=JOB_IDS)
+    SAVED_JOBS["scheduled_job_metadata"] = rows("SELECT * FROM scheduled_job_metadata WHERE job_id IN :j", j=JOB_IDS)
+
+
+def clear_jobs():
+    sql("DELETE FROM apscheduler_jobs WHERE id IN :j", j=JOB_IDS)
+    sql("DELETE FROM scheduled_job_metadata WHERE job_id IN :j", j=JOB_IDS)
+
+
+def restore_jobs():
+    if not SAVED_JOBS:
+        return
+    clear_jobs()
+    for table, saved in SAVED_JOBS.items():
+        for row in saved:
+            sql(f"INSERT INTO {table} ({', '.join(row)}) VALUES ({', '.join(':' + c for c in row)})", **row)
 
 
 def seed_network():
@@ -625,6 +711,11 @@ def point_tools():
 
 
 def cleanup():
+    sql("DELETE FROM integration_auth_keys WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM integration_subscriptions WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM customer_integrations WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM integration_services WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM customer_integrations_meta WHERE customer_code IN :c", c=list(CUSTOMERS) + [CUST_D])
     sql("DELETE FROM network_connectors_keys WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
     sql("DELETE FROM network_connectors_subscriptions WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
     sql("DELETE FROM customer_network_connectors WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
@@ -643,23 +734,71 @@ def cleanup():
 
 
 def build_python_app():
+    """The real routers, served by uvicorn in a thread: the Python side of every check, and the
+    Rust instances' legacy backend (the scheduler's `/provisioning_jobs`). The APScheduler instance
+    is the real one on the real `apscheduler_jobs` store, started paused: jobs are stored, none
+    fires."""
+    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers import carbonblack
+    from app.routers import cato
     from app.routers import customer_provisioning
+    from app.routers import darktrace
+    from app.routers import duo
     from app.routers import grafana
+    from app.routers import huntress
+    from app.routers import mimecast
+    from app.routers import sap_siem
+    from app.routers import scheduler
+    from app.routers import socfortress_mdr
     from app.routers import stack_provisioning
+    from app.schedulers import scheduler as scheduler_module
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        paused = AsyncIOScheduler(event_loop=asyncio.get_running_loop())
+        paused.configure(jobstores={"default": SQLAlchemyJobStore(engine=sync_engine)})
+        paused.start(paused=True)
+        scheduler_module.scheduler_instance = paused
+        yield
+        paused.shutdown(wait=False)
 
     api = APIRouter(prefix="/api")
-    api.include_router(grafana.router)
-    api.include_router(customer_provisioning.router)
-    api.include_router(stack_provisioning.router)
-    app = FastAPI(redirect_slashes=False)
+    for module in (
+        grafana,
+        customer_provisioning,
+        stack_provisioning,
+        huntress,
+        darktrace,
+        duo,
+        cato,
+        carbonblack,
+        mimecast,
+        sap_siem,
+        socfortress_mdr,
+        scheduler,
+    ):
+        api.include_router(module.router)
+    app = FastAPI(redirect_slashes=False, lifespan=lifespan)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(ValueError, value_error_handler)
     return app
+
+
+def start_python(port):
+    server = uvicorn.Server(uvicorn.Config(build_python_app(), host="127.0.0.1", port=port, log_level="warning", lifespan="on"))
+    threading.Thread(target=server.run, daemon=True).start()
+    for _ in range(300):
+        if server.started:
+            return server
+        time.sleep(0.05)
+    raise RuntimeError("uvicorn did not start")
 
 
 def wait_port(port, proc):
@@ -745,11 +884,7 @@ def out_norm(requests, uuids):
 
 class Pair:
     def __init__(self):
-        self.py = httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False),
-            base_url="http://py",
-            timeout=120,
-        )
+        self.py = httpx.AsyncClient(base_url=f"http://127.0.0.1:{PY_PORT}", timeout=120)
         self.rs = httpx.AsyncClient(base_url=f"http://127.0.0.1:{RS_PORT}", timeout=120)
         self.rs7 = httpx.AsyncClient(base_url=f"http://127.0.0.1:{RS7_PORT}", timeout=120)
 
@@ -1430,11 +1565,271 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
     )
 
 
+# --- Integrations --------------------------------------------------------------------------------------
+
+
+def integ(version=6, graylog=None, grafana=None, indexer=None, setup=None):
+    """A fresh world: no meta rows, nothing deployed, no provisioning job stored."""
+
+    def before():
+        point_tools()
+        sql("DELETE FROM customer_integrations_meta WHERE customer_code IN :c", c=list(CUSTOMERS) + [CUST_D])
+        sql("UPDATE customer_integrations SET deployed = 0 WHERE id IN :i", i=INT_IDS)
+        sql("UPDATE customersmeta SET customer_meta_grafana_org_id = '7' WHERE customer_code = :c", c=CUST_A)
+        clear_jobs()
+        GRAYLOG.reset(version, **(graylog or {}))
+        GRAFANA.reset(grafana)
+        INDEXER.reset(indexer)
+        pin_graylog_version("Graylog", version)
+        if setup:
+            setup()
+
+    return before
+
+
+def integration_state():
+    meta = rows(
+        "SELECT customer_code, integration_name, instance_name, graylog_input_id, graylog_index_id, graylog_stream_id, "
+        "grafana_org_id, grafana_dashboard_folder_id, grafana_datasource_uid FROM customer_integrations_meta "
+        "WHERE customer_code IN :c ORDER BY id",
+        c=list(CUSTOMERS) + [CUST_D],
+    )
+    flags = rows("SELECT id, deployed FROM customer_integrations WHERE id IN :i ORDER BY id", i=INT_IDS)
+    jobs = rows("SELECT id, next_run_time IS NOT NULL AS scheduled FROM apscheduler_jobs WHERE id IN :j ORDER BY id", j=JOB_IDS)
+    metadata = rows(
+        "SELECT job_id, last_success, time_interval, extra_data, enabled, job_description FROM scheduled_job_metadata "
+        "WHERE job_id IN :j ORDER BY id",
+        j=JOB_IDS,
+    )
+    return {"meta": meta, "deployed": flags, "jobs": jobs, "metadata": metadata, "graylog": GRAYLOG.state()}
+
+
+async def integration_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
+    st = integration_state
+    body = {"customer_code": CUST_A, "time_interval": 5}
+    await p.same("huntress: no token", "POST", "/api/huntress/provision", json=body)
+    await p.same(
+        "huntress: malformed JSON, no token",
+        "POST",
+        "/api/huntress/provision",
+        content=b"{",
+        headers={"Content-Type": "application/json"},
+    )
+    await p.same("huntress: no body", "POST", "/api/huntress/provision", t_admin)
+    await p.same("huntress: a list body (the before-validator's TypeError)", "POST", "/api/huntress/provision", t_admin, json=[body])
+    await p.same("mimecast: not JSON", "POST", "/api/mimecast/provision", t_admin, content=b"x", headers={"Content-Type": "text/plain"})
+    await p.same("cato: no time_interval", "POST", "/api/cato/provision", t_admin, json={"customer_code": CUST_A})
+    await p.same("huntress: time_interval not an int", "POST", "/api/huntress/provision", t_admin, json={**body, "time_interval": 1.5})
+    await p.same("huntress: provisioned on Graylog 6", "POST", "/api/huntress/provision", t_admin, before=integ(6), state=st, json=body)
+    await p.same(
+        "darktrace: the default interval, on Graylog 7, as the customer's analyst",
+        "POST",
+        "/api/darktrace/provision",
+        t_analyst,
+        before=integ(7),
+        state=st,
+        rust=p.rs7,
+        json={"customer_code": CUST_A, "integration_name": "ignored"},
+    )
+    await p.same(
+        "duo: provisioned",
+        "POST",
+        "/api/duo/provision",
+        t_admin,
+        before=integ(),
+        state=st,
+        json={"customer_code": CUST_A, "time_interval": "9"},
+    )
+    await p.same("cato: provisioned", "POST", "/api/cato/provision", t_admin, before=integ(), state=st, json=body)
+    await p.same(
+        "carbonblack: provisioned on Graylog 7",
+        "POST",
+        "/api/carbonblack/provision",
+        t_admin,
+        before=integ(7),
+        state=st,
+        rust=p.rs7,
+        json=body,
+    )
+    await p.same(
+        "mimecast: provisioned (two fixed jobs)",
+        "POST",
+        "/api/mimecast/provision",
+        t_admin,
+        before=integ(),
+        state=st,
+        json={"customer_code": CUST_A, "time_interval": 99},
+    )
+    await p.same("sap_siem: provisioned (three jobs)", "POST", "/api/sap_siem/provision", t_admin, before=integ(), state=st, json=body)
+
+    def existing_meta():
+        sql(
+            "INSERT INTO customer_integrations_meta (customer_code, integration_name, graylog_index_id, graylog_stream_id, "
+            "grafana_org_id, grafana_dashboard_folder_id) VALUES (:c, 'Huntress', 'old', 'old', '7', '1')",
+            c=CUST_A,
+        )
+
+    await p.same(
+        "huntress: a meta row already there (the 400 after the tools)",
+        "POST",
+        "/api/huntress/provision",
+        t_admin,
+        before=integ(setup=existing_meta),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "huntress: no integration",
+        "POST",
+        "/api/huntress/provision",
+        t_admin,
+        before=integ(),
+        state=st,
+        json={**body, "customer_code": CUST_C},
+    )
+    await p.same(
+        "huntress: integrations but no customer row",
+        "POST",
+        "/api/huntress/provision",
+        t_admin,
+        before=integ(),
+        state=st,
+        json={**body, "customer_code": CUST_D},
+    )
+
+    def no_meta_b():
+        sql("UPDATE customersmeta SET customer_meta_grafana_org_id = 'x' WHERE customer_code = :c", c=CUST_A)
+
+    await p.same(
+        "huntress: an organization that is not an int (the dashboards request's 400)",
+        "POST",
+        "/api/huntress/provision",
+        t_admin,
+        before=integ(setup=no_meta_b),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "huntress: Graylog refuses the stream",
+        "POST",
+        "/api/huntress/provision",
+        t_admin,
+        before=integ(graylog={"overrides": {("POST", "/api/streams"): (400, "application/json", _json({"message": "Invalid title"}))}}),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "huntress: the stream answer without its id",
+        "POST",
+        "/api/huntress/provision",
+        t_admin,
+        before=integ(graylog={"overrides": {("POST", "/api/streams"): (201, "application/json", _json({"id": "x"}))}}),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "huntress: the resume refused",
+        "POST",
+        "/api/huntress/provision",
+        t_admin,
+        before=integ(graylog={"overrides": {("POST", "/api/streams/*/resume"): (404, "application/json", _json({"message": "gone"}))}}),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "huntress: the shard count fails",
+        "POST",
+        "/api/huntress/provision",
+        t_admin,
+        before=integ(indexer={("GET", "/_cluster/health"): (500, "application/json", _json({"error": "boom", "status": 500}))}),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "mimecast: one shard, the indexer not asked for it",
+        "POST",
+        "/api/mimecast/provision",
+        t_admin,
+        before=integ(indexer={("GET", "/_cluster/health"): (500, "application/json", _json({"error": "boom", "status": 500}))}),
+        state=st,
+        json={"customer_code": CUST_A},
+    )
+    await p.same(
+        "sap_siem: an interval APScheduler refuses (OverflowError)",
+        "POST",
+        "/api/sap_siem/provision",
+        t_admin,
+        before=integ(),
+        state=st,
+        json={**body, "time_interval": 10**20},
+    )
+    # Deliberate difference: the body's customer must be the caller's (Python provisioned any).
+    await p.same(
+        "huntress: another tenant's customer",
+        "POST",
+        "/api/huntress/provision",
+        t_analyst_b,
+        before=integ(),
+        expect=(200, 403),
+        json=body,
+    )
+    left = integration_state()
+    check(
+        "huntress: Rust's refusal asked no tool, wrote nothing, scheduled nothing",
+        not left["meta"] and not left["jobs"] and not any(r["deployed"] for r in left["deployed"]) and not RECORDER.take(),
+        str(left),
+    )
+    # SOCFortress MDR: no tool, the deployed flag only.
+    mdr = "/api/socfortress_mdr/provision"
+    await p.same("mdr: provisioned", "POST", mdr, t_analyst, before=integ(), state=st, json={"customer_code": CUST_A})
+    await p.same("mdr: a blank COLLECTOR_UUID", "POST", mdr, t_admin, before=integ(), state=st, json={"customer_code": CUST_B})
+    await p.same(
+        "mdr: Huntress named (its integration holds no MDR COLLECTOR_UUID)",
+        "POST",
+        mdr,
+        t_admin,
+        before=integ(),
+        state=st,
+        json={"customer_code": CUST_A, "integration_name": "Huntress"},
+    )
+    await p.same(
+        "mdr: a service no integration holds (None's AttributeError)",
+        "POST",
+        mdr,
+        t_admin,
+        before=integ(),
+        state=st,
+        json={"customer_code": CUST_A, "integration_name": "Nope"},
+    )
+    await p.same(
+        "mdr: the integration named, but no COLLECTOR_UUID under SOCFortress MDR",
+        "POST",
+        mdr,
+        t_admin,
+        before=integ(),
+        state=st,
+        json={"customer_code": CUST_B, "integration_name": "Huntress"},
+    )
+    await p.same("mdr: no integration", "POST", mdr, t_admin, before=integ(), state=st, json={"customer_code": CUST_C})
+    await p.same("mdr: a list body", "POST", mdr, t_admin, json=[1])
+    await p.same(
+        "mdr: another tenant's customer",
+        "POST",
+        mdr,
+        t_analyst,
+        before=integ(),
+        expect=(400, 403),
+        json={"customer_code": CUST_B},
+    )
+
+
 async def main():
     servers = [start_stub(STUB_PORT, TOOLS), start_stub(INDEXER_PORT, INDEXER)]
     procs = []
+    python = None
     try:
         seed()
+        python = start_python(PY_PORT)
         procs.append(start_rust(RS_PORT))
         procs.append(start_rust(RS7_PORT))
         p = Pair()
@@ -1446,12 +1841,13 @@ async def main():
                 await dashboard_checks(p, t_admin, t_analyst, t_unassigned)
             if "network" in sections:
                 await network_checks(p, t_admin, t_analyst, token(ANALYST_B, ["analyst"]), t_unassigned)
+            if "integrations" in sections:
+                await integration_checks(p, t_admin, t_analyst, token(ANALYST_B, ["analyst"]), t_unassigned)
         finally:
             await p.close()
-            from app.db.db_session import async_engine
-
-            await async_engine.dispose()
     finally:
+        if python is not None:
+            python.should_exit = True
         for proc in procs:
             proc.terminate()
             try:
@@ -1460,6 +1856,7 @@ async def main():
                 proc.kill()
         try:
             cleanup()
+            restore_jobs()
         finally:
             restore_connectors()
             for server in servers:

@@ -978,3 +978,293 @@ async fn network_connectors_are_provisioned_as_python_provisions_them() {
     unseed_network(&h, &acme).await;
     leave(&h, w).await;
 }
+
+// --- step 3: integrations ------------------------------------------------------------
+
+const LEGACY: u16 = 3;
+
+/// `service` for `code`, with `keys`; ids from `base`.
+async fn seed_integration(
+    h: &Harness,
+    base: i64,
+    code: &str,
+    service: &str,
+    keys: &[(&str, &str)],
+) {
+    h.exec(&format!(
+        "INSERT INTO integration_services (id, service_name, auth_type) VALUES ({base}, \
+         '{service}', 'API_KEY')"
+    ))
+    .await;
+    h.exec(&format!(
+        "INSERT INTO customer_integrations (id, customer_code, customer_name, \
+         integration_service_id, integration_service_name, deployed) VALUES ({}, '{code}', \
+         'acme corp', {base}, '{service}', 0)",
+        base + 1
+    ))
+    .await;
+    h.exec(&format!(
+        "INSERT INTO integration_subscriptions (id, customer_id, integration_service_id) VALUES \
+         ({}, {}, {base})",
+        base + 2,
+        base + 1
+    ))
+    .await;
+    for (i, (k, v)) in keys.iter().enumerate() {
+        h.exec(&format!(
+            "INSERT INTO integration_auth_keys (id, subscription_id, auth_key_name, auth_value) \
+             VALUES ({}, {}, '{k}', '{v}')",
+            base + 3 + i64::try_from(i).unwrap(),
+            base + 2
+        ))
+        .await;
+    }
+}
+
+async fn unseed_integrations(h: &Harness, code: &str) {
+    for sql in [
+        "DELETE FROM integration_auth_keys WHERE id BETWEEN 7640000 AND 7649999".to_string(),
+        "DELETE FROM integration_subscriptions WHERE id BETWEEN 7640000 AND 7649999".into(),
+        "DELETE FROM customer_integrations WHERE id BETWEEN 7640000 AND 7649999".into(),
+        "DELETE FROM integration_services WHERE id BETWEEN 7640000 AND 7649999".into(),
+        format!("DELETE FROM customer_integrations_meta WHERE customer_code = '{code}'"),
+        format!("DELETE FROM customersmeta WHERE customer_code = '{code}'"),
+    ] {
+        h.exec(&sql).await;
+    }
+}
+
+async fn streams_ok(w: &World) {
+    Mock::given(method("POST"))
+        .and(path("/api/streams"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"stream_id": "st-9"})))
+        .mount(&w.graylog)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/streams/st-9/resume"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&w.graylog)
+        .await;
+}
+
+#[tokio::test]
+async fn integrations_are_provisioned_as_python_provisions_them() {
+    if !configured() {
+        return;
+    }
+    let legacy = stand_in(LEGACY).await;
+    Mock::given(method("POST"))
+        .and(path("/api/scheduler/provisioning_jobs"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"success": true, "message": "Jobs added successfully"})),
+        )
+        .mount(&legacy)
+        .await;
+    let h = harness_or_skip!(Some(&legacy));
+    let w = world(&h, "Graylog").await;
+    h.seed().await;
+    let acme = h.code("acme");
+    let analyst = h.token(&h.code("analyst"), "analyst");
+    seed_integration(&h, 7640200, &acme, "Huntress", &[("API_KEY", "k")]).await;
+    seed_integration(
+        &h,
+        7640300,
+        &acme,
+        "SOCFortress MDR",
+        &[("COLLECTOR_UUID", " \u{1f} ")],
+    )
+    .await;
+    seed_meta(&h, &acme, "7").await;
+    tools_ok(&w, "acme corp", "FORTINET").await;
+    streams_ok(&w).await;
+
+    let (st, answer) = h
+        .call(
+            "POST",
+            "/api/huntress/provision",
+            Some(&analyst),
+            Some(json!({"customer_code": acme, "time_interval": "7"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{answer}");
+    assert_eq!(
+        answer,
+        json!({"success": true, "message": "Huntress integration provisioned successfully."})
+    );
+    let sent = w.graylog.received_requests().await.unwrap();
+    let paths: Vec<String> = sent_paths(&sent)
+        .into_iter()
+        .filter(|p| p != "GET /api/system")
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "POST /api/system/indices/index_sets",
+            "POST /api/streams",
+            "POST /api/streams/st-9/resume"
+        ]
+    );
+    let index: Value =
+        serde_json::from_slice(&sent_body(&sent, "/api/system/indices/index_sets")).unwrap();
+    assert_eq!(index["title"], json!("acme corp - HUNTRESS"));
+    assert_eq!(index["description"], json!(format!("{acme} - HUNTRESS")));
+    assert_eq!(index["index_prefix"], json!(format!("huntress_{acme}")));
+    assert_eq!(
+        (index["shards"].clone(), index["replicas"].clone()),
+        (json!(3), json!(0))
+    );
+    let stream: Value = serde_json::from_slice(&sent_body(&sent, "/api/streams")).unwrap();
+    assert_eq!(
+        stream,
+        json!({"title": "acme corp - HUNTRESS", "description": "acme corp - HUNTRESS",
+            "index_set_id": "is-1", "rules": [
+                {"field": "integration", "type": 1, "inverted": false, "value": "huntress"},
+                {"field": "customer_code", "type": 1, "inverted": false, "value": acme}],
+            "matching_type": "AND", "remove_matches_from_default_stream": true,
+            "content_pack": null})
+    );
+    let grafana = w.grafana.received_requests().await.unwrap();
+    let ds: Value = serde_json::from_slice(&grafana[1].body).unwrap();
+    assert_eq!(ds["name"], json!("HUNTRESS"));
+    assert_eq!(ds["database"], json!(format!("huntress_{acme}*")));
+    // The meta row, the flag, and the job handed to Python with the caller's token.
+    let meta: (
+        String,
+        Option<String>,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+    ) = sqlx::query_as(
+        "SELECT integration_name, graylog_input_id, graylog_index_id, graylog_stream_id, \
+             grafana_org_id, grafana_dashboard_folder_id, grafana_datasource_uid FROM \
+             customer_integrations_meta WHERE customer_code = ?",
+    )
+    .bind(&acme)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        meta,
+        (
+            "Huntress".into(),
+            None,
+            "is-1".into(),
+            "st-9".into(),
+            "7".into(),
+            "12".into(),
+            Some("ds-uid".into())
+        )
+    );
+    assert_eq!(
+        h.scalar_i64("SELECT deployed FROM customer_integrations WHERE id = 7640201")
+            .await,
+        1
+    );
+    let hooks = legacy.received_requests().await.unwrap();
+    assert_eq!(hooks.len(), 1);
+    assert_eq!(
+        hooks[0]
+            .headers
+            .get("authorization")
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        format!("Bearer {analyst}")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&hooks[0].body).unwrap(),
+        json!({"jobs": [{"function_name": "invoke_huntress_integration_collect",
+            "job_id": "invoke_huntress_integration_collect", "time_interval": 7}]})
+    );
+
+    // A second run finds the meta row: the 400 after the tools were asked,
+    // and no job handed over.
+    legacy.reset().await;
+    let (st, answer) = h
+        .call(
+            "POST",
+            "/api/huntress/provision",
+            Some(&analyst),
+            Some(json!({"customer_code": acme, "time_interval": 7})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{answer}");
+    assert_eq!(
+        answer["message"],
+        json!(format!(
+            "Customer integration meta {acme} Huntress already exists."
+        ))
+    );
+    assert!(legacy.received_requests().await.unwrap().is_empty());
+
+    // Another tenant's customer is refused first; a customer without
+    // integrations is the 404.
+    let beta = h.code("beta");
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/mimecast/provision",
+            Some(&analyst),
+            Some(json!({"customer_code": beta})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let admin = h.token(&h.code("admin"), "admin");
+    let (st, answer) = h
+        .call(
+            "POST",
+            "/api/mimecast/provision",
+            Some(&admin),
+            Some(json!({"customer_code": beta})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "{answer}");
+    // SOCFortress MDR: a COLLECTOR_UUID that is only whitespace is the 400.
+    let (st, answer) = h
+        .call(
+            "POST",
+            "/api/socfortress_mdr/provision",
+            Some(&analyst),
+            Some(json!({"customer_code": acme})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{answer}");
+    assert_eq!(
+        answer["message"],
+        json!("COLLECTOR_UUID is empty. Provide the MDR collector UUID before deploying.")
+    );
+    h.exec("UPDATE integration_auth_keys SET auth_value = 'uuid-1' WHERE id = 7640303")
+        .await;
+    let (st, answer) = h
+        .call(
+            "POST",
+            "/api/socfortress_mdr/provision",
+            Some(&analyst),
+            Some(json!({"customer_code": acme})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{answer}");
+    assert_eq!(
+        answer,
+        json!({"success": true, "message": "SOCFortress MDR integration provisioned successfully."})
+    );
+    assert_eq!(
+        h.scalar_i64("SELECT deployed FROM customer_integrations WHERE id = 7640301")
+            .await,
+        1
+    );
+    unseed_integrations(&h, &acme).await;
+    leave(&h, w).await;
+}
+
+fn sent_body(requests: &[wiremock::Request], at: &str) -> Vec<u8> {
+    requests
+        .iter()
+        .find(|r| r.url.path() == at)
+        .unwrap()
+        .body
+        .clone()
+}

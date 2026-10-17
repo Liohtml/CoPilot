@@ -598,5 +598,556 @@
    "version": "x",
    "error": "3 validation errors for GrafanaDatasource\nurl\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nbasicAuthUser\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nsecureJsonData.basicAuthPassword\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
   }
+ ],
+ "integrations": {
+  "huntress": {
+   "request": "ProvisionHuntressRequest",
+   "requests": [
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 5, \"integration_name\": \"Huntress\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": \"7\", \"integration_name\": \"Other\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 7, \"integration_name\": \"Huntress\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\"}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 1.5}",
+     "status": 422,
+     "body": "{\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": null, \"time_interval\": null}",
+     "status": 422,
+     "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"},{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer\"}]}"
+    },
+    {
+     "input": "{\"time_interval\": 100000000000000000000}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"time_interval\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "null",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "[]",
+     "status": 500
+    },
+    {
+     "input": "\"x\"",
+     "status": 500
+    },
+    {
+     "input": "3",
+     "status": 500
+    }
+   ],
+   "jobs": [
+    [
+     "invoke_huntress_integration_collect",
+     "invoke_huntress_integration_collect",
+     "request"
+    ]
+   ],
+   "index_set": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - HUNTRESS\", \"description\": \"Ab\\u00c7_9 - HUNTRESS\", \"index_prefix\": \"huntress_Ab\\u00c7_9\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"<t>\", \"index_analyzer\": \"standard\", \"shards\": 3, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}",
+   "stream": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - HUNTRESS\", \"description\": \"\\u00c4 \\\"Name\\\" \\\\ x - HUNTRESS\", \"index_set_id\": \"is-1\", \"rules\": [{\"field\": \"integration\", \"type\": 1, \"inverted\": false, \"value\": \"huntress\"}, {\"field\": \"customer_code\", \"type\": 1, \"inverted\": false, \"value\": \"Ab\\u00c7_9\"}], \"matching_type\": \"AND\", \"remove_matches_from_default_stream\": true, \"content_pack\": null}"
+  },
+  "darktrace": {
+   "request": "ProvisionDarktraceRequest",
+   "requests": [
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 5, \"integration_name\": \"Darktrace\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": \"7\", \"integration_name\": \"Other\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 7, \"integration_name\": \"Darktrace\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 15, \"integration_name\": \"Darktrace\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 1.5}",
+     "status": 422,
+     "body": "{\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": null, \"time_interval\": null}",
+     "status": 422,
+     "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"},{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer\"}]}"
+    },
+    {
+     "input": "{\"time_interval\": 100000000000000000000}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "null",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "[]",
+     "status": 500
+    },
+    {
+     "input": "\"x\"",
+     "status": 500
+    },
+    {
+     "input": "3",
+     "status": 500
+    }
+   ],
+   "jobs": [
+    [
+     "invoke_darktrace_integration_collect",
+     "invoke_darktrace_integration_collect",
+     "request"
+    ]
+   ],
+   "index_set": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - DARKTRACE\", \"description\": \"Ab\\u00c7_9 - DARKTRACE\", \"index_prefix\": \"darktrace-ab\\u00e7_9-\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"<t>\", \"index_analyzer\": \"standard\", \"shards\": 3, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}",
+   "stream": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - DARKTRACE\", \"description\": \"\\u00c4 \\\"Name\\\" \\\\ x - DARKTRACE\", \"index_set_id\": \"is-1\", \"rules\": [{\"field\": \"integration\", \"type\": 1, \"inverted\": false, \"value\": \"darktrace\"}, {\"field\": \"customer_code\", \"type\": 1, \"inverted\": false, \"value\": \"Ab\\u00c7_9\"}], \"matching_type\": \"AND\", \"remove_matches_from_default_stream\": true, \"content_pack\": null}"
+  },
+  "duo": {
+   "request": "ProvisionDuoRequest",
+   "requests": [
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 5, \"integration_name\": \"Duo\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": \"7\", \"integration_name\": \"Other\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 7, \"integration_name\": \"Duo\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 15, \"integration_name\": \"Duo\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 1.5}",
+     "status": 422,
+     "body": "{\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": null, \"time_interval\": null}",
+     "status": 422,
+     "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"},{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer\"}]}"
+    },
+    {
+     "input": "{\"time_interval\": 100000000000000000000}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "null",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "[]",
+     "status": 500
+    },
+    {
+     "input": "\"x\"",
+     "status": 500
+    },
+    {
+     "input": "3",
+     "status": 500
+    }
+   ],
+   "jobs": [
+    [
+     "invoke_duo_integration_collect",
+     "invoke_duo_integration_collect",
+     "request"
+    ]
+   ],
+   "index_set": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - DUO\", \"description\": \"Ab\\u00c7_9 - DUO\", \"index_prefix\": \"duo-ab\\u00e7_9\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"<t>\", \"index_analyzer\": \"standard\", \"shards\": 3, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}",
+   "stream": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - DUO\", \"description\": \"\\u00c4 \\\"Name\\\" \\\\ x - DUO\", \"index_set_id\": \"is-1\", \"rules\": [{\"field\": \"integration\", \"type\": 1, \"inverted\": false, \"value\": \"duo\"}, {\"field\": \"customer_code\", \"type\": 1, \"inverted\": false, \"value\": \"Ab\\u00c7_9\"}], \"matching_type\": \"AND\", \"remove_matches_from_default_stream\": true, \"content_pack\": null}"
+  },
+  "cato": {
+   "request": "ProvisionCatoRequest",
+   "requests": [
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 5, \"integration_name\": \"Cato\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": \"7\", \"integration_name\": \"Other\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 7, \"integration_name\": \"Cato\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\"}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 1.5}",
+     "status": 422,
+     "body": "{\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": null, \"time_interval\": null}",
+     "status": 422,
+     "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"},{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer\"}]}"
+    },
+    {
+     "input": "{\"time_interval\": 100000000000000000000}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"time_interval\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "null",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "[]",
+     "status": 500
+    },
+    {
+     "input": "\"x\"",
+     "status": 500
+    },
+    {
+     "input": "3",
+     "status": 500
+    }
+   ],
+   "jobs": [
+    [
+     "invoke_cato_integration_collect",
+     "invoke_cato_integration_collect",
+     "request"
+    ]
+   ],
+   "index_set": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - Cato\", \"description\": \"Ab\\u00c7_9 - CATO\", \"index_prefix\": \"cato_Ab\\u00c7_9\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"<t>\", \"index_analyzer\": \"standard\", \"shards\": 3, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}",
+   "stream": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - CATO\", \"description\": \"\\u00c4 \\\"Name\\\" \\\\ x - CATO\", \"index_set_id\": \"is-1\", \"rules\": [{\"field\": \"integration\", \"type\": 1, \"inverted\": false, \"value\": \"cato\"}, {\"field\": \"customer_code\", \"type\": 1, \"inverted\": false, \"value\": \"Ab\\u00c7_9\"}], \"matching_type\": \"AND\", \"remove_matches_from_default_stream\": true, \"content_pack\": null}"
+  },
+  "carbonblack": {
+   "request": "ProvisionCarbonBlackRequest",
+   "requests": [
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 5, \"integration_name\": \"CarbonBlack\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": \"7\", \"integration_name\": \"Other\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 7, \"integration_name\": \"CarbonBlack\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\"}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 1.5}",
+     "status": 422,
+     "body": "{\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": null, \"time_interval\": null}",
+     "status": 422,
+     "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"},{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer\"}]}"
+    },
+    {
+     "input": "{\"time_interval\": 100000000000000000000}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"time_interval\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "null",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "[]",
+     "status": 500
+    },
+    {
+     "input": "\"x\"",
+     "status": 500
+    },
+    {
+     "input": "3",
+     "status": 500
+    }
+   ],
+   "jobs": [
+    [
+     "invoke_carbonblack_integration_collection",
+     "invoke_carbonblack_integration_collection",
+     "request"
+    ]
+   ],
+   "index_set": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - CARBONBLACK\", \"description\": \"Ab\\u00c7_9 - CARBONBLACK\", \"index_prefix\": \"carbonblack-Ab\\u00c7_9\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"<t>\", \"index_analyzer\": \"standard\", \"shards\": 3, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}",
+   "stream": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - CARBONBLACK\", \"description\": \"\\u00c4 \\\"Name\\\" \\\\ x - CARBONBLACK\", \"index_set_id\": \"is-1\", \"rules\": [{\"field\": \"integration\", \"type\": 1, \"inverted\": false, \"value\": \"carbonblack\"}, {\"field\": \"customer_code\", \"type\": 1, \"inverted\": false, \"value\": \"Ab\\u00c7_9\"}], \"matching_type\": \"AND\", \"remove_matches_from_default_stream\": true, \"content_pack\": null}"
+  },
+  "mimecast": {
+   "request": "ProvisionMimecastRequest",
+   "requests": [
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Mimecast\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": \"7\", \"integration_name\": \"Other\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Mimecast\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Mimecast\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 1.5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Mimecast\"}"
+    },
+    {
+     "input": "{\"customer_code\": null, \"time_interval\": null}",
+     "status": 422,
+     "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"}]}"
+    },
+    {
+     "input": "{\"time_interval\": 100000000000000000000}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "null",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "[]",
+     "status": 500
+    },
+    {
+     "input": "\"x\"",
+     "status": 500
+    },
+    {
+     "input": "3",
+     "status": 500
+    }
+   ],
+   "jobs": [
+    [
+     "invoke_mimecast_integration_ttp",
+     "invoke_mimecast_integration_ttp",
+     15
+    ],
+    [
+     "invoke_mimecast_integration",
+     "invoke_mimecast_integration",
+     5
+    ]
+   ],
+   "index_set": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - Mimecast\", \"description\": \"Ab\\u00c7_9 - Mimecast\", \"index_prefix\": \"mimecast_Ab\\u00c7_9\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"<t>\", \"index_analyzer\": \"standard\", \"shards\": 1, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}",
+   "stream": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - Mimecast\", \"description\": \"\\u00c4 \\\"Name\\\" \\\\ x - Mimecast\", \"index_set_id\": \"is-1\", \"rules\": [{\"field\": \"integration\", \"type\": 1, \"inverted\": false, \"value\": \"mimecast\"}, {\"field\": \"customer_code\", \"type\": 1, \"inverted\": false, \"value\": \"Ab\\u00c7_9\"}], \"matching_type\": \"AND\", \"remove_matches_from_default_stream\": true, \"content_pack\": null}"
+  },
+  "sap_siem": {
+   "request": "ProvisionSapSiemRequest",
+   "requests": [
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 5, \"integration_name\": \"SAP SIEM\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": \"7\", \"integration_name\": \"Other\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"time_interval\": 7, \"integration_name\": \"SAP SIEM\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\"}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 1.5}",
+     "status": 422,
+     "body": "{\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\",\"details\":[{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer, got a number with a fractional part\"}]}"
+    },
+    {
+     "input": "{\"customer_code\": null, \"time_interval\": null}",
+     "status": 422,
+     "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"},{\"field\":\"time_interval\",\"error_type\":\"value_error\",\"message\":\"time_interval: Input should be a valid integer\"}]}"
+    },
+    {
+     "input": "{\"time_interval\": 100000000000000000000}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"time_interval\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "null",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "[]",
+     "status": 500
+    },
+    {
+     "input": "\"x\"",
+     "status": 500
+    },
+    {
+     "input": "3",
+     "status": 500
+    }
+   ],
+   "jobs": [
+    [
+     "invoke_sap_siem_integration_collection",
+     "invoke_sap_siem_integration_collection",
+     "request"
+    ],
+    [
+     "invoke_sap_siem_integration_suspicious_logins_analysis",
+     "invoke_sap_siem_integration_suspicious_logins_analysis",
+     "request"
+    ],
+    [
+     "invoke_sap_siem_integration_multiple_logins_same_ip_analysis",
+     "invoke_sap_siem_integration_multiple_logins_same_ip_analysis",
+     "request"
+    ]
+   ],
+   "index_set": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - SAP SIEM\", \"description\": \"Ab\\u00c7_9 - SAP SIEM\", \"index_prefix\": \"sap_siem_Ab\\u00c7_9\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"<t>\", \"index_analyzer\": \"standard\", \"shards\": 1, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}",
+   "stream": "{\"title\": \"\\u00c4 \\\"Name\\\" \\\\ x - SAP SIEM\", \"description\": \"\\u00c4 \\\"Name\\\" \\\\ x - SAP SIEM\", \"index_set_id\": \"is-1\", \"rules\": [{\"field\": \"integration\", \"type\": 1, \"inverted\": false, \"value\": \"sap_siem\"}, {\"field\": \"customer_code\", \"type\": 1, \"inverted\": false, \"value\": \"Ab\\u00c7_9\"}], \"matching_type\": \"AND\", \"remove_matches_from_default_stream\": true, \"content_pack\": null}"
+  },
+  "socfortress_mdr": {
+   "request": "ProvisionSOCFortressMDRRequest",
+   "requests": [
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"SOCFortress MDR\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": \"7\", \"integration_name\": \"Other\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Other\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\"}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"SOCFortress MDR\"}"
+    },
+    {
+     "input": "{\"customer_code\": \"c1\", \"time_interval\": 1.5}",
+     "status": 200,
+     "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"SOCFortress MDR\"}"
+    },
+    {
+     "input": "{\"customer_code\": null, \"time_interval\": null}",
+     "status": 422,
+     "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"}]}"
+    },
+    {
+     "input": "{\"time_interval\": 100000000000000000000}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "{}",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "null",
+     "status": 422,
+     "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+    },
+    {
+     "input": "[]",
+     "status": 422,
+     "body": "{\"message\":\"Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"body\",\"error_type\":\"value_error\",\"message\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+    },
+    {
+     "input": "\"x\"",
+     "status": 422,
+     "body": "{\"message\":\"Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"body\",\"error_type\":\"value_error\",\"message\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+    },
+    {
+     "input": "3",
+     "status": 422,
+     "body": "{\"message\":\"Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"body\",\"error_type\":\"value_error\",\"message\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+    }
+   ]
+  }
+ },
+ "provisioning_jobs": [
+  "invoke_carbonblack_integration_collection",
+  "invoke_cato_integration_collect",
+  "invoke_darktrace_integration_collect",
+  "invoke_duo_integration_collect",
+  "invoke_huntress_integration_collect",
+  "invoke_mimecast_integration",
+  "invoke_mimecast_integration_ttp",
+  "invoke_sap_siem_integration_collection",
+  "invoke_sap_siem_integration_multiple_logins_same_ip_analysis",
+  "invoke_sap_siem_integration_suspicious_logins_analysis"
  ]
 }

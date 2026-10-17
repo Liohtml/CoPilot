@@ -1,6 +1,13 @@
 //! Provisioning that ends in Grafana dashboards — ports of
 //! `app/stack_provisioning/graylog/{routes,services}/{fortinet,sonicwall,
-//! sentinelone}.py` ([`network`]).
+//! sentinelone}.py` ([`network`]) and of the integrations' `/provision`
+//! routes (`app/integrations/{huntress,darktrace,duo,cato,carbonblack,
+//! mimecast,sap_siem,socfortress_mdr}/`, [`integrations`]).
+//!
+//! Still Python: the CrowdStrike, Defender for Endpoint and Bitdefender
+//! provisioning (each writes its collector's docker-compose and configuration
+//! files under the backend's `data/` directory, on the Python host — and
+//! Bitdefender pushes its configuration to GravityZone), Office365 and AWS.
 //!
 //! - [`schema`]  — the Pydantic models the flows build and read
 //! - [`graylog`] — index sets, streams, pipelines, the id lookups, the
@@ -9,6 +16,8 @@
 //!   version and node count
 //! - [`store`]   — the statements
 //! - [`network`] — Fortinet, SonicWall and SentinelOne, one data table
+//! - [`integrations`] — the seven Graylog-and-Grafana integrations, one data
+//!   table, the scheduler jobs handed to Python; SOCFortress MDR
 //! - [`routes`]  — the handlers
 //!
 //! The dashboards themselves are `copilot-grafana-dashboards`'
@@ -19,6 +28,7 @@
 
 pub mod grafana;
 pub mod graylog;
+pub mod integrations;
 pub mod network;
 pub mod routes;
 pub mod schema;
@@ -26,6 +36,7 @@ pub mod store;
 
 use axum::extract::FromRef;
 use copilot_db::schema::TableRequirement;
+use copilot_gateway::LegacyProxy;
 use copilot_grafana::GrafanaClient;
 use copilot_graylog::GraylogClient;
 use copilot_wazuh::WazuhState;
@@ -44,6 +55,8 @@ pub struct ProvisioningState {
     pub grafana: GrafanaClient,
     /// The Wazuh indexer (node count, OpenSearch version).
     pub wazuh: WazuhState,
+    /// The Python backend, which registers the integrations' scheduler jobs.
+    pub legacy: Option<LegacyProxy>,
 }
 
 impl FromRef<ProvisioningState> for AppContext {
@@ -83,6 +96,10 @@ pub const REQUIREMENTS: &[TableRequirement] = &[
     TableRequirement {
         table: "customersmeta",
         columns: &["customer_code", "customer_meta_grafana_org_id"],
+    },
+    TableRequirement {
+        table: "customer_integrations",
+        columns: &["customer_code", "integration_service_name", "deployed"],
     },
 ];
 
@@ -252,6 +269,121 @@ mod vectors {
                         if status != 500 {
                             assert_eq!(body, text(&v["body"]), "{name} {input}");
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn integrations_are_python_s() {
+        use crate::integrations::{INTEGRATIONS, Interval, PROVISION_MDR_REQUEST, Shards};
+        let d = doc();
+        let all = d["integrations"].as_object().unwrap();
+        assert_eq!(all.len(), INTEGRATIONS.len() + 1);
+        let allow: Vec<&str> = d["provisioning_jobs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(text)
+            .collect();
+        let name = "Ä \"Name\" \\ x";
+        let code = "AbÇ_9";
+        for integration in INTEGRATIONS {
+            let v = &all[integration.route];
+            assert_eq!(text(&v["request"]), integration.request.name);
+            // The jobs: each in the hook's allowlist, Python's order and intervals.
+            let jobs: Vec<(String, String, String)> = v["jobs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|j| (text(&j[0]).into(), text(&j[1]).into(), j[2].to_string()))
+                .collect();
+            let ours: Vec<(String, String, String)> = integration
+                .jobs
+                .iter()
+                .map(|(job, interval)| {
+                    let minutes = match interval {
+                        Interval::Request => "\"request\"".to_string(),
+                        Interval::Fixed(n) => n.to_string(),
+                    };
+                    ((*job).to_string(), (*job).to_string(), minutes)
+                })
+                .collect();
+            assert_eq!(ours, jobs, "{}", integration.route);
+            for (job, _) in integration.jobs {
+                assert!(allow.contains(job), "{job}");
+            }
+            // The index set and the stream for one customer.
+            let shards = match integration.shards {
+                Shards::Nodes => PyValue::Int("3".into()),
+                Shards::Fixed(n) => PyValue::Int(n.to_string()),
+            };
+            let index = graylog::index_set_config(&IndexSet {
+                title: format!("{name} - {}", integration.index_title),
+                description: format!("{code} - {}", integration.index_description),
+                index_prefix: (integration.index_prefix)(code),
+                max_indices: PyValue::Int("30".into()),
+                shards,
+                replicas: PyValue::Int("0".into()),
+                creation_date: "<t>".into(),
+            })
+            .unwrap();
+            assert_eq!(
+                dumps(&index),
+                text(&v["index_set"]),
+                "{}",
+                integration.route
+            );
+            let stream = graylog::event_stream_config(
+                &format!("{name} - {}", integration.stream_title),
+                &format!("{name} - {}", integration.stream_title),
+                &PyValue::Str("is-1".into()),
+                vec![
+                    ("integration", integration.stream_value.to_string()),
+                    ("customer_code", code.to_string()),
+                ],
+            )
+            .unwrap();
+            assert_eq!(dumps(&stream), text(&v["stream"]), "{}", integration.route);
+            check_bodies(
+                &v["requests"],
+                integration.request,
+                Some(integration.request_name),
+            )
+            .await;
+        }
+        check_bodies(
+            &all["socfortress_mdr"]["requests"],
+            &PROVISION_MDR_REQUEST,
+            None,
+        )
+        .await;
+    }
+
+    async fn check_bodies(
+        cases: &Value,
+        model: &'static copilot_upstream::model::Model,
+        forced: Option<&str>,
+    ) {
+        for v in cases.as_array().unwrap() {
+            let input = text(&v["input"]);
+            let body = PyBody::read(Some("application/json"), input.as_bytes()).unwrap();
+            let status = v["status"].as_u64().unwrap();
+            let read = match forced {
+                Some(value) => crate::routes::read_forced(&body, model, "integration_name", value),
+                None => body.model(model),
+            };
+            match read {
+                Ok(dump) => {
+                    assert_eq!(status, 200, "{} {input}", model.name);
+                    assert_eq!(dumps(&dump), text(&v["dump"]), "{} {input}", model.name);
+                }
+                Err(e) => {
+                    let (got, body) = answer(e).await;
+                    assert_eq!(u64::from(got), status, "{} {input}: {body}", model.name);
+                    if status != 500 {
+                        assert_eq!(body, text(&v["body"]), "{} {input}", model.name);
                     }
                 }
             }

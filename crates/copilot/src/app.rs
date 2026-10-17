@@ -242,6 +242,17 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/integrations/update_meta_auto",
     "/api/api/v1/alert_settings",
     "/api/network_connectors",
+    // The integrations' provisioning (copilot-integration-provisioning; the
+    // scheduler jobs handed to Python) but CrowdStrike, Defender for Endpoint
+    // and Bitdefender (collector files on the Python host), Office365 and AWS.
+    "POST /api/huntress/provision",
+    "POST /api/darktrace/provision",
+    "POST /api/duo/provision",
+    "POST /api/cato/provision",
+    "POST /api/carbonblack/provision",
+    "POST /api/mimecast/provision",
+    "POST /api/sap_siem/provision",
+    "POST /api/socfortress_mdr/provision",
     // SIEM (copilot-siem): dashboards (built-in and custom templates, panel
     // data), event sources and the event search.
     "/api/siem/dashboards",
@@ -796,13 +807,14 @@ impl App {
                 },
             ))
             // Full paths: `POST /api/stack_provisioning/graylog/provision/
-            // {fortinet,sonicwall,sentinelone}`.
+            // {fortinet,sonicwall,sentinelone}` and `POST /api/<integration>/provision`.
             .merge(copilot_integration_provisioning::router(
                 copilot_integration_provisioning::ProvisioningState {
                     ctx: self.ctx.clone(),
                     graylog: self.graylog.clone(),
                     grafana: self.grafana.clone(),
                     wazuh: self.wazuh.clone(),
+                    legacy: self.legacy.clone(),
                 },
             ))
             // Full paths: `POST /api/grafana/dashboards` and
