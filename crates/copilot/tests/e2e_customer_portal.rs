@@ -627,6 +627,11 @@ async fn branding_overrides_resolve_per_user_and_stay_in_the_tenant() {
         )
         .await;
     assert_eq!(st, 403);
+    // Starlette routes the decoded path: an encoded `/` is no route of the module.
+    let (st, body) = h
+        .call("GET", &format!("{P}/branding/{acme}%2Fx"), None, None)
+        .await;
+    assert_eq!((st.as_u16(), body), (404, json!({"detail": "Not Found"})));
     let (st, body) = h
         .call(
             "PUT",

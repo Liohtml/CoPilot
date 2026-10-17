@@ -656,10 +656,15 @@ impl App {
             .nest("/api/ai_analyst", copilot_ai_analyst::router(state.clone()))
             .nest("/api/talon", copilot_talon::router(state.clone()))
             // Every portal route but `/sla/*` (copilot-soc-management's,
-            // merged below with full paths).
+            // merged below with full paths); an encoded `/` is Python's.
             .nest(
                 "/api/customer_portal",
-                copilot_customer_portal::router(state, self.portal.clone()),
+                copilot_customer_portal::router(state, self.portal.clone()).layer(
+                    from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    ),
+                ),
             )
             .nest(
                 "/api/customers",

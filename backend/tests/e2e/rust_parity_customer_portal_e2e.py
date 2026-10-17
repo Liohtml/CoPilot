@@ -814,6 +814,16 @@ async def main():  # noqa: C901 - one scenario after the other
         for label, tok in (("analyst", T["analyst"]), ("admin", T["admin"]), ("unassigned analyst", T["unassigned"])):
             await both(f"branding of B: {label}", "GET", f"{BR}/{B}", tok)
         await both("branding of an unknown customer: admin", "GET", f"{BR}/NOPE{SFX}", T["admin"])
+        # Starlette routes the decoded path: an encoded `/` is no route of the module.
+        for method in ("GET", "PUT", "DELETE"):
+            await both(f"{method} branding of an encoded slash: no token", method, f"{BR}/{A}%2Fx")
+            await both(
+                f"{method} branding of an encoded slash: admin",
+                method,
+                f"{BR}/{A}%2Fx",
+                T["admin"],
+                {"title": "x"} if method == "PUT" else None,
+            )
         await both("branding of A, other casing: admin", "GET", f"{BR}/{A.lower()}", T["admin"])
         for label, tok in (("no token", None), ("portal user", T["portal_a"]), ("admin", T["admin"])):
             p, _ = await both(f"branding list: {label}", "GET", BR, tok)
@@ -1118,6 +1128,7 @@ async def main():  # noqa: C901 - one scenario after the other
         rust.wait(timeout=10)
         await py.aclose()
         await rs.aclose()
+        await async_engine.dispose()
     failed = [n for n, passed in results if not passed]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
     return 1 if failed else 0
