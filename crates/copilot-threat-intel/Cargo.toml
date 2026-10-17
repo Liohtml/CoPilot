@@ -12,6 +12,7 @@ copilot-db = { workspace = true }
 copilot-auth = { workspace = true }
 copilot-web = { workspace = true }
 copilot-upstream = { workspace = true }
+copilot-license = { workspace = true }
 copilot-wazuh = { workspace = true }
 copilot-ingest = { workspace = true }
 copilot-incidents = { workspace = true }

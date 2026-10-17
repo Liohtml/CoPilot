@@ -1086,6 +1086,35 @@ impl Minio {
         Ok(())
     }
 
+    /// `list_buckets()`: the names of every bucket the credentials see, as
+    /// `ListAllMyBucketsResult.fromxml` reads them (a missing `<Buckets>` or
+    /// `<Name>` and a `CreationDate` `from_iso8601utc` refuses are its
+    /// `ValueError`s).
+    pub async fn list_buckets(&self) -> Result<Vec<String>, MinioError> {
+        let response = self
+            .execute("GET", None, None, &Body::None, Vec::new(), &Vec::new())
+            .await?;
+        let text = utf8(&response.body)?;
+        let doc = xml::parse(&text).map_err(|e| PyExc::Other("ParseError", e))?;
+        let buckets = doc
+            .find("Buckets")
+            .ok_or_else(|| MinioError::value("XML element <Buckets> not found"))?;
+        let mut names = Vec::new();
+        for bucket in buckets.findall("Bucket") {
+            let name = bucket.findtext_strict("Name").map_err(MinioError::value)?;
+            if let Some(created) = bucket.findtext("CreationDate").filter(|c| !c.is_empty()) {
+                if !iso_ok(&created) {
+                    return Err(MinioError::value(format!(
+                        "time data {} does not match format '%Y-%m-%dT%H:%M:%SZ'",
+                        str_repr(&created)
+                    )));
+                }
+            }
+            names.push(name);
+        }
+        Ok(names)
+    }
+
     /// `list_objects(bucket, prefix, recursive)`, every page (ListObjectsV2,
     /// `encoding-type=url`, 1000 keys a page).
     pub async fn list_objects(

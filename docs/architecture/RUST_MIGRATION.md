@@ -114,13 +114,15 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-integrations` | `app/integrations/routes.py` (but `/modules/*`, `copilot-integration-modules`; the multi-instance helpers, `_cleanup_integration_infrastructure`), `app/integrations/office365/services/{decommission,tenant_lookup}.py`, `app/integrations/aws/services/account_lookup.py`, `app/integrations/alert_creation_settings/`, `app/network_connectors/` (routes, schema, models), `xml.etree.ElementTree` (CPython 3.11) | `/api/integrations/*` (14 routes: the catalog, customer integrations and their metadata, create, update, delete with the decommission, the auth-key lookup, `meta_auto`, `update_meta_auto`), `/api/api/v1/alert_settings/*` (6), `/api/network_connectors/*` (12); an ElementTree subset for `ossec.conf` (`etree.rs`, pinned with the decommission's edit by `etree_vectors.json`, `scripts/gen-integrations-vectors.py`); SQLModel table models as request bodies (`table_model.rs`). Still Python: the Office365, AWS, CrowdStrike, Defender for Endpoint and Bitdefender provisioning (the others are `copilot-integration-provisioning`'s, on `create_meta_validated`) and the delete of a deployed AWS instance (its ossec.conf reconcile shares an in-process lock with AWS provisioning) |
 | `copilot-integration-modules` | `app/integrations/modules/` (routes, schema, services: Huntress, Mimecast, Duo, Cato, CarbonBlack, Darktrace, SAP SIEM), `app/integrations/mimecast/` (`routes/mimecast.py`, `services/mimecast.py`, `schema/mimecast.py`; not `/provision`), `app/integrations/utils/collection.py:send_post_request`, `app/schedulers/services/invoke_{huntress,duo,darktrace,carbonblack,mimecast,sap_siem}.py` | `/api/integrations/modules/{huntress,mimecast,duo,cato,sap_siem}` and the seven SAP SIEM analyses, `POST /api/mimecast/invoke` and `/ttp/urls`: the customer's keys through `copilot-integrations`' statements, the payload models, the Graylog host and port from the connector rows (by name or by Python's fixed ids), the licence, one httpx 0.28 POST to the module container (`copilot_threat_intel::httpx`; `COPILOT_INTEGRATION_MODULES_URL` points every one at a stand-in — tests only); 16 hand-over jobs (`jobs.rs`: every `invoke_*` collection but Cato's), which answer a manual run with what the Python function returns (`JobSpec::returning`); `integration_modules_vectors.json` (`scripts/gen-integration-modules-vectors.py`: the models, `set_time_bounds` and the `time_range` pattern, `base64.b64decode`, `HttpUrl`). Still Python: Mimecast's and SAP SIEM's provisioning (`/provision`, `/invoke/scheduler/{siem,ttp}`: they add APScheduler jobs), the Cato job |
 | `copilot-siem` | `app/siem/` (routes, services, schema, `dashboard_templates/`), `AlertsQueryBuilder`'s time window (`wazuh_indexer/utils/universal.py`), the AsyncElasticsearch 7.10.1 calls of `services/{dashboards,events}.py`, `fnmatch.fnmatchcase` | `/api/siem/dashboards/*` (15 routes: the built-in templates by category, the enabled dashboards, enable / disable, the custom-template CRUD with import, export and the builder's preview, panel data), `/api/siem/event_sources/*` (4), `/api/siem/events/*` (3: the search with its scroll, one document, the field names); `execute_panels`, the one panel executor panel data and the preview share (the `.keyword` and unsorted fallbacks, every panel's failure as its `error`); the built-in templates compiled in (`templates/`, pinned to the backend's files by a test) |
-| `copilot-threat-intel` | `app/threat_intel/` (`routes/{epss,socfortress}.py`, `services/`, `schema/`), the cloud half of `app/integrations/copilot_mcp/` (`query_mcp`, `MCPService.execute_query` for `cyber-news`), `app/middleware/license.py` (`get_license`, `is_feature_enabled`, the `license_cache`), httpx 0.28's `AsyncClient` | `/api/threat_intel/*` (11 routes: `POST /epss`, `/socfortress`, `/process_name`, `/virustotal`, `/virustotal/file/submit`, `/virustotal/file/analyze`, `GET /virustotal/analysis/{id}`, `/virustotal/file/{id}`, `POST /ai/analyze-alert`, `/ai/wazuh-exclusion-rule`, `/ai/velociraptor-artifact-recommendation`); an httpx-shaped client (`httpx.rs`: URL handling, default headers, multipart, exception texts) and the licence check over `copilot_upstream::http::PyHttp` |
+| `copilot-threat-intel` | `app/threat_intel/` (`routes/{epss,socfortress}.py`, `services/`, `schema/`), the cloud half of `app/integrations/copilot_mcp/` (`query_mcp`, `MCPService.execute_query` for `cyber-news`), httpx 0.28's `AsyncClient` | `/api/threat_intel/*` (11 routes: `POST /epss`, `/socfortress`, `/process_name`, `/virustotal`, `/virustotal/file/submit`, `/virustotal/file/analyze`, `GET /virustotal/analysis/{id}`, `/virustotal/file/{id}`, `POST /ai/analyze-alert`, `/ai/wazuh-exclusion-rule`, `/ai/velociraptor-artifact-recommendation`); an httpx-shaped client (`httpx.rs`: URL handling, default headers, multipart, exception texts) and the licence check through `copilot-license` |
 | `copilot-response` | `app/active_response/` (`routes/active_response.py`, `routes/graylog.py`, `routes/sysmon_config.py` but the upload, `services/sysmon_config.py`, `schema/`), the Sysmon half of `app/data_store/data_store_operations.py`, aiohttp 3.13's `FormData` POST, `app/integrations/copilot_action/` (routes, `CopilotActionService` over httpx 0.28, schema) with the `run_artifact_collection` / `fetch_file_from_filestore` / `upload_agent_artifact_file` chain its invoke runs | `/api/active_response/*` (4 routes: the supported responses, by agent, a script's description, the Wazuh invoke with its body-field tenancy), the Graylog webhook `POST /api/graylog/invoke`, `/api/sysmon_config` (list, content, download, deploy), `/api/copilot_action/*` (the inventory, its count, one action, the metrics, the technologies, the invoke); `InvokeActiveResponseRequest`'s `create_alert` validator (#960) as Pydantic runs it; the provisioning worker's aiohttp client (`sysmon/worker.rs`); the CoPilot Action service's httpx client (`copilot_action/client.rs`) |
 | `copilot-shuffle` | `app/connectors/shuffle/` (`routes`, `services`, `schema` of workflows, integrations, organizations and Singul; `utils/universal.py`'s `requests` helpers and `verify_shuffle_credentials`), the case notification of `app/incidents/routes/db_operations.py` with `services/incident_case.py` and `increment_case_notification_count` | `/api/workflows` (the list, the executions, an execution and its results), `/api/shuffle/integrations/*` (credentials, execute, invoke-workflow), `/api/shuffle/organizations/organizations*`, `/api/shuffle/singul/execute`, `POST /api/incidents/db_operations/case/notification`; the `Shuffle` connector's verifier; Pydantic's `UUID4` with pydantic-core 2.46's `uuid` messages (`uuid4.rs`) |
 | `copilot-intel-connectors` | `app/connectors/opencti/` (routes, schema, `services/opencti.py`, `services/queries.py`, `utils/universal.py`), `app/connectors/cortex/` (routes, schema, services, `utils/universal.py`), cortex4py 2.1 (`Api`, the analyzer and job controllers, `Analyzer`/`Job`) | `/api/opencti/*` (6 routes: availability, about, the one-IOC search, the batch lookup, indicators, entities) over the GraphQL transport (`send_graphql_request`, `paginate_graphql`; httpx through `copilot_threat_intel::httpx`), `/api/analyzers` (the list, `POST /run` with the job polling) over cortex4py's requests (`PyHttp::with_exact_headers`); the `OpenCTI` and `Cortex` connector verifiers; `intel_vectors.json` (`scripts/gen-intel-connectors-vectors.py`). Sublime (`/api/sublime`) stays in Python: its tables are not created by Alembic |
 | `copilot-uba` | `app/connectors/uba/` (`routes/uba.py`, `schema/uba.py`, `schema/provision.py`, `services/uba.py`, `services/incident_verdict.py`, `services/provision.py`, `services/rollback.py`, `services/ownership.py`, `utils/universal.py`), httpx 0.28's `AsyncClient` (through `copilot-threat-intel`'s `httpx`), `str.format` (`pyfmt.rs`) | `/api/uba/*`: availability, status, entities, risk history, timeline, signals and evidence, alerts, the verdict and its write-back onto the linked incident alert (#1239, through `copilot-incidents`' verdict update, audited, on the SLA clock), suppressions, identities (review, search, merge, reviewed, candidate dismissal), identity sources (list, test, sync), about, the rule catalog, stats and settings, the risk policy, native-rule scores, backtests; setup (Graylog through `copilot-graylog`'s `GraylogClient`, 6.x and 7.x, the Wazuh rules through `copilot-wazuh`, `uba_provisioned_resource`), the mode, the rollback (#1241: plan, steps, checks, `uba_rollback`), each behind `ops.rs`'s traits so Python's own fixtures pin the plan and the step order; the `SOCFortress UBA` connector verifier; the routes' parameters as FastAPI validates them (`params.rs`), pinned with httpx's query encoding and `str.format` by `uba_vectors.json` (`scripts/gen-uba-vectors.py`) |
 | `copilot-yaml` | PyYAML 6.0.3's pure-Python `yaml.safe_load` (`reader`, `scanner`, `parser`, `composer`, `resolver`, `SafeConstructor`, `YAMLError`) | the loader every catalog rule goes through: Python's values (dates, unbounded ints, YAML 1.1 bools, merge keys, `!!set`/`!!omap`/`!!binary`), their `repr()`/`str()`/`==` and pydantic's JSON, PyYAML's first error with its text; pinned by `yaml_vectors.json` (`scripts/gen-yaml-vectors.py`) |
 | `copilot-searches` | `app/integrations/copilot_searches/` (routes, schema, services: `copilot_searches.py`, `cache_support.py`, `mitre_coverage.py`, `wazuh_rules_cache.py`, `wazuh_firing_stats_cache.py`, `detection_catalog.py`, `rule_linter.py`, `backtest.py`, `graylog_search.py`, `publish.py`, `custom_repos.py`), `app/schedulers/services/refresh_{catalog_caches,wazuh_rules_cache}.py`, the monitoring-alert `provision_alert_definition` call it makes | `/api/copilot_searches/*` (38 routes: the rule lists and lookups, MITRE coverage, the rule search, the Graylog query and event-definition provisioning, the Detection Catalog views and logtest, the editor's validate / backtest / publish, the custom-repo pointers); the four caches as state of this process and its own refresher |
+| `copilot-license` | `app/middleware/license.py` (the 12 routes of `license_router`, `get_license`, `is_feature_enabled` and the `license_cache` bookkeeping, `send_post_request` / `send_get_request`) | `/api/license/*` (12 routes) and the one licence check every Rust module calls (the threat-intel routes, the sidebar's licence indicator); the licence server over `copilot_upstream::http::PyHttp` (`requests`' header order) |
+| `copilot-status` | `app/utils.py:logs_router`; `app/status/` with `schedulers/services/refresh_sidebar_{indicators,health}.py`; `app/performance/`, `app/middleware/performance.py`, `app/db/query_metrics.py` | `/api/logs/*` (6 routes); `GET /api/status/sidebar` (its deployment-wide indicators held and refreshed by the process, `refresher.rs`); `/api/performance/*` (6 routes) on the process's own request timer (`performance::middleware`, the outermost layer), runtime-lag watchdog and query metrics (`QueryMetricsLayer`, fed by sqlx's `sqlx::query` events) |
 | `copilot-gateway` | — | legacy proxy (its notification bridge sink is no longer wired); deleted when the migration ends |
 | `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
 
@@ -1082,8 +1084,8 @@ Still Python, each for a reason: `POST
 DOCX/PDF case reports and the customer report generation (docxtpl,
 wkhtmltopdf), the Sysmon config upload (`copilot-response` serves the rest
 of `/api/sysmon_config`: ElementTree's XML validation), the
-`file_analysis` state store, the sidebar's MinIO indicator and the startup
-`create_buckets()`. The parity suite (`rust_parity_objectstore_e2e.py`)
+`file_analysis` state store and the startup `create_buckets()` (the
+sidebar's MinIO indicator moved with the sidebar). The parity suite (`rust_parity_objectstore_e2e.py`)
 points both backends at one recording S3 stand-in, verifies every
 request's signature with the shared secret and compares the canonical
 requests (method, path, query, headers, payload hash) rather than the
@@ -1304,8 +1306,8 @@ stamped so the next request does not retry at once). The process refreshes
 its copies itself — warm-up at startup, `refresh_catalog_caches` every 15
 minutes (TTL-aware, so the bundle is fetched once a day) and the Wazuh
 ruleset every 30 — a process-local task, not a hand-over job: each backend
-serves from its own caches (the Python sidebar's `status/context.py` reads
-Python's), and both refreshing read-only upstream data is what Python's
+serves from its own caches (the sidebar's Wazuh catalog indicator reads its
+process's: `copilot-status` reads Rust's), and both refreshing read-only upstream data is what Python's
 per-worker caches already did. `COPILOT_CATALOG_REFRESH=false` turns that
 off (the caches then load on demand, as Python's would without its warm-up
 and jobs): every parity suite but the catalog's starts its Rust instance so,
@@ -1343,6 +1345,139 @@ URLs at stand-ins — parity harness only, never production.
 same corpus (GitHub, the bundle, the manager, the indexer, Graylog 6 and 7,
 MinIO with SigV4 verified; rules of odd shapes; a cold start with Wazuh
 failing).
+
+**Licence and error log.** `copilot-license` answers the 12 routes of
+`/api/license` (`require_any_scope("admin", "analyst")`, as in Python) and is
+the one Rust definition of the licence check the rest of the backend imports
+from `app/middleware/license.py`: `get_license` (the first `license` row;
+`No license found. A license must be created first.`) and
+`is_feature_enabled` (a fresh `license_cache` row, else `POST
+/verify-license`, every named data object re-cached for an hour) —
+`copilot-threat-intel` and the sidebar call it. The licence server is
+reached as `send_post_request` / `send_get_request` reach it, over
+`requests` (10 s, TLS verified, requests' header order, `module-version:
+1.0`, `x-api-key` the text `None` when `COPILOT_API_KEY` is unset): a 204 is
+`{"success": true, "message": "No content"}`, a non-JSON answer its text, a
+5xx the 502 `License server error: …` (its `message`, else its `detail`),
+any other failure the 500 naming the endpoint. Python's operations run on
+whatever JSON came back (`normalize_api_response`, `extract_license_payload`,
+`cache_license_features` with `json.dumps`' `NaN`), so a malformed answer
+fails with Python's text: a missing key is the `KeyError`'s bare 500, a
+model's `ValidationError` the `ValueError` handler's 400 — after the writes
+that precede it — and a disabled feature that 400, since
+`IsFeatureEnabledResponse(status_code=400, …)` misses two required fields. A
+non-string `HTTPException` detail is rendered as Starlette renders it (`None`
+is the status phrase). `COPILOT_LICENSE_URL` points the server at a stand-in
+— parity harness only. `copilot-status` serves the six routes of `/api/logs`
+(`Security(get_current_user, scopes=["admin"])`): the `log_entries` rows in
+MySQL's order, `TimeRangeModel` with its validator (its own
+`RequestValidationError` and canned message, the `IndexError` bare 500 of an
+empty string, Pydantic's union errors), the window in days whatever the unit
+and opened from the local `datetime.now()`, the purges by primary key in one
+transaction, Starlette's routing (`GET /timerange` is `GET /{user_id}`'s
+422, an id beyond 64 bits a 404). On every ported route a handled error's
+`log_entries.route` is Starlette's `str(request.url)`, the percent-decoded
+path (`copilot_web::middleware`). Models and validators are pinned by
+`license_vectors.json` and `platform_vectors.json`
+(`scripts/gen-platform-vectors.py`). Parity: `rust_parity_platform_e2e.py`
+sections A and B (a recording licence server, every header in order, a
+closed port, the error rows each backend logs).
+
+**Sidebar.** `copilot-status` answers `GET /api/status/sidebar`
+(`require_any_scope("admin", "analyst", "customer_user")`) with
+`build_sidebar_context`'s sixteen indicators. Two are per user and computed
+on every request: the caller's unassigned open alerts (through
+`AlertVisibility`, §4) and their open cases. Fourteen are deployment-wide,
+each with its audience tag (`analyst` for the SOC roles; `customer` for
+portal users — the Wazuh catalog only; `admin` for the connectors, the
+licence and the platform storage), held in process memory and served while
+younger than 600 s; the InfluxDB health value has its own 600 s cache
+("Checking InfluxDB healthchecks…" while cold) and the version fields are
+cached for 30 minutes (the release check of `/api/version/check`, so
+`COPILOT_VERSION_CHECK_URL`; a non-string `html_url` is
+`SidebarContextResponse`'s `ValidationError`, the 400). A request never
+waits for the shared set: a cold or stale one starts one background refresh
+and the answer carries what is known; a refresh runs alone (Python's
+`asyncio.Lock`, checked with `locked()`). Like Python's
+`refresh_sidebar_indicators` and `refresh_sidebar_health` jobs, the process
+refreshes them itself — after a warm-up Python does not do (the InfluxDB
+value first, so the first set carries it), every 4 and 6 minutes; a
+process-local task, not a hand-over job: the data is deployment-wide, so
+each backend computing its own is the same answer.
+`COPILOT_SIDEBAR_REFRESH` turns it off; unset, it follows
+`COPILOT_CATALOG_REFRESH`, so every parity suite that starts its Rust
+instance with the catalog refresher off has this one off too (the catalog
+suite keeps its refresher on and sets `COPILOT_SIDEBAR_REFRESH=false`). Each builder
+is Python's: the same statements (the counts, the `LIMIT 1` reads, one `IN`
+over the scheduled job ids), thresholds and texts; a builder that raises
+leaves its indicator out (`safe_build`). The scheduler and agent-sync
+indicators read APScheduler's store as `SQLAlchemyJobStore.get_all_jobs`
+lists it (by `next_run_time`, paused jobs moved last, decoded with
+`copilot_scheduler::jobstore`) and `scheduled_job_metadata` (the later row
+of one job id wins, as `{job_id: row}` does). A job handed over to Rust has
+a disabled row, so it reads as disabled there — on both backends; whether
+the sidebar should report a handed-over job as running is a product
+decision. The Wazuh catalog indicator reads the Detections Catalog's own
+ruleset cache (`copilot-searches`, as it stands before
+`ensure_fresh_nonblocking`'s refresh runs); the Wazuh indexer indicator
+`cluster_healthcheck` through `copilot-wazuh`; the InfluxDB one
+`get_influxdb_alerts` through `copilot-influxdb`; the licence one the
+newest `license_cache` row of the licence (`_parse_license_expiry`:
+`strptime`'s regexes, then `fromisoformat` with the offset dropped, pinned
+by `platform_vectors.json`); the platform storage `SELECT 1` and MinIO's
+`list_buckets` within 5 s (`copilot-objectstore`, the exception's class
+name). Parity: `rust_parity_platform_e2e.py` section C — four scenarios
+(healthy, degraded, down, odd), each with Python's set refreshed in-process
+and a fresh Rust instance's warm-up, every request to the InfluxDB,
+indexer, MinIO, manager and GitHub stand-ins compared, then the route for
+every role.
+
+Python's catalog and sidebar jobs (`refresh_catalog_caches`,
+`refresh_wazuh_rules_cache`, `refresh_sidebar_indicators`,
+`refresh_sidebar_health`) and `copilot.py`'s `warm_catalog_caches()` keep
+warming caches that no route of the Python process serves once the Rust
+service is in front: a GitHub corpus every 15 minutes, a Wazuh ruleset
+download every 30 (80–110 s against a real manager), a Flux query every 6.
+**Proposal (not implemented):** a `@rust_served` guard on those four job
+functions — `@rust_handover`'s shape without an owner row — returning
+`JOB_SKIPPED` while a switch set only by `docker-compose.rust.yml` for the
+Python container (say `COPILOT_RUST_FRONT=true`) says Rust answers
+`/api/copilot_searches` and `/api/status`, the same switch skipping
+`warm_catalog_caches()` at startup; rolling back (compose without the
+second file) brings them back. Pausing the four jobs in the Scheduler UI
+works today but leaves the startup warm-up.
+
+**Performance.** `copilot-status` answers the six routes of
+`/api/performance` (`require_any_scope("admin")`) and they describe **the
+Rust process**, as Python's described the Python process. The choice: with
+the Rust service in front it is the outermost process, so its timer
+measures what the client waited for — a proxied request's time in Python
+included —, which is what `RequestTimingMiddleware` measured when Python was
+outermost; left in Python, the route would have shown only the requests
+Python still serves, from behind the proxy. Ported: the request timer
+(`performance::middleware`, `Router::layer` on the whole application, so it
+runs after routing: the template is axum's matched path — `{*rest}` written
+`{rest}` — and an unmatched path is `_normalise_path`'s; a request is
+recorded when its body ends, one dropped before (the client gone) counts as
+a disconnect; every answer carries `X-Process-Time-Ms`, the time to its
+head with one decimal, and `X-Request-Id`, a proxied answer's own pair
+replaced), the lag watchdog (tokio's scheduling delay every
+`PERF_LAG_SAMPLE_INTERVAL`; a sample above `PERF_LAG_STALL_THRESHOLD_MS` is
+a stall, attributed to the running and just-finished requests that
+overlapped it), and the query metrics (`QueryMetricsLayer` reads sqlx's
+`sqlx::query` events — statement text and elapsed time — and is enabled for
+that target alone in the binary's subscriber, next to the log lines'
+filter; the pool's occupancy is sampled on read and every minute).
+Buffers, caps, the `PERF_*` / `DB_*` settings, the rounding, `_percentile`'s
+rank, the sorts (stable, descending, an unknown key `stalled_ms`), the
+verdict texts, the query validation and the reset (in-flight requests kept,
+both registries zeroed) are Python's. Not ported: the session log files
+(`backend/logs/performance/`); the Python process keeps writing its own —
+with Rust in front, the one place its loop's numbers stay visible. Parity:
+`rust_parity_platform_e2e.py` section D compares the guards, the 422s, the
+shapes and units, the ordering rules, the counts a reset and a known
+sequence of requests produce on each backend, and the reset; the timings
+themselves are each process's (§4).
 
 ---
 
@@ -1479,6 +1614,9 @@ not provoked.
 | `POST /integrations/modules/sap_siem/{analysis}` (the seven analyses) | any analyst sends any `iris_customer_id` to the SAP module | the customers whose metadata carries that IRIS id must all be the caller's; an id no customer carries is refused (403 `Access denied to IRIS customer …`; admins unchanged) | tenant leak: the IRIS id names the tenant |
 | `POST /mimecast/invoke` and the `invoke_mimecast_integration` job, once the region discovery answered | before failing (`HttpUrl + str`), create the customer's empty checkpoint file and log directory next to the Python module | write nothing | no file on the Python host; the download that would use them is unreachable (not compared) |
 | a module collection whose database read fails inside the route's `try` | `success: false` with SQLAlchemy's exception text | `success: false` with sqlx's text | driver texts (not provoked) |
+| `GET /status/sidebar`: the open-alerts indicator of a caller under tag RBAC | customer scoping only: alerts whose tags the caller may not see — and untagged ones under `admin_only` — are counted | through `AlertVisibility` (customer scoping and tag RBAC), the definition every alert list uses | the count named alerts the caller cannot open (the parity suite checks `admin_only` and `visible_to_all`) |
+| `GET /status/sidebar`: an `apscheduler_jobs` row APScheduler cannot restore | `get_jobs()` deletes it from the store and leaves it out | listed as a scheduled job and left in the store | a read must not repair APScheduler's store (not provoked) |
+| `/api/performance/*` | the Python process: its requests, event-loop lag, statements (`%s` placeholders) and SQLAlchemy pool (`size()` = `pool_size`, with overflow); FastAPI's route templates | the Rust process: every request it serves or proxies, tokio's scheduling delay, sqlx's statements (`?` placeholders) and pool (`size` = `max_connections`, `overflow` 0); axum's templates (`/api/logs/{segment}` where FastAPI names `{user_id}` and `{event_type}`) | each describes its own process; with Rust in front, Rust's is the one the client waits on (the parity suite compares guards, 422s, shapes, units, ordering, the counts after a reset and the reset) |
 
 ---
 
@@ -1519,7 +1657,7 @@ Python backend today: ~200 k lines in 930 files.
 | **1 — done** | `customer_portal` AI reports + requests (`copilot-customer-portal`), alert visibility (customer + tag RBAC), `customers` reads (`copilot-customers`), agent healthchecks (`copilot-healthchecks`), `version` and `audit` reads (`copilot-platform`) | read-mostly. `status/sidebar` moved to phase 4: its indicators read Wazuh, InfluxDB, the licence, MinIO and caches that live in the Python process |
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
 | **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (with the exclusion draft and dry-run) moved in phase 4, the DOCX/PDF reports and customer report generation for a PDF renderer (the MinIO routes moved in phase 4) |
-| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run) and the three indexer reads of `/db_operations` — **done** (`copilot-ingest`, `rust_parity_ingest_e2e.py`) —, the incidents' MinIO routes — **done** (`copilot-objectstore`: case files, report templates, `DELETE /case/{id}`, the customer reports' download and delete, `/api/agent_data_store`; `rust_parity_objectstore_e2e.py`; the default-template upload, Sysmon configs and `file_analysis` still Python; Velociraptor's collection upload and the agents' report files moved with their modules) — and DOCX/PDF reports, the connector-bound scheduler jobs (`invoke_snapshot_schedules`, `resize_wazuh_index_fields`, `invoke_alert_creation_collect` and `agent_sync` **done**); `agents` (9.8 k) — **done** (`/api/agents`: `copilot-agents` on `copilot-velociraptor`, the `agent_sync` job, `rust_parity_agents_e2e.py`; `/api/vulnerabilities`, `/api/sca` and `/api/syscollector`: `copilot-agent-reports`, `rust_parity_agent_reports_e2e.py`) —, `soc_management` (4.4 k) — **done** but its PDF report (`copilot-soc-management`: dashboard, policies, calendars, the portal's SLA page, `notify_sla_transitions`; `rust_parity_soc_e2e.py`), the rest of `customer_portal` (2.1 k) — **done** (`copilot-customer-portal`: the global settings and branding with their logos and a branding cache each process checks against the tables, the Overview, the dashboard counters, the agents page and CSV, `/me`; `rust_parity_customer_portal_e2e.py`), `customer_waf` — **done** (`copilot-waf`; `rust_parity_provisioning_e2e.py`), the monitoring-alert catalog — **done** (`copilot-monitoring-alerts`: every alert, custom alerts, the Event Shipper test, on both Graylogs; `rust_parity_monitoring_alert_e2e.py`), the response routes — `/api/active_response`, the Graylog webhook, `/api/sysmon_config` but its upload (ElementTree's XML validation) and `/api/copilot_action` **done** (`copilot-response`, `rust_parity_response_e2e.py`) —, the Shuffle connector with the case notification **done** (`copilot-shuffle`, the same suite) —, `siem` (1.7 k) — **done** (`copilot-siem`: dashboards, custom templates, panel data, event sources, the event search; `rust_parity_siem_e2e.py`), `threat_intel` (2.1 k) — **done** (`copilot-threat-intel`: EPSS, SOCFortress intel and AI, the process-name analysis, VirusTotal lookups and file analysis, the licence check; `rust_parity_siem_e2e.py`), `file_analysis`, `customer_provisioning` — **done** but the provisioning itself (`POST /provision`, `/provision/dashboards`, `/provision/wazuh_worker`), `stack_provisioning` — **done** (`copilot-provisioning`; the Fortinet / SonicWall / SentinelOne provisioning in wave 5: `copilot-integration-provisioning`, `rust_parity_grafana_provisioning_e2e.py`), then `connectors` (29.6 k: Wazuh — the connector reads, the cross-process cache check, the indexer, the manager routes the UI uses and the two indexer jobs **done** (`copilot-connectors`, `copilot-wazuh`) —, Graylog, Velociraptor — `/api/artifacts` with its two MinIO collections and `/api/flows` **done** (`copilot-velociraptor`) —, …) and `integrations` (37.5 k), one vendor at a time — **Graylog, InfluxDB, Grafana and Portainer done** (`copilot-graylog`, `copilot-influxdb`, `copilot-grafana`, `copilot-portainer` on `copilot-upstream`, `rust_parity_graylog_e2e.py`; Grafana's PDF report and Portainer's stack creation still Python; the dashboard provisioning — `POST /api/grafana/dashboards`, `POST /api/customer_provisioning/provision/dashboards` — **done** in wave 5: `copilot-grafana-dashboards`, the templates compiled in from `backend/`, `rust_parity_grafana_provisioning_e2e.py`); the integrations core — `/api/integrations` but `/modules/*`, the alert creation settings and `/api/network_connectors` — **done** (`copilot-integrations`, `rust_parity_integrations_e2e.py`; the delete of a deployed AWS instance still Python), the integrations' provisioning — **done** in wave 5 but CrowdStrike, Defender for Endpoint, Bitdefender (collector files on the Python host), Office365 and AWS (`copilot-integration-provisioning`, the scheduler jobs handed to Python; `rust_parity_grafana_provisioning_e2e.py`); OpenCTI and Cortex — **done** (`copilot-intel-connectors`, `rust_parity_intel_connectors_e2e.py`); the integration modules — `/api/integrations/modules/*` (Huntress, Mimecast, Duo, Cato, SAP SIEM and its analyses), Mimecast's `/invoke` and `/ttp/urls` and the collection jobs but Cato's — **done** (`copilot-integration-modules`, `rust_parity_integration_modules_e2e.py`; Mimecast and SAP SIEM provisioning still Python); Sublime stays Python (its tables are not created by Alembic: a product decision); the SOCFortress UBA connector — `/api/uba`, setup, mode and rollback included — **done** (`copilot-uba`, `rust_parity_uba_e2e.py`); `integrations/copilot_searches` (the Detections Catalog, 7.7 k) — **done** (`copilot-searches` on `copilot-yaml`, `rust_parity_catalog_e2e.py`; its caches refreshed by each process for itself); `status/sidebar` and `POST /healthcheck/logs` once the connectors they read are ported | largest surface; each is independent |
+| 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run) and the three indexer reads of `/db_operations` — **done** (`copilot-ingest`, `rust_parity_ingest_e2e.py`) —, the incidents' MinIO routes — **done** (`copilot-objectstore`: case files, report templates, `DELETE /case/{id}`, the customer reports' download and delete, `/api/agent_data_store`; `rust_parity_objectstore_e2e.py`; the default-template upload, Sysmon configs and `file_analysis` still Python; Velociraptor's collection upload and the agents' report files moved with their modules) — and DOCX/PDF reports, the connector-bound scheduler jobs (`invoke_snapshot_schedules`, `resize_wazuh_index_fields`, `invoke_alert_creation_collect` and `agent_sync` **done**); `agents` (9.8 k) — **done** (`/api/agents`: `copilot-agents` on `copilot-velociraptor`, the `agent_sync` job, `rust_parity_agents_e2e.py`; `/api/vulnerabilities`, `/api/sca` and `/api/syscollector`: `copilot-agent-reports`, `rust_parity_agent_reports_e2e.py`) —, `soc_management` (4.4 k) — **done** but its PDF report (`copilot-soc-management`: dashboard, policies, calendars, the portal's SLA page, `notify_sla_transitions`; `rust_parity_soc_e2e.py`), the rest of `customer_portal` (2.1 k) — **done** (`copilot-customer-portal`: the global settings and branding with their logos and a branding cache each process checks against the tables, the Overview, the dashboard counters, the agents page and CSV, `/me`; `rust_parity_customer_portal_e2e.py`), `customer_waf` — **done** (`copilot-waf`; `rust_parity_provisioning_e2e.py`), the monitoring-alert catalog — **done** (`copilot-monitoring-alerts`: every alert, custom alerts, the Event Shipper test, on both Graylogs; `rust_parity_monitoring_alert_e2e.py`), the response routes — `/api/active_response`, the Graylog webhook, `/api/sysmon_config` but its upload (ElementTree's XML validation) and `/api/copilot_action` **done** (`copilot-response`, `rust_parity_response_e2e.py`) —, the Shuffle connector with the case notification **done** (`copilot-shuffle`, the same suite) —, `siem` (1.7 k) — **done** (`copilot-siem`: dashboards, custom templates, panel data, event sources, the event search; `rust_parity_siem_e2e.py`), `threat_intel` (2.1 k) — **done** (`copilot-threat-intel`: EPSS, SOCFortress intel and AI, the process-name analysis, VirusTotal lookups and file analysis, the licence check; `rust_parity_siem_e2e.py`), `file_analysis`, `customer_provisioning` — **done** but the provisioning itself (`POST /provision`, `/provision/dashboards`, `/provision/wazuh_worker`), `stack_provisioning` — **done** (`copilot-provisioning`; the Fortinet / SonicWall / SentinelOne provisioning in wave 5: `copilot-integration-provisioning`, `rust_parity_grafana_provisioning_e2e.py`), then `connectors` (29.6 k: Wazuh — the connector reads, the cross-process cache check, the indexer, the manager routes the UI uses and the two indexer jobs **done** (`copilot-connectors`, `copilot-wazuh`) —, Graylog, Velociraptor — `/api/artifacts` with its two MinIO collections and `/api/flows` **done** (`copilot-velociraptor`) —, …) and `integrations` (37.5 k), one vendor at a time — **Graylog, InfluxDB, Grafana and Portainer done** (`copilot-graylog`, `copilot-influxdb`, `copilot-grafana`, `copilot-portainer` on `copilot-upstream`, `rust_parity_graylog_e2e.py`; Grafana's PDF report and Portainer's stack creation still Python; the dashboard provisioning — `POST /api/grafana/dashboards`, `POST /api/customer_provisioning/provision/dashboards` — **done** in wave 5: `copilot-grafana-dashboards`, the templates compiled in from `backend/`, `rust_parity_grafana_provisioning_e2e.py`); the integrations core — `/api/integrations` but `/modules/*`, the alert creation settings and `/api/network_connectors` — **done** (`copilot-integrations`, `rust_parity_integrations_e2e.py`; the delete of a deployed AWS instance still Python), the integrations' provisioning — **done** in wave 5 but CrowdStrike, Defender for Endpoint, Bitdefender (collector files on the Python host), Office365 and AWS (`copilot-integration-provisioning`, the scheduler jobs handed to Python; `rust_parity_grafana_provisioning_e2e.py`); OpenCTI and Cortex — **done** (`copilot-intel-connectors`, `rust_parity_intel_connectors_e2e.py`); the integration modules — `/api/integrations/modules/*` (Huntress, Mimecast, Duo, Cato, SAP SIEM and its analyses), Mimecast's `/invoke` and `/ttp/urls` and the collection jobs but Cato's — **done** (`copilot-integration-modules`, `rust_parity_integration_modules_e2e.py`; Mimecast and SAP SIEM provisioning still Python); Sublime stays Python (its tables are not created by Alembic: a product decision); the SOCFortress UBA connector — `/api/uba`, setup, mode and rollback included — **done** (`copilot-uba`, `rust_parity_uba_e2e.py`); `integrations/copilot_searches` (the Detections Catalog, 7.7 k) — **done** (`copilot-searches` on `copilot-yaml`, `rust_parity_catalog_e2e.py`; its caches refreshed by each process for itself); the platform's own surfaces — `/api/logs`, `/api/license` (the licence check shared with `threat_intel`), `status/sidebar` and `/api/performance` (reporting the Rust process) — **done** (`copilot-status`, `copilot-license`, `rust_parity_platform_e2e.py`); `POST /healthcheck/logs` once the connectors it reads are ported | largest surface; each is independent |
 | 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the

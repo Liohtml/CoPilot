@@ -299,6 +299,14 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/integrations/modules",
     "POST /api/mimecast/invoke",
     "POST /api/mimecast/ttp/urls",
+    // The licence (copilot-license) and the error log (copilot-status).
+    "/api/license",
+    "/api/logs",
+    // The sidebar's status panel (copilot-status).
+    "/api/status",
+    // This process's request timing, runtime lag and query metrics
+    // (copilot-status).
+    "/api/performance",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -341,6 +349,8 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend(copilot_agent_reports::requirements());
     all.extend_from_slice(copilot_uba::REQUIREMENTS);
     all.extend_from_slice(copilot_integration_modules::REQUIREMENTS);
+    all.extend_from_slice(copilot_license::REQUIREMENTS);
+    all.extend_from_slice(copilot_status::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -436,6 +446,11 @@ pub struct App {
     /// The integration modules (`/api/integrations/modules/*`, the two
     /// Mimecast routes) and their collection jobs.
     pub modules: copilot_integration_modules::ModulesState,
+    /// The licence server (`/api/license`).
+    pub license: copilot_license::LicenseClient,
+    /// The sidebar's status panel (`/api/status/sidebar`) and its process
+    /// state.
+    pub sidebar: copilot_status::sidebar::SidebarState,
 }
 
 impl App {
@@ -595,6 +610,31 @@ impl App {
             cfg.branding_cache_ttl,
             cfg.branding_cache_check,
         );
+        let license = copilot_license::LicenseClient::new(
+            copilot_license::client::license_url_from_env(),
+            cfg.copilot_api_key.clone(),
+        )
+        .context("building the licence-server client")?;
+        // This process's instrumentation (`/api/performance`): the settings
+        // are read once, by the first App of the process.
+        copilot_status::performance::init(copilot_status::performance::PerfConfig::from_env(
+            &cfg.perf,
+        ))
+        .install_pool(ctx.db.pool().clone());
+        let sidebar = copilot_status::sidebar::SidebarState {
+            ctx: ctx.clone(),
+            wazuh: wazuh.clone(),
+            influx: influxdb.clone(),
+            store: objectstore.clone(),
+            searches: searches.clone(),
+            env: Arc::new(copilot_status::sidebar::SidebarEnv::new(
+                cfg.environment.clone(),
+                cfg.sidebar_refresh.as_deref(),
+                cfg.catalog.refresh_enabled(),
+                cfg.version_check_url.clone(),
+            )),
+            cache: Arc::default(),
+        };
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -651,6 +691,8 @@ impl App {
             searches,
             portal,
             modules,
+            license,
+            sidebar,
         })
     }
 
@@ -1027,6 +1069,35 @@ impl App {
             // copilot-integrations' routes, and `POST /api/mimecast/invoke`,
             // `/ttp/urls`.
             .merge(copilot_integration_modules::router(self.modules.clone()))
+            .nest(
+                "/api/license",
+                copilot_license::router(copilot_license::LicenseState {
+                    ctx: self.ctx.clone(),
+                    client: self.license.clone(),
+                })
+                .layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
+            .nest(
+                "/api/status",
+                copilot_status::sidebar::router(self.sidebar.clone()),
+            )
+            .nest(
+                "/api/performance",
+                copilot_status::performance::router(self.ctx.clone()).layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
+            .nest(
+                "/api/logs",
+                copilot_status::logs::router(self.ctx.clone()).layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
@@ -1039,7 +1110,7 @@ impl App {
                 legacy: self.legacy.is_some(),
             });
         let app = Router::new().merge(ported).merge(health);
-        match &self.legacy {
+        let app = match &self.legacy {
             // Unported paths *and* methods go to Python, which answers its
             // own 404/405 when it does not know them either.
             Some(proxy) => {
@@ -1077,7 +1148,11 @@ impl App {
                 app.method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
                     .fallback(root_or_404)
             }
-        }
+        };
+        // Last, so it wraps every route and the fallback (the proxy to
+        // Python included) after routing: the request timer of
+        // `/api/performance`, `X-Process-Time-Ms` and `X-Request-Id`.
+        app.layer(from_fn(copilot_status::performance::middleware::timing))
     }
 }
 

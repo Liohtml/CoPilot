@@ -54,6 +54,8 @@ copilot-uba = { workspace = true }
 copilot-integration-modules = { workspace = true }
 copilot-grafana-dashboards = { workspace = true }
 copilot-integration-provisioning = { workspace = true }
+copilot-license = { workspace = true }
+copilot-status = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

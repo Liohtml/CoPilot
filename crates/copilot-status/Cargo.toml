@@ -1,0 +1,40 @@
+[package]
+name = "copilot-status"
+description = "Platform status: the error log (/api/logs), the sidebar's status panel (/api/status) and the request-timing registry (/api/performance)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-jinja = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-influxdb = { workspace = true }
+copilot-objectstore = { workspace = true }
+copilot-searches = { workspace = true }
+copilot-scheduler = { workspace = true }
+copilot-platform = { workspace = true }
+copilot-license = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-ingest = { workspace = true }
+futures = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+http-body = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+
+[lints]
+workspace = true

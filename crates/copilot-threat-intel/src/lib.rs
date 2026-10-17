@@ -13,8 +13,8 @@
 //!   `/virustotal/file/{id}`, and `POST /ai/analyze-alert`,
 //!   `/ai/wazuh-exclusion-rule`, `/ai/velociraptor-artifact-recommendation`
 //! - [`httpx`] — httpx 0.28's `AsyncClient`, which every upstream but the
-//!   licence server is called with; [`license`] — the licence check over
-//!   `requests` (`copilot_upstream::http::PyHttp`)
+//!   licence server is called with; [`license`] — the licence check, which
+//!   is `copilot-license`'s
 //! - [`services`] / [`schema`] — the services and their Pydantic models
 //!
 //! The upstream URLs are Python's constants; [`urls`] lets the parity
@@ -35,7 +35,6 @@ pub mod services;
 pub mod urls;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::extract::FromRef;
 use copilot_core::config::Secret;
@@ -59,7 +58,8 @@ pub struct ThreatIntelState {
     pub urls: Arc<urls::Urls>,
     /// `COPILOT_API_KEY` (`os.getenv`: `None` when unset).
     pub api_key: Option<Secret>,
-    /// `requests` towards the licence server (10 s, TLS verified).
+    /// `requests` towards the licence server (10 s, TLS verified,
+    /// requests' header order: `copilot_license::client::license_http`).
     pub license_http: PyHttp,
     /// The Python backend, for a path with an encoded `/`.
     pub legacy: Option<LegacyProxy>,
@@ -86,7 +86,7 @@ impl ThreatIntelState {
             ingest,
             urls: Arc::new(urls::Urls::from_env()),
             api_key,
-            license_http: PyHttp::new(Duration::from_secs(10), true)?,
+            license_http: copilot_license::client::license_http()?,
             legacy,
         })
     }

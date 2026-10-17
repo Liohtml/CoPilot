@@ -5,6 +5,7 @@ server.csr
 # Logs
 logs
 !frontend/src/components/logs
+!crates/copilot-status/src/logs
 *.log
 npm-debug.log*
 yarn-debug.log*

@@ -70,10 +70,9 @@ const ROUTE_COLUMN: usize = 256;
 /// `log_entries.message` is a `VARCHAR(5024)`.
 const MESSAGE_COLUMN: usize = 5024;
 
-/// The length of `str(request.url)`: Starlette joins the scheme, the `Host`
-/// header, the path uvicorn percent-decoded (UTF-8, errors replaced) and
-/// the raw query string.
-fn starlette_url_chars(host: &str, uri: &http::Uri) -> usize {
+/// `scope["path"]`: the path uvicorn percent-decoded (UTF-8, errors
+/// replaced).
+pub fn decoded_path(uri: &http::Uri) -> String {
     let raw = uri.path().as_bytes();
     let mut bytes = Vec::with_capacity(raw.len());
     let mut i = 0;
@@ -89,12 +88,23 @@ fn starlette_url_chars(host: &str, uri: &http::Uri) -> usize {
         bytes.push(raw[i]);
         i += 1;
     }
-    let path = String::from_utf8_lossy(&bytes);
-    let query = uri.query().filter(|q| !q.is_empty());
-    "http://".len()
-        + host.chars().count()
-        + path.chars().count()
-        + query.map_or(0, |q| 1 + q.chars().count())
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// `str(request.url)`: Starlette joins the scheme, the `Host` header, the
+/// path uvicorn percent-decoded (UTF-8, errors replaced) and the raw query
+/// string.
+fn starlette_url(host: &str, uri: &http::Uri) -> String {
+    let path = decoded_path(uri);
+    match uri.query().filter(|q| !q.is_empty()) {
+        Some(q) => format!("http://{host}{path}?{q}"),
+        None => format!("http://{host}{path}"),
+    }
+}
+
+/// The length of [`starlette_url`].
+fn starlette_url_chars(host: &str, uri: &http::Uri) -> usize {
+    starlette_url(host, uri).chars().count()
 }
 
 /// Write a `log_entries` row for responses carrying [`LoggedError`].
@@ -113,7 +123,7 @@ pub async fn log_handled_errors(
         .and_then(|h| h.to_str().ok())
         .unwrap_or("localhost")
         .to_string();
-    let route = format!("http://{host}{}", req.uri());
+    let route = starlette_url(&host, req.uri());
     let bearer = req
         .headers()
         .get(http::header::AUTHORIZATION)

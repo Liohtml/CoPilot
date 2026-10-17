@@ -61,6 +61,8 @@ copilot-searches = { path = "crates/copilot-searches" }
 copilot-integration-modules = { path = "crates/copilot-integration-modules" }
 copilot-grafana-dashboards = { path = "crates/copilot-grafana-dashboards" }
 copilot-integration-provisioning = { path = "crates/copilot-integration-provisioning" }
+copilot-license = { path = "crates/copilot-license" }
+copilot-status = { path = "crates/copilot-status" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }
@@ -101,6 +103,7 @@ tower-http = { version = "0.6", features = ["trace", "limit", "cors", "timeout",
 url = "2"
 bytes = "1"
 http = "1"
+http-body = "=1.1.0"
 # `ReasonPhrase`: the status line's own reason, which `requests`' HTTPError
 # and InfluxDB errors quote (the version reqwest uses).
 hyper = { version = "1", default-features = false, features = ["http1", "client"] }
