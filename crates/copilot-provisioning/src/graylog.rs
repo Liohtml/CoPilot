@@ -72,8 +72,9 @@ pub async fn system_version_check(c: &GraylogClient) -> PyResult<()> {
     }
 }
 
-/// `get_content_packs()`: each pack's `name`.
-async fn content_pack_names(c: &GraylogClient) -> PyResult<Vec<String>> {
+/// `get_content_packs()` on `connector` (the default one, or the one a
+/// Graylog context names): each pack's `name`.
+async fn content_pack_names_on(c: &GraylogClient, connector: &str) -> PyResult<Vec<String>> {
     let wrap = |e: PyExc| match e {
         PyExc::KeyError(k) => PyExc::http(500, format!("Failed to collect content packs key: {k}")),
         other => PyExc::http(
@@ -82,7 +83,7 @@ async fn content_pack_names(c: &GraylogClient) -> PyResult<Vec<String>> {
         ),
     };
     let reply = c
-        .get("/api/system/content_packs", &[])
+        .get_on(connector, "/api/system/content_packs", &[])
         .await
         .map_err(wrap)?;
     let list = construct(&CONTENT_PACK_LIST, &reply.data).map_err(wrap)?;
@@ -95,7 +96,17 @@ async fn content_pack_names(c: &GraylogClient) -> PyResult<Vec<String>> {
 /// `does_content_pack_exist(name)`: `True` for an installed
 /// `PROCESSING_PIPELINE` pack, 400 for any other installed one.
 pub async fn does_content_pack_exist(c: &GraylogClient, name: &str) -> PyResult<bool> {
-    for pack in content_pack_names(c).await? {
+    does_content_pack_exist_on(c, DEFAULT_CONNECTOR, name).await
+}
+
+/// `does_content_pack_exist(name)` under a Graylog context: the content
+/// packs of `connector`.
+pub async fn does_content_pack_exist_on(
+    c: &GraylogClient,
+    connector: &str,
+    name: &str,
+) -> PyResult<bool> {
+    for pack in content_pack_names_on(c, connector).await? {
         if pack == name {
             if pack.contains("PROCESSING_PIPELINE") {
                 return Ok(true);
@@ -109,10 +120,15 @@ pub async fn does_content_pack_exist(c: &GraylogClient, name: &str) -> PyResult<
     Ok(false)
 }
 
-/// `insert_content_pack(content_pack)`.
-async fn insert_content_pack(c: &GraylogClient, pack: &PyValue) -> PyResult<bool> {
+/// `insert_content_pack(content_pack)` under a Graylog context: `true` when
+/// inserted, `false` for a `PROCESSING_PIPELINE` pack Graylog already holds.
+pub async fn insert_content_pack_on(
+    c: &GraylogClient,
+    connector: &str,
+    pack: &PyValue,
+) -> PyResult<bool> {
     match c
-        .post("/api/system/content_packs", Some(pack.clone()))
+        .post_on(connector, "/api/system/content_packs", Some(pack.clone()))
         .await
     {
         Ok(_) => Ok(true),
@@ -143,18 +159,24 @@ async fn insert_content_pack(c: &GraylogClient, pack: &PyValue) -> PyResult<bool
     }
 }
 
-/// `install_content_pack(id, revision)`: `send_post_request_create_entity`
-/// on the f-string path of whatever the template carries.
-async fn install_content_pack(c: &GraylogClient, id: &PyValue, rev: &PyValue) -> PyResult<()> {
+/// `install_content_pack(id, revision)` under a Graylog context:
+/// `send_post_request_create_entity` on the f-string path of whatever the
+/// template carries (the version probed on `connector` too).
+pub async fn install_content_pack_on(
+    c: &GraylogClient,
+    connector: &str,
+    id: &PyValue,
+    rev: &PyValue,
+) -> PyResult<()> {
     let endpoint = format!(
         "/api/system/content_packs/{}/{}/installations",
         id.py_str(),
         rev.py_str()
     );
     let entity = kwargs(vec![("comment", st(INSTALL_COMMENT))]);
-    let major = c.major_version(DEFAULT_CONNECTOR).await;
+    let major = c.major_version(connector).await;
     let body = create_entity_body(major, entity, None);
-    match c.post(&endpoint, Some(body)).await {
+    match c.post_on(connector, &endpoint, Some(body)).await {
         Ok(_) => Ok(()),
         Err(PyExc::KeyError(k)) => Err(PyExc::http(
             500,
@@ -171,10 +193,10 @@ async fn install_content_pack(c: &GraylogClient, id: &PyValue, rev: &PyValue) ->
 pub async fn provision_content_pack(c: &GraylogClient, name: &str) -> PyResult<()> {
     let pack = templates::content_pack(name)
         .ok_or_else(|| PyExc::http(404, "Content pack JSON file not found"))?;
-    insert_content_pack(c, &pack).await?;
+    insert_content_pack_on(c, DEFAULT_CONNECTOR, &pack).await?;
     let id = pack.get("id").cloned().unwrap_or(PyValue::None);
     let rev = pack.get("rev").cloned().unwrap_or(PyValue::None);
-    install_content_pack(c, &id, &rev).await
+    install_content_pack_on(c, DEFAULT_CONNECTOR, &id, &rev).await
 }
 
 /// The ETW rule's source, as `create_etw_rule` writes it.

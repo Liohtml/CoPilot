@@ -1,0 +1,602 @@
+{
+ "packs": {
+  "names": [
+   "SOCFORTRESS_WAZUH_CONTENT_PACK",
+   "SOCFORTRESS_FORTINET_INPUT_SYSLOG_TCP",
+   "SOCFORTRESS_FORTINET_INPUT_SYSLOG_UDP",
+   "SOCFORTRESS_FORTINET_PROCESSING_PIPELINE",
+   "SOCFORTRESS_FORTINET_STREAM",
+   "SOCFORTRESS_CROWDSTRIKE_INPUT_TCP",
+   "SOCFORTRESS_CROWDSTRIKE_STREAM",
+   "SOCFORTRESS_CROWDSTRIKE_PROCESSING_PIPELINE",
+   "SOCFORTRESS_BITDEFENDER_INPUT_TCP",
+   "SOCFORTRESS_BITDEFENDER_STREAM",
+   "SOCFORTRESS_DEFENDER_FOR_ENDPOINT_INPUT_TCP",
+   "SOCFORTRESS_DEFENDER_FOR_ENDPOINT_STREAM",
+   "SOCFORTRESS_SONICWALL_INPUT_SYSLOG_TLS",
+   "SOCFORTRESS_SONICWALL_STREAM",
+   "SOCFORTRESS_SONICWALL_PROCESSING_PIPELINE"
+  ],
+  "kept": {
+   "FORTINET/TCP": [
+    "SOCFORTRESS_FORTINET_INPUT_SYSLOG_TCP",
+    "SOCFORTRESS_FORTINET_PROCESSING_PIPELINE",
+    "SOCFORTRESS_FORTINET_STREAM"
+   ],
+   "FORTINET/UDP": [
+    "SOCFORTRESS_FORTINET_INPUT_SYSLOG_UDP",
+    "SOCFORTRESS_FORTINET_PROCESSING_PIPELINE",
+    "SOCFORTRESS_FORTINET_STREAM"
+   ],
+   "FORTINET/None": [
+    "SOCFORTRESS_FORTINET_INPUT_SYSLOG_TCP",
+    "SOCFORTRESS_FORTINET_INPUT_SYSLOG_UDP",
+    "SOCFORTRESS_FORTINET_PROCESSING_PIPELINE",
+    "SOCFORTRESS_FORTINET_STREAM"
+   ],
+   "SONICWALL/TCP": [
+    "SOCFORTRESS_SONICWALL_INPUT_SYSLOG_TLS",
+    "SOCFORTRESS_SONICWALL_STREAM",
+    "SOCFORTRESS_SONICWALL_PROCESSING_PIPELINE"
+   ],
+   "SONICWALL/UDP": [
+    "SOCFORTRESS_SONICWALL_INPUT_SYSLOG_TLS",
+    "SOCFORTRESS_SONICWALL_STREAM",
+    "SOCFORTRESS_SONICWALL_PROCESSING_PIPELINE"
+   ],
+   "SONICWALL/None": [
+    "SOCFORTRESS_SONICWALL_INPUT_SYSLOG_TLS",
+    "SOCFORTRESS_SONICWALL_STREAM",
+    "SOCFORTRESS_SONICWALL_PROCESSING_PIPELINE"
+   ],
+   "SENTINELONE/TCP": [],
+   "SENTINELONE/UDP": [],
+   "SENTINELONE/None": []
+  }
+ },
+ "renders": {
+  "keywords": [
+   {
+    "customer_name": "Acme",
+    "customer_code": "acme01",
+    "SYSLOG_PORT": 514,
+    "TLS_CERT_FILE": null,
+    "TLS_KEY_FILE": null
+   },
+   {
+    "customer_name": "Name customer_code SYSLOG_PORT",
+    "customer_code": "C-1",
+    "SYSLOG_PORT": 6514,
+    "TLS_CERT_FILE": "/etc/graylog/c.pem",
+    "TLS_KEY_FILE": "/etc/k\"ey\\.key"
+   },
+   {
+    "customer_name": "Ü \"q\" \\",
+    "customer_code": "REPLACE_UUID_GLOBAL",
+    "SYSLOG_PORT": -1,
+    "TLS_CERT_FILE": "",
+    "TLS_KEY_FILE": "x"
+   }
+  ],
+  "uuids": [
+   "11111111-2222-4333-8444-555555555555",
+   "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+  ],
+  "packs": [
+   {
+    "pack": "SOCFORTRESS_FORTINET_INPUT_SYSLOG_TCP",
+    "keywords": 0,
+    "sha256": "b9f97ef4429d86e5a8e00eb54c32677ac2ca09cc73a5ea61ba20c5cae8577b8c",
+    "len": 1872
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_INPUT_SYSLOG_TCP",
+    "keywords": 1,
+    "sha256": "48a5f96391029a65f2ad7c2e34aa299e5b53373643190b60b3a75b71e71fba32",
+    "len": 1897
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_INPUT_SYSLOG_TCP",
+    "keywords": 2,
+    "sha256": "59de160e3e1ffb893b7830c70fbb8f666e3effb1a34d6a1b1608cbcccfed65fa",
+    "len": 1917
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_INPUT_SYSLOG_UDP",
+    "keywords": 0,
+    "sha256": "4b543b61a127525b21f37ebf0a4f7ac672813f432e0ebb8385f020d81ef8410f",
+    "len": 1329
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_INPUT_SYSLOG_UDP",
+    "keywords": 1,
+    "sha256": "3225f2b2aefd08bd172d84d6590edc9bac4b3ab3fc2e65f4139e0242f394c0b4",
+    "len": 1354
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_INPUT_SYSLOG_UDP",
+    "keywords": 2,
+    "sha256": "783b738ec7e382d14d0560734c009546d510ae0b8c86a80aec9d934b7c584397",
+    "len": 1374
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_PROCESSING_PIPELINE",
+    "keywords": 0,
+    "sha256": "d57ca7905de4dde7568f0f580080aeabb86a194f48f92c2d5ca87ea978a81ff1",
+    "len": 7806
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_PROCESSING_PIPELINE",
+    "keywords": 1,
+    "sha256": "d57ca7905de4dde7568f0f580080aeabb86a194f48f92c2d5ca87ea978a81ff1",
+    "len": 7806
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_PROCESSING_PIPELINE",
+    "keywords": 2,
+    "sha256": "d57ca7905de4dde7568f0f580080aeabb86a194f48f92c2d5ca87ea978a81ff1",
+    "len": 7806
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_STREAM",
+    "keywords": 0,
+    "sha256": "8ffc78ea69d4fe8249ffca66f73b6f200891206f6c9fb6a0dbc80bad7edcb2e2",
+    "len": 1379
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_STREAM",
+    "keywords": 1,
+    "sha256": "f897dc7041525d0f2d3a8ebd51abe7c890070fad5d87b001cfbed506ebf43ed7",
+    "len": 1412
+   },
+   {
+    "pack": "SOCFORTRESS_FORTINET_STREAM",
+    "keywords": 2,
+    "sha256": "959ec234998ea2188ce6a1782b4379e23e2e632908b807379201d41c59cd6ff8",
+    "len": 1436
+   },
+   {
+    "pack": "SOCFORTRESS_SONICWALL_INPUT_SYSLOG_TLS",
+    "keywords": 0,
+    "sha256": "edddb1c5d10b98b11de096103b33bf954386c88770f5516d519259a00428fad8",
+    "len": 2009
+   },
+   {
+    "pack": "SOCFORTRESS_SONICWALL_INPUT_SYSLOG_TLS",
+    "keywords": 1,
+    "sha256": "6630f15e9fdae74ed0246b1d1a17e58a18354371b568d653c91e3bcd84cc38e7",
+    "len": 2060
+   },
+   {
+    "pack": "SOCFORTRESS_SONICWALL_INPUT_SYSLOG_TLS",
+    "keywords": 2,
+    "sha256": "3da554b19a68226cef40d4edbc5eed441e714bf540c483ce82aac9424fe929d5",
+    "len": 2047
+   },
+   {
+    "pack": "SOCFORTRESS_SONICWALL_PROCESSING_PIPELINE",
+    "keywords": 0,
+    "sha256": "b13e349a6f7bcca0fca4e8ca3f0971dd21654a4ec50ad3a7b0f72881f48a81d6",
+    "len": 12356
+   },
+   {
+    "pack": "SOCFORTRESS_SONICWALL_PROCESSING_PIPELINE",
+    "keywords": 1,
+    "sha256": "bd025e3650cd7e4b7c4abf5ba21aa093d8537ae8b490013192d04c03ec5434d0",
+    "len": 12350
+   },
+   {
+    "pack": "SOCFORTRESS_SONICWALL_PROCESSING_PIPELINE",
+    "keywords": 2,
+    "sha256": "0ee75edd66a83707434193a23a502a503bafba84ee73be368ff108b2461fcdb4",
+    "len": 12382
+   },
+   {
+    "pack": "SOCFORTRESS_SONICWALL_STREAM",
+    "keywords": 0,
+    "sha256": "5c7355dee00ca62b2d3ddf67d096403d1c3187613ecfe2a3c3046df3fdb3124a",
+    "len": 1384
+   },
+   {
+    "pack": "SOCFORTRESS_SONICWALL_STREAM",
+    "keywords": 1,
+    "sha256": "5be909e0afadbdc72a62fa34ec4909a0a473d518a2fb6dcbb4c463b454d635e6",
+    "len": 1417
+   },
+   {
+    "pack": "SOCFORTRESS_SONICWALL_STREAM",
+    "keywords": 2,
+    "sha256": "7044b74e7d1db26b345745f1218342c7101745861fc99dc6c226a776e8674c68",
+    "len": 1441
+   }
+  ],
+  "small": [
+   {
+    "input": "{\"customer_name\": [\"customer_name x\", {\"port\": {\"@value\": \"SYSLOG_PORT\"}}], \"n\": 1, \"port\": {\"@value\": \"abc\"}}",
+    "keywords": 0,
+    "out": "{\"customer_name\": [\"Acme x\", {\"port\": {\"@value\": 514}}], \"n\": 1, \"port\": {\"@value\": \"abc\"}}"
+   },
+   {
+    "input": "{\"customer_name\": [\"customer_name x\", {\"port\": {\"@value\": \"SYSLOG_PORT\"}}], \"n\": 1, \"port\": {\"@value\": \"abc\"}}",
+    "keywords": 1,
+    "out": "{\"customer_name\": [\"Name C-1 6514 x\", {\"port\": {\"@value\": 6514}}], \"n\": 1, \"port\": {\"@value\": \"abc\"}}"
+   },
+   {
+    "input": "{\"customer_name\": [\"customer_name x\", {\"port\": {\"@value\": \"SYSLOG_PORT\"}}], \"n\": 1, \"port\": {\"@value\": \"abc\"}}",
+    "keywords": 2,
+    "out": "{\"customer_name\": [\"\\u00dc \\\"q\\\" \\\\ x\", {\"port\": {\"@value\": -1}}], \"n\": 1, \"port\": {\"@value\": \"abc\"}}"
+   },
+   {
+    "input": "{\"port\": {\"@value\": \" +5_1_4 \"}, \"x\": {\"port\": {\"@type\": \"integer\", \"@value\": \"TLS_KEY_FILE\"}}, \"y\": [null, true, 1.5]}",
+    "keywords": 0,
+    "out": "{\"port\": {\"@value\": 514}, \"x\": {\"port\": {\"@type\": \"integer\", \"@value\": \"None\"}}, \"y\": [null, true, 1.5]}"
+   },
+   {
+    "input": "{\"port\": {\"@value\": \" +5_1_4 \"}, \"x\": {\"port\": {\"@type\": \"integer\", \"@value\": \"TLS_KEY_FILE\"}}, \"y\": [null, true, 1.5]}",
+    "keywords": 1,
+    "out": "{\"port\": {\"@value\": 514}, \"x\": {\"port\": {\"@type\": \"integer\", \"@value\": \"/etc/k\\\"ey\\\\.key\"}}, \"y\": [null, true, 1.5]}"
+   },
+   {
+    "input": "{\"port\": {\"@value\": \" +5_1_4 \"}, \"x\": {\"port\": {\"@type\": \"integer\", \"@value\": \"TLS_KEY_FILE\"}}, \"y\": [null, true, 1.5]}",
+    "keywords": 2,
+    "out": "{\"port\": {\"@value\": 514}, \"x\": {\"port\": {\"@type\": \"integer\", \"@value\": \"x\"}}, \"y\": [null, true, 1.5]}"
+   },
+   {
+    "input": "{\"port\": \"SYSLOG_PORT\", \"p\": {\"port\": {\"@value\": 7}}, \"q\": [{\"port\": {\"@value\": \"0x10\"}}]}",
+    "keywords": 0,
+    "out": "{\"port\": \"514\", \"p\": {\"port\": {\"@value\": 7}}, \"q\": [{\"port\": {\"@value\": \"0x10\"}}]}"
+   },
+   {
+    "input": "{\"port\": \"SYSLOG_PORT\", \"p\": {\"port\": {\"@value\": 7}}, \"q\": [{\"port\": {\"@value\": \"0x10\"}}]}",
+    "keywords": 1,
+    "out": "{\"port\": \"6514\", \"p\": {\"port\": {\"@value\": 7}}, \"q\": [{\"port\": {\"@value\": \"0x10\"}}]}"
+   },
+   {
+    "input": "{\"port\": \"SYSLOG_PORT\", \"p\": {\"port\": {\"@value\": 7}}, \"q\": [{\"port\": {\"@value\": \"0x10\"}}]}",
+    "keywords": 2,
+    "out": "{\"port\": \"-1\", \"p\": {\"port\": {\"@value\": 7}}, \"q\": [{\"port\": {\"@value\": \"0x10\"}}]}"
+   }
+  ]
+ },
+ "models": {
+  "GraylogIndexSetCreationResponse": [
+   {
+    "input": "{\"data\": {\"id\": \"is1\", \"title\": \"t\", \"description\": \"d\", \"can_be_default\": true, \"index_prefix\": \"p\", \"shards\": 1, \"replicas\": 0, \"rotation_strategy_class\": \"r\", \"rotation_strategy\": {\"type\": \"x\", \"rotation_period\": \"P1D\", \"max_rotation_period\": null, \"rotate_empty_index_set\": false}, \"retention_strategy_class\": \"c\", \"retention_strategy\": {\"type\": \"y\", \"max_number_of_indices\": 30}, \"creation_date\": \"2026-01-01T00:00:00.000Z\", \"index_analyzer\": \"standard\", \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"field_type_refresh_interval\": 5000, \"index_template_type\": null, \"default\": false, \"writable\": true, \"extra\": 1}, \"success\": true, \"message\": \"m\"}",
+    "dump": "{\"data\": {\"id\": \"is1\", \"title\": \"t\", \"description\": \"d\", \"can_be_default\": true, \"index_prefix\": \"p\", \"shards\": 1, \"replicas\": 0, \"rotation_strategy_class\": \"r\", \"rotation_strategy\": {\"type\": \"x\", \"rotation_period\": \"P1D\", \"max_rotation_period\": null, \"rotate_empty_index_set\": false}, \"retention_strategy_class\": \"c\", \"retention_strategy\": {\"type\": \"y\", \"max_number_of_indices\": 30}, \"creation_date\": \"2026-01-01T00:00:00.000Z\", \"index_analyzer\": \"standard\", \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"field_type_refresh_interval\": 5000, \"index_template_type\": null, \"default\": false, \"writable\": true}, \"success\": true, \"message\": \"m\"}"
+   },
+   {
+    "input": "{\"data\": {\"id\": \"is1\"}, \"success\": true, \"message\": \"m\"}",
+    "error": "17 validation errors for GraylogIndexSetCreationResponse\ndata.title\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.description\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.can_be_default\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.index_prefix\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.shards\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.replicas\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.rotation_strategy_class\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.rotation_strategy\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.retention_strategy_class\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.retention_strategy\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.creation_date\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.index_analyzer\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.index_optimization_max_num_segments\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.index_optimization_disabled\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.field_type_refresh_interval\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.default\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndata.writable\n  Field required [type=missing, input_value={'id': 'is1'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   },
+   {
+    "input": "{\"data\": null, \"success\": true, \"message\": \"Successfully completed request with no content\"}",
+    "error": "1 validation error for GraylogIndexSetCreationResponse\ndata\n  Input should be a valid dictionary or instance of GraylogIndexSetData [type=model_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/model_type"
+   }
+  ],
+  "StreamCreationResponse": [
+   {
+    "input": "{\"data\": {\"stream_id\": \"st1\"}, \"success\": true, \"message\": \"m\"}",
+    "dump": "{\"data\": {\"stream_id\": \"st1\"}, \"success\": true, \"message\": \"m\"}"
+   },
+   {
+    "input": "{\"data\": {\"stream_id\": 5}, \"success\": true, \"message\": \"m\"}",
+    "error": "1 validation error for StreamCreationResponse\ndata.stream_id\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+   },
+   {
+    "input": "{\"data\": {}, \"success\": \"yes\", \"message\": null}",
+    "error": "2 validation errors for StreamCreationResponse\ndata.stream_id\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nmessage\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+   }
+  ],
+  "StreamConnectionToPipelineRequest": [
+   {
+    "input": "{\"stream_id\": \"s\", \"pipeline_ids\": [\"p1\"]}",
+    "dump": "{\"stream_id\": \"s\", \"pipeline_ids\": [\"p1\"]}"
+   },
+   {
+    "input": "{\"stream_id\": null, \"pipeline_ids\": [\"p1\"]}",
+    "error": "1 validation error for StreamConnectionToPipelineRequest\nstream_id\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+   },
+   {
+    "input": "{\"stream_id\": \"s\", \"pipeline_ids\": [null]}",
+    "error": "1 validation error for StreamConnectionToPipelineRequest\npipeline_ids.0\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+   }
+  ],
+  "StreamConnectionToPipelineResponse": [
+   {
+    "input": "{\"data\": {\"id\": \"c1\", \"stream_id\": \"s\", \"pipeline_ids\": [\"p1\"]}, \"success\": true, \"message\": \"m\"}",
+    "dump": "{\"data\": {\"stream_id\": \"s\", \"pipeline_ids\": [\"p1\"]}, \"success\": true, \"message\": \"m\"}"
+   },
+   {
+    "input": "{\"data\": null, \"success\": true, \"message\": \"m\"}",
+    "error": "1 validation error for StreamConnectionToPipelineResponse\ndata\n  Input should be a valid dictionary or instance of StreamAndPipelineData [type=model_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/model_type"
+   }
+  ],
+  "GrafanaDataSourceCreationResponse": [
+   {
+    "input": "{\"datasource\": {\"id\": 3, \"uid\": \"u1\", \"orgId\": 2, \"name\": \"N\", \"type\": \"grafana-opensearch-datasource\", \"typeLogoUrl\": \"x\", \"access\": \"proxy\", \"url\": \"https://i:9200\", \"user\": \"\", \"database\": \"d*\", \"basicAuth\": true, \"basicAuthUser\": \"admin\", \"withCredentials\": false, \"isDefault\": false, \"jsonData\": {\"database\": \"d*\", \"flavor\": \"opensearch\", \"includeFrozen\": false, \"logLevelField\": \"severity\", \"logMessageField\": \"summary\", \"maxConcurrentShardRequests\": 5, \"timeField\": \"timestamp\", \"tlsSkipVerify\": true, \"version\": \"2.19.1\"}, \"secureJsonFields\": {\"basicAuthPassword\": true}, \"version\": 1, \"readOnly\": true}, \"id\": 3, \"message\": \"Datasource added\", \"name\": \"N\"}",
+    "dump": "{\"datasource\": {\"id\": 3, \"uid\": \"u1\", \"orgId\": 2, \"name\": \"N\", \"type\": \"grafana-opensearch-datasource\", \"typeLogoUrl\": \"x\", \"access\": \"proxy\", \"url\": \"https://i:9200\", \"user\": \"\", \"database\": \"d*\", \"basicAuth\": true, \"basicAuthUser\": \"admin\", \"withCredentials\": false, \"isDefault\": false, \"jsonData\": {\"database\": \"d*\", \"flavor\": \"opensearch\", \"includeFrozen\": false, \"logLevelField\": \"severity\", \"logMessageField\": \"summary\", \"maxConcurrentShardRequests\": 5, \"timeField\": \"timestamp\", \"tlsSkipVerify\": true, \"version\": \"2.19.1\"}, \"secureJsonFields\": {\"basicAuthPassword\": true}, \"version\": 1, \"readOnly\": true}, \"id\": 3, \"message\": \"Datasource added\", \"name\": \"N\"}"
+   },
+   {
+    "input": "{\"datasource\": {\"uid\": \"u\"}, \"id\": \"x\", \"message\": \"m\", \"name\": \"n\"}",
+    "error": "18 validation errors for GrafanaDataSourceCreationResponse\ndatasource.id\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.orgId\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.name\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.type\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.typeLogoUrl\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.access\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.url\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.user\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.database\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.basicAuth\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.basicAuthUser\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.withCredentials\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.isDefault\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.jsonData\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.secureJsonFields\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.version\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndatasource.readOnly\n  Field required [type=missing, input_value={'uid': 'u'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nid\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
+   },
+   {
+    "input": "{\"message\": \"data source with the same name already exists\"}",
+    "error": "3 validation errors for GrafanaDataSourceCreationResponse\ndatasource\n  Field required [type=missing, input_value={'message': 'data source ...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nid\n  Field required [type=missing, input_value={'message': 'data source ...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nname\n  Field required [type=missing, input_value={'message': 'data source ...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  ],
+  "GrafanaFolderCreationResponse": [
+   {
+    "input": "{\"id\": 7, \"uid\": \"f1\", \"title\": \"FORTINET\", \"url\": \"/dashboards/f/f1/fortinet\", \"hasAcl\": false, \"canSave\": true, \"canEdit\": true, \"canAdmin\": true, \"canDelete\": true, \"createdBy\": \"admin\", \"created\": \"2026-10-16T10:00:00Z\", \"updatedBy\": \"admin\", \"updated\": \"2026-10-16T10:00:00.123456+02:00\", \"version\": 1}",
+    "dump": "{\"id\": 7, \"uid\": \"f1\", \"title\": \"FORTINET\", \"url\": \"/dashboards/f/f1/fortinet\", \"hasAcl\": false, \"canSave\": true, \"canEdit\": true, \"canAdmin\": true, \"canDelete\": true, \"createdBy\": \"admin\", \"created\": \"2026-10-16T10:00:00Z\", \"updatedBy\": \"admin\", \"updated\": \"2026-10-16T10:00:00.123456+02:00\", \"version\": 1}"
+   },
+   {
+    "input": "{\"id\": 7, \"uid\": \"f1\", \"title\": \"t\", \"url\": \"/u\", \"created\": \"never\", \"updated\": 0}",
+    "error": "9 validation errors for GrafanaFolderCreationResponse\nhasAcl\n  Field required [type=missing, input_value={'id': 7, 'uid': 'f1', 't...: 'never', 'updated': 0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncanSave\n  Field required [type=missing, input_value={'id': 7, 'uid': 'f1', 't...: 'never', 'updated': 0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncanEdit\n  Field required [type=missing, input_value={'id': 7, 'uid': 'f1', 't...: 'never', 'updated': 0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncanAdmin\n  Field required [type=missing, input_value={'id': 7, 'uid': 'f1', 't...: 'never', 'updated': 0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncanDelete\n  Field required [type=missing, input_value={'id': 7, 'uid': 'f1', 't...: 'never', 'updated': 0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncreatedBy\n  Field required [type=missing, input_value={'id': 7, 'uid': 'f1', 't...: 'never', 'updated': 0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncreated\n  Input should be a valid datetime or date, input is too short [type=datetime_from_date_parsing, input_value='never', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/datetime_from_date_parsing\nupdatedBy\n  Field required [type=missing, input_value={'id': 7, 'uid': 'f1', 't...: 'never', 'updated': 0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nversion\n  Field required [type=missing, input_value={'id': 7, 'uid': 'f1', 't...: 'never', 'updated': 0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   },
+   {
+    "input": "{\"message\": \"a folder with the same name already exists\"}",
+    "error": "14 validation errors for GrafanaFolderCreationResponse\nid\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nuid\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ntitle\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nurl\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nhasAcl\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncanSave\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncanEdit\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncanAdmin\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncanDelete\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncreatedBy\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncreated\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nupdatedBy\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nupdated\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nversion\n  Field required [type=missing, input_value={'message': 'a folder wit...me name already exists'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  ],
+  "NodesVersionResponse": [
+   {
+    "input": "{\"nodes\": {\"n1\": {\"version\": \"2.19.1\"}, \"n2\": {\"version\": \"2.19.0\"}}}",
+    "dump": "{\"nodes\": {\"n1\": {\"version\": \"2.19.1\"}, \"n2\": {\"version\": \"2.19.0\"}}}"
+   },
+   {
+    "input": "{\"nodes\": {}}",
+    "dump": "{\"nodes\": {}}"
+   },
+   {
+    "input": "{\"nodes\": {\"n1\": {\"build\": 1}}}",
+    "error": "1 validation error for NodesVersionResponse\nnodes.n1.version\n  Field required [type=missing, input_value={'build': 1}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   },
+   {
+    "input": "{}",
+    "error": "1 validation error for NodesVersionResponse\nnodes\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  ]
+ },
+ "requests": {
+  "ProvisionFortinetRequest": [
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": 30, \"index_replicas\": 1}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Fortinet\", \"tcp_enabled\": false, \"udp_enabled\": false, \"hot_data_retention\": 30, \"index_replicas\": 1}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"integration_name\": \"Other\", \"tcp_enabled\": true, \"hot_data_retention\": \"30\", \"index_replicas\": 1.0}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Fortinet\", \"tcp_enabled\": true, \"udp_enabled\": false, \"hot_data_retention\": 30, \"index_replicas\": 1}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"tcp_enabled\": null, \"udp_enabled\": \"yes\", \"tls_enabled\": null, \"hot_data_retention\": 30, \"index_replicas\": 0}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Fortinet\", \"tcp_enabled\": null, \"udp_enabled\": true, \"hot_data_retention\": 30, \"index_replicas\": 0}"
+   },
+   {
+    "input": "{\"customer_code\": 5, \"hot_data_retention\": 1.5, \"index_replicas\": \"x\"}",
+    "status": 422,
+    "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"},{\"field\":\"hot_data_retention\",\"error_type\":\"value_error\",\"message\":\"hot_data_retention: Input should be a valid integer, got a number with a fractional part\"},{\"field\":\"index_replicas\",\"error_type\":\"int_parsing\",\"message\":\"Input is not a valid integer.\"}]}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"tcp_enabled\": \"maybe\", \"tls_enabled\": 2, \"hot_data_retention\": 30, \"index_replicas\": 1}",
+    "status": 422,
+    "body": "{\"message\":\"tcp_enabled: Input should be a valid boolean, unable to interpret input\",\"details\":[{\"field\":\"tcp_enabled\",\"error_type\":\"value_error\",\"message\":\"tcp_enabled: Input should be a valid boolean, unable to interpret input\"}]}"
+   },
+   {
+    "input": "{}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"hot_data_retention\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_replicas\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{\"integration_name\": null}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"hot_data_retention\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_replicas\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "null",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "[]",
+    "status": 500
+   },
+   {
+    "input": "[{\"customer_code\": \"c1\"}]",
+    "status": 500
+   },
+   {
+    "input": "\"x\"",
+    "status": 500
+   },
+   {
+    "input": "5",
+    "status": 500
+   },
+   {
+    "input": "true",
+    "status": 500
+   }
+  ],
+  "ProvisionSonicwallRequest": [
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": 30, \"index_replicas\": 1}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Sonicwall\", \"tls_enabled\": false, \"hot_data_retention\": 30, \"index_replicas\": 1}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"integration_name\": \"Other\", \"tcp_enabled\": true, \"hot_data_retention\": \"30\", \"index_replicas\": 1.0}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Sonicwall\", \"tls_enabled\": false, \"hot_data_retention\": 30, \"index_replicas\": 1}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"tcp_enabled\": null, \"udp_enabled\": \"yes\", \"tls_enabled\": null, \"hot_data_retention\": 30, \"index_replicas\": 0}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Sonicwall\", \"tls_enabled\": null, \"hot_data_retention\": 30, \"index_replicas\": 0}"
+   },
+   {
+    "input": "{\"customer_code\": 5, \"hot_data_retention\": 1.5, \"index_replicas\": \"x\"}",
+    "status": 422,
+    "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"},{\"field\":\"hot_data_retention\",\"error_type\":\"value_error\",\"message\":\"hot_data_retention: Input should be a valid integer, got a number with a fractional part\"},{\"field\":\"index_replicas\",\"error_type\":\"int_parsing\",\"message\":\"Input is not a valid integer.\"}]}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"tcp_enabled\": \"maybe\", \"tls_enabled\": 2, \"hot_data_retention\": 30, \"index_replicas\": 1}",
+    "status": 422,
+    "body": "{\"message\":\"tls_enabled: Input should be a valid boolean, unable to interpret input\",\"details\":[{\"field\":\"tls_enabled\",\"error_type\":\"value_error\",\"message\":\"tls_enabled: Input should be a valid boolean, unable to interpret input\"}]}"
+   },
+   {
+    "input": "{}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"hot_data_retention\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_replicas\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{\"integration_name\": null}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"hot_data_retention\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_replicas\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "null",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "[]",
+    "status": 500
+   },
+   {
+    "input": "[{\"customer_code\": \"c1\"}]",
+    "status": 500
+   },
+   {
+    "input": "\"x\"",
+    "status": 500
+   },
+   {
+    "input": "5",
+    "status": 500
+   },
+   {
+    "input": "true",
+    "status": 500
+   }
+  ],
+  "ProvisionSentinelOneRequest": [
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": 30, \"index_replicas\": 1}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Sentinelone\", \"tls_enabled\": true, \"hot_data_retention\": 30, \"index_replicas\": 1}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"integration_name\": \"Other\", \"tcp_enabled\": true, \"hot_data_retention\": \"30\", \"index_replicas\": 1.0}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Sentinelone\", \"tls_enabled\": true, \"hot_data_retention\": 30, \"index_replicas\": 1}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"tcp_enabled\": null, \"udp_enabled\": \"yes\", \"tls_enabled\": null, \"hot_data_retention\": 30, \"index_replicas\": 0}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Sentinelone\", \"tls_enabled\": null, \"hot_data_retention\": 30, \"index_replicas\": 0}"
+   },
+   {
+    "input": "{\"customer_code\": 5, \"hot_data_retention\": 1.5, \"index_replicas\": \"x\"}",
+    "status": 422,
+    "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"},{\"field\":\"hot_data_retention\",\"error_type\":\"value_error\",\"message\":\"hot_data_retention: Input should be a valid integer, got a number with a fractional part\"},{\"field\":\"index_replicas\",\"error_type\":\"int_parsing\",\"message\":\"Input is not a valid integer.\"}]}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"tcp_enabled\": \"maybe\", \"tls_enabled\": 2, \"hot_data_retention\": 30, \"index_replicas\": 1}",
+    "status": 422,
+    "body": "{\"message\":\"tls_enabled: Input should be a valid boolean, unable to interpret input\",\"details\":[{\"field\":\"tls_enabled\",\"error_type\":\"value_error\",\"message\":\"tls_enabled: Input should be a valid boolean, unable to interpret input\"}]}"
+   },
+   {
+    "input": "{}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"hot_data_retention\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_replicas\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{\"integration_name\": null}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"hot_data_retention\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_replicas\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "null",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "[]",
+    "status": 500
+   },
+   {
+    "input": "[{\"customer_code\": \"c1\"}]",
+    "status": 500
+   },
+   {
+    "input": "\"x\"",
+    "status": 500
+   },
+   {
+    "input": "5",
+    "status": 500
+   },
+   {
+    "input": "true",
+    "status": 500
+   }
+  ]
+ },
+ "index_set": [
+  {
+   "title": "Acme - FORTINET EVENTS",
+   "prefix": "fortinet-acme",
+   "retention": 30,
+   "shards": 3,
+   "replicas": 1,
+   "json": "{\"title\": \"Acme - FORTINET EVENTS\", \"description\": \"Acme - FORTINET EVENTS\", \"index_prefix\": \"fortinet-acme\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"2026-10-17T08:09:10.123456Z\", \"index_analyzer\": \"standard\", \"shards\": 3, \"replicas\": 1, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}"
+  },
+  {
+   "title": "Ü \"q\" - SONICWALL EVENTS",
+   "prefix": "sonicwall-x",
+   "retention": 1,
+   "shards": 1,
+   "replicas": 0,
+   "json": "{\"title\": \"\\u00dc \\\"q\\\" - SONICWALL EVENTS\", \"description\": \"\\u00dc \\\"q\\\" - SONICWALL EVENTS\", \"index_prefix\": \"sonicwall-x\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 1}, \"creation_date\": \"2026-10-17T08:09:10.123456Z\", \"index_analyzer\": \"standard\", \"shards\": 1, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}"
+  }
+ ],
+ "datasource": [
+  {
+   "name": "FORTINET",
+   "database": "fortinet-acme*",
+   "level": "severity",
+   "message": "summary",
+   "url": "https://indexer:9200",
+   "user": "admin",
+   "password": "p@ss",
+   "version": "2.19.1",
+   "dump": "{\"name\": \"FORTINET\", \"type\": \"grafana-opensearch-datasource\", \"typeName\": \"OpenSearch\", \"access\": \"proxy\", \"url\": \"https://indexer:9200\", \"database\": \"fortinet-acme*\", \"basicAuth\": true, \"basicAuthUser\": \"admin\", \"secureJsonData\": {\"basicAuthPassword\": \"p@ss\"}, \"isDefault\": false, \"jsonData\": {\"database\": \"fortinet-acme*\", \"flavor\": \"opensearch\", \"version\": \"2.19.1\", \"includeFrozen\": false, \"logLevelField\": \"severity\", \"logMessageField\": \"summary\", \"maxConcurrentShardRequests\": 5, \"timeField\": \"timestamp\", \"tlsSkipVerify\": true, \"dataLinks\": [{\"field\": \"^data_vulnerability_cve$\", \"url\": \"https://nvd.nist.gov/vuln/detail\"}]}, \"readOnly\": true}"
+  },
+  {
+   "name": "SAP SIEM",
+   "database": "sap_siem_x*",
+   "level": "level",
+   "message": "params_loginID",
+   "url": "https://i",
+   "user": "u",
+   "password": "q\"\\ü",
+   "version": "1.3.0",
+   "dump": "{\"name\": \"SAP SIEM\", \"type\": \"grafana-opensearch-datasource\", \"typeName\": \"OpenSearch\", \"access\": \"proxy\", \"url\": \"https://i\", \"database\": \"sap_siem_x*\", \"basicAuth\": true, \"basicAuthUser\": \"u\", \"secureJsonData\": {\"basicAuthPassword\": \"q\\\"\\\\\\u00fc\"}, \"isDefault\": false, \"jsonData\": {\"database\": \"sap_siem_x*\", \"flavor\": \"opensearch\", \"version\": \"1.3.0\", \"includeFrozen\": false, \"logLevelField\": \"level\", \"logMessageField\": \"params_loginID\", \"maxConcurrentShardRequests\": 5, \"timeField\": \"timestamp\", \"tlsSkipVerify\": true, \"dataLinks\": [{\"field\": \"^data_vulnerability_cve$\", \"url\": \"https://nvd.nist.gov/vuln/detail\"}]}, \"readOnly\": true}"
+  },
+  {
+   "name": "MIMECAST",
+   "database": "mimecast_x*",
+   "level": "syslog_level",
+   "message": "rule_description",
+   "url": null,
+   "user": null,
+   "password": null,
+   "version": "x",
+   "error": "3 validation errors for GrafanaDatasource\nurl\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nbasicAuthUser\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nsecureJsonData.basicAuthPassword\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+  }
+ ]
+}

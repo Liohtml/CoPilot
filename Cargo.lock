@@ -481,6 +481,7 @@ dependencies = [
  "copilot-incidents",
  "copilot-influxdb",
  "copilot-ingest",
+ "copilot-integration-provisioning",
  "copilot-integrations",
  "copilot-intel-connectors",
  "copilot-monitoring-alerts",
@@ -906,6 +907,35 @@ dependencies = [
  "strum",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "copilot-integration-provisioning"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-grafana",
+ "copilot-grafana-dashboards",
+ "copilot-graylog",
+ "copilot-integrations",
+ "copilot-monitoring-alerts",
+ "copilot-provisioning",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "hex",
+ "http",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

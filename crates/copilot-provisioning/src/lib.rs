@@ -15,9 +15,9 @@
 //!   the EDR install commands, decommissioning
 //!
 //! The network-connector *provisioning* routes (`/graylog/provision/fortinet`,
-//! `…/sonicwall`, `…/sentinelone`) stay in Python: each also provisions a
-//! Grafana datasource, folder and dashboards, whose templates live under
-//! `backend/` (outside the Rust image), in the same request.
+//! `…/sonicwall`, `…/sentinelone`) are `copilot-integration-provisioning`'s:
+//! they render these content packs through [`graylog`]'s connector-aware
+//! functions, on `Graylog-Network`.
 
 #![warn(missing_docs)]
 

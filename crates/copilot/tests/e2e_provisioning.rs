@@ -1283,9 +1283,6 @@ async fn template_bound_provisioning_stays_in_python() {
     let routes = [
         "/api/customer_provisioning/provision",
         "/api/customer_provisioning/provision/wazuh_worker",
-        "/api/stack_provisioning/graylog/provision/fortinet",
-        "/api/stack_provisioning/graylog/provision/sonicwall",
-        "/api/stack_provisioning/graylog/provision/sentinelone",
     ];
     for route in routes {
         Mock::given(method("POST"))

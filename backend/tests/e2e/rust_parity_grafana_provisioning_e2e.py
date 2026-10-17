@@ -53,6 +53,7 @@ BACKEND = os.path.abspath(os.path.join(HERE, "..", ".."))
 REPO = os.path.abspath(os.path.join(BACKEND, ".."))
 sys.path.insert(0, HERE)
 
+import connector_samples as samples  # noqa: E402
 import httpx  # noqa: E402
 import jwt  # noqa: E402
 from fastapi import APIRouter  # noqa: E402
@@ -227,7 +228,202 @@ class Recorder:
         return out
 
 
+def listed_pack(pack):
+    """A content pack as `GET /api/system/content_packs` lists it (model versions as strings)."""
+    listed = {**copy.deepcopy(pack), "created_at": "2026-10-01T00:00:00.000Z", "server_version": "6.1.4"}
+    listed["v"] = str(listed.get("v"))
+    for entity in listed.get("entities") or []:
+        entity["v"] = str(entity.get("v"))
+    return listed
+
+
+def entity_title(entity, key="title"):
+    value = (entity.get("data") or {}).get(key)
+    return value.get("@value") if isinstance(value, dict) else value
+
+
+class Graylog:
+    """Graylog 6.1 / 7.0 for the provisioning flows: content packs (an install creates the pack's
+    streams, inputs and pipelines), streams, inputs, index sets, pipelines and their connections.
+    Per-test overrides by (method, path glob), as the Grafana stand-in's."""
+
+    def __init__(self, prefix):
+        self.prefix = prefix
+        self.reset()
+
+    def reset(self, version=6, content_packs=None, streams=None, inputs=None, pipelines=None, overrides=None):
+        self.version = version
+        self.content_packs = [listed_pack(p) for p in (content_packs or [])]
+        self.streams = copy.deepcopy(streams or [{"id": "st-other", "title": "Other stream"}])
+        self.inputs = copy.deepcopy(inputs or [{"id": "in-other", "title": "Other input"}])
+        self.pipelines = copy.deepcopy(
+            pipelines
+            if pipelines is not None
+            else [
+                {
+                    "id": "pl-wazuh",
+                    "title": "WAZUH",
+                    "description": "Wazuh processing",
+                    "source": "pipeline",
+                    "stages": [{"match": "EITHER", "rules": ["r"], "stage": 0}],
+                    "created_at": "2026-10-01T00:00:00.000Z",
+                    "modified_at": None,
+                    "errors": None,
+                },
+            ],
+        )
+        self.index_sets = []
+        self.connections = []
+        self.overrides = copy.deepcopy(overrides or {})
+        self.counter = 0
+
+    def _id(self, prefix):
+        self.counter += 1
+        return f"{prefix}{self.counter:04d}"
+
+    def state(self):
+        return {
+            "packs": [p["name"] for p in self.content_packs],
+            "streams": self.streams,
+            "inputs": self.inputs,
+            "index_sets": self.index_sets,
+            "connections": self.connections,
+        }
+
+    def answer(self, method, target, body):
+        path = urlsplit(target).path.removeprefix(self.prefix)
+        for (m, pattern), reply in self.overrides.items():
+            if m == method and fnmatch.fnmatchcase(path, pattern):
+                if isinstance(reply, list):
+                    return reply.pop(0) if len(reply) > 1 else reply[0]
+                return reply
+        j = "application/json"
+        if method == "GET" and path == "/api/system":
+            return 200, j, _json(samples.GRAYLOG_SYSTEM_7 if self.version == 7 else samples.GRAYLOG_SYSTEM_6)
+        if method == "GET" and path == "/api/system/content_packs":
+            return 200, j, _json({"total": len(self.content_packs), "content_packs": self.content_packs, "content_packs_metadata": {}})
+        if method == "POST" and path == "/api/system/content_packs":
+            pack = json.loads(body)
+            for known in self.content_packs:
+                if known["id"] == pack.get("id") and known["rev"] == pack.get("rev"):
+                    message = f"Content pack {pack.get('id')} with this revision {pack.get('rev')} already found!"
+                    return 400, j, _json({"type": "ApiError", "message": message})
+            self.content_packs.append(listed_pack(pack))
+            return 201, j, _json({"id": pack.get("id"), "rev": pack.get("rev")})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)/([^/]+)/installations", path)
+        if method == "POST" and m:
+            entity = json.loads(body)
+            if self.version >= 7:
+                if "entity" not in entity:
+                    return 400, j, _json({"type": "ApiError", "message": "entity cannot be null"})
+            elif "entity" in entity:
+                return 400, j, _json({"type": "ApiError", "message": "Unable to map property entity"})
+            pack = next((p for p in self.content_packs if p["id"] == m.group(1)), None)
+            if pack is None:
+                return 404, j, _json({"type": "ApiError", "message": f"Content pack {m.group(1)} not found"})
+            for e in pack.get("entities") or []:
+                kind = e.get("type", {}).get("name")
+                if kind == "stream":
+                    self.streams.append({"id": self._id("st"), "title": entity_title(e)})
+                elif kind == "input":
+                    self.inputs.append({"id": self._id("in"), "title": entity_title(e)})
+                elif kind == "pipeline":
+                    self.pipelines.append(
+                        {
+                            "id": self._id("pl"),
+                            "title": entity_title(e),
+                            "description": entity_title(e, "description"),
+                            "source": "pipeline",
+                            "stages": [],
+                            "created_at": "2026-10-16T00:00:00.000Z",
+                        },
+                    )
+            return 200, j, _json({"installation": {"_id": self._id("inst"), "content_pack_id": m.group(1)}, "entities_excluded": []})
+        if method == "GET" and path == "/api/streams":
+            return 200, j, _json({"streams": self.streams, "total": len(self.streams)})
+        if method == "POST" and path == "/api/streams":
+            entity = json.loads(body)
+            if self.version >= 7:
+                if "entity" not in entity:
+                    return 400, j, _json({"type": "ApiError", "message": "entity cannot be null"})
+                entity = entity["entity"]
+            new_id = self._id("st")
+            self.streams.append({"id": new_id, "title": entity.get("title"), "index_set_id": entity.get("index_set_id")})
+            return 201, j, _json({"stream_id": new_id})
+        if method == "POST" and re.fullmatch(r"/api/streams/[^/]+/resume", path):
+            return 204, None, b""
+        m = re.fullmatch(r"/api/streams/([^/]+)", path)
+        if method == "PUT" and m:
+            stream = next((st for st in self.streams if st["id"] == m.group(1)), None)
+            if stream is None:
+                return 404, j, _json({"type": "ApiError", "message": f"Stream <{m.group(1)}> not found!"})
+            stream.update(json.loads(body))
+            return 200, j, _json(stream)
+        if method == "GET" and path == "/api/system/inputs":
+            return 200, j, _json({"inputs": self.inputs, "total": len(self.inputs)})
+        if method == "POST" and path == "/api/system/indices/index_sets":
+            data = json.loads(body)
+            new = {"id": self._id("is"), **data, "can_be_default": True, "default": False}
+            new["rotation_strategy"] = {**data.get("rotation_strategy", {}), "max_rotation_period": None, "rotate_empty_index_set": False}
+            self.index_sets.append(new)
+            return 200, j, _json(new)
+        if method == "GET" and path == "/api/system/pipelines/pipeline":
+            return 200, j, _json(self.pipelines)
+        if method == "POST" and path == "/api/system/pipelines/connections/to_stream":
+            data = json.loads(body)
+            new = {"id": self._id("pc"), "stream_id": data.get("stream_id"), "pipeline_ids": data.get("pipeline_ids")}
+            self.connections.append(new)
+            return 200, j, _json(new)
+        return 404, j, _json({"type": "ApiError", "message": "HTTP 404 Not Found"})
+
+
+HEALTH = {
+    "cluster_name": "wazuh-cluster",
+    "status": "green",
+    "timed_out": False,
+    "number_of_nodes": 3,
+    "number_of_data_nodes": 3,
+    "discovered_master": True,
+    "discovered_cluster_manager": True,
+    "active_primary_shards": 10,
+    "active_shards": 20,
+    "relocating_shards": 0,
+    "initializing_shards": 0,
+    "unassigned_shards": 0,
+    "delayed_unassigned_shards": 0,
+    "number_of_pending_tasks": 0,
+    "number_of_in_flight_fetch": 0,
+    "task_max_waiting_in_queue_millis": 0,
+    "active_shards_percent_as_number": 100.0,
+}
+
+
+class Indexer:
+    """The Wazuh indexer: cluster health (the shard count) and the nodes' versions."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self, overrides=None):
+        self.overrides = copy.deepcopy(overrides or {})
+
+    def answer(self, method, target, body):
+        path = urlsplit(target).path
+        for (m, pattern), reply in self.overrides.items():
+            if m == method and fnmatch.fnmatchcase(path, pattern):
+                return reply
+        j = "application/json"
+        if method == "GET" and path == "/_cluster/health":
+            return 200, j, _json(HEALTH)
+        if method == "GET" and path == "/_nodes/_local":
+            return 200, j, _json({"nodes": {"n-1": {"version": "2.19.1"}, "n-2": {"version": "2.19.0"}}})
+        return 404, j, _json({"error": "no such index", "status": 404})
+
+
 GRAFANA = Grafana()
+GRAYLOG = Graylog("/graylog")
+GRAYLOG_NET = Graylog("/graylog-net")
+INDEXER = Indexer()
 RECORDER = Recorder()
 
 
@@ -242,7 +438,7 @@ class ByPrefix:
         return 404, "application/json", _json({"message": "no such stand-in route"})
 
 
-TOOLS = ByPrefix((("/grafanaapi", GRAFANA),))
+TOOLS = ByPrefix((("/grafanaapi", GRAFANA), ("/graylog-net", GRAYLOG_NET), ("/graylog", GRAYLOG)))
 
 
 def start_stub(port, tool):
@@ -322,7 +518,7 @@ def restore_connectors():
 def seed():
     cleanup()
     save_connectors()
-    set_connector("Grafana", GRAFANA_URL)
+    point_tools()
     for code, name in ((CUST_A, NAME_A), (CUST_B, NAME_B), (CUST_C, NAME_C)):
         sql("INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :n, UTC_TIMESTAMP())", c=code, n=name)
     for name, role in ((ADMIN, 1), (ANALYST, 2), (ANALYST_B, 2), (UNASSIGNED, 2)):
@@ -337,9 +533,104 @@ def seed():
             c=code,
             n=name,
         )
+    seed_network()
+
+
+# The network connectors: (id, customer, name, service, keys); subscriptions take id + 100, keys
+# ids from 7650300.
+NET_SERVICES = {"Fortinet": 7_650_001, "Sonicwall": 7_650_002, "Sentinelone": 7_650_003}
+NET_CONNECTORS = [
+    (7_650_011, CUST_A, NAME_A, "Fortinet", [("SYSLOG_PORT", " 5_14")]),
+    (
+        7_650_012,
+        CUST_A,
+        NAME_A,
+        "Sonicwall",
+        [("SYSLOG_PORT", "6514"), ("TLS_CERT_FILE", "/etc/graylog/server/sw.pem"), ("TLS_KEY_FILE", "/etc/graylog/server/sw.key")],
+    ),
+    (
+        7_650_013,
+        CUST_A,
+        NAME_A,
+        "Sentinelone",
+        [("TLS_KEY_FILE", "/k.key"), ("SYSLOG_PORT", "+6515"), ("TLS_CERT_FILE", "/c.pem"), ("SYSLOG_PORT", "6516")],
+    ),
+    (7_650_014, CUST_B, NAME_B, "Fortinet", [("SYSLOG_PORT", "abc")]),
+    (7_650_015, CUST_B, NAME_B, "Sonicwall", [("SYSLOG_PORT", "1")]),
+    (7_650_016, CUST_C, NAME_C, "Fortinet", []),
+]
+INDEXER_URL = f"http://127.0.0.1:{INDEXER_PORT}"
+
+
+def seed_network():
+    for name, sid in NET_SERVICES.items():
+        sql("INSERT INTO network_connectors_services (id, service_name, auth_type) VALUES (:i, :n, 'Syslog')", i=sid, n=name)
+    key_id = 7_650_300
+    for cid, code, name, service, keys in NET_CONNECTORS:
+        sql(
+            "INSERT INTO customer_network_connectors (id, customer_code, customer_name, network_connector_service_id, "
+            "network_connector_service_name, deployed) VALUES (:i, :c, :n, :s, :sn, 0)",
+            i=cid,
+            c=code,
+            n=name,
+            s=NET_SERVICES[service],
+            sn=service,
+        )
+        sql(
+            "INSERT INTO network_connectors_subscriptions (id, customer_id, network_connectors_service_id) VALUES (:i, :c, :s)",
+            i=cid + 100,
+            c=cid,
+            s=NET_SERVICES[service],
+        )
+        for k, v in keys:
+            key_id += 1
+            sql(
+                "INSERT INTO network_connectors_keys (id, subscription_id, auth_key_name, auth_value) VALUES (:i, :s, :k, :v)",
+                i=key_id,
+                s=cid + 100,
+                k=k,
+                v=v,
+            )
+    for code, name, org in ((CUST_A, NAME_A, "7"), (CUST_B, NAME_B, "8")):
+        sql(
+            "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, customer_meta_graylog_stream, "
+            "customer_meta_grafana_org_id, customer_meta_wazuh_group) VALUES (:c, :n, 'i', 's', :o, 'g')",
+            c=code,
+            n=name,
+            o=org,
+        )
+
+
+def point_tools():
+    """The Graylog connectors, Grafana, the indexer and connector id 1 at the stand-ins."""
+    set_connector("Grafana", GRAFANA_URL)
+    set_connector("Graylog", f"http://127.0.0.1:{STUB_PORT}/graylog")
+    set_connector("Graylog-Network", f"http://127.0.0.1:{STUB_PORT}/graylog-net")
+    if rows("SELECT id FROM connectors WHERE id = 1"):
+        sql(
+            "UPDATE connectors SET connector_url = :u, connector_username = 'idx-user', connector_password = 'idx-pässword' WHERE id = 1",
+            u=INDEXER_URL,
+        )
+    else:
+        sql(
+            "INSERT INTO connectors (id, connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
+            "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
+            "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
+            "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES (1, "
+            "'Wazuh-Indexer', '3', :u, UTC_TIMESTAMP(), 'idx-user', 'idx-pässword', NULL, 'parity', 'parity', 1, 1, 0, 0, 1, 0, "
+            "0, NULL, 1)",
+            u=INDEXER_URL,
+        )
+    set_connector("Wazuh-Indexer", INDEXER_URL, username="idx-user", password="idx-pässword")
 
 
 def cleanup():
+    sql("DELETE FROM network_connectors_keys WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM network_connectors_subscriptions WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM customer_network_connectors WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM network_connectors_services WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM customer_network_connectors_meta WHERE customer_code IN :c", c=list(CUSTOMERS))
+    sql("DELETE FROM customersmeta WHERE customer_code IN :c", c=list(CUSTOMERS))
     for name in USERS:
         sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
         sql("DELETE FROM log_entries WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
@@ -357,10 +648,12 @@ def build_python_app():
     from app.middleware.exception_handlers import value_error_handler
     from app.routers import customer_provisioning
     from app.routers import grafana
+    from app.routers import stack_provisioning
 
     api = APIRouter(prefix="/api")
     api.include_router(grafana.router)
     api.include_router(customer_provisioning.router)
+    api.include_router(stack_provisioning.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -411,10 +704,43 @@ def start_rust(port):
 
 
 ADDRESS = re.compile(rb"object at 0x[0-9a-f]+")
+UUID = re.compile(rb"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+CREATION_DATE = re.compile(rb'"creation_date": "\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z"')
+#: elasticsearch-py's `User-Agent` names the interpreter's patch version.
+ES_AGENT = re.compile(r"\(Python 3\.11(?:\.\d+)?\)")
 
 
-def norm_body(raw):
-    return ADDRESS.sub(b"object at 0x...", raw)
+class UuidMap:
+    """UUIDs (the content packs' `uuid4()`s) as `<uuid#n>` in order of first appearance, the
+    same map for one side's outbound requests, answer and state."""
+
+    def __init__(self):
+        self.seen = {}
+
+    def sub(self, raw):
+        def repl(m):
+            return self.seen.setdefault(m.group(0), f"<uuid#{len(self.seen)}>".encode())
+
+        return UUID.sub(repl, raw)
+
+
+def norm_body(raw, uuids=None):
+    raw = ADDRESS.sub(b"object at 0x...", raw)
+    return uuids.sub(raw) if uuids else raw
+
+
+def out_norm(requests, uuids):
+    """The outbound requests compared: the Graylog version probes left out (both backends cache
+    the version; Python's is pinned), the index set's `utcnow()` masked, UUIDs numbered, the
+    interpreter's patch version in elasticsearch-py's `User-Agent` dropped."""
+    out = []
+    for method, target, headers, body in requests:
+        if method == "GET" and target in ("/graylog/api/system", "/graylog-net/api/system"):
+            continue
+        body = CREATION_DATE.sub(b'"creation_date": "<utcnow>"', body)
+        headers = [(k, ES_AGENT.sub("(Python 3.11)", v) if k == "user-agent" else v) for k, v in headers]
+        out.append((method, uuids.sub(target.encode()).decode(), headers, uuids.sub(body)))
+    return out
 
 
 class Pair:
@@ -444,8 +770,11 @@ class Pair:
             if before:
                 before()
             r, out = await self.call(client, method, path, tok, **kw)
-            sides.append((r, out, state() if state else None))
-        (r1, o1, s1), (r2, o2, s2) = sides
+            uuids = UuidMap()
+            out = out_norm(out, uuids)
+            st = uuids.sub(CREATION_DATE.sub(b'"creation_date": "<utcnow>"', json.dumps(state(), default=str).encode())) if state else None
+            sides.append((r, out, st, uuids))
+        (r1, o1, s1, u1), (r2, o2, s2, u2) = sides
         if expect:
             ok = (r1.status_code, r2.status_code) == expect
             check(
@@ -454,7 +783,7 @@ class Pair:
                 f"python {r1.status_code} {r1.content[:400]!r}\n        rust   {r2.status_code} {r2.content[:400]!r}",
             )
             return r1, r2
-        b1, b2 = norm_body(r1.content), norm_body(r2.content)
+        b1, b2 = norm_body(r1.content, u1), norm_body(r2.content, u2)
         ok = r1.status_code == r2.status_code and b1 == b2
         at = next((i for i, (x, y) in enumerate(zip(b1, b2)) if x != y), min(len(b1), len(b2)))
         start = max(0, at - 300)
@@ -697,8 +1026,412 @@ async def dashboard_checks(p, t_admin, t_analyst, t_unassigned):
     await p.same("customer dashboards: the GET list", "GET", CPDASH, t_admin)
 
 
+# --- Network connectors --------------------------------------------------------------------------------
+
+NET = "/api/stack_provisioning/graylog/provision"
+NET_IDS = [c[0] for c in NET_CONNECTORS]
+PIPELINE_PACK = "SOCFORTRESS_FORTINET_PROCESSING_PIPELINE"
+
+
+def pin_graylog_version(connector, version):
+    """Python's cached Graylog major version, as the Rust instance in use has it (both probe
+    `GET /api/system` once per 5 minutes; the probes are left out of the comparison)."""
+    from app.connectors.graylog.utils import universal
+
+    universal._GRAYLOG_VERSION_CACHE[connector] = (version, time.monotonic())
+
+
+def template(name):
+    with open(os.path.join(BACKEND, "app", "stack_provisioning", "graylog", "templates", f"{name}.json")) as f:
+        return json.load(f)
+
+
+def net(version=6, graylog=None, grafana=None, indexer=None, setup=None):
+    """A fresh world: no meta rows, nothing deployed, the stand-ins reset."""
+
+    def before():
+        point_tools()
+        sql("DELETE FROM customer_network_connectors_meta WHERE customer_code IN :c", c=list(CUSTOMERS))
+        sql("UPDATE customer_network_connectors SET deployed = 0 WHERE id IN :i", i=NET_IDS)
+        sql("UPDATE customersmeta SET customer_meta_grafana_org_id = '7' WHERE customer_code = :c", c=CUST_A)
+        GRAYLOG_NET.reset(version, **(graylog or {}))
+        GRAFANA.reset(grafana)
+        INDEXER.reset(indexer)
+        pin_graylog_version("Graylog-Network", version)
+        if setup:
+            setup()
+
+    return before
+
+
+def network_state():
+    meta = rows(
+        "SELECT customer_code, network_connector_name, graylog_input_id, graylog_index_id, graylog_stream_id, graylog_pipeline_id, "
+        "graylog_content_pack_input_id, graylog_content_pack_stream_id, grafana_org_id, grafana_dashboard_folder_id, "
+        "grafana_datasource_uid FROM customer_network_connectors_meta WHERE customer_code IN :c ORDER BY id",
+        c=list(CUSTOMERS),
+    )
+    flags = rows("SELECT id, deployed FROM customer_network_connectors WHERE id IN :i ORDER BY id", i=NET_IDS)
+    return {"meta": meta, "deployed": flags, "graylog": GRAYLOG_NET.state()}
+
+
+def with_stream_and_input(title_stream, title_input):
+    return {
+        "streams": [{"id": "st-pre", "title": title_stream}],
+        "inputs": [{"id": "in-pre", "title": title_input}],
+    }
+
+
+async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
+    forti = {"customer_code": CUST_A, "tcp_enabled": True, "hot_data_retention": 30, "index_replicas": 1}
+    st = network_state
+    await p.same("fortinet: no token", "POST", f"{NET}/fortinet", json=forti)
+    await p.same(
+        "fortinet: malformed JSON, no token",
+        "POST",
+        f"{NET}/fortinet",
+        content=b"{",
+        headers={"Content-Type": "application/json"},
+    )
+    await p.same("fortinet: no body", "POST", f"{NET}/fortinet", t_admin)
+    await p.same("fortinet: a list body (the before-validator's TypeError)", "POST", f"{NET}/fortinet", t_admin, json=[forti])
+    await p.same("fortinet: a string body", "POST", f"{NET}/fortinet", t_admin, json="x")
+    await p.same("sonicwall: not JSON", "POST", f"{NET}/sonicwall", t_admin, content=b"x=1", headers={"Content-Type": "text/plain"})
+    await p.same("sentinelone: missing fields", "POST", f"{NET}/sentinelone", t_admin, json={"integration_name": None})
+    await p.same(
+        "fortinet: bad field types",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        json={"customer_code": 5, "tcp_enabled": "maybe", "hot_data_retention": 1.5, "index_replicas": "x"},
+    )
+    await p.same("fortinet: TCP on Graylog 6", "POST", f"{NET}/fortinet", t_admin, before=net(6), state=st, json=forti)
+    await p.same(
+        "fortinet: UDP on Graylog 7, as the customer's analyst",
+        "POST",
+        f"{NET}/fortinet",
+        t_analyst,
+        before=net(7),
+        state=st,
+        rust=p.rs7,
+        json={**forti, "tcp_enabled": False, "udp_enabled": True, "integration_name": "ignored", "hot_data_retention": "3"},
+    )
+    installed = {
+        "id": "pl-forti",
+        "title": "FORTINET PROCESSING PIPELINE",
+        "description": "FORTINET PROCESSING PIPELINE",
+        "source": "pipeline",
+        "stages": [],
+        "created_at": "2026-10-01T00:00:00.000Z",
+    }
+    await p.same(
+        "fortinet: the processing pipeline already in Graylog (not installed again)",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(6, graylog={"content_packs": [template(PIPELINE_PACK)], "pipelines": [installed]}),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: a content pack named after the customer",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(
+            6,
+            graylog={"content_packs": [{**template(PIPELINE_PACK), "id": "c0ffee00-0000-4000-8000-000000000001", "name": NAME_A}]},
+        ),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: both protocols",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(),
+        state=st,
+        json={**forti, "udp_enabled": True},
+    )
+    await p.same(
+        "fortinet: no protocol",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(),
+        state=st,
+        json={**forti, "tcp_enabled": None},
+    )
+    await p.same("sonicwall: provisioned on Graylog 6", "POST", f"{NET}/sonicwall", t_admin, before=net(6), state=st, json=forti)
+    await p.same(
+        "sonicwall: provisioned on Graylog 7",
+        "POST",
+        f"{NET}/sonicwall",
+        t_admin,
+        before=net(7),
+        state=st,
+        rust=p.rs7,
+        json={**forti, "tls_enabled": False},
+    )
+    s1 = with_stream_and_input(f"{NAME_A} - SENTINELONE ALERTS AND EVENTS", f"{NAME_A} - SENTINELONE ALERTS AND EVENTS")
+    pipeline = {
+        "id": "pl-s1",
+        "title": "S1",
+        "description": "SentinelOne processing",
+        "source": "pipeline",
+        "stages": [],
+        "created_at": "2026-10-01T00:00:00.000Z",
+    }
+    await p.same(
+        "sentinelone: no content pack, the stream and pipeline already there",
+        "POST",
+        f"{NET}/sentinelone",
+        t_admin,
+        before=net(6, graylog={**s1, "pipelines": [pipeline]}),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "sentinelone: no pipeline (the 500 naming the Wazuh content pack)",
+        "POST",
+        f"{NET}/sentinelone",
+        t_admin,
+        before=net(6, graylog=s1),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "sentinelone: no stream (PUT /api/streams/None)",
+        "POST",
+        f"{NET}/sentinelone",
+        t_admin,
+        before=net(6, graylog={"pipelines": [pipeline]}),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "sentinelone: a pipeline without a description",
+        "POST",
+        f"{NET}/sentinelone",
+        t_admin,
+        before=net(6, graylog={**s1, "pipelines": [{**pipeline, "description": None}]}),
+        state=st,
+        json=forti,
+    )
+    # Python's refusals in its order.
+    await p.same(
+        "fortinet: the port is not an int",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(),
+        state=st,
+        json={**forti, "customer_code": CUST_B},
+    )
+    await p.same(
+        "sonicwall: no TLS keys (KeyError)",
+        "POST",
+        f"{NET}/sonicwall",
+        t_admin,
+        before=net(),
+        state=st,
+        json={**forti, "customer_code": CUST_B},
+    )
+    await p.same(
+        "sentinelone: no such connector (AttributeError)",
+        "POST",
+        f"{NET}/sentinelone",
+        t_admin,
+        before=net(),
+        state=st,
+        json={**forti, "customer_code": CUST_B},
+    )
+    await p.same("fortinet: no keys", "POST", f"{NET}/fortinet", t_admin, before=net(), state=st, json={**forti, "customer_code": CUST_C})
+    await p.same(
+        "fortinet: no network connector",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(),
+        state=st,
+        json={**forti, "customer_code": f"GPD{SFX}"},
+    )
+
+    def no_meta():
+        sql("DELETE FROM customersmeta WHERE customer_code = :c", c=CUST_A)
+
+    def meta_back():
+        sql(
+            "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, customer_meta_graylog_stream, "
+            "customer_meta_grafana_org_id, customer_meta_wazuh_group) VALUES (:c, :n, 'i', 's', '7', 'g')",
+            c=CUST_A,
+            n=NAME_A,
+        )
+
+    await p.same("fortinet: no Grafana organization", "POST", f"{NET}/fortinet", t_admin, before=net(setup=no_meta), state=st, json=forti)
+    meta_back()
+
+    def org_x():
+        sql("UPDATE customersmeta SET customer_meta_grafana_org_id = 'x' WHERE customer_code = :c", c=CUST_A)
+
+    await p.same(
+        "fortinet: an organization that is not an int (the dashboards request's 400)",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(setup=org_x),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: Graylog refuses the index set",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(
+            graylog={
+                "overrides": {
+                    ("POST", "/api/system/indices/index_sets"): (400, "application/json", _json({"message": "Index prefix conflicts"})),
+                },
+            },
+        ),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: Graylog refuses the stream move",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(graylog={"overrides": {("PUT", "/api/streams/*"): (400, "application/json", _json({"message": "Invalid index set"}))}}),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: the connection answered 204",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(graylog={"overrides": {("POST", "/api/system/pipelines/connections/to_stream"): (204, None, b"")}}),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: an install refused",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(graylog={"overrides": {("POST", "/api/system/content_packs/*/installations"): (500, "text/plain", b"boom")}}),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: the indexer's health fails (the shard count)",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(indexer={("GET", "/_cluster/health"): (503, "application/json", _json({"error": "unavailable", "status": 503}))}),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: no node version",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(indexer={("GET", "/_nodes/_local"): (200, "application/json", _json({"nodes": {}}))}),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: Grafana refuses the datasource",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(
+            grafana={
+                ("POST", "/datasources"): (409, "application/json", _json({"message": "data source with the same name already exists"})),
+            },
+        ),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: a folder answer missing fields",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(grafana={("POST", "/folders"): (200, "application/json", _json({"id": 1, "uid": "u"}))}),
+        state=st,
+        json=forti,
+    )
+    await p.same(
+        "fortinet: a dashboard refused",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(grafana={("POST", "/dashboards/db"): (412, "application/json", _json({"message": "version-mismatch"}))}),
+        state=st,
+        json=forti,
+    )
+
+    def no_id1():
+        sql("DELETE FROM connectors WHERE id = 1")
+
+    await p.same(
+        "fortinet: no connector id 1 (the datasource's 400)",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(setup=no_id1),
+        state=st,
+        json=forti,
+    )
+
+    def no_network_graylog():
+        sql("DELETE FROM connectors WHERE connector_name = 'Graylog-Network'")
+
+    await p.same(
+        "fortinet: no Graylog-Network connector",
+        "POST",
+        f"{NET}/fortinet",
+        t_admin,
+        before=net(setup=no_network_graylog),
+        state=st,
+        json=forti,
+    )
+    point_tools()
+    # Deliberate difference: the body's customer must be the caller's (Python provisioned any).
+    await p.same(
+        "fortinet: another tenant's customer",
+        "POST",
+        f"{NET}/fortinet",
+        t_analyst_b,
+        before=net(),
+        state=st,
+        expect=(200, 403),
+        json=forti,
+    )
+    await p.same(
+        "sonicwall: an analyst without customers",
+        "POST",
+        f"{NET}/sonicwall",
+        t_unassigned,
+        before=net(),
+        expect=(500, 403),
+        json={**forti, "customer_code": CUST_B},
+    )
+    left = network_state()
+    check(
+        "fortinet: Rust's refusal asked no tool and wrote nothing",
+        not left["meta"] and not any(r["deployed"] for r in left["deployed"]) and not RECORDER.take(),
+        str(left),
+    )
+
+
 async def main():
-    servers = [start_stub(STUB_PORT, TOOLS)]
+    servers = [start_stub(STUB_PORT, TOOLS), start_stub(INDEXER_PORT, INDEXER)]
     procs = []
     try:
         seed()
@@ -711,6 +1444,8 @@ async def main():
             sections = os.environ.get("GRAFANA_PROV_PARITY_SECTIONS", "dashboards,network,integrations").split(",")
             if "dashboards" in sections:
                 await dashboard_checks(p, t_admin, t_analyst, t_unassigned)
+            if "network" in sections:
+                await network_checks(p, t_admin, t_analyst, token(ANALYST_B, ["analyst"]), t_unassigned)
         finally:
             await p.close()
             from app.db.db_session import async_engine

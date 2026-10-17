@@ -204,9 +204,12 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/monitoring_alert",
     // Stack provisioning (copilot-provisioning): the content packs and the
     // InfluxDB checks, and network-connector decommissioning; the Fortinet /
-    // SonicWall / SentinelOne provisioning (Grafana dashboards) stays Python.
+    // SonicWall / SentinelOne provisioning is copilot-integration-provisioning's.
     "GET /api/stack_provisioning/graylog/available/content_packs",
     "POST /api/stack_provisioning/graylog/provision/content_pack",
+    "POST /api/stack_provisioning/graylog/provision/fortinet",
+    "POST /api/stack_provisioning/graylog/provision/sonicwall",
+    "POST /api/stack_provisioning/graylog/provision/sentinelone",
     "/api/stack_provisioning/influxdb",
     "/api/stack_decommissioning",
     // Customer provisioning (copilot-provisioning; `POST /provision/dashboards`
@@ -303,6 +306,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_portainer::REQUIREMENTS);
     all.extend_from_slice(copilot_waf::REQUIREMENTS);
     all.extend_from_slice(copilot_provisioning::REQUIREMENTS);
+    all.extend_from_slice(copilot_integration_provisioning::REQUIREMENTS);
     all.extend_from_slice(copilot_agents::REQUIREMENTS);
     all.extend_from_slice(copilot_velociraptor::REQUIREMENTS);
     all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
@@ -789,6 +793,16 @@ impl App {
                     graylog: self.graylog.clone(),
                     influx: self.influxdb.clone(),
                     grafana: self.grafana.clone(),
+                },
+            ))
+            // Full paths: `POST /api/stack_provisioning/graylog/provision/
+            // {fortinet,sonicwall,sentinelone}`.
+            .merge(copilot_integration_provisioning::router(
+                copilot_integration_provisioning::ProvisioningState {
+                    ctx: self.ctx.clone(),
+                    graylog: self.graylog.clone(),
+                    grafana: self.grafana.clone(),
+                    wazuh: self.wazuh.clone(),
                 },
             ))
             // Full paths: `POST /api/grafana/dashboards` and

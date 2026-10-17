@@ -565,7 +565,15 @@ pub async fn event_notifications(c: &GraylogClient) -> PyResult<PyValue> {
 
 /// `get_pipelines()`.
 pub async fn pipelines(c: &GraylogClient) -> PyResult<PyValue> {
-    let reply = c.get("/api/system/pipelines/pipeline", &[]).await?;
+    pipelines_on(c, crate::client::DEFAULT_CONNECTOR).await
+}
+
+/// `get_pipelines()` under a Graylog context (`set_graylog_context`): the
+/// pipelines of `connector`.
+pub async fn pipelines_on(c: &GraylogClient, connector: &str) -> PyResult<PyValue> {
+    let reply = c
+        .get_on(connector, "/api/system/pipelines/pipeline", &[])
+        .await?;
     (|| -> PyResult<PyValue> {
         let list = each_star(&PIPELINE, PIPELINES, &reply.data)?;
         construct(
