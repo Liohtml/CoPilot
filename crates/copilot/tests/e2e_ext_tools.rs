@@ -1,6 +1,7 @@
 //! End-to-end tests of the external-tool modules of wave 6 on the production
 //! router against a real MySQL, every upstream replaced by a mock:
-//! Microsoft Patch Tuesday (`copilot-patch-tuesday`).
+//! Microsoft Patch Tuesday (`copilot-patch-tuesday`), CoPilot MCP (`copilot-mcp`)
+//! and the Sublime connector (`copilot-sublime`).
 //!
 //! ```text
 //! COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13309/copilot \
@@ -540,4 +541,404 @@ async fn mcp_queries_go_local_or_to_the_cloud() {
         .await;
     mcp_restore(&h, &key, saved).await;
     assert_ne!(status, 200, "{body}");
+}
+
+// --- /api/sublime ----------------------------------------------------------------------
+
+const SB: &str = "/api/sublime";
+
+/// The `Sublime` connector row on `url` (none for `None`).
+async fn sublime_connector(h: &Harness, url: Option<&str>) {
+    h.exec("DELETE FROM connectors WHERE connector_name = 'Sublime'")
+        .await;
+    if let Some(url) = url {
+        sqlx::query(
+            "INSERT INTO connectors (connector_name, connector_type, connector_url, \
+             connector_last_updated, connector_username, connector_password, connector_api_key, \
+             connector_description, connector_supports, connector_configured, connector_verified, \
+             connector_accepts_host_only, connector_accepts_api_key, \
+             connector_accepts_username_password, connector_accepts_file, \
+             connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES \
+             ('Sublime', '3', ?, '2026-01-02 03:04:05', NULL, NULL, 'sb-key', 'desc', \
+             'supports', 1, 0, 0, 1, 0, 0, 0, NULL, 1)",
+        )
+        .bind(url)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+}
+
+/// The test's alerts and their child rows, gone.
+async fn sublime_cleanup(h: &Harness) {
+    let like = format!("e2e-sb-{}%", h.suffix);
+    for child in [
+        "flaggedrule",
+        "mailbox",
+        "recipient",
+        "sender",
+        "triggeredaction",
+    ] {
+        sqlx::query(&format!(
+            "DELETE FROM {child} WHERE sublime_alert_id IN \
+             (SELECT id FROM sublimealerts WHERE event_id LIKE ?)"
+        ))
+        .bind(&like)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+    sqlx::query("DELETE FROM sublimealerts WHERE event_id LIKE ?")
+        .bind(&like)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    sublime_connector(h, None).await;
+}
+
+fn sublime_body(h: &Harness, event: &str, message_id: &str) -> Value {
+    json!({
+        "api_version": "v0",
+        "created_at": "2026-10-17T10:00:00Z",
+        "data": {
+            "flagged_rules": [
+                {"id": "r1", "name": "Impersonation", "severity": "high", "tags": ["bec", "ü"]},
+                {"id": "r2", "name": "Link", "tags": []},
+            ],
+            "message": {
+                "canonical_id": "canon-1",
+                "external_id": "ext-1",
+                "id": message_id,
+                "mailbox": {"id": "mbx-1"},
+                "message_source_id": "src-1",
+            },
+            "triggered_actions": [{"id": "a1", "name": "Notify", "type": "webhook"}],
+        },
+        "id": format!("e2e-sb-{}-{event}", h.suffix),
+        "type": "message.flagged",
+    })
+}
+
+/// Sublime's message lookup, one answer per message id.
+async fn sublime_server() -> MockServer {
+    let server = MockServer::start().await;
+    let message = |id: &str, body: Value| {
+        Mock::given(method("GET"))
+            .and(path(format!("/v0/messages/{id}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+    };
+    message(
+        "msg-ok",
+        json!({"sender": {"email": "boss@example.com"},
+               "recipients": [{"email": "victim@example.com"}, {"email": "cc@example.com"}]}),
+    )
+    .mount(&server)
+    .await;
+    message(
+        "msg-norcpt",
+        json!({"sender": {"email": "a@b"}, "recipients": []}),
+    )
+    .mount(&server)
+    .await;
+    message(
+        "msg-list",
+        json!({"sender": {"email": []}, "recipients": [{"email": "x"}]}),
+    )
+    .mount(&server)
+    .await;
+    message(
+        "msg-dict",
+        json!({"sender": {"email": {"a": 1}}, "recipients": [{"email": "x"}]}),
+    )
+    .mount(&server)
+    .await;
+    message(
+        "msg-num",
+        json!({"sender": {"email": 5}, "recipients": [{"email": ["only"]}]}),
+    )
+    .mount(&server)
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/v0/messages/msg-html"))
+        .respond_with(ResponseTemplate::new(502).set_body_raw("<h1>bad gateway</h1>", "text/html"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v0/rules"))
+        .and(query_param("limit", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn sublime_routes_are_for_analysts() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let portal = h.token(&format!("portal{}", h.suffix), "customer_user");
+    for (m, uri) in [("POST", "/alert"), ("GET", "/alerts")] {
+        let body = (m == "POST").then(|| json!({}));
+        let (status, _) = h.call(m, &format!("{SB}{uri}"), None, body.clone()).await;
+        assert_eq!(status, 401, "{uri}");
+        let (status, _) = h.call(m, &format!("{SB}{uri}"), Some(&portal), body).await;
+        assert_eq!(status, 403, "{uri}");
+    }
+    // FastAPI reads the body first: malformed JSON is a 422 without a token.
+    let (status, _) = h
+        .call_raw(
+            "POST",
+            &format!("{SB}/alert"),
+            None,
+            Some("application/json"),
+            "{",
+        )
+        .await;
+    assert_eq!(status, 422);
+}
+
+#[tokio::test]
+async fn sublime_stores_and_lists_alerts() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let server = sublime_server().await;
+    sublime_connector(&h, Some(&server.uri())).await;
+
+    let before = h.scalar_i64("SELECT UNIX_TIMESTAMP(NOW())").await;
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{SB}/alert"),
+            Some(&analyst),
+            Some(sublime_body(&h, "ok", "msg-ok")),
+        )
+        .await;
+    let event = format!("e2e-sb-{}-ok", h.suffix);
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true, "message": format!("Alert {event} stored in the database")})
+    );
+    let sent = server.received_requests().await.unwrap();
+    assert_eq!(sent.len(), 2);
+    for req in &sent {
+        assert_eq!(req.url.path(), "/v0/messages/msg-ok");
+        assert_eq!(req.headers["authorization"], "Bearer sb-key");
+        assert_eq!(req.headers["content-type"], "application/json");
+    }
+    let stamped = h
+        .scalar_i64(&format!(
+            "SELECT UNIX_TIMESTAMP(timestamp) FROM sublimealerts WHERE event_id = '{event}'"
+        ))
+        .await;
+    assert!((before - 1..=before + 60).contains(&stamped), "{stamped}");
+    let tags: String = sqlx::query_scalar(
+        "SELECT f.tags FROM flaggedrule f JOIN sublimealerts a ON a.id = f.sublime_alert_id \
+         WHERE a.event_id = ? AND f.rule_id = 'r1'",
+    )
+    .bind(&event)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(tags, r#"["bec", "\u00fc"]"#);
+
+    let (status, body) = h
+        .call("GET", &format!("{SB}/alerts"), Some(&analyst), None)
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["success"], true);
+    assert_eq!(body["message"], "Successfully retrieved all Sublime Alerts");
+    let alert = body["sublime_alerts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["event_id"] == event.as_str())
+        .unwrap()
+        .clone();
+    let mut alert = alert;
+    alert["timestamp"] = json!("<ts>");
+    assert_eq!(
+        alert,
+        json!({
+            "api_version": "v0", "created_at": "2026-10-17T10:00:00Z", "event_id": event,
+            "type": "message.flagged", "message_id": "msg-ok", "canonical_id": "canon-1",
+            "external_id": "ext-1", "message_source_id": "src-1", "timestamp": "<ts>",
+            "flagged_rules": [
+                {"rule_id": "r1", "name": "Impersonation", "severity": "high", "tags": r#"["bec", "\u00fc"]"#},
+                {"rule_id": "r2", "name": "Link", "severity": null, "tags": "[]"},
+            ],
+            "mailbox": [{"external_id": null, "mailbox_id": "mbx-1"}],
+            "triggered_actions": [{"action_id": "a1", "name": "Notify", "type": "webhook"}],
+            "sender": [{"email": "boss@example.com", "name": "n/a"}],
+            "recipients": [{"email": "victim@example.com", "name": "n/a"}],
+        })
+    );
+
+    // A stored sender without a name fails the listing's schema.
+    let id = h
+        .scalar_i64(&format!(
+            "SELECT id FROM sublimealerts WHERE event_id = '{event}'"
+        ))
+        .await;
+    h.exec(&format!(
+        "UPDATE sender SET name = NULL WHERE sublime_alert_id = {id}"
+    ))
+    .await;
+    let (status, body) = h
+        .call("GET", &format!("{SB}/alerts"), Some(&analyst), None)
+        .await;
+    sublime_cleanup(&h).await;
+    assert_eq!(status, 500, "{body}");
+    assert!(
+        body["message"].as_str().unwrap().starts_with(
+            "Failed to get all Sublime Alerts with error: 1 validation error for \
+             SublimeAlertsSchema\nsender.0.name\n  Input should be a valid string"
+        ),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn sublime_failures_are_pythons() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let server = sublime_server().await;
+    sublime_connector(&h, Some(&server.uri())).await;
+    let post = |body: Value| {
+        let h = &h;
+        let analyst = analyst.clone();
+        async move {
+            h.call("POST", &format!("{SB}/alert"), Some(&analyst), Some(body))
+                .await
+        }
+    };
+    let failed = |event: &str| {
+        format!(
+            "Failed to store alert e2e-sb-{}-{event} in the database: ",
+            h.suffix
+        )
+    };
+    let count = || async {
+        h.scalar_i64(&format!(
+            "SELECT COUNT(*) FROM sublimealerts WHERE event_id LIKE 'e2e-sb-{}%'",
+            h.suffix
+        ))
+        .await
+    };
+
+    // No external id: the alert's own INSERT fails, nothing is asked of Sublime.
+    let mut body = sublime_body(&h, "noext", "msg-ok");
+    body["data"]["message"]
+        .as_object_mut()
+        .unwrap()
+        .remove("external_id");
+    let (status, out) = post(body).await;
+    assert_eq!(status, 500, "{out}");
+    let text = out["message"].as_str().unwrap();
+    assert!(
+        text.starts_with(&format!(
+            "{}(pymysql.err.IntegrityError) (1048, \"Column 'external_id' cannot be null\")\n\
+             [SQL: INSERT INTO sublimealerts (api_version, created_at, event_id, type, \
+             message_id, canonical_id, external_id, message_source_id, timestamp) VALUES (%s, \
+             %s, %s, %s, %s, %s, %s, %s, %s)]\n[parameters: ('v0', '2026-10-17T10:00:00Z', \
+             'e2e-sb-{}-noext', 'message.flagged', 'msg-ok', 'canon-1', None, 'src-1', \
+             datetime.datetime(",
+            failed("noext"),
+            h.suffix
+        )),
+        "{text}"
+    );
+    assert!(text.ends_with("(Background on this error at: https://sqlalche.me/e/20/gkpj)"));
+    assert!(server.received_requests().await.unwrap().is_empty());
+
+    let cases = [
+        (
+            "html",
+            "msg-html",
+            "500: Failed to get Sublime Alert with message_id msg-html: Failed to send GET \
+             request to /v0/messages/msg-html with error: Expecting value: line 1 column 1 \
+             (char 0)"
+                .to_string(),
+        ),
+        (
+            "norcpt",
+            "msg-norcpt",
+            "list index out of range".to_string(),
+        ),
+        (
+            "dict",
+            "msg-dict",
+            "dict can not be used as parameter".to_string(),
+        ),
+    ];
+    for (event, message_id, want) in cases {
+        let (status, out) = post(sublime_body(&h, event, message_id)).await;
+        assert_eq!(status, 500, "{out}");
+        assert_eq!(out["message"], format!("{}{want}", failed(event)));
+    }
+    // An empty list is written as `()`: MySQL's syntax error quotes the rest.
+    let (status, out) = post(sublime_body(&h, "list", "msg-list")).await;
+    assert_eq!(status, 500, "{out}");
+    let text = out["message"].as_str().unwrap();
+    assert!(
+        text.starts_with(&format!(
+            "{}(pymysql.err.ProgrammingError) (1064, \"You have an error in your SQL syntax; \
+             check the manual that corresponds to your MySQL server version for the right \
+             syntax to use near '), 'n/a', ",
+            failed("list")
+        )),
+        "{text}"
+    );
+    assert!(text.contains("[SQL: INSERT INTO sender (email, name, sublime_alert_id) VALUES (%s, %s, %s)]\n[parameters: ([], 'n/a', "));
+    // Every failure rolled the alert back.
+    assert_eq!(count().await, 0);
+
+    // A number is stored as its digits, a one-item list as its item.
+    let (status, out) = post(sublime_body(&h, "num", "msg-num")).await;
+    assert_eq!(status, 200, "{out}");
+    let (sender, recipient): (String, String) = sqlx::query_as(
+        "SELECT s.email, r.email FROM sublimealerts a JOIN sender s ON s.sublime_alert_id = a.id \
+         JOIN recipient r ON r.sublime_alert_id = a.id WHERE a.event_id = ?",
+    )
+    .bind(format!("e2e-sb-{}-num", h.suffix))
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!((sender.as_str(), recipient.as_str()), ("5", "only"));
+
+    // No connector row.
+    sublime_connector(&h, None).await;
+    let (status, out) = post(sublime_body(&h, "none", "msg-ok")).await;
+    assert_eq!(status, 500, "{out}");
+    assert_eq!(
+        out["message"],
+        format!("{}'NoneType' object is not subscriptable", failed("none"))
+    );
+
+    // The connector check.
+    sublime_connector(&h, Some(&server.uri())).await;
+    let id = h
+        .scalar_i64("SELECT id FROM connectors WHERE connector_name = 'Sublime'")
+        .await;
+    let admin = h.token(&format!("admin{}", h.suffix), "admin");
+    let (status, out) = h
+        .call(
+            "POST",
+            &format!("/api/connectors/verify/{id}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    let verified = h
+        .scalar_i64("SELECT connector_verified FROM connectors WHERE connector_name = 'Sublime'")
+        .await;
+    sublime_cleanup(&h).await;
+    assert_eq!(status, 200, "{out}");
+    assert_eq!(verified, 1);
+    let rules = server.received_requests().await.unwrap();
+    let check = rules.last().unwrap();
+    assert_eq!(check.url.path(), "/v0/rules");
+    assert_eq!(check.url.query(), Some("limit=1"));
 }

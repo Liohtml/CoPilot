@@ -10,8 +10,7 @@
 //!
 //! Neither connector holds tenant data: the routes are admin/analyst and
 //! not tenant-scoped, as in Python. The Sublime connector (`/api/sublime`)
-//! stays in Python: its tables are not created by Alembic (see
-//! `RUST_MIGRATION.md`).
+//! is `copilot-sublime`.
 //!
 //! State kept by the process: none beyond the shared connector cache.
 

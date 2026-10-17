@@ -17,8 +17,7 @@ one by one:
   requests refuses;
 * the two connectors' verification through `POST /api/connectors/verify/{id}` (the row it writes).
 
-Sublime stays in Python (its tables are not created by Alembic); one check here confirms what
-Python answers for it today.
+Sublime is `crates/copilot-sublime` now; its parity checks are `rust_parity_ext_tools_e2e.py`'s.
 
     PARITY_SUITES=tests/e2e/rust_parity_intel_connectors_e2e.py scripts/rust-parity.sh
 
@@ -457,12 +456,10 @@ def build_python_app():
     from app.routers import connectors
     from app.routers import cortex
     from app.routers import opencti
-    from app.routers import sublime
 
     api = APIRouter(prefix="/api")
     api.include_router(opencti.router)
     api.include_router(cortex.router)
-    api.include_router(sublime.router)
     api.include_router(connectors.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
@@ -1213,21 +1210,6 @@ async def cortex_checks(p, t_admin, t_analyst, t_portal):
     await p.same("verify Cortex, no API key", "POST", V, t_admin, before=verify_with(key=None), table=table, expect=500)
 
 
-async def sublime_checks():
-    """Sublime stays in Python: its tables are not created by Alembic, so its routes fail."""
-    print("\n== Sublime (Python only)")
-    client = httpx.AsyncClient(transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False), base_url="http://py")
-    try:
-        r = await client.get("/api/sublime/alerts", headers={"Authorization": f"Bearer {token(ANALYST, ['analyst'])}"})
-        check(
-            "sublime: GET /alerts is a 500 in Python (no sublimealerts table)",
-            r.status_code == 500,
-            f"{r.status_code} {r.content[:300]!r}",
-        )
-    finally:
-        await client.aclose()
-
-
 async def main():
     tls = make_tls()
     servers = [
@@ -1248,13 +1230,11 @@ async def main():
     p = Pair(RS_PORT)
     t_admin, t_analyst, t_portal = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"]), token(PORTAL, ["customer_user"])
     try:
-        sections = os.environ.get("INTEL_PARITY_SECTIONS", "opencti,cortex,sublime").split(",")
+        sections = os.environ.get("INTEL_PARITY_SECTIONS", "opencti,cortex").split(",")
         if "opencti" in sections:
             await opencti_checks(p, t_admin, t_analyst, t_portal)
         if "cortex" in sections:
             await cortex_checks(p, t_admin, t_analyst, t_portal)
-        if "sublime" in sections:
-            await sublime_checks()
     finally:
         await p.close()
         proc.terminate()

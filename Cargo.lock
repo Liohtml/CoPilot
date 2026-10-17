@@ -502,6 +502,7 @@ dependencies = [
  "copilot-sla",
  "copilot-soc-management",
  "copilot-status",
+ "copilot-sublime",
  "copilot-talon",
  "copilot-threat-intel",
  "copilot-uba",
@@ -1442,6 +1443,29 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "copilot-sublime"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-connectors",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-incidents",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "http",
+ "pretty_assertions",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "tracing",
 ]
 
 [[package]]

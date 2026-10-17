@@ -282,8 +282,7 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/vulnerabilities",
     "/api/sca",
     "/api/syscollector",
-    // The OpenCTI and Cortex connectors (copilot-intel-connectors); Sublime
-    // stays in Python (its tables are not created by Alembic).
+    // The OpenCTI and Cortex connectors (copilot-intel-connectors).
     "/api/opencti",
     "/api/analyzers",
     // The SOCFortress UBA connector (copilot-uba).
@@ -311,6 +310,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/patch-tuesday",
     // CoPilot MCP (copilot-mcp): the servers, their questions and the query.
     "/api/copilot_mcp",
+    // The Sublime connector (copilot-sublime): the alert webhook and the
+    // stored alerts.
+    "/api/sublime",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -355,6 +357,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_integration_modules::REQUIREMENTS);
     all.extend_from_slice(copilot_license::REQUIREMENTS);
     all.extend_from_slice(copilot_status::REQUIREMENTS);
+    all.extend_from_slice(copilot_sublime::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -459,6 +462,8 @@ pub struct App {
     pub patch_tuesday: copilot_patch_tuesday::PatchTuesdayState,
     /// CoPilot MCP (`/api/copilot_mcp`).
     pub mcp: copilot_mcp::McpState,
+    /// The Sublime connector (`/api/sublime`).
+    pub sublime: copilot_sublime::SublimeState,
 }
 
 impl App {
@@ -646,6 +651,12 @@ impl App {
         let patch_tuesday =
             copilot_patch_tuesday::PatchTuesdayState::new(ctx.clone(), legacy.clone());
         let mcp = copilot_mcp::McpState::new(ctx.clone(), threat_intel.clone(), legacy.clone());
+        let sublime = copilot_sublime::SublimeState::new(
+            ctx.clone(),
+            copilot_sublime::SublimeClient::new(ctx.connectors.clone())
+                .context("building the Sublime client")?,
+            legacy.clone(),
+        );
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -681,7 +692,8 @@ impl App {
                     ))
                     .chain(copilot_shuffle::verifiers(&shuffle))
                     .chain(copilot_intel_connectors::verify::verifiers())
-                    .chain(copilot_uba::verifiers()),
+                    .chain(copilot_uba::verifiers())
+                    .chain(copilot_sublime::verifiers(&sublime.client)),
             ),
             wazuh,
             ingest,
@@ -706,6 +718,7 @@ impl App {
             sidebar,
             patch_tuesday,
             mcp,
+            sublime,
         })
     }
 
@@ -1115,6 +1128,8 @@ impl App {
             .merge(copilot_patch_tuesday::router(self.patch_tuesday.clone()))
             // Full paths: `/api/copilot_mcp/*`.
             .merge(copilot_mcp::router(self.mcp.clone()))
+            // Full paths: `/api/sublime/*`.
+            .merge(copilot_sublime::router(self.sublime.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

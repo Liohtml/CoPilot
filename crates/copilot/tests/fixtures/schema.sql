@@ -743,6 +743,20 @@ CREATE TABLE `event_sources` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `flaggedrule` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `rule_id` varchar(255) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `severity` varchar(255) DEFAULT NULL,
+  `tags` varchar(255) NOT NULL,
+  `sublime_alert_id` int NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sublime_alert_id` (`sublime_alert_id`),
+  CONSTRAINT `flaggedrule_ibfk_1` FOREIGN KEY (`sublime_alert_id`) REFERENCES `sublimealerts` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `github_audit_baseline` (
   `expected_checks` json DEFAULT NULL,
   `id` int NOT NULL AUTO_INCREMENT,
@@ -1388,6 +1402,18 @@ CREATE TABLE `log_entries` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `mailbox` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `external_id` varchar(255) DEFAULT NULL,
+  `mailbox_id` varchar(255) NOT NULL,
+  `sublime_alert_id` int NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sublime_alert_id` (`sublime_alert_id`),
+  CONSTRAINT `mailbox_ibfk_1` FOREIGN KEY (`sublime_alert_id`) REFERENCES `sublimealerts` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `monitoring_alerts` (
   `id` int NOT NULL AUTO_INCREMENT,
   `alert_id` varchar(1024) NOT NULL,
@@ -1499,6 +1525,18 @@ CREATE TABLE `notification_template` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `recipient` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `email` varchar(255) NOT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `sublime_alert_id` int NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sublime_alert_id` (`sublime_alert_id`),
+  CONSTRAINT `recipient_ibfk_1` FOREIGN KEY (`sublime_alert_id`) REFERENCES `sublimealerts` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `role` (
   `id` int NOT NULL AUTO_INCREMENT,
   `name` varchar(256) NOT NULL,
@@ -1570,6 +1608,18 @@ CREATE TABLE `schedulerjob` (
   `id` varchar(255) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `ix_schedulerjob_next_run_time` (`next_run_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sender` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `email` varchar(255) NOT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `sublime_alert_id` int NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sublime_alert_id` (`sublime_alert_id`),
+  CONSTRAINT `sender_ibfk_1` FOREIGN KEY (`sublime_alert_id`) REFERENCES `sublimealerts` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -1735,6 +1785,35 @@ CREATE TABLE `sso_config` (
   `google_client_secret` varchar(512) DEFAULT NULL,
   `google_redirect_uri` varchar(512) DEFAULT NULL,
   PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sublimealerts` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `api_version` varchar(255) NOT NULL,
+  `created_at` varchar(255) NOT NULL,
+  `event_id` varchar(255) NOT NULL,
+  `type` varchar(255) NOT NULL,
+  `message_id` varchar(255) NOT NULL,
+  `canonical_id` varchar(255) NOT NULL,
+  `external_id` varchar(255) NOT NULL,
+  `message_source_id` varchar(255) NOT NULL,
+  `timestamp` datetime NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `triggeredaction` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `action_id` varchar(255) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `type` varchar(255) NOT NULL,
+  `sublime_alert_id` int NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sublime_alert_id` (`sublime_alert_id`),
+  CONSTRAINT `triggeredaction_ibfk_1` FOREIGN KEY (`sublime_alert_id`) REFERENCES `sublimealerts` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -1919,7 +1998,7 @@ CREATE TABLE `webauthn_challenge` (
 
 LOCK TABLES `alembic_version` WRITE;
 /*!40000 ALTER TABLE `alembic_version` DISABLE KEYS */;
-INSERT INTO `alembic_version` VALUES ('c1241a1b2c3d');
+INSERT INTO `alembic_version` VALUES ('d6c01a2b3c4d');
 /*!40000 ALTER TABLE `alembic_version` ENABLE KEYS */;
 UNLOCK TABLES;
 

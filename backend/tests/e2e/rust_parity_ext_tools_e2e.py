@@ -16,8 +16,17 @@ included) and the body bytes — and both backends' requests are compared one by
   `execute_query` turns into a message. The cloud request's header names are compared
   lower-cased: hyper writes one case per request, httpx a lower-case `x-api-key` among title-case
   names (a §4 row); values and order are compared as sent. So are the licence server's
-  (`copilot-license`'s client): `requests` writes the names as given over urllib3 1.26 (the
-  backend image) but title-cases them over urllib3-future (a development venv).
+  (`copilot-license`'s client): `requests` title-cases them over the urllib3-future the backend
+  installs, hyper lower-cases them (as `rust_parity_platform_e2e.py` compares them).
+* Sublime (`/api/sublime`, `crates/copilot-sublime`), on the tables migration `d6c01a2b3c4d`
+  created: the webhook's validation, the store (the rows each backend wrote, column by column
+  but the ids and the timestamp; the two message lookups), what fails where — a column MySQL
+  refuses, in the unit of work's table order; odd emails pymysql writes as literals; every
+  answer of Sublime's the lookups cannot read; no connector row; a closed port —, the listing
+  (also with a stored sender MySQL holds without a name) and the connector check. The ids of
+  the rows a failed store rolled back differ (Python's attempt takes one first), and so does the
+  timestamp each backend stamps: those are masked in the error texts; the timestamp is its own
+  check (Python stamps its import time, a §4 row).
 
 Python reaches the stand-ins because the modules' URL constants are patched here (and the
 licence server's host rewritten in `requests`); Rust because its instance is started with the
@@ -28,7 +37,7 @@ they are within seconds of each other; everything else is compared byte for byte
     PARITY_SUITES=tests/e2e/rust_parity_ext_tools_e2e.py scripts/rust-parity.sh
 
 Ports (all overridable, defaults in the suite's own range): EXT_PARITY_RUST_PORT,
-EXT_FEEDS_STUB_PORT, EXT_MCP_STUB_PORT.
+EXT_FEEDS_STUB_PORT, EXT_MCP_STUB_PORT, EXT_SUBLIME_STUB_PORT, EXT_CLOSED_PORT (nothing listens).
 """
 
 import asyncio
@@ -71,6 +80,9 @@ FEEDS_PORT = int(os.environ.get("EXT_FEEDS_STUB_PORT", "6631"))
 FEEDS = f"http://127.0.0.1:{FEEDS_PORT}"
 MCP_PORT = int(os.environ.get("EXT_MCP_STUB_PORT", "6632"))
 MCP_URL = f"http://127.0.0.1:{MCP_PORT}"
+SUBLIME_PORT = int(os.environ.get("EXT_SUBLIME_STUB_PORT", "6633"))
+SUBLIME_URL = f"http://127.0.0.1:{SUBLIME_PORT}"
+CLOSED_PORT = int(os.environ.get("EXT_CLOSED_PORT", "6635"))
 
 SFX = uuid.uuid4().hex[:6]
 ADMIN, ANALYST, PORTAL = f"ext_admin{SFX}", f"ext_analyst{SFX}", f"ext_portal{SFX}"
@@ -402,8 +414,10 @@ def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers import connectors
     from app.routers import copilot_mcp
     from app.routers import microsoft_patch_tuesday
+    from app.routers import sublime
 
     MCPService._BASE_URLS[MCPServiceType.LOCAL] = f"{MCP_URL}/mcp"
     MCPService._BASE_URLS[MCPServiceType.CLOUD] = f"{MCP_URL}/query"
@@ -421,6 +435,8 @@ def build_python_app():
     api = APIRouter(prefix="/api")
     api.include_router(microsoft_patch_tuesday.router)
     api.include_router(copilot_mcp.router)
+    api.include_router(sublime.router)
+    api.include_router(connectors.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -504,9 +520,10 @@ class Pair:
         out = [(rec.name, req) for rec in self.recorders for req in rec.take()]
         return r, out
 
-    async def same(self, name, method, path, tok=None, before=None, expect=None, table=None, **kw):
+    async def same(self, name, method, path, tok=None, before=None, expect=None, table=None, masks=(), **kw):
         """Python, then Rust, with the stand-ins reset by `before` for each. `expect` is a status
-        both must answer; `table` returns a value both must leave alike."""
+        both must answer; `table` returns a value both must leave alike; `masks` are
+        `(pattern, replacement)` pairs applied to both bodies (the lengths then compare no more)."""
         if before:
             before()
         r1, out1 = await self.call(self.py, method, path, tok, **kw)
@@ -516,13 +533,15 @@ class Pair:
         r2, out2 = await self.call(self.rs, method, path, tok, **kw)
         t2 = table() if table else None
         (b1, s1), (b2, s2) = masked(r1.content), masked(r2.content)
+        for pattern, replacement in masks:
+            b1, b2 = re.sub(pattern, replacement, b1), re.sub(pattern, replacement, b2)
         ok = r1.status_code == r2.status_code and b1 == b2
         if expect is not None and r1.status_code != expect:
             ok = False
         detail = f"python {r1.status_code} {b1[:1500]!r}\n        rust   {r2.status_code} {b2[:1500]!r}"
         h1 = {k: r1.headers.get(k) for k in RESPONSE_HEADERS}
         h2 = {k: r2.headers.get(k) for k in RESPONSE_HEADERS}
-        if s1 != s2 and h1.get("content-length") and h2.get("content-length"):
+        if (s1 != s2 or masks) and h1.get("content-length") and h2.get("content-length"):
             # Stamps of the same length: the lengths still compare.
             h1.pop("content-length")
             h2.pop("content-length")
@@ -872,7 +891,385 @@ async def mcp_checks(p, t_admin, t_analyst, t_portal):
 # --- Database ----------------------------------------------------------------------------------------
 
 
+# --- Sublime: the message lookups and the connector check --------------------------------------------
+
+SUBLIME_KEY = f"sb-key-{SFX}"
+
+
+def message_answer(sender, recipients):
+    return as_json(200, {"id": "m", "sender": sender, "recipients": recipients})
+
+
+#: Sublime's `GET /v0/messages/{id}` answers, by message id.
+MESSAGES = {
+    "ok": message_answer({"email": "boss@example.com", "name": "Boss"}, [{"email": "victim@example.com"}, {"email": "cc@example.com"}]),
+    "html": raw(502, "text/html", b"<h1>502 Bad Gateway</h1>"),
+    "empty": raw(200, "application/json", b""),
+    "hangup": None,
+    "nosender": as_json(200, {"recipients": [{"email": "x@example.com"}]}),
+    "norcpt": message_answer({"email": "a@example.com"}, []),
+    "rcptstr": message_answer({"email": "a@example.com"}, ""),
+    "rcptchars": message_answer({"email": "a@example.com"}, "ab"),
+    "rcptdict": message_answer({"email": "a@example.com"}, {"0": {"email": "x"}}),
+    "datalist": as_json(200, [1, 2]),
+    "datanull": as_json(200, None),
+    "datastr": as_json(200, "text"),
+    "emailnull": message_answer({"email": None}, [{"email": "x@example.com"}]),
+    "emaillist": message_answer({"email": []}, [{"email": "x@example.com"}]),
+    "emailnested": message_answer({"email": ["a", []]}, [{"email": "x@example.com"}]),
+    "emailpair": message_answer({"email": "a@example.com"}, [{"email": [1, 2]}]),
+    "emaildict": message_answer({"email": {"a": 1}}, [{"email": "x@example.com"}]),
+    "emailnan": raw(200, "application/json", b'{"sender": {"email": NaN}, "recipients": [{"email": "x"}]}'),
+    "emailnone": message_answer({"email": [None]}, [{"email": "x@example.com"}]),
+    "emaillong": message_answer({"email": "s" * 300}, [{"email": "r" * 300}]),
+    "emailodd": message_answer({"email": 5}, [{"email": ["only"]}]),
+    "emailfloat": message_answer({"email": 1.5}, [{"email": True}]),
+    "emailbig": message_answer({"email": 123456789012345678901234567890}, [{"email": -0.0}]),
+    "quoted": message_answer({"email": "o'brien\\\"x\\\\y@example.com"}, [{"email": "ü✓😀@example.com"}]),
+}
+
+
+class Sublime:
+    """`/v0/messages/{id}` from MESSAGES, `/v0/rules?limit=1` as `rules` says."""
+
+    def __init__(self):
+        self.rules = None
+
+    def __call__(self, method, target, headers, body):
+        path, _, _ = target.partition("?")
+        if path.startswith("/v0/messages/"):
+            key = path[len("/v0/messages/") :].split("-", 1)[0]
+            return MESSAGES.get(key, raw(404, "application/json", b'{"error": "not found"}'))
+        if path == "/v0/rules":
+            return self.rules or as_json(200, {"rules": [], "count": 0})
+        return raw(404, "text/plain", b"no such path")
+
+
+SUBLIME_ANSWER = Sublime()
+SB = "/api/sublime"
+
+
+def sublime_connector(url=SUBLIME_URL, key=SUBLIME_KEY):
+    sql("DELETE FROM connectors WHERE connector_name = 'Sublime'")
+    if url is None:
+        return
+    sql(
+        "INSERT INTO connectors (connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
+        "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
+        "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
+        "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) "
+        "VALUES ('Sublime', '3', :u, UTC_TIMESTAMP(), NULL, NULL, :key, 'parity', 'parity', 1, 0, 0, 1, 0, 0, 0, NULL, 1)",
+        u=url,
+        key=key,
+    )
+
+
+def sublime_body(event, message, **over):
+    body = {
+        "api_version": "v0",
+        "created_at": "2026-10-17T10:00:00.123Z",
+        "data": {
+            "flagged_rules": [
+                {"id": "rule-1", "name": "Impersonation of an executive", "severity": "high", "tags": ["bec", "ü", 'q"t']},
+                {"id": "rule-2", "name": "Suspicious link", "tags": []},
+            ],
+            "message": {
+                "canonical_id": "canon-1",
+                "external_id": "ext-1",
+                "id": f"{message}-{SFX}",
+                "mailbox": {"external_id": "mbx-ext", "id": "mbx-1"},
+                "message_source_id": "src-1",
+            },
+            "triggered_actions": [{"id": "act-1", "name": "Notify SOC", "type": "webhook"}],
+        },
+        "id": f"ext-sb-{SFX}-{event}",
+        "type": "message.flagged",
+    }
+    for key, value in over.items():
+        target = body
+        *path, last = key.split("__")
+        for part in path:
+            target = target[part] if not part.isdigit() else target[int(part)]
+        if value is DROP:
+            del target[last]
+        else:
+            target[last] = value
+    return body
+
+
+DROP = object()
+CHILDREN = ("flaggedrule", "mailbox", "recipient", "sender", "triggeredaction")
+CHILD_COLUMNS = {
+    "flaggedrule": "rule_id, name, severity, tags",
+    "mailbox": "external_id, mailbox_id",
+    "recipient": "email, name",
+    "sender": "email, name",
+    "triggeredaction": "action_id, name, type",
+}
+
+
+def latest_alert():
+    """The newest alert of the suite, but its id and timestamp, with its child rows."""
+    with sync_engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id, api_version, created_at, event_id, type, message_id, canonical_id, external_id, message_source_id "
+                "FROM sublimealerts WHERE event_id LIKE :p ORDER BY id DESC LIMIT 1",
+            ),
+            {"p": f"ext-sb-{SFX}-%"},
+        ).first()
+        if row is None:
+            return None
+        out = {"alert": tuple(row[1:])}
+        for child in CHILDREN:
+            rows = conn.execute(text(f"SELECT {CHILD_COLUMNS[child]} FROM {child} WHERE sublime_alert_id = :i ORDER BY id"), {"i": row[0]})
+            out[child] = [tuple(r) for r in rows]
+        return out
+
+
+def alert_count():
+    with sync_engine.connect() as conn:
+        return conn.execute(text("SELECT COUNT(*) FROM sublimealerts WHERE event_id LIKE :p"), {"p": f"ext-sb-{SFX}-%"}).scalar()
+
+
+def stamps(event):
+    with sync_engine.connect() as conn:
+        return [r[0] for r in conn.execute(text("SELECT timestamp FROM sublimealerts WHERE event_id = :e ORDER BY id"), {"e": event})]
+
+
+def sublime_cleanup():
+    for child in CHILDREN:
+        sql(f"DELETE FROM {child} WHERE sublime_alert_id IN (SELECT id FROM sublimealerts WHERE event_id LIKE :p)", p=f"ext-sb-{SFX}-%")
+        sql(f"DELETE FROM {child} WHERE id BETWEEN 9300000 AND 9300099")
+    sql("DELETE FROM sublimealerts WHERE event_id LIKE :p", p=f"ext-sb-{SFX}-%")
+    sql("DELETE FROM sublimealerts WHERE id BETWEEN 9300000 AND 9300099")
+
+
+#: What differs between the two backends' failed stores: the id of the rolled-back alert (in the
+#: parameters and in MySQL's syntax error), the timestamp each stamps and urllib3's object address.
+SUBLIME_MASKS = (
+    (rb"datetime\.datetime\(\d+(, \d+)*\)", b"datetime.datetime(<now>)"),
+    (rb", \d+\)\]\\n\(Background", b", <id>)]\\n(Background"),
+    (rb"'n/a', \d+\)' at line", b"'n/a', <id>)' at line"),
+    (rb"object at 0x[0-9a-f]+", b"object at 0x<address>"),
+)
+
+
+async def sublime_checks(p, t_admin, t_analyst, t_portal):
+    print("\n== Sublime: guards and validation")
+    sublime_connector()
+    A = f"{SB}/alert"
+    await p.same("alert, no token", "POST", A, json={}, expect=401)
+    await p.same("alert, a portal user", "POST", A, t_portal, json={}, expect=403)
+    await p.same("alert, malformed JSON without a token", "POST", A, content=b"{", headers={"Content-Type": "application/json"}, expect=422)
+    await p.same("alerts, no token", "GET", f"{SB}/alerts", expect=401)
+    await p.same("alerts, a portal user", "GET", f"{SB}/alerts", t_portal, expect=403)
+    for label, body in (
+        ("no body", None),
+        ("an empty object", {}),
+        ("a list", [1]),
+        ("a string", "x"),
+        ("wrong types", {"api_version": 1, "created_at": None, "data": [], "id": ["x"], "type": True}),
+        (
+            "nested errors",
+            sublime_body("v", "ok", data__flagged_rules__0__tags="t", data__message__mailbox={"id": 5}, data__triggered_actions=[{}]),
+        ),
+        ("no message", sublime_body("v", "ok", data__message=DROP)),
+    ):
+        kw = {} if body is None else {"json": body}
+        await p.same(f"alert, {label}", "POST", A, t_analyst, table=alert_count, expect=422, **kw)
+
+    print("\n== Sublime: the store")
+    await p.same("store an alert", "POST", A, t_analyst, json=sublime_body("ok", "ok"), table=latest_alert, expect=200)
+    await p.same(
+        "store, no severity, no mailbox id",
+        "POST",
+        A,
+        t_admin,
+        json=sublime_body("min", "ok", data__flagged_rules__0__severity=None, data__message__mailbox__external_id=DROP),
+        table=latest_alert,
+        expect=200,
+    )
+    await p.same(
+        "store, no rules and no actions",
+        "POST",
+        A,
+        t_analyst,
+        json=sublime_body("bare", "ok", data__flagged_rules=[], data__triggered_actions=[]),
+        table=latest_alert,
+        expect=200,
+    )
+    await p.same(
+        "store, quotes and non-ASCII",
+        "POST",
+        A,
+        t_analyst,
+        json=sublime_body("quoted", "quoted", api_version="ü'\"\\"),
+        table=latest_alert,
+        expect=200,
+    )
+    await p.same(
+        "store, a number, a one-item list",
+        "POST",
+        A,
+        t_analyst,
+        json=sublime_body("odd", "emailodd"),
+        table=latest_alert,
+        expect=200,
+    )
+    await p.same("store, a float, a bool", "POST", A, t_analyst, json=sublime_body("float", "emailfloat"), table=latest_alert, expect=200)
+    await p.same("store, a big int, minus zero", "POST", A, t_analyst, json=sublime_body("big", "emailbig"), table=latest_alert, expect=200)
+    await p.same(
+        "store, a message id to quote",
+        "POST",
+        A,
+        t_analyst,
+        json=sublime_body("path", "ok", data__message__id=f"ok-{SFX} a/b?c#d"),
+        table=latest_alert,
+        expect=200,
+    )
+    sublime_connector(key=None)
+    await p.same("store, a connector without a key", "POST", A, t_analyst, json=sublime_body("nokey", "ok"), table=latest_alert, expect=200)
+    sublime_connector()
+
+    print("\n== Sublime: what fails where")
+    failing = [
+        ("no external id", sublime_body("noext", "ok", data__message__external_id=DROP)),
+        ("a long api_version", sublime_body("longapi", "ok", api_version="v" * 300)),
+        ("Sublime answers HTML", sublime_body("html", "html")),
+        ("Sublime answers nothing", sublime_body("empty", "empty")),
+        ("Sublime hangs up", sublime_body("hangup", "hangup")),
+        ("an unknown message", sublime_body("unknown", "unknown")),
+        ("no sender", sublime_body("nosender", "nosender")),
+        ("no recipient", sublime_body("norcpt", "norcpt")),
+        ("recipients an empty string", sublime_body("rcptstr", "rcptstr")),
+        ("recipients a string", sublime_body("rcptchars", "rcptchars")),
+        ("recipients an object", sublime_body("rcptdict", "rcptdict")),
+        ("data a list", sublime_body("datalist", "datalist")),
+        ("data null", sublime_body("datanull", "datanull")),
+        ("data a string", sublime_body("datastr", "datastr")),
+        ("an email null", sublime_body("emailnull", "emailnull")),
+        ("an email an empty list", sublime_body("emaillist", "emaillist")),
+        ("an email a nested empty list", sublime_body("emailnested", "emailnested")),
+        ("an email a pair", sublime_body("emailpair", "emailpair")),
+        ("an email an object", sublime_body("emaildict", "emaildict")),
+        ("an email NaN", sublime_body("emailnan", "emailnan")),
+        ("an email [None]", sublime_body("emailnone", "emailnone")),
+        ("long emails (the recipient first)", sublime_body("emaillong", "emaillong")),
+        ("a long rule name", sublime_body("longrule", "ok", data__flagged_rules__1__name="n" * 300)),
+        (
+            "a long mailbox id and action (the mailbox first)",
+            sublime_body("longmbx", "ok", data__message__mailbox__id="m" * 256, data__triggered_actions__0__type="t" * 400),
+        ),
+        (
+            "a long action and emails (the recipient first)",
+            sublime_body("longact", "emaillong", data__triggered_actions__0__name="a" * 300),
+        ),
+        ("a long action", sublime_body("longact2", "ok", data__triggered_actions__0__id="a" * 300)),
+        ("long tags", sublime_body("longtags", "ok", data__flagged_rules__0__tags=["t" * 100] * 3)),
+    ]
+    for label, body in failing:
+        await p.same(f"store, {label}", "POST", A, t_analyst, json=body, table=alert_count, masks=SUBLIME_MASKS, expect=500)
+    sublime_connector(url=None)
+    await p.same("store, no connector row", "POST", A, t_analyst, json=sublime_body("norow", "ok"), table=alert_count, expect=500)
+    sublime_connector(url=f"http://127.0.0.1:{CLOSED_PORT}")
+    await p.same(
+        "store, a closed port",
+        "POST",
+        A,
+        t_analyst,
+        json=sublime_body("closed", "ok"),
+        table=alert_count,
+        masks=SUBLIME_MASKS,
+        expect=500,
+    )
+    sublime_connector()
+
+    print("\n== Sublime: the listing")
+    L = f"{SB}/alerts"
+    await p.same("list the alerts", "GET", L, t_analyst, expect=200)
+    await p.same("list the alerts (admin)", "GET", L, t_admin, expect=200)
+    sql(
+        "INSERT INTO sublimealerts (id, api_version, created_at, event_id, type, message_id, canonical_id, external_id, "
+        "message_source_id, timestamp) VALUES (9300001, 'v0', 'c', :e, 't', 'm', 'c', 'x', 's', '2026-01-02 03:04:05')",
+        e=f"ext-sb-{SFX}-seeded",
+    )
+    sql("INSERT INTO sender (id, email, name, sublime_alert_id) VALUES (9300001, 's@example.com', NULL, 9300001)")
+    sql("INSERT INTO recipient (id, email, name, sublime_alert_id) VALUES (9300001, 'r@example.com', 'n/a', 9300001)")
+    sql("INSERT INTO recipient (id, email, name, sublime_alert_id) VALUES (9300002, 'q@example.com', NULL, 9300001)")
+    await p.same("list, a sender and a recipient without a name", "GET", L, t_analyst, expect=500)
+    sql("DELETE FROM sender WHERE id = 9300001")
+    sql("DELETE FROM recipient WHERE id IN (9300001, 9300002)")
+    await p.same("list, an alert without child rows", "GET", L, t_analyst, expect=200)
+    sql("DELETE FROM sublimealerts WHERE id = 9300001")
+
+    print("\n== Sublime: the timestamp (section 4: Python stamps its import time)")
+    for client, who in ((p.py, "python"), (p.rs, "rust")):
+        event = f"ext-sb-{SFX}-stamp-{who}"
+        before = datetime.datetime.now().replace(microsecond=0)
+        for _ in range(2):
+            r = await client.post(A, json=sublime_body(f"stamp-{who}", "ok"), headers={"Authorization": f"Bearer {t_analyst}"})
+            if r.status_code != 200:
+                check(f"timestamp: {who} stores", False, r.text)
+            await asyncio.sleep(1.2)
+        got = stamps(event)
+        if who == "python":
+            check(
+                "timestamp: Python stamps both alerts with the same time, before them",
+                len(got) == 2 and got[0] == got[1] and got[0] < before,
+                str(got),
+            )
+        else:
+            check(
+                "timestamp: Rust stamps each alert with its arrival",
+                len(got) == 2 and got[0] < got[1] and before - datetime.timedelta(seconds=1) <= got[0],
+                str(got),
+            )
+
+    print("\n== Sublime: the connector check")
+    with sync_engine.connect() as conn:
+        cid = conn.execute(text("SELECT id FROM connectors WHERE connector_name = 'Sublime'")).scalar()
+    V = f"/api/connectors/verify/{cid}"
+
+    def verified():
+        with sync_engine.connect() as conn:
+            return conn.execute(text("SELECT connector_verified FROM connectors WHERE connector_name = 'Sublime'")).scalar()
+
+    def rules(answer=None, url=SUBLIME_URL, key=SUBLIME_KEY):
+        def go():
+            sql(
+                "UPDATE connectors SET connector_url = :u, connector_api_key = :k, connector_verified = 0 WHERE connector_name = 'Sublime'",
+                u=url,
+                k=key,
+            )
+            SUBLIME_ANSWER.rules = answer
+
+        return go
+
+    await p.same("verify Sublime", "POST", V, t_admin, before=rules(), table=verified, expect=200)
+    await p.same(
+        "verify Sublime, a 401",
+        "POST",
+        V,
+        t_admin,
+        before=rules(raw(401, "application/json", b'{"error":"unauthorized"}')),
+        table=verified,
+    )
+    await p.same("verify Sublime, no key", "POST", V, t_admin, before=rules(key=None), table=verified)
+    await p.same(
+        "verify Sublime, a closed port",
+        "POST",
+        V,
+        t_admin,
+        before=rules(url=f"http://127.0.0.1:{CLOSED_PORT}"),
+        table=verified,
+        masks=SUBLIME_MASKS,
+    )
+    SUBLIME_ANSWER.rules = None
+
+
 SAVED_LICENSES = []
+SAVED_SUBLIME = []
 
 
 def seed():
@@ -881,6 +1278,9 @@ def seed():
         rows = conn.execute(text("SELECT id, license_key, customer_name, customer_email, company_name FROM license ORDER BY id"))
         SAVED_LICENSES.extend(dict(r._mapping) for r in rows)
     sql("DELETE FROM license")
+    with sync_engine.connect() as conn:
+        rows = conn.execute(text("SELECT * FROM connectors WHERE connector_name = 'Sublime'"))
+        SAVED_SUBLIME.extend(dict(r._mapping) for r in rows)
     for name, role in ((ADMIN, 1), (ANALYST, 2), (PORTAL, 4)):
         sql(
             "INSERT INTO `user` (username, password, email, created_at, role_id) VALUES (:n, 'x', 'p@example.com', UTC_TIMESTAMP(), :r)",
@@ -890,6 +1290,10 @@ def seed():
 
 
 def cleanup():
+    sublime_cleanup()
+    sql("DELETE FROM connectors WHERE connector_name = 'Sublime'")
+    for row in SAVED_SUBLIME:
+        sql(f"INSERT INTO connectors ({', '.join(row)}) VALUES ({', '.join(':' + c for c in row)})", **row)
     sql("DELETE FROM license_cache WHERE license_key = :k", k=LICENSE_KEY)
     sql("DELETE FROM license WHERE license_key = :k", k=LICENSE_KEY)
     for row in SAVED_LICENSES:
@@ -907,6 +1311,7 @@ async def main():
     recorders = [
         Recorder("feeds", FEEDS_PORT, FEEDS_ANSWER),
         Recorder("mcp", MCP_PORT, MCP_ANSWER, fold=lambda target: target.startswith("/query/") or target == "/verify-license"),
+        Recorder("sublime", SUBLIME_PORT, SUBLIME_ANSWER),
     ]
     proc = None
     try:
@@ -922,11 +1327,13 @@ async def main():
     p = Pair(recorders)
     t_admin, t_analyst, t_portal = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"]), token(PORTAL, ["customer_user"])
     try:
-        sections = os.environ.get("EXT_PARITY_SECTIONS", "patch,mcp").split(",")
+        sections = os.environ.get("EXT_PARITY_SECTIONS", "patch,mcp,sublime").split(",")
         if "patch" in sections:
             await patch_tuesday_checks(p, t_admin, t_analyst, t_portal)
         if "mcp" in sections:
             await mcp_checks(p, t_admin, t_analyst, t_portal)
+        if "sublime" in sections:
+            await sublime_checks(p, t_admin, t_analyst, t_portal)
     finally:
         await p.close()
         proc.terminate()

@@ -12,6 +12,7 @@ from app.auth.models.passkey import UserPasskey
 from app.auth.models.passkey import WebAuthnChallenge
 from app.auth.models.users import User
 from app.connectors.models import Connectors
+from app.connectors.sublime.models.alerts import SublimeAlerts
 from app.connectors.wazuh_indexer.models.sigma import SigmaQuery
 from app.connectors.wazuh_indexer.models.snapshot_and_restore import SnapshotSchedule
 
@@ -20,7 +21,6 @@ from app.customer_provisioning.models.default_settings import (
     CustomerProvisioningDefaultSettings,
 )
 
-# from app.connectors.sublime.models.alerts import SublimeAlerts
 # from app.connectors.wazuh_manager.models.rules import DisabledRule
 from app.db.universal_models import Agents
 from app.db.universal_models import Customers

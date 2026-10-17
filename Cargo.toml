@@ -65,6 +65,7 @@ copilot-license = { path = "crates/copilot-license" }
 copilot-status = { path = "crates/copilot-status" }
 copilot-patch-tuesday = { path = "crates/copilot-patch-tuesday" }
 copilot-mcp = { path = "crates/copilot-mcp" }
+copilot-sublime = { path = "crates/copilot-sublime" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

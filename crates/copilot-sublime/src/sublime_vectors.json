@@ -1,0 +1,1280 @@
+{
+ "requests": [
+  {
+   "body": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "data": {
+     "flagged_rules": [
+      {
+       "id": "r1",
+       "name": "Rule one",
+       "severity": "high",
+       "tags": [
+        "a",
+        "b"
+       ]
+      }
+     ],
+     "message": {
+      "canonical_id": "canon-1",
+      "external_id": "ext-1",
+      "id": "msg-1",
+      "mailbox": {
+       "external_id": "mbx-ext",
+       "id": "mbx-1"
+      },
+      "message_source_id": "src-1"
+     },
+     "triggered_actions": [
+      {
+       "id": "a1",
+       "name": "Notify",
+       "type": "webhook"
+      }
+     ]
+    },
+    "id": "evt-1",
+    "type": "message.flagged"
+   },
+   "outcome": {
+    "ok": {
+     "api_version": "v0",
+     "created_at": "2026-10-17T10:00:00Z",
+     "data": {
+      "flagged_rules": [
+       {
+        "id": "r1",
+        "name": "Rule one",
+        "severity": "high",
+        "tags": [
+         "a",
+         "b"
+        ]
+       }
+      ],
+      "message": {
+       "canonical_id": "canon-1",
+       "external_id": "ext-1",
+       "id": "msg-1",
+       "mailbox": {
+        "external_id": "mbx-ext",
+        "id": "mbx-1"
+       },
+       "message_source_id": "src-1"
+      },
+      "triggered_actions": [
+       {
+        "id": "a1",
+        "name": "Notify",
+        "type": "webhook"
+       }
+      ]
+     },
+     "id": "evt-1",
+     "type": "message.flagged"
+    }
+   }
+  },
+  {
+   "body": {
+    "api_version": 1,
+    "created_at": null,
+    "data": {
+     "flagged_rules": [
+      {
+       "id": "r1",
+       "name": "Rule one",
+       "severity": "high",
+       "tags": [
+        "a",
+        "b"
+       ]
+      }
+     ],
+     "message": {
+      "canonical_id": "canon-1",
+      "external_id": "ext-1",
+      "id": "msg-1",
+      "mailbox": {
+       "external_id": "mbx-ext",
+       "id": "mbx-1"
+      },
+      "message_source_id": "src-1"
+     },
+     "triggered_actions": [
+      {
+       "id": "a1",
+       "name": "Notify",
+       "type": "webhook"
+      }
+     ]
+    },
+    "id": [
+     "x"
+    ],
+    "type": true
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "string_type",
+      "loc": [
+       "api_version"
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "string_type",
+      "loc": [
+       "created_at"
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "string_type",
+      "loc": [
+       "id"
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "string_type",
+      "loc": [
+       "type"
+      ],
+      "msg": "Input should be a valid string"
+     }
+    ]
+   }
+  },
+  {
+   "body": {},
+   "outcome": {
+    "errors": [
+     {
+      "type": "missing",
+      "loc": [
+       "api_version"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "created_at"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "data"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "id"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "type"
+      ],
+      "msg": "Field required"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "api_version": "v0"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "missing",
+      "loc": [
+       "created_at"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "data"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "id"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "type"
+      ],
+      "msg": "Field required"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "data": {
+     "flagged_rules": "r",
+     "message": {},
+     "triggered_actions": [
+      {}
+     ]
+    },
+    "id": "evt-1",
+    "type": "message.flagged"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "list_type",
+      "loc": [
+       "data",
+       "flagged_rules"
+      ],
+      "msg": "Input should be a valid list"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "data",
+       "message",
+       "canonical_id"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "data",
+       "message",
+       "id"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "data",
+       "message",
+       "mailbox"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "data",
+       "message",
+       "message_source_id"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "data",
+       "triggered_actions",
+       0,
+       "id"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "data",
+       "triggered_actions",
+       0,
+       "name"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "data",
+       "triggered_actions",
+       0,
+       "type"
+      ],
+      "msg": "Field required"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "data": {
+     "flagged_rules": [
+      {
+       "id": 1,
+       "name": "n",
+       "tags": "t"
+      },
+      {
+       "id": "r",
+       "name": "n",
+       "tags": [
+        1,
+        null
+       ]
+      }
+     ],
+     "message": {
+      "canonical_id": "canon-1",
+      "external_id": null,
+      "id": "msg-1",
+      "mailbox": {
+       "id": 5
+      },
+      "message_source_id": "src-1"
+     },
+     "triggered_actions": []
+    },
+    "id": "evt-1",
+    "type": "message.flagged"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "string_type",
+      "loc": [
+       "data",
+       "flagged_rules",
+       0,
+       "id"
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "list_type",
+      "loc": [
+       "data",
+       "flagged_rules",
+       0,
+       "tags"
+      ],
+      "msg": "Input should be a valid list"
+     },
+     {
+      "type": "string_type",
+      "loc": [
+       "data",
+       "flagged_rules",
+       1,
+       "tags",
+       0
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "string_type",
+      "loc": [
+       "data",
+       "flagged_rules",
+       1,
+       "tags",
+       1
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "string_type",
+      "loc": [
+       "data",
+       "message",
+       "mailbox",
+       "id"
+      ],
+      "msg": "Input should be a valid string"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "data": {
+     "flagged_rules": [],
+     "message": {
+      "canonical_id": "canon-1",
+      "external_id": "ext-1",
+      "id": "msg-1",
+      "mailbox": null,
+      "message_source_id": "src-1"
+     },
+     "triggered_actions": null
+    },
+    "id": "evt-1",
+    "type": "message.flagged"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "model_attributes_type",
+      "loc": [
+       "data",
+       "message",
+       "mailbox"
+      ],
+      "msg": "Input should be a valid dictionary or object to extract fields from"
+     },
+     {
+      "type": "list_type",
+      "loc": [
+       "data",
+       "triggered_actions"
+      ],
+      "msg": "Input should be a valid list"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "data": [],
+    "id": "evt-1",
+    "type": "message.flagged"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "model_attributes_type",
+      "loc": [
+       "data"
+      ],
+      "msg": "Input should be a valid dictionary or object to extract fields from"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "data": {
+     "flagged_rules": [
+      {
+       "id": "r",
+       "name": "n",
+       "severity": 3,
+       "tags": []
+      }
+     ],
+     "message": "m",
+     "triggered_actions": []
+    },
+    "id": "evt-1",
+    "type": "message.flagged"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "string_type",
+      "loc": [
+       "data",
+       "flagged_rules",
+       0,
+       "severity"
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "model_attributes_type",
+      "loc": [
+       "data",
+       "message"
+      ],
+      "msg": "Input should be a valid dictionary or object to extract fields from"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "data": {
+     "flagged_rules": [],
+     "message": {
+      "canonical_id": "canon-1",
+      "external_id": "ext-1",
+      "id": "msg-1",
+      "mailbox": {
+       "external_id": "mbx-ext",
+       "id": "mbx-1"
+      },
+      "message_source_id": "src-1",
+      "extra": 1
+     },
+     "triggered_actions": []
+    },
+    "id": "evt-1",
+    "type": "message.flagged",
+    "extra": "kept?"
+   },
+   "outcome": {
+    "ok": {
+     "api_version": "v0",
+     "created_at": "2026-10-17T10:00:00Z",
+     "data": {
+      "flagged_rules": [],
+      "message": {
+       "canonical_id": "canon-1",
+       "external_id": "ext-1",
+       "id": "msg-1",
+       "mailbox": {
+        "external_id": "mbx-ext",
+        "id": "mbx-1"
+       },
+       "message_source_id": "src-1"
+      },
+      "triggered_actions": []
+     },
+     "id": "evt-1",
+     "type": "message.flagged"
+    }
+   }
+  },
+  {
+   "body": {
+    "api_version": "ü ✓",
+    "created_at": 1.5,
+    "data": {
+     "flagged_rules": [
+      {
+       "id": "r1",
+       "name": "Rule one",
+       "severity": "high",
+       "tags": [
+        "a",
+        "b"
+       ]
+      }
+     ],
+     "message": {
+      "canonical_id": "canon-1",
+      "external_id": "ext-1",
+      "id": "msg-1",
+      "mailbox": {
+       "external_id": "mbx-ext",
+       "id": "mbx-1"
+      },
+      "message_source_id": "src-1"
+     },
+     "triggered_actions": [
+      {
+       "id": "a1",
+       "name": "Notify",
+       "type": "webhook"
+      }
+     ]
+    },
+    "id": "evt-1",
+    "type": "message.flagged"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "string_type",
+      "loc": [
+       "created_at"
+      ],
+      "msg": "Input should be a valid string"
+     }
+    ]
+   }
+  }
+ ],
+ "schemas": [
+  {
+   "row": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "event_id": "evt-1",
+    "type": "message.flagged",
+    "message_id": "msg-1",
+    "canonical_id": "canon-1",
+    "external_id": "ext-1",
+    "message_source_id": "src-1",
+    "timestamp": "2026-10-17T10:00:01",
+    "flagged_rules": [
+     {
+      "rule_id": "r1",
+      "name": "Rule",
+      "severity": null,
+      "tags": "[\"a\"]"
+     }
+    ],
+    "mailbox": [
+     {
+      "external_id": null,
+      "mailbox_id": "mbx-1"
+     }
+    ],
+    "triggered_actions": [],
+    "sender": [
+     {
+      "email": "s@example.com",
+      "name": "n/a"
+     }
+    ],
+    "recipients": [
+     {
+      "email": "r@example.com",
+      "name": "n/a"
+     }
+    ]
+   },
+   "outcome": {
+    "ok": {
+     "api_version": "v0",
+     "created_at": "2026-10-17T10:00:00Z",
+     "event_id": "evt-1",
+     "type": "message.flagged",
+     "message_id": "msg-1",
+     "canonical_id": "canon-1",
+     "external_id": "ext-1",
+     "message_source_id": "src-1",
+     "timestamp": "2026-10-17T10:00:01",
+     "flagged_rules": [
+      {
+       "rule_id": "r1",
+       "name": "Rule",
+       "severity": null,
+       "tags": "[\"a\"]"
+      }
+     ],
+     "mailbox": [
+      {
+       "external_id": null,
+       "mailbox_id": "mbx-1"
+      }
+     ],
+     "triggered_actions": [],
+     "sender": [
+      {
+       "email": "s@example.com",
+       "name": "n/a"
+      }
+     ],
+     "recipients": [
+      {
+       "email": "r@example.com",
+       "name": "n/a"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "row": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "event_id": "evt-1",
+    "type": "message.flagged",
+    "message_id": "msg-1",
+    "canonical_id": "canon-1",
+    "external_id": "ext-1",
+    "message_source_id": "src-1",
+    "timestamp": "2026-10-17T10:00:01",
+    "flagged_rules": [
+     {
+      "rule_id": "r1",
+      "name": "Rule",
+      "severity": null,
+      "tags": "[\"a\"]"
+     }
+    ],
+    "mailbox": [
+     {
+      "external_id": null,
+      "mailbox_id": "mbx-1"
+     }
+    ],
+    "triggered_actions": [],
+    "sender": [
+     {
+      "email": "s@example.com",
+      "name": null
+     }
+    ],
+    "recipients": [
+     {
+      "email": "r@example.com",
+      "name": "n/a"
+     }
+    ]
+   },
+   "outcome": {
+    "error": "1 validation error for SublimeAlertsSchema\nsender.0.name\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+   }
+  },
+  {
+   "row": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "event_id": "evt-1",
+    "type": "message.flagged",
+    "message_id": "msg-1",
+    "canonical_id": "canon-1",
+    "external_id": "ext-1",
+    "message_source_id": "src-1",
+    "timestamp": "2026-10-17T10:00:01",
+    "flagged_rules": [
+     {
+      "rule_id": "r1",
+      "name": "Rule",
+      "severity": null,
+      "tags": "[\"a\"]"
+     }
+    ],
+    "mailbox": [
+     {
+      "external_id": null,
+      "mailbox_id": "mbx-1"
+     }
+    ],
+    "triggered_actions": [],
+    "sender": [
+     {
+      "email": "s@example.com",
+      "name": null
+     }
+    ],
+    "recipients": [
+     {
+      "email": "x",
+      "name": "n/a"
+     },
+     {
+      "email": "y",
+      "name": null
+     }
+    ]
+   },
+   "outcome": {
+    "error": "2 validation errors for SublimeAlertsSchema\nsender.0.name\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nrecipients.1.name\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+   }
+  },
+  {
+   "row": {
+    "api_version": "v0",
+    "created_at": "2026-10-17T10:00:00Z",
+    "event_id": "evt-1",
+    "type": "message.flagged",
+    "message_id": "msg-1",
+    "canonical_id": "canon-1",
+    "external_id": "ext-1",
+    "message_source_id": "src-1",
+    "timestamp": "2026-10-17T10:00:01.250000",
+    "flagged_rules": [],
+    "mailbox": [],
+    "triggered_actions": [],
+    "sender": [],
+    "recipients": []
+   },
+   "outcome": {
+    "ok": {
+     "api_version": "v0",
+     "created_at": "2026-10-17T10:00:00Z",
+     "event_id": "evt-1",
+     "type": "message.flagged",
+     "message_id": "msg-1",
+     "canonical_id": "canon-1",
+     "external_id": "ext-1",
+     "message_source_id": "src-1",
+     "timestamp": "2026-10-17T10:00:01.250000",
+     "flagged_rules": [],
+     "mailbox": [],
+     "triggered_actions": [],
+     "sender": [],
+     "recipients": []
+    }
+   }
+  }
+ ],
+ "tags": [
+  {
+   "tags": [],
+   "dumps": "[]"
+  },
+  {
+   "tags": [
+    "a",
+    "b"
+   ],
+   "dumps": "[\"a\", \"b\"]"
+  },
+  {
+   "tags": [
+    "ü",
+    "q\"uote",
+    "back\\slash",
+    "\n",
+    "✓ 😀"
+   ],
+   "dumps": "[\"\\u00fc\", \"q\\\"uote\", \"back\\\\slash\", \"\\n\", \"\\u2713 \\ud83d\\ude00\"]"
+  }
+ ],
+ "emails": [
+  {
+   "data": "{\"sender\": {\"email\": \"s@example.com\"}, \"recipients\": [{\"email\": \"r@example.com\"}, {\"email\": \"r2\"}]}",
+   "sender": {
+    "ok": "s@example.com"
+   },
+   "recipient": {
+    "ok": "r@example.com"
+   }
+  },
+  {
+   "data": "{\"sender\": {\"email\": null}, \"recipients\": [{\"email\": 5}]}",
+   "sender": {
+    "ok": null
+   },
+   "recipient": {
+    "ok": 5
+   }
+  },
+  {
+   "data": "{\"sender\": {\"email\": [1, \"a\"]}, \"recipients\": [{\"email\": {\"x\": 1}}]}",
+   "sender": {
+    "ok": [
+     1,
+     "a"
+    ]
+   },
+   "recipient": {
+    "ok": {
+     "x": 1
+    }
+   }
+  },
+  {
+   "data": "{\"sender\": {}, \"recipients\": []}",
+   "sender": {
+    "error": {
+     "class": "KeyError",
+     "text": "'email'"
+    }
+   },
+   "recipient": {
+    "error": {
+     "class": "IndexError",
+     "text": "list index out of range"
+    }
+   }
+  },
+  {
+   "data": "{\"sender\": \"s\", \"recipients\": \"r\"}",
+   "sender": {
+    "error": {
+     "class": "TypeError",
+     "text": "string indices must be integers, not 'str'"
+    }
+   },
+   "recipient": {
+    "error": {
+     "class": "TypeError",
+     "text": "string indices must be integers, not 'str'"
+    }
+   }
+  },
+  {
+   "data": "{\"sender\": [\"s\"], \"recipients\": \"\"}",
+   "sender": {
+    "error": {
+     "class": "TypeError",
+     "text": "list indices must be integers or slices, not str"
+    }
+   },
+   "recipient": {
+    "error": {
+     "class": "IndexError",
+     "text": "string index out of range"
+    }
+   }
+  },
+  {
+   "data": "{\"sender\": null, \"recipients\": {\"0\": {\"email\": \"x\"}}}",
+   "sender": {
+    "error": {
+     "class": "TypeError",
+     "text": "'NoneType' object is not subscriptable"
+    }
+   },
+   "recipient": {
+    "error": {
+     "class": "KeyError",
+     "text": "0"
+    }
+   }
+  },
+  {
+   "data": "{\"recipients\": [null]}",
+   "sender": {
+    "error": {
+     "class": "KeyError",
+     "text": "'sender'"
+    }
+   },
+   "recipient": {
+    "error": {
+     "class": "TypeError",
+     "text": "'NoneType' object is not subscriptable"
+    }
+   }
+  },
+  {
+   "data": "{\"sender\": {\"email\": 1}, \"recipients\": [[\"x\"]]}",
+   "sender": {
+    "ok": 1
+   },
+   "recipient": {
+    "error": {
+     "class": "TypeError",
+     "text": "list indices must be integers or slices, not str"
+    }
+   }
+  },
+  {
+   "data": "{\"sender\": {\"email\": true}, \"recipients\": [5]}",
+   "sender": {
+    "ok": true
+   },
+   "recipient": {
+    "error": {
+     "class": "TypeError",
+     "text": "'int' object is not subscriptable"
+    }
+   }
+  },
+  {
+   "data": "[]",
+   "sender": {
+    "error": {
+     "class": "TypeError",
+     "text": "list indices must be integers or slices, not str"
+    }
+   },
+   "recipient": {
+    "error": {
+     "class": "TypeError",
+     "text": "list indices must be integers or slices, not str"
+    }
+   }
+  },
+  {
+   "data": "\"text\"",
+   "sender": {
+    "error": {
+     "class": "TypeError",
+     "text": "string indices must be integers, not 'str'"
+    }
+   },
+   "recipient": {
+    "error": {
+     "class": "TypeError",
+     "text": "string indices must be integers, not 'str'"
+    }
+   }
+  },
+  {
+   "data": "null",
+   "sender": {
+    "error": {
+     "class": "TypeError",
+     "text": "'NoneType' object is not subscriptable"
+    }
+   },
+   "recipient": {
+    "error": {
+     "class": "TypeError",
+     "text": "'NoneType' object is not subscriptable"
+    }
+   }
+  },
+  {
+   "data": "7",
+   "sender": {
+    "error": {
+     "class": "TypeError",
+     "text": "'int' object is not subscriptable"
+    }
+   },
+   "recipient": {
+    "error": {
+     "class": "TypeError",
+     "text": "'int' object is not subscriptable"
+    }
+   }
+  }
+ ],
+ "params": [
+  {
+   "values": [
+    {
+     "text": "v0"
+    },
+    {
+     "text": "2026-10-17T10:00:00Z"
+    },
+    {
+     "text": "evt-1"
+    },
+    {
+     "text": null
+    },
+    {
+     "time": "2026-10-17 16:59:02.756315"
+    }
+   ],
+   "repr": "('v0', '2026-10-17T10:00:00Z', 'evt-1', None, datetime.datetime(2026, 10, 17, 16, 59, 2, 756315))"
+  },
+  {
+   "values": [
+    {
+     "json": "[\"a\", []]"
+    },
+    {
+     "text": "n/a"
+    },
+    {
+     "id": 7
+    }
+   ],
+   "repr": "(['a', []], 'n/a', 7)"
+  },
+  {
+   "values": [
+    {
+     "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+     "text": "y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'"
+    },
+    {
+     "text": null
+    },
+    {
+     "text": "[\"a\", \"b\"]"
+    },
+    {
+     "id": 1234567
+    }
+   ],
+   "repr": "('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ... (102 characters truncated) ... xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', \"y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y ... (102 characters truncated) ... 'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'y'\", None, '[\"a\", \"b\"]', 1234567)"
+  },
+  {
+   "values": [
+    {
+     "text": "ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀"
+    },
+    {
+     "time": "2026-01-07 00:00:00"
+    },
+    {
+     "time": "2026-01-07 00:00:05"
+    }
+   ],
+   "repr": "('ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓ ... (62 characters truncated) ... ✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀ü✓😀', datetime.datetime(2026, 1, 7, 0, 0), datetime.datetime(2026, 1, 7, 0, 0, 5))"
+  },
+  {
+   "values": [
+    {
+     "json": "[\"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\"]"
+    },
+    {
+     "text": "n/a"
+    },
+    {
+     "id": 3
+    }
+   ],
+   "repr": "(['zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz ... (204 characters truncated) ... zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz'], 'n/a', 3)"
+  },
+  {
+   "values": [
+    {
+     "id": 7
+    }
+   ],
+   "repr": "(7,)"
+  }
+ ],
+ "literals": [
+  {
+   "value": "null",
+   "outcome": {
+    "ok": "NULL"
+   }
+  },
+  {
+   "value": "true",
+   "outcome": {
+    "ok": "1"
+   }
+  },
+  {
+   "value": "false",
+   "outcome": {
+    "ok": "0"
+   }
+  },
+  {
+   "value": "0",
+   "outcome": {
+    "ok": "0"
+   }
+  },
+  {
+   "value": "-5",
+   "outcome": {
+    "ok": "-5"
+   }
+  },
+  {
+   "value": "12345678901234567890123",
+   "outcome": {
+    "ok": "12345678901234567890123"
+   }
+  },
+  {
+   "value": "1.5",
+   "outcome": {
+    "ok": "1.5e0"
+   }
+  },
+  {
+   "value": "0.1",
+   "outcome": {
+    "ok": "0.1e0"
+   }
+  },
+  {
+   "value": "-0.0",
+   "outcome": {
+    "ok": "-0.0e0"
+   }
+  },
+  {
+   "value": "1e+100",
+   "outcome": {
+    "ok": "1e+100"
+   }
+  },
+  {
+   "value": "1e-07",
+   "outcome": {
+    "ok": "1e-07"
+   }
+  },
+  {
+   "value": "1.2345678901234568e+17",
+   "outcome": {
+    "ok": "1.2345678901234568e+17"
+   }
+  },
+  {
+   "value": "[]",
+   "outcome": {
+    "ok": "()"
+   }
+  },
+  {
+   "value": "[1]",
+   "outcome": {
+    "ok": "(1)"
+   }
+  },
+  {
+   "value": "[[]]",
+   "outcome": {
+    "ok": "(())"
+   }
+  },
+  {
+   "value": "[1, [true, null, 2.5]]",
+   "outcome": {
+    "ok": "(1,(1,NULL,2.5e0))"
+   }
+  },
+  {
+   "value": "{\"a\": 1}",
+   "outcome": {
+    "error": {
+     "class": "TypeError",
+     "text": "dict can not be used as parameter"
+    }
+   }
+  },
+  {
+   "value": "[1, {}]",
+   "outcome": {
+    "error": {
+     "class": "TypeError",
+     "text": "dict can not be used as parameter"
+    }
+   }
+  },
+  {
+   "value": "[NaN]",
+   "outcome": {
+    "error": {
+     "class": "ProgrammingError",
+     "text": "nan can not be used with MySQL"
+    }
+   }
+  },
+  {
+   "value": "Infinity",
+   "outcome": {
+    "error": {
+     "class": "ProgrammingError",
+     "text": "inf can not be used with MySQL"
+    }
+   }
+  },
+  {
+   "value": "-Infinity",
+   "outcome": {
+    "error": {
+     "class": "ProgrammingError",
+     "text": "-inf can not be used with MySQL"
+    }
+   }
+  },
+  {
+   "value": "[2, NaN, {}]",
+   "outcome": {
+    "error": {
+     "class": "ProgrammingError",
+     "text": "nan can not be used with MySQL"
+    }
+   }
+  }
+ ]
+}
