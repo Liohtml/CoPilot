@@ -64,6 +64,7 @@ copilot-integration-provisioning = { path = "crates/copilot-integration-provisio
 copilot-license = { path = "crates/copilot-license" }
 copilot-status = { path = "crates/copilot-status" }
 copilot-wazuh-rules = { path = "crates/copilot-wazuh-rules" }
+copilot-case-templates = { path = "crates/copilot-case-templates" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

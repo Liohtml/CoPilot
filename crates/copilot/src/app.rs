@@ -116,7 +116,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // the Wazuh-indexer reads (/available-source, /available-indices, /mappings)
     // copilot-ingest's.
     "/api/incidents/db_operations",
-    // The template CRUD; the library and /suggest stay in Python.
+    // The template CRUD (copilot-incidents), the library and /suggest
+    // (copilot-case-templates).
     "/api/incidents/case_templates",
     "/api/incidents/tag_access",
     // /api/incidents/alerts: the Velociraptor Sigma exclusion rules (CRUD and
@@ -357,6 +358,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_uba::REQUIREMENTS);
     all.extend_from_slice(copilot_integration_modules::REQUIREMENTS);
     all.extend_from_slice(copilot_wazuh_rules::REQUIREMENTS);
+    all.extend_from_slice(copilot_case_templates::REQUIREMENTS);
     all.extend_from_slice(copilot_license::REQUIREMENTS);
     all.extend_from_slice(copilot_status::REQUIREMENTS);
     all.push(TableRequirement {
@@ -462,6 +464,9 @@ pub struct App {
     /// The Wazuh manager's rule switches, the exclusion and the Atomic Red
     /// Team listings (`copilot-wazuh-rules`) with their caches.
     pub wazuh_rules: copilot_wazuh_rules::RulesState,
+    /// The case-template library (with its per-process cache) and the
+    /// template suggestions (`copilot-case-templates`).
+    pub case_templates: copilot_case_templates::CaseTemplatesState,
     /// The Python backend's data directory (`COPILOT_BACKEND_DATA_DIR`).
     pub backend_data_dir: std::path::PathBuf,
 }
@@ -549,6 +554,18 @@ impl App {
         )
         .map_err(anyhow::Error::msg)
         .context("building the Atomic Red Team client")?;
+        let case_templates = copilot_case_templates::CaseTemplatesState::new(
+            ctx.clone(),
+            wazuh.es.clone(),
+            cfg.catalog
+                .github_api_url
+                .clone()
+                .unwrap_or_else(|| "https://api.github.com".into()),
+            cfg.catalog
+                .github_raw_url
+                .clone()
+                .unwrap_or_else(|| "https://raw.githubusercontent.com".into()),
+        );
         let modules = copilot_integration_modules::ModulesState::new(
             ctx.clone(),
             cfg.integration_modules_url.clone(),
@@ -715,6 +732,7 @@ impl App {
             license,
             sidebar,
             wazuh_rules,
+            case_templates,
             backend_data_dir: cfg.backend_data_dir.clone(),
         })
     }
@@ -796,9 +814,16 @@ impl App {
                 "/api/incidents/db_operations",
                 copilot_incidents::db_operations(self.ctx.clone()),
             )
+            // The template CRUD and, merged into it, the library and the
+            // suggestions (static paths, which axum prefers to `/{template_id}`).
             .nest(
                 "/api/incidents/case_templates",
-                copilot_incidents::case_templates(self.ctx.clone()),
+                copilot_incidents::case_templates(self.ctx.clone())
+                    .merge(copilot_case_templates::router(self.case_templates.clone()))
+                    .layer(axum::middleware::from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    )),
             )
             .nest(
                 "/api/incidents/tag_access",
@@ -1162,37 +1187,15 @@ impl App {
                 let fallback = Router::new()
                     .fallback(copilot_gateway::proxy_handler)
                     .with_state(proxy.clone());
-                // Static paths still served by Python under a prefix whose
-                // `/{id}` route would otherwise capture them.
-                let mut app = app;
-                for path in copilot_incidents::routes::case_templates::LEGACY_PATHS {
-                    let proxy = proxy.clone();
-                    app = app.route(
-                        &format!("/api/incidents/case_templates{path}"),
-                        axum::routing::any(
-                            move |req: Request| async move { proxy.forward(req).await },
-                        ),
-                    );
-                }
                 app.method_not_allowed_fallback({
                     let proxy = proxy.clone();
                     move |req: Request| async move { proxy.forward(req).await }
                 })
                 .fallback_service(fallback)
             }
-            None => {
-                // Without Python nothing serves these; keep `/{template_id}`
-                // from answering them.
-                let mut app = app;
-                for path in copilot_incidents::routes::case_templates::LEGACY_PATHS {
-                    app = app.route(
-                        &format!("/api/incidents/case_templates{path}"),
-                        axum::routing::any(|| async { ApiError::RouteNotFound }),
-                    );
-                }
-                app.method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
-                    .fallback(root_or_404)
-            }
+            None => app
+                .method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
+                .fallback(root_or_404),
         };
         // Last, so it wraps every route and the fallback (the proxy to
         // Python included) after routing: the request timer of

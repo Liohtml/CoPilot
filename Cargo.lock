@@ -467,6 +467,7 @@ dependencies = [
  "copilot-agents",
  "copilot-ai-analyst",
  "copilot-auth",
+ "copilot-case-templates",
  "copilot-connectors",
  "copilot-core",
  "copilot-customer-portal",
@@ -624,6 +625,34 @@ dependencies = [
  "thiserror",
  "unicode-normalization",
  "zeroize",
+]
+
+[[package]]
+name = "copilot-case-templates"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-incidents",
+ "copilot-ingest",
+ "copilot-jinja",
+ "copilot-searches",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "copilot-yaml",
+ "futures",
+ "http",
+ "num-bigint-dig",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

@@ -1361,3 +1361,204 @@ async fn connector_yaml_upload_is_python_s_when_the_directory_is_not_writable() 
     h.exec("DELETE FROM connectors WHERE id = 5").await;
     cleanup(&h).await;
 }
+
+#[tokio::test]
+async fn case_template_library_and_suggestions_follow_python() {
+    use wiremock::matchers::query_param;
+
+    if !configured() {
+        return;
+    }
+    let github = stand_in(6).await;
+    let extra = format!(
+        "COPILOT_GITHUB_API_URL={0}/api\nCOPILOT_GITHUB_RAW_URL={0}/raw\n",
+        github.uri()
+    );
+    let h = harness_or_skip!(None, &extra);
+    let (acme_alert, beta_alert) = h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let repo = "socfortress/CoPilot-Case-Templates";
+    let tree = json!({"sha": "x", "tree": [
+        {"path": "sysmon", "type": "tree"},
+        {"path": "sysmon/a.yaml", "type": "blob"},
+        {"path": "sysmon/b.yml", "type": "blob"},
+        {"path": "sysmon/c.yaml", "type": "blob"},
+        {"path": "sysmon/README.md", "type": "blob"},
+        {"path": "linux/x.yaml", "type": "blob"},
+    ]});
+    Mock::given(method("GET"))
+        .and(path(format!("/api/repos/{repo}/git/trees/main")))
+        .and(query_param("recursive", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(tree))
+        .mount(&github)
+        .await;
+    let playbook = format!(
+        "key: e2e-a{s}\nname: E2E Mimikatz {s}\nsource: wazuh\ntasks:\n  - {{title: second, order_index: 2}}\n  - {{title: first, order_index: 1, mandatory: yes}}\n"
+    );
+    for (file, body) in [
+        ("sysmon/a.yaml", playbook.clone()),
+        ("sysmon/b.yml", "key: [unclosed\n".to_string()),
+        ("sysmon/c.yaml", playbook.clone()),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(format!("/raw/{repo}/main/{file}")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&github)
+            .await;
+    }
+    let base = "/api/incidents/case_templates";
+    let (st, _) = h.call("GET", &format!("{base}/library"), None, None).await;
+    assert_eq!(st, 401);
+    let (st, out) = h
+        .call("GET", &format!("{base}/library"), Some(&analyst), None)
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(out["success"], json!(true), "{out}");
+    assert_eq!(
+        out["invalid_paths"],
+        json!(["sysmon/b.yml", "sysmon/c.yaml"])
+    );
+    let entries = out["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1, "{out}");
+    assert_eq!(entries[0]["key"], json!(format!("e2e-a{s}")));
+    assert_eq!(entries[0]["tasks"][0]["title"], json!("first"));
+    assert_eq!(entries[0]["tasks"][0]["mandatory"], json!(true));
+    assert_eq!(entries[0]["file_path"], json!("sysmon/a.yaml"));
+    let (st, out) = h
+        .call(
+            "GET",
+            &format!("{base}/library/e2e-a{s}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), &out["entry"]["name"]),
+        (200, &json!(format!("E2E Mimikatz {s}")))
+    );
+    let (st, out) = h
+        .call("GET", &format!("{base}/library/nope"), Some(&admin), None)
+        .await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            404,
+            json!({"success": false, "message": "Library entry 'nope' not found. Try POST /library/refresh if you just pushed it."})
+        )
+    );
+    // Import: a global template, its tasks by order; a second import is the 409.
+    let (st, out) = h
+        .call(
+            "POST",
+            &format!("{base}/library/e2e-a{s}/import"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(out["success"], json!(true), "{out}");
+    assert_eq!(out["template"]["customer_code"], json!(null));
+    assert_eq!(out["template"]["created_by"], json!(format!("analyst{s}")));
+    assert_eq!(out["template"]["tasks"][0]["title"], json!("first"));
+    let template_id = out["template"]["id"].as_i64().unwrap();
+    let (st, out) = h
+        .call(
+            "POST",
+            &format!("{base}/library/e2e-a{s}/import"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 409, "{out}");
+    // The library is refreshed on demand.
+    let (st, out) = h
+        .call(
+            "POST",
+            &format!("{base}/library/refresh"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!((st.as_u16(), &out["loaded"]), (200, &json!(1)), "{out}");
+    // Suggestions: the imported template ranks on the alert's title.
+    let (st, out) = h
+        .call(
+            "GET",
+            &format!("{base}/suggest?alert_id={acme_alert}&limit=50"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(out["success"], json!(true), "{out}");
+    let mine = out["suggestions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["template"]["id"] == json!(template_id))
+        .cloned()
+        .unwrap_or_else(|| panic!("{out}"));
+    assert!(
+        mine["reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["signal"] == json!("keyword") || r["signal"] == json!("source")),
+        "{mine}"
+    );
+    // Another tenant's alert reads as missing; another tenant's customer is a 403.
+    let (st, out) = h
+        .call(
+            "GET",
+            &format!("{base}/suggest?alert_id={beta_alert}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            200,
+            json!({"suggestions": [], "total_candidates": 0, "success": false, "message": format!("Alert id={beta_alert} not found")})
+        )
+    );
+    let (st, _) = h
+        .call(
+            "GET",
+            &format!("{base}/suggest?customer_code=beta{s}"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 403);
+    let (st, out) = h
+        .call(
+            "GET",
+            &format!("{base}/suggest?limit=0&alert_id=x"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 422, "{out}");
+    h.exec(&format!(
+        "DELETE FROM incident_management_case_template_task WHERE template_id = {template_id}"
+    ))
+    .await;
+    h.exec(&format!(
+        "DELETE FROM incident_management_case_template WHERE id = {template_id}"
+    ))
+    .await;
+    let _ = sqlx::query("DELETE FROM incident_management_asset WHERE alert_linked IN (?, ?)")
+        .bind(acme_alert)
+        .bind(beta_alert)
+        .execute(h.db.pool())
+        .await;
+    let _ = sqlx::query("DELETE FROM incident_management_alert WHERE id IN (?, ?)")
+        .bind(acme_alert)
+        .bind(beta_alert)
+        .execute(h.db.pool())
+        .await;
+    cleanup(&h).await;
+}

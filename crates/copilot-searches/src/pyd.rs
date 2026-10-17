@@ -92,6 +92,8 @@ pub struct Field {
     pub default: Default,
     /// `ge=` / `le=` for an `int`.
     pub range: (Option<i64>, Option<i64>),
+    /// `max_length=` for a `str` (in characters).
+    pub max_len: Option<usize>,
 }
 
 impl Field {
@@ -102,6 +104,7 @@ impl Field {
             ty,
             default: Default::Required,
             range: (None, None),
+            max_len: None,
         }
     }
 
@@ -112,12 +115,19 @@ impl Field {
             ty,
             default,
             range: (None, None),
+            max_len: None,
         }
     }
 
     /// With `ge=` / `le=`.
     pub const fn range(mut self, ge: Option<i64>, le: Option<i64>) -> Self {
         self.range = (ge, le);
+        self
+    }
+
+    /// With `max_length=` (a `str`, or the `str` of an `Optional[str]`).
+    pub const fn max_len(mut self, n: usize) -> Self {
+        self.max_len = Some(n);
         self
     }
 }
@@ -273,9 +283,10 @@ fn check_model(model: &'static Model, input: &Value, loc: &[Loc], ctx: &mut Ctx)
         let here = child(loc, Loc::Key(f.name.into()));
         match items.iter().find(|(k, _)| k.as_str() == Some(f.name)) {
             Some((_, v)) => {
-                if let Some(v) = check(&f.ty, v, &here, ctx) {
-                    if check_range(f, &v, &here, ctx) {
-                        out.push((s(f.name), v));
+                if let Some(checked) = check(&f.ty, v, &here, ctx) {
+                    if check_range(f, &checked, &here, ctx) && check_len(f, &checked, v, &here, ctx)
+                    {
+                        out.push((s(f.name), checked));
                     }
                 }
             }
@@ -324,6 +335,23 @@ fn check_range(f: &Field, v: &Value, loc: &[Loc], ctx: &mut Ctx) -> bool {
             );
             return false;
         }
+    }
+    true
+}
+
+/// `max_length`: pydantic-core's `string_too_long`, on the input as given.
+fn check_len(f: &Field, v: &Value, input: &Value, loc: &[Loc], ctx: &mut Ctx) -> bool {
+    let (Some(max), Value::Str(t)) = (f.max_len, v) else {
+        return true;
+    };
+    if t.chars().count() > max {
+        ctx.push(
+            loc,
+            "string_too_long",
+            format!("String should have at most {max} characters"),
+            input,
+        );
+        return false;
     }
     true
 }

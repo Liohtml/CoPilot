@@ -16,6 +16,9 @@ stand-ins that record what arrives:
   Team index, the folder listing, each technique's YAML and markdown;
 * the Wazuh indexer (the host logs: `_alias`, then one `_search` per index);
 * the CarbonBlack module (`POST /copilot-carbonblack-module/collect`, on the AI module's stand-in);
+* GitHub again for the case-template library (`/api/repos/socfortress/CoPilot-Case-Templates/git/trees/main`
+  and the raw playbooks, fetched concurrently — compared as a set), and the indexer's `GET
+  /{index}/_doc/{id}` for the raw document `/suggest` reads;
 * Sublime (`GET /v0/rules`: the verification that follows a YAML upload to connector 6), reached by
   the in-process routers and, for Rust, by its legacy backend — Python's connector routes served by
   uvicorn in a subprocess, which the Rust instance hands that verification to.
@@ -37,7 +40,7 @@ column.
 Ports (all overridable): CORE_LEFTOVERS_PARITY_RUST_PORT, CORE_LEFTOVERS_LICENSE_STUB_PORT,
 CORE_LEFTOVERS_MANAGER_STUB_PORT, CORE_LEFTOVERS_AI_STUB_PORT, CORE_LEFTOVERS_GITHUB_STUB_PORT,
 CORE_LEFTOVERS_INDEXER_STUB_PORT, CORE_LEFTOVERS_SUBLIME_STUB_PORT, CORE_LEFTOVERS_LEGACY_PORT.
-CORE_LEFTOVERS_PARITY_SECTIONS (default `1,2,3,4`) runs some sections only.
+CORE_LEFTOVERS_PARITY_SECTIONS (default `1,2,3,4,5`) runs some sections only.
 
     PARITY_SUITES=tests/e2e/rust_parity_core_leftovers_e2e.py scripts/rust-parity.sh
 """
@@ -324,6 +327,7 @@ async def restore_table(table, saved):
 
 
 async def cleanup():
+    await cleanup_suggestions()
     if "license" in SAVED:
         await restore_table("license_cache", SAVED.get("license_cache", []))
         await restore_table("license", SAVED.get("license", []))
@@ -373,6 +377,7 @@ def build_python_app():
     from app.routers.carbonblack import router as carbonblack_router
     from app.routers.connectors import router as connectors_router
     from app.routers.healthcheck import router as healthcheck_router
+    from app.routers.incidents import router as incidents_router
     from app.routers.wazuh_manager import router as wazuh_manager_router
 
     api = APIRouter(prefix="/api")
@@ -381,6 +386,7 @@ def build_python_app():
     api.include_router(healthcheck_router)
     api.include_router(carbonblack_router)
     api.include_router(connectors_router)
+    api.include_router(incidents_router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -454,6 +460,11 @@ def patch_python_clients():
     requests.Session.request = session_request
     redirect_python_httpx()
     redirect_python_aiohttp()
+    # The case-template library builds its URLs from these module constants.
+    from app.incidents.services import template_library
+
+    template_library.GITHUB_API_BASE = f"http://127.0.0.1:{GITHUB_PORT}/api"
+    template_library.GITHUB_RAW_BASE = f"http://127.0.0.1:{GITHUB_PORT}/raw"
 
 
 class _ModuleRedirect(httpx.AsyncBaseTransport):
@@ -1002,6 +1013,8 @@ TEXT = "text/plain; charset=utf-8"
 
 
 def github_answer(rec, method, path, headers, body):
+    if path.startswith((f"/api/repos/{LIB_REPO}/", f"/raw/{LIB_REPO}/")):
+        return library_answer(rec, method, path, headers, body)
     mode = rec.mode
     if path == INDEX_PATH:
         index = mode.get("index", "ok")
@@ -1333,6 +1346,8 @@ def indexer_answer(rec, method, path, headers, body):
             if hits == "str":
                 return ok({"hits": {"hits": "abc"}})
         return ok({"hits": {"hits": []}})
+    if method == "GET" and "/_doc/" in p:
+        return doc_answer(rec, p)
     return ok({"error": "no route"}, 404)
 
 
@@ -1615,6 +1630,466 @@ async def connector_upload_section(pair):
     await reset_yaml_connectors()
 
 
+# --- 5. the case-template library and /suggest -------------------------------------------
+LIB_REPO = "socfortress/CoPilot-Case-Templates"
+LIB_TREE = f"/api/repos/{LIB_REPO}/git/trees/main"
+LIB_RAW = f"/raw/{LIB_REPO}/main/"
+LIB_NAME = f"Lib ransomware {SFX}"
+LIB_A, LIB_G = f"lib-a-{SFX}", f"lib-g-{SFX}"
+LIB_FILES = {
+    "sysmon/a.yaml": (
+        f"key: '  {LIB_A}  '\nname: '{LIB_NAME}'\ndescription: Contain the host\nsource: wazuh\n"
+        "match: {field: ' data_win_system_eventID ', value: 1}\n"
+        "tags: {mitre: [T1486], when: 2024-01-02, at: 2024-01-02 03:04:05, big: 123456789012345678901234567890}\n"
+        "tasks:\n  - {title: ' Isolate ', order_index: 2, mandatory: yes, guidelines: cut the network}\n"
+        "  - {title: Triage, order_index: 1, description: ''}\n  - {title: Backups, order_index: true}\n"
+        "  - {title: '  ', order_index: 0}\n  - {title: neg, order_index: -1}\n  - {title: float, order_index: 1.0}\n  - not a task\n"
+    ),
+    "sysmon/b.yml": "key: [unclosed\n",
+    "sysmon/c.yaml": f"key: {LIB_A}\nname: duplicate\n",
+    "sysmon/d.yaml": "- a list\n",
+    "sysmon/f.yaml": "key: no-name\n",
+    "sysmon/g.yaml": f"key: {LIB_G}\nname: Zeta {SFX}\ntags: {{owner: soc}}\n",
+}
+LIB_TREE_ITEMS = [
+    {"path": "sysmon", "type": "tree"},
+    {"path": "sysmon/a.yaml", "type": "blob"},
+    {"path": "sysmon/b.yml", "type": "blob"},
+    {"path": "sysmon/c.yaml", "type": "blob"},
+    {"path": "sysmon/d.yaml", "type": "blob"},
+    {"path": "sysmon/e.yaml", "type": "blob"},
+    {"path": "sysmon/f.yaml", "type": "blob"},
+    {"path": "sysmon/g.yaml", "type": "blob"},
+    {"path": "sysmon/notes.md", "type": "blob"},
+    {"path": "linux/x.yaml", "type": "blob"},
+    {"type": "blob"},
+    {"path": "sysmon/h.yaml", "type": "commit"},
+]
+#: What the library stand-in serves: the tree's mode and the files.
+LIB = {"mode": "ok", "files": dict(LIB_FILES)}
+
+
+def library_answer(rec, method, path, headers, body):
+    if path.partition("?")[0] == LIB_TREE:
+        mode = LIB["mode"]
+        if mode == "close":
+            return None
+        answers = {
+            "500": ok({"message": "Server Error"}, 500),
+            "html": (200, "text/html", b"<html>rate limited</html>", {}),
+            "list": ok([1, 2]),
+            "int-path": ok({"tree": [{"type": "blob", "path": 5}]}),
+            "int-tree": ok({"tree": 7}),
+            "str-item": ok({"tree": ["x"]}),
+            "no-tree": ok({"sha": "s"}),
+        }
+        return answers.get(mode) or ok({"sha": "s", "truncated": False, "tree": LIB_TREE_ITEMS})
+    if path.startswith(LIB_RAW):
+        name = path[len(LIB_RAW) :]
+        if name in LIB["files"]:
+            return 200, TEXT, LIB["files"][name].encode(), {}
+    return 404, TEXT, b"404: Not Found", {}
+
+
+LAST_REFRESH = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,6})?$")
+
+
+def mask_library(body):
+    """`last_refresh` is each process's own clock reading: checked for its form, then masked."""
+    if isinstance(body, dict) and isinstance(body.get("last_refresh"), str) and LAST_REFRESH.match(body["last_refresh"]):
+        body = {**body, "last_refresh": "<utcnow>"}
+    return body
+
+
+def mask_import(body):
+    """A created template's id, its tasks' ids and the timestamps differ between the twins."""
+    if isinstance(body, dict) and isinstance(body.get("template"), dict):
+        t = {**body["template"], "id": "<id>", "created_at": "<t>", "updated_at": "<t>"}
+        t["tasks"] = [{**x, "id": "<id>", "template_id": "<id>"} for x in t.get("tasks", [])]
+        body = {**body, "template": t, "message": re.sub(r"id=\d+", "id=<id>", body.get("message", ""))}
+    return body
+
+
+def by_request(out):
+    """The raw files are fetched concurrently: compared as a set."""
+    return {k: sorted(v, key=lambda c: (c["method"], c["path"], json.dumps(c["headers"]), c["body"])) for k, v in out.items()}
+
+
+async def lib_same(pair, name, method, path, tok=None, reset=None, adjust=mask_library, snapshot=None):
+    (p, pout), (q, qout) = await pair.both(method, path, tok, reset=reset, snapshot=snapshot)
+    b1, b2 = adjust(body_of(p)), adjust(body_of(q))
+    check(
+        f"{name} [{p.status_code}]",
+        p.status_code == q.status_code and b1 == b2,
+        f"python {p.status_code} {json.dumps(b1)[:900]}\n        rust   {q.status_code} {json.dumps(b2)[:900]}",
+    )
+    check(
+        f"{name}: the same upstream requests",
+        by_request(pout) == by_request(qout),
+        f"python {json.dumps(by_request(pout))[:1500]}\n        rust   {json.dumps(by_request(qout))[:1500]}",
+    )
+    if snapshot is not None:
+        sp, sq = pair.snapshots["py"], pair.snapshots["rs"]
+        check(f"{name}: the same rows", sp == sq, f"python {sp}\n        rust   {sq}")
+    return p, q
+
+
+async def refresh_both(pair, tok):
+    """Each backend refreshes its own cache from what the stand-in serves now."""
+    for client in (pair.py, pair.rs):
+        await pair.send(client, "POST", "/api/incidents/case_templates/library/refresh", tok, None, None, None)
+    for rec in RECS:
+        rec.take()
+
+
+async def imported_rows():
+    found = await rows(
+        "SELECT name, description, customer_code, source, is_default, match_field, match_value, created_by "
+        "FROM incident_management_case_template WHERE name = :n",
+        n=LIB_NAME,
+    )
+    tasks = await rows(
+        "SELECT t.title, t.description, t.guidelines, t.mandatory, t.order_index FROM incident_management_case_template_task t "
+        "JOIN incident_management_case_template c ON c.id = t.template_id WHERE c.name = :n ORDER BY t.order_index, t.title",
+        n=LIB_NAME,
+    )
+    return {"templates": found, "tasks": tasks}
+
+
+async def drop_imported():
+    await sql(
+        "DELETE FROM incident_management_case_template_task WHERE template_id IN "
+        "(SELECT id FROM (SELECT id FROM incident_management_case_template WHERE name IN (:a, :b)) x)",
+        a=LIB_NAME,
+        b=f"Zeta {SFX}",
+    )
+    await sql("DELETE FROM incident_management_case_template WHERE name IN (:a, :b)", a=LIB_NAME, b=f"Zeta {SFX}")
+
+
+async def library_checks(pair):
+    C = "/api/incidents/case_templates"
+    t_admin = token(ADMIN, ["admin"])
+    t_analyst = token(ANALYST, ["analyst"])
+    t_portal = token(PORTAL, ["customer_user"])
+    LIB["mode"], LIB["files"] = "ok", dict(LIB_FILES)
+    await pair.same("GET /library: no token", "GET", f"{C}/library")
+    await pair.same("GET /library: portal user", "GET", f"{C}/library", t_portal)
+    await lib_same(pair, "GET /library: the first read loads the library", "GET", f"{C}/library", t_analyst)
+    await lib_same(pair, "GET /library: then from the cache", "GET", f"{C}/library", t_admin)
+    await lib_same(pair, "GET /library/{key}", "GET", f"{C}/library/{LIB_A}", t_analyst)
+    await lib_same(pair, "GET /library/{key}: unknown", "GET", f"{C}/library/nope", t_analyst)
+    await lib_same(pair, "GET /library/refresh (Starlette routes it to /{key})", "GET", f"{C}/library/refresh", t_admin)
+    await lib_same(pair, "POST /library/refresh", "POST", f"{C}/library/refresh", t_admin)
+    for mode in ("500", "html", "list", "int-path", "int-tree", "str-item", "no-tree", "close"):
+        LIB["mode"] = mode
+        await lib_same(pair, f"POST /library/refresh: the tree answers {mode}", "POST", f"{C}/library/refresh", t_admin)
+        await lib_same(pair, f"GET /library after a failed refresh ({mode}): the cache stays", "GET", f"{C}/library", t_admin)
+    # `no-tree` was a successful refresh of an empty library: load it again.
+    LIB["mode"] = "ok"
+    await refresh_both(pair, t_admin)
+    await lib_same(pair, "GET /library: loaded again", "GET", f"{C}/library", t_admin)
+    # Import: a global template whose tasks are the normalised ones.
+    await lib_same(pair, "POST /library/{key}/import: no token", "POST", f"{C}/library/{LIB_A}/import")
+    await lib_same(
+        pair,
+        "POST /library/{key}/import",
+        "POST",
+        f"{C}/library/{LIB_A}/import",
+        t_analyst,
+        reset=drop_imported,
+        adjust=mask_import,
+        snapshot=imported_rows,
+    )
+
+    async def taken():
+        await drop_imported()
+        await sql(
+            "INSERT INTO incident_management_case_template (name, is_default, created_by, created_at, updated_at) "
+            "VALUES (:n, 0, 'x', UTC_TIMESTAMP(), UTC_TIMESTAMP())",
+            n=LIB_NAME.upper(),
+        )
+
+    await lib_same(
+        pair,
+        "POST /library/{key}/import: the name exists (MySQL's collation)",
+        "POST",
+        f"{C}/library/{LIB_A}/import",
+        t_admin,
+        reset=taken,
+    )
+    await sql("DELETE FROM incident_management_case_template WHERE name = :n", n=LIB_NAME.upper())
+    await lib_same(
+        pair,
+        "POST /library/{key}/import: no tasks",
+        "POST",
+        f"{C}/library/{LIB_G}/import",
+        t_admin,
+        reset=drop_imported,
+        adjust=mask_import,
+    )
+    await lib_same(pair, "POST /library/{key}/import: unknown key", "POST", f"{C}/library/nope/import", t_admin)
+    await drop_imported()
+    # Entries the response models refuse: the list's message, the detail's and the import's 400.
+    LIB["files"] = {
+        **LIB_FILES,
+        "sysmon/a.yaml": f"key: {LIB_A}\nname: '{LIB_NAME}'\ndescription: 5\nsource: {'s' * 51}\ntasks:\n  - {{title: t, order_index: 0, guidelines: [1]}}\n",
+        "sysmon/g.yaml": f"key: {LIB_G}\nname: Zeta {SFX}\ntags: {{1: x}}\n",
+    }
+    await refresh_both(pair, t_admin)
+    await lib_same(pair, "GET /library: an entry the model refuses", "GET", f"{C}/library", t_admin)
+    await lib_same(pair, "GET /library/{key}: the model refuses it (400)", "GET", f"{C}/library/{LIB_G}", t_admin)
+    await lib_same(
+        pair,
+        "POST /library/{key}/import: a task the model refuses (400)",
+        "POST",
+        f"{C}/library/{LIB_A}/import",
+        t_admin,
+        reset=drop_imported,
+    )
+    LIB["files"] = dict(LIB_FILES)
+    await refresh_both(pair, t_admin)
+    await drop_imported()
+
+
+# The suggestion seed: seven-digit ids in 7731500–7731999.
+SUGGEST_INDEX = f"suggest-{SFX}"
+RAW_SOURCE = {"data_win_system_eventID": "1", "rule": {"mitre": {"id": ["T1566.001"]}}, "rule_groups": "web|lateral movement"}
+
+
+def doc_answer(rec, p):
+    mode = rec.mode.get("doc", "ok")
+    index, _, doc_id = p.strip("/").partition("/_doc/")
+    if mode == "404" or doc_id == "missing":
+        return ok({"_index": index, "_type": "_doc", "_id": doc_id, "found": False}, 404)
+    return ok({"_index": index, "_type": "_doc", "_id": doc_id, "_version": 1, "found": True, "_source": RAW_SOURCE})
+
+
+async def seed_suggestions():
+    templates = [
+        (7731500, f"Ransomware — host containment {SFX}", "Isolate the host; see T1486 and lateral movement.", None, None, 0, None, None),
+        (7731501, f"Endpoint triage {SFX}", None, CUST_A, "wazuh", 1, None, None),
+        (7731502, f"Sysmon process create {SFX}", None, None, "wazuh", 0, "data_win_system_eventID", "1"),
+        (7731503, f"Other customer {SFX}", None, CUST_B, None, 0, None, None),
+        (7731504, f"Credential dumping {SFX}", "Mimikatz lsass T1003", None, None, 0, None, None),
+        (7731505, f"High level {SFX}", None, None, None, 0, "rule_level", "12"),
+        (7731506, f"Office {SFX}", None, None, "office365", 0, None, None),
+    ]
+    for tid, name, desc, cust, source, default, field, value in templates:
+        await sql(
+            "INSERT INTO incident_management_case_template (id, name, description, customer_code, source, is_default, "
+            "created_by, created_at, updated_at, match_field, match_value) VALUES (:i, :n, :d, :c, :s, :f, 'seed', "
+            "'2026-01-02 03:04:05', '2026-01-02 03:04:05', :mf, :mv)",
+            i=tid,
+            n=name,
+            d=desc,
+            c=cust,
+            s=source,
+            f=default,
+            mf=field,
+            mv=value,
+        )
+    tasks = [
+        (7731600, 7731500, "Isolate", "Cut network T1486", None, 1, 0),
+        (7731601, 7731500, "Backups", None, "check vss and brute force", 0, 1),
+        (7731602, 7731501, "Collect", "PowerShell T1059", None, 0, 0),
+        (7731603, 7731502, "Review", "process tree", None, 0, 0),
+        (7731604, 7731504, "Dump", "Command and Scripting Interpreter", None, 0, 0),
+    ]
+    for kid, tid, title, desc, guide, mandatory, order in tasks:
+        await sql(
+            "INSERT INTO incident_management_case_template_task (id, template_id, title, description, guidelines, mandatory, "
+            "order_index) VALUES (:i, :t, :ti, :d, :g, :m, :o)",
+            i=kid,
+            t=tid,
+            ti=title,
+            d=desc,
+            g=guide,
+            m=mandatory,
+            o=order,
+        )
+    context = json.dumps(
+        {
+            "rule_mitre_id": ["T1059.001", "T1003"],
+            "rule_groups": "windows,ransomware_behaviour,syslog",
+            "rule_mitre_technique": "Command and Scripting Interpreter",
+            "rule_level": 12,
+        },
+    )
+    alerts = [
+        (7731700, CUST_A, "Possible ransomware PowerShell lsass dump detected on host", context, "d1"),
+        (7731701, CUST_B, "Possible ransomware PowerShell lsass dump detected on host", context, "d2"),
+        (7731702, CUST_A, "Office mailbox rule", "{}", "missing"),
+    ]
+    for i, (aid, cust, name, ctx_text, doc) in enumerate(alerts):
+        await sql(
+            "INSERT INTO incident_management_alert (id, alert_name, alert_description, status, alert_creation_time, customer_code, "
+            "source, escalated) VALUES (:i, :n, 'd', 'OPEN', '2026-01-02 03:04:05', :c, 'wazuh', 0)",
+            i=aid,
+            n=name,
+            c=cust,
+        )
+        await sql(
+            "INSERT INTO incident_management_alertcontext (id, source, context) VALUES (:i, 'wazuh', :c)",
+            i=7731710 + i,
+            c=ctx_text,
+        )
+        await sql(
+            "INSERT INTO incident_management_asset (id, alert_linked, asset_name, alert_context_id, customer_code, index_name, "
+            "index_id) VALUES (:i, :a, 'host', :x, :c, :ix, :d)",
+            i=7731720 + i,
+            a=aid,
+            x=7731710 + i,
+            c=cust,
+            ix=SUGGEST_INDEX,
+            d=doc,
+        )
+    for i, tag in enumerate(("lateral-movement", "T1486", "brute force")):
+        await sql("INSERT INTO incident_management_alerttag (id, tag) VALUES (:i, :t)", i=7731730 + i, t=tag)
+        for aid in (7731700, 7731701):
+            await sql("INSERT INTO incident_management_alert_to_tag (alert_id, tag_id) VALUES (:a, :t)", a=aid, t=7731730 + i)
+    # Usage history: another tenant's case applied the global template.
+    await sql(
+        "INSERT INTO incident_management_case (id, case_name, case_description, case_creation_time, case_status, escalated, "
+        "customer_code) VALUES (7731900, 'c', 'd', '2026-01-02 03:04:05', 'OPEN', 0, :c)",
+        c=CUST_B,
+    )
+    await sql(
+        "INSERT INTO incident_management_case_task (id, case_id, title, mandatory, order_index, status, created_by, created_at, "
+        "updated_at, template_task_id) VALUES (7731910, 7731900, 'Isolate', 1, 0, 'TODO', 'seed', '2026-01-02 03:04:05', "
+        "'2026-01-02 03:04:05', 7731600)",
+    )
+
+
+async def cleanup_suggestions():
+    await sql("DELETE FROM incident_management_case_task WHERE id BETWEEN 7731900 AND 7731999")
+    await sql("DELETE FROM incident_management_case WHERE id BETWEEN 7731900 AND 7731999")
+    await sql("DELETE FROM incident_management_alert_to_tag WHERE alert_id BETWEEN 7731700 AND 7731709")
+    await sql("DELETE FROM incident_management_alerttag WHERE id BETWEEN 7731730 AND 7731739")
+    await sql("DELETE FROM incident_management_asset WHERE id BETWEEN 7731720 AND 7731729")
+    await sql("DELETE FROM incident_management_alertcontext WHERE id BETWEEN 7731710 AND 7731719")
+    await sql("DELETE FROM incident_management_alert WHERE id BETWEEN 7731700 AND 7731709")
+    await sql("DELETE FROM incident_management_case_template_task WHERE id BETWEEN 7731600 AND 7731699")
+    await sql("DELETE FROM incident_management_case_template WHERE id BETWEEN 7731500 AND 7731599")
+
+
+def async_es(out):
+    """`AsyncElasticsearch` over aiohttp, as the SIEM suite compares it: the headers as a set
+    (reqwest writes `Host` last) and elasticsearch-py's patch version masked."""
+    indexer = [
+        {**c, "headers": sorted([k, ES_AGENT.sub("(Python 3.11)", v) if k == "user-agent" else v] for k, v in c["headers"])}
+        for c in out.get("indexer", [])
+    ]
+    return {**out, "indexer": indexer}
+
+
+async def suggest_same(pair, name, path, tok=None):
+    (p, pout), (q, qout) = await pair.both("GET", path, tok)
+    b1, b2 = body_of(p), body_of(q)
+    check(
+        f"{name} [{p.status_code}]",
+        p.status_code == q.status_code and b1 == b2,
+        f"python {p.status_code} {json.dumps(b1)[:900]}\n        rust   {q.status_code} {json.dumps(b2)[:900]}",
+    )
+    check(
+        f"{name}: the same upstream requests",
+        async_es(pout) == async_es(qout),
+        f"python {json.dumps(async_es(pout))[:1500]}\n        rust   {json.dumps(async_es(qout))[:1500]}",
+    )
+
+
+def suggestion_for(body, template_id):
+    for s in body.get("suggestions", []) if isinstance(body, dict) else []:
+        if s.get("template", {}).get("id") == template_id:
+            return s
+    return None
+
+
+async def suggest_checks(pair):
+    C = "/api/incidents/case_templates/suggest"
+    t_admin = token(ADMIN, ["admin"])
+    t_analyst = token(ANALYST, ["analyst"])
+    t_portal = token(PORTAL, ["customer_user"])
+    indexer = RECS[4]
+    await pair.same("GET /suggest: no token", "GET", C)
+    await pair.same("GET /suggest: portal user", "GET", C, t_portal)
+    for q in ("alert_id=x", "limit=0", "limit=51", "limit=abc", "alert_id=&limit=0", "alert_id=1.5", "limit=1.0&alert_id=+7731799"):
+        await pair.same(f"GET /suggest?{q}", "GET", f"{C}?{q}", t_admin)
+    indexer.mode.clear()
+    for label, q, tok in (
+        ("an alert: every signal, the raw document read for a condition", "alert_id=7731700&limit=50", t_admin),
+        ("an alert, the analyst's own", "alert_id=7731700&limit=50", t_analyst),
+        ("an alert whose context is empty, its document missing", "alert_id=7731702&limit=50", t_admin),
+        ("an unknown alert", "alert_id=7731799", t_admin),
+        ("an alert id beyond 64 bits", "alert_id=0099999999999999999999", t_admin),
+        ("manual: customer and source", f"customer_code={CUST_A}&source=wazuh&limit=50", t_admin),
+        ("manual: a customer only", f"customer_code={CUST_B}&limit=50", t_admin),
+        ("manual: a source only", "source=office365&limit=50", t_admin),
+        ("manual: an empty customer", "customer_code=&limit=50", t_admin),
+        ("manual: nothing, deployment-wide usage", "limit=50", t_admin),
+        ("manual: the analyst's customer", f"customer_code={CUST_A}&limit=50", t_analyst),
+        ("the default limit", f"customer_code={CUST_A}", t_admin),
+        ("limit=1", "alert_id=7731700&limit=1", t_admin),
+        ("an alert id given with a customer (ignored)", f"alert_id=7731700&customer_code={CUST_B}&limit=50", t_admin),
+    ):
+        await suggest_same(pair, f"GET /suggest: {label}", f"{C}?{q}", tok)
+    # Not vacuous: the condition read from the raw document ranks first, the signals score.
+    (p, _), (q, _) = await pair.both("GET", f"{C}?alert_id=7731700&limit=50", t_admin)
+    body = body_of(p)
+    first = (body.get("suggestions") or [{}])[0]
+    ransomware = suggestion_for(body, 7731500) or {}
+    signals = {r["signal"] for r in ransomware.get("reasons", [])}
+    check(
+        "GET /suggest: the raw document's condition ranks first, the alert's signals score (both backends)",
+        body_of(p) == body_of(q)
+        and body.get("success") is True
+        and first.get("condition_matched") is True
+        and first.get("template", {}).get("id") in (7731502, 7731505)
+        and {"tag", "keyword", "rule_group"} <= signals,
+        f"first {json.dumps(first)[:600]}\n        ransomware {json.dumps(ransomware)[:1500]}",
+    )
+    indexer.mode["doc"] = "404"
+    await suggest_same(pair, "GET /suggest: the raw document missing", f"{C}?alert_id=7731700&limit=50", t_admin)
+    indexer.mode.clear()
+    # Differences by design (§4).
+    (p, _), (q, _) = await pair.both("GET", f"{C}?alert_id=7731701&limit=50", t_analyst)
+    b1, b2 = body_of(p), body_of(q)
+    check(
+        "GET /suggest: another tenant's alert reads as missing (Python ranked it)",
+        p.status_code == q.status_code == 200
+        and b1.get("success") is True
+        and b2 == {"suggestions": [], "total_candidates": 0, "success": False, "message": "Alert id=7731701 not found"},
+        f"python {json.dumps(b1)[:300]}\n        rust   {json.dumps(b2)[:300]}",
+    )
+    (p, _), (q, _) = await pair.both("GET", f"{C}?customer_code={CUST_B}", t_analyst)
+    check(
+        "GET /suggest: another tenant's customer is a 403 (Python ranked for it)",
+        p.status_code == 200
+        and q.status_code == 403
+        and body_of(q) == {"success": False, "message": f"Access denied to customer {CUST_B} - insufficient customer permissions"},
+        f"python {p.status_code} {body_of(p)}\n        rust   {q.status_code} {body_of(q)}",
+    )
+    (p, _), (q, _) = await pair.both("GET", f"{C}?limit=50", t_analyst)
+    s1, s2 = suggestion_for(body_of(p), 7731500), suggestion_for(body_of(q), 7731500)
+    check(
+        "GET /suggest: a scoped caller's usage history counts their customers' cases only (Python counted every tenant's)",
+        s1 is not None
+        and s2 is not None
+        and any(r["signal"] == "usage" for r in s1["reasons"])
+        and not any(r["signal"] == "usage" for r in s2["reasons"]),
+        f"python {s1}\n        rust   {s2}",
+    )
+
+
+async def case_templates_section(pair):
+    print("\n== 5. /api/incidents/case_templates: the library and /suggest ==")
+    await library_checks(pair)
+    await seed_suggestions()
+    try:
+        await suggest_checks(pair)
+    finally:
+        await cleanup_suggestions()
+
+
 async def both_twin_bodies(pair, method, path, payload, tok, reset):
     """`Pair.both` for twins: each backend gets its own twin's path and body."""
     got = {}
@@ -1651,7 +2126,7 @@ async def main():
     rs = httpx.AsyncClient(base_url=RUST, timeout=120)
     pair = Pair(py, rs)
     try:
-        sections = os.environ.get("CORE_LEFTOVERS_PARITY_SECTIONS", "1,2,3,4").split(",")
+        sections = os.environ.get("CORE_LEFTOVERS_PARITY_SECTIONS", "1,2,3,4,5").split(",")
         if "1" in sections:
             await customers_section(pair)
         if "2" in sections:
@@ -1660,6 +2135,8 @@ async def main():
             await logs_and_carbonblack_section(pair)
         if "4" in sections:
             await connector_upload_section(pair)
+        if "5" in sections:
+            await case_templates_section(pair)
     finally:
         await py.aclose()
         await rs.aclose()

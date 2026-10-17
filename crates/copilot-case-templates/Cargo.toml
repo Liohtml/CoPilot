@@ -1,0 +1,36 @@
+[package]
+name = "copilot-case-templates"
+description = "The case-template library (GitHub playbooks) and the template suggestions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-incidents = { workspace = true }
+copilot-ingest = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-yaml = { workspace = true }
+copilot-searches = { workspace = true }
+copilot-jinja = { workspace = true }
+num-bigint-dig = { workspace = true }
+axum = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true

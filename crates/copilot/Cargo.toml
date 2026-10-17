@@ -57,6 +57,7 @@ copilot-integration-provisioning = { workspace = true }
 copilot-license = { workspace = true }
 copilot-status = { workspace = true }
 copilot-wazuh-rules = { workspace = true }
+copilot-case-templates = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
