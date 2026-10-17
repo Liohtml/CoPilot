@@ -1,0 +1,33 @@
+[package]
+name = "copilot-reports"
+description = "Reports: the case PDF and DOCX, the customer reports with their charts and SLA section, the SOC operations report (wkhtmltopdf as pdfkit runs it)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-objectstore = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+md-5 = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+flate2 = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

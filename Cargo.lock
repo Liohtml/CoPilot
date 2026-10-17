@@ -1143,6 +1143,7 @@ dependencies = [
 name = "copilot-jinja"
 version = "0.2.0"
 dependencies = [
+ "chrono",
  "num-bigint-dig",
  "num-integer",
  "num-traits",
@@ -1355,6 +1356,31 @@ dependencies = [
  "reqwest",
  "serde_json",
  "sqlx",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-reports"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-objectstore",
+ "copilot-web",
+ "flate2",
+ "futures",
+ "hex",
+ "http",
+ "md-5",
+ "pretty_assertions",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "tokio",
  "tracing",
 ]
 

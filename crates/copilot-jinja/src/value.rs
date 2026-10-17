@@ -110,36 +110,37 @@ impl Value {
         Value::Object(rc)
     }
 
-    /// `StrictUndefined(name=name)`: a missing variable.
+    /// `environment.undefined(name=name)`: a missing variable.
     pub fn undefined_name(name: &str) -> Self {
         Value::Undefined(Rc::new(Undefined {
             hint: None,
             obj: None,
             name: Some(Value::str(name)),
             exc: "UndefinedError",
-            strict: true,
+            strict: strict_undefined(),
         }))
     }
 
-    /// `StrictUndefined(hint)`.
+    /// `environment.undefined(hint)`.
     pub fn undefined_hint(hint: impl Into<String>) -> Self {
         Value::Undefined(Rc::new(Undefined {
             hint: Some(hint.into()),
             obj: None,
             name: None,
             exc: "UndefinedError",
-            strict: true,
+            strict: strict_undefined(),
         }))
     }
 
-    /// `StrictUndefined(obj=obj, name=name)`: a missing attribute or item.
+    /// `environment.undefined(obj=obj, name=name)`: a missing attribute or
+    /// item.
     pub fn undefined_member(obj: &Value, name: Value) -> Self {
         Value::Undefined(Rc::new(Undefined {
             hint: None,
             obj: Some(obj.clone()),
             name: Some(name),
             exc: "UndefinedError",
-            strict: true,
+            strict: strict_undefined(),
         }))
     }
 
@@ -154,7 +155,7 @@ impl Value {
             obj: Some(obj.clone()),
             name: Some(Value::str(attr)),
             exc: "SecurityError",
-            strict: true,
+            strict: strict_undefined(),
         }))
     }
 
@@ -265,6 +266,32 @@ impl Value {
             }
             other => other.clone(),
         }
+    }
+}
+
+thread_local! {
+    static STRICT_UNDEFINED: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
+/// Whether the environment rendering on this thread is `undefined=
+/// StrictUndefined` (the notification renderer) rather than Jinja's default
+/// `Undefined` (the report renderers).
+pub fn strict_undefined() -> bool {
+    STRICT_UNDEFINED.with(std::cell::Cell::get)
+}
+
+/// While alive, the thread's environment uses the given undefined class.
+pub(crate) struct UndefinedMode(bool);
+
+impl UndefinedMode {
+    pub(crate) fn set(strict: bool) -> Self {
+        Self(STRICT_UNDEFINED.with(|s| s.replace(strict)))
+    }
+}
+
+impl Drop for UndefinedMode {
+    fn drop(&mut self) {
+        STRICT_UNDEFINED.with(|s| s.set(self.0));
     }
 }
 

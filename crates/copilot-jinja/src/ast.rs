@@ -230,7 +230,7 @@ pub enum Stmt {
     /// `{% block %}`
     Block(Box<BlockStmt>),
     /// `{% extends %}`
-    Extends(Expr),
+    Extends(Box<Extends>),
     /// `{% include %}`, `{% import %}`, `{% from ... import %}`: anything
     /// that loads another template.
     Load(Box<LoadTemplate>),
@@ -251,6 +251,30 @@ pub struct Output {
     pub items: Vec<OutItem>,
     /// How expressions are turned into text.
     pub escape: Escape,
+    /// `if parent_template is None:` written before it (a template whose
+    /// `extends` is not known at compile time).
+    pub guard: bool,
+}
+
+/// What the generated code checks before an `{% extends %}`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ExtendsCheck {
+    /// The first one: nothing.
+    #[default]
+    None,
+    /// `if parent_template is not None: raise TemplateRuntimeError(…)`.
+    IfExtended,
+    /// `raise TemplateRuntimeError("extended multiple times")`.
+    Always,
+}
+
+/// `Extends`.
+#[derive(Debug, Clone)]
+pub struct Extends {
+    /// The parent template's name.
+    pub template: Expr,
+    /// The check written before it.
+    pub check: ExtendsCheck,
 }
 
 /// One chunk of an output.
@@ -384,6 +408,9 @@ pub struct BlockStmt {
     pub subtree_scoped: bool,
     /// The body (nested blocks included) assigns a variable named `loop`.
     pub subtree_stores_loop: bool,
+    /// `if parent_template is None:` written before the call (a top-level
+    /// block after an `extends` not known at compile time).
+    pub guard: bool,
 }
 
 /// A block's function.
@@ -425,6 +452,24 @@ pub struct LoadTemplate {
     pub targets: Vec<Rc<str>>,
     /// `ignore missing`.
     pub ignore_missing: bool,
+    /// `{% from %}`: the names taken from the template, one per target.
+    pub names: Vec<Rc<str>>,
+    /// `{% from %}` (rather than `{% import %}`).
+    pub from: bool,
+    /// `with context`.
+    pub with_context: bool,
+    /// The statement's line.
+    pub lineno: usize,
+    /// Whether the statement is at the template's top level (its names go
+    /// into the context).
+    pub toplevel: bool,
+    /// The frame names visible at the statement (`dump_local_context`), for
+    /// an import or include `with context`.
+    pub locals: Vec<(Rc<str>, usize)>,
+    /// The frame level each target is stored at.
+    pub target_levels: Vec<usize>,
+    /// `self.position(node)`: `line N` and the template's name.
+    pub position: String,
 }
 
 /// `Assign`.

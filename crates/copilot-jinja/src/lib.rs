@@ -25,6 +25,8 @@ mod attrs;
 mod builtins;
 mod callargs;
 mod compiler;
+pub mod datetime;
+pub mod env;
 mod error;
 mod filters;
 mod format;
@@ -48,6 +50,7 @@ mod urlize;
 mod value;
 pub mod vm;
 
+pub use env::{Autoescape, Data, Directory, Environment};
 pub use error::{Error, Result};
 pub use notify::{Event, Input, MAX_RENDERED_BYTES, compile_template, render};
 

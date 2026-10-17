@@ -339,7 +339,7 @@ impl Symbols {
                 }
             }
             Stmt::Block(_) | Stmt::Scope(_) => {}
-            Stmt::Extends(e) => self.visit_expr(e, false),
+            Stmt::Extends(e) => self.visit_expr(&e.template, false),
             Stmt::Load(l) => {
                 self.visit_expr(&l.template, false);
                 for t in &l.targets {
@@ -536,7 +536,7 @@ impl Undeclared {
                     && self.stmts(&w.body)
             }
             Stmt::Block(_) => true,
-            Stmt::Extends(e) => self.expr(e),
+            Stmt::Extends(e) => self.expr(&e.template),
             Stmt::Load(l) => self.expr(&l.template),
             Stmt::Assign(a) => self.expr(&a.target) && self.expr(&a.value),
             Stmt::AssignBlock(a) => {
@@ -680,7 +680,7 @@ fn subtree_stmt(s: &Stmt) -> Subtree {
             out.stores_loop |= b.subtree_stores_loop;
             out.merge(subtree_stmts(&b.body));
         }
-        Stmt::Extends(e) => out.merge(subtree_expr(e)),
+        Stmt::Extends(e) => out.merge(subtree_expr(&e.template)),
         Stmt::Load(l) => out.merge(subtree_expr(&l.template)),
         Stmt::Assign(a) => {
             out.merge(subtree_expr(&a.target));

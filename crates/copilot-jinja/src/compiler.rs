@@ -26,12 +26,24 @@ pub struct Template {
     pub(crate) self_param: bool,
     pub(crate) blocks: Vec<Rc<BlockDef>>,
     pub(crate) autoescape: bool,
+    /// The name it was loaded under (`None` for `from_string`).
+    pub(crate) name: Option<Rc<str>>,
 }
 
 /// Parses and compiles `source` (`Environment.from_string`).
 pub fn compile(source: &str, autoescape: bool) -> Result<Template> {
     let body = Parser::new(source)?.parse()?;
     Compiler::new(autoescape).template(body)
+}
+
+/// Parses and compiles a template loaded under `name`.
+pub fn compile_named(source: &str, autoescape: bool, name: &str) -> Result<Template> {
+    let body = Parser::new(source)?.parse()?;
+    let mut c = Compiler::new(autoescape);
+    c.name = Some(Rc::from(name));
+    let mut t = c.template(body)?;
+    t.name = Some(Rc::from(name));
+    Ok(t)
 }
 
 /// The compile-time `EvalContext`.
@@ -105,6 +117,8 @@ enum Step {
     Drop,
     /// `CompilerExit`: nothing after this statement is generated.
     Exit,
+    /// `CompilerExit` raised after this statement was generated.
+    KeepAndExit,
 }
 
 struct Compiler {
@@ -114,6 +128,8 @@ struct Compiler {
     assign_stack: Vec<Vec<Rc<str>>>,
     param_def_block: Vec<Vec<Ident>>,
     misplaced_slice: bool,
+    /// The template's name (`self.name` of the code generator).
+    name: Option<Rc<str>>,
 }
 
 fn internal() -> Error {
@@ -197,6 +213,7 @@ impl Compiler {
             assign_stack: Vec::new(),
             param_def_block: Vec::new(),
             misplaced_slice: false,
+            name: None,
         }
     }
 
@@ -268,6 +285,7 @@ impl Compiler {
             self_param,
             blocks: defs,
             autoescape,
+            name: None,
         })
     }
 
@@ -284,6 +302,10 @@ impl Compiler {
                 }
                 Step::Exit => {
                     body.truncate(i);
+                    break;
+                }
+                Step::KeepAndExit => {
+                    body.truncate(i + 1);
                     break;
                 }
             }
@@ -347,6 +369,7 @@ impl Compiler {
                 if frame.toplevel && self.has_known_extends {
                     return Ok(Step::Drop);
                 }
+                b.guard = frame.toplevel && self.extends_so_far > 0;
                 if b.scoped {
                     b.locals = frame
                         .symbols
@@ -363,10 +386,14 @@ impl Compiler {
                         "cannot use extend from a non top-level scope",
                     ));
                 }
-                if self.extends_so_far > 0 && self.has_known_extends {
-                    return Ok(Step::Exit);
+                if self.extends_so_far > 0 {
+                    if self.has_known_extends {
+                        e.check = ExtendsCheck::Always;
+                        return Ok(Step::KeepAndExit);
+                    }
+                    e.check = ExtendsCheck::IfExtended;
                 }
-                self.visit_expr(e, frame, false)?;
+                self.visit_expr(&mut e.template, frame, false)?;
                 if frame.rootlevel {
                     self.has_known_extends = true;
                 }
@@ -374,10 +401,28 @@ impl Compiler {
                 Ok(Step::Keep)
             }
             Stmt::Load(l) => {
-                if l.kind == LoadKind::Import && l.targets.len() == 1 {
+                if l.kind == LoadKind::Import && !l.from {
                     frame.symbols.ref_(&l.targets[0])?;
                 }
                 self.visit_expr(&mut l.template, frame, false)?;
+                l.toplevel = frame.toplevel;
+                l.position = match &self.name {
+                    Some(n) => format!("line {} in {}", l.lineno, pyrepr::str_repr(n)),
+                    None => format!("line {}", l.lineno),
+                };
+                l.target_levels = l
+                    .targets
+                    .iter()
+                    .map(|t| frame.symbols.ref_(t).map(|(level, _)| level))
+                    .collect::<Result<Vec<_>>>()?;
+                if l.with_context {
+                    l.locals = frame
+                        .symbols
+                        .dump_stores()
+                        .into_iter()
+                        .map(|(n, (level, _))| (n, level))
+                        .collect();
+                }
                 Ok(Step::Keep)
             }
             Stmt::Assign(a) => {
@@ -428,6 +473,10 @@ impl Compiler {
                             m.body.truncate(i);
                             return Ok(Step::Exit);
                         }
+                        Step::KeepAndExit => {
+                            m.body.truncate(i + 1);
+                            return Ok(Step::Exit);
+                        }
                     }
                 }
                 self.eval = saved;
@@ -456,8 +505,11 @@ impl Compiler {
     }
 
     fn visit_output(&mut self, o: &mut Output, frame: &Frame) -> Result<Step> {
-        if self.has_known_extends && frame.require_output_check {
-            return Ok(Step::Drop);
+        if frame.require_output_check {
+            if self.has_known_extends {
+                return Ok(Step::Drop);
+            }
+            o.guard = true;
         }
         let items = std::mem::take(&mut o.items);
         let mut out: Vec<OutItem> = Vec::new();
