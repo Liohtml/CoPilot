@@ -1304,6 +1304,9 @@ def start_rust(gh_api, gh_raw):
         "COPILOT_GITHUB_API_URL": gh_api.url,
         "COPILOT_GITHUB_RAW_URL": gh_raw.url,
         "COPILOT_MITRE_STIX_URL": gh_raw.url + MITRE_PATH,
+        # The catalog refresher stays on here; the sidebar's, which follows it by default,
+        # would send its own warm-up requests to the indexer and MinIO stand-ins.
+        "COPILOT_SIDEBAR_REFRESH": "false",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
     }
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)

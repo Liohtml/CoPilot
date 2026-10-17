@@ -1245,7 +1245,8 @@ process-local task, not a hand-over job: the data is deployment-wide, so
 each backend computing its own is the same answer.
 `COPILOT_SIDEBAR_REFRESH` turns it off; unset, it follows
 `COPILOT_CATALOG_REFRESH`, so every parity suite that starts its Rust
-instance with the catalog refresher off has this one off too. Each builder
+instance with the catalog refresher off has this one off too (the catalog
+suite keeps its refresher on and sets `COPILOT_SIDEBAR_REFRESH=false`). Each builder
 is Python's: the same statements (the counts, the `LIMIT 1` reads, one `IN`
 over the scheduled job ids), thresholds and texts; a builder that raises
 leaves its indicator out (`safe_build`). The scheduler and agent-sync
