@@ -494,7 +494,9 @@ the agents CSV leave as Starlette's `Response` through `GZipMiddleware`
 from 1000 bytes, gzip for images too). The Overview reads alert visibility
 once and costs 11 statements for a portal user or an analyst, as Python
 (budget 12, `customer_portal_overview_e2e.py`); an `"*"` in the requested
-`customer_codes` reads as no filter, as Python reads its list. The parity
+`customer_codes` reads as no filter, as Python reads its list. A path with
+an encoded `/` is streamed to Python, since Starlette routes the decoded
+path (the AI reports' routes included). The parity
 suite `rust_parity_customer_portal_e2e.py` compares every route, the logo
 and CSV bytes and headers, the rows of every write, both statement counts,
 and the two caches' behaviour (writes through either backend, two writes in
