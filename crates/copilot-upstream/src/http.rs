@@ -31,7 +31,7 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use bytes::Bytes;
-use copilot_auth::pyvalue::{PyValue, str_repr};
+use copilot_auth::pyvalue::{PyValue, bytes_repr, str_repr};
 use http::{HeaderMap, Method};
 
 use crate::json::{Dumps, py_dumps, py_loads};
@@ -211,6 +211,15 @@ pub struct PyHttp {
     client: reqwest::Client,
     timeout_text: String,
     flavor: Flavor,
+    exact: Option<ExactClients>,
+}
+
+/// The two clients of [`PyHttp::with_exact_headers`]: hyper writes header
+/// names lower-cased or title-cased.
+#[derive(Debug, Clone)]
+struct ExactClients {
+    lower: reqwest::Client,
+    title: reqwest::Client,
 }
 
 /// Parsed parts of an HTTP(S) URL (`urllib3.util.parse_url`).
@@ -238,7 +247,41 @@ impl PyHttp {
     }
 
     fn build(timeout: Duration, verify: bool, flavor: Flavor) -> Result<Self, reqwest::Error> {
-        let client = reqwest::Client::builder()
+        let client = Self::builder(timeout, verify, flavor).build()?;
+        Ok(Self {
+            client,
+            timeout_text: timeout_text(timeout),
+            flavor,
+            exact: None,
+        })
+    }
+
+    /// `requests` (2.33, over http.client) header by header: `Host` first,
+    /// the session's `User-Agent`, `Accept-Encoding`, `Accept` and
+    /// `Connection` (a caller's header of the same name takes its place and
+    /// its spelling), the caller's other headers in order, then
+    /// `Content-Length` and — unless the caller set one — `Content-Type`,
+    /// then `auth=`'s `Authorization`; values latin-1, refused as
+    /// `check_header_validity` and http.client refuse them; names title-cased
+    /// when every one of them is so (`Content-Type`), else lower-cased
+    /// (hyper writes no other spelling). Off by default: the clients built
+    /// before it keep their wire format.
+    pub fn with_exact_headers(
+        mut self,
+        timeout: Duration,
+        verify: bool,
+    ) -> Result<Self, reqwest::Error> {
+        self.exact = Some(ExactClients {
+            lower: Self::builder(timeout, verify, self.flavor).build()?,
+            title: Self::builder(timeout, verify, self.flavor)
+                .http1_title_case_headers()
+                .build()?,
+        });
+        Ok(self)
+    }
+
+    fn builder(timeout: Duration, verify: bool, flavor: Flavor) -> reqwest::ClientBuilder {
+        reqwest::Client::builder()
             .danger_accept_invalid_certs(!verify)
             .connect_timeout(timeout)
             .read_timeout(timeout)
@@ -247,14 +290,8 @@ impl PyHttp {
                 Flavor::Requests => "python-requests/2.33.1",
                 Flavor::Niquests => "niquests/3.18.7",
             })
-            // No `.no_proxy()`: both libraries honour `HTTP(S)_PROXY`,
-            // `ALL_PROXY` and `NO_PROXY` (`trust_env`), and so does reqwest.
-            .build()?;
-        Ok(Self {
-            client,
-            timeout_text: timeout_text(timeout),
-            flavor,
-        })
+        // No `.no_proxy()`: both libraries honour `HTTP(S)_PROXY`,
+        // `ALL_PROXY` and `NO_PROXY` (`trust_env`), and so does reqwest.
     }
 
     /// How Python wrote the timeout (`5.0` for a float, `60` for an int),
@@ -300,7 +337,33 @@ impl PyHttp {
                 ),
             ));
         };
-        let mut builder = self.client.request(req.method.clone(), &url.url);
+        let mut builder = match &self.exact {
+            Some(clients) => {
+                let headers = requests_headers(&req, &parts, body.as_deref(), auth.clone())?;
+                let title = headers.iter().all(|(k, _)| is_title_case(k));
+                let client = if title {
+                    &clients.title
+                } else {
+                    &clients.lower
+                };
+                let mut map = HeaderMap::new();
+                for (k, v) in headers {
+                    let name = http::HeaderName::from_bytes(k.as_bytes()).map_err(|_| {
+                        PyExc::Other(
+                            "InvalidHeader",
+                            format!("Invalid header name {}", str_repr(&k)),
+                        )
+                    })?;
+                    let value = http::HeaderValue::from_bytes(&v).map_err(|_| {
+                        PyExc::ValueError(format!("Invalid header value {}", bytes_repr(&v)))
+                    })?;
+                    map.append(name, value);
+                }
+                let builder = client.request(req.method.clone(), &url.url).headers(map);
+                return self.finish(builder, body, &parts).await;
+            }
+            None => self.client.request(req.method.clone(), &url.url),
+        };
         // Both libraries' session defaults; the answer is decoded below.
         if !req
             .headers
@@ -342,9 +405,22 @@ impl PyHttp {
                 }
             }
         }
+        self.finish(builder, None, &parts).await
+    }
+
+    /// Send a prepared builder (`body` attached first) and read the answer.
+    async fn finish(
+        &self,
+        mut builder: reqwest::RequestBuilder,
+        body: Option<String>,
+        parts: &Parts,
+    ) -> Result<PyResponse, PyExc> {
+        if let Some(b) = body {
+            builder = builder.body(b.into_bytes());
+        }
         let resp = match builder.send().await {
             Ok(r) => r,
-            Err(e) => return Err(self.transport_error(&e, &parts)),
+            Err(e) => return Err(self.transport_error(&e, parts)),
         };
         let status = resp.status().as_u16();
         let reason = resp
@@ -356,7 +432,7 @@ impl PyHttp {
         let headers = resp.headers().clone();
         let body = match resp.bytes().await {
             Ok(b) => b,
-            Err(e) => return Err(self.transport_error(&e, &parts)),
+            Err(e) => return Err(self.transport_error(&e, parts)),
         };
         let body = decode_content(&headers, body)?;
         Ok(PyResponse {
@@ -502,6 +578,131 @@ pub fn decode_content(headers: &HeaderMap, raw: Bytes) -> Result<Bytes, PyExc> {
         _ => return Ok(raw),
     }
     Ok(Bytes::from(out))
+}
+
+/// `name` is what hyper's title case writes for it (`Content-Type`).
+fn is_title_case(name: &str) -> bool {
+    let mut prev = b'-';
+    name.bytes().all(|b| {
+        let ok = if prev == b'-' {
+            !b.is_ascii_lowercase()
+        } else {
+            !b.is_ascii_uppercase()
+        };
+        prev = b;
+        ok
+    })
+}
+
+/// `CaseInsensitiveDict.__setitem__`: an existing name keeps its place and
+/// takes the new spelling.
+fn set_header(headers: &mut Vec<(String, String)>, name: &str, value: String) {
+    match headers
+        .iter_mut()
+        .find(|(k, _)| k.eq_ignore_ascii_case(name))
+    {
+        Some(slot) => *slot = (name.to_string(), value),
+        None => headers.push((name.to_string(), value)),
+    }
+}
+
+/// `requests.utils.check_header_validity`'s value rule
+/// (`^\S[^\r\n]*$|^$`, where `$` also matches before a final newline).
+fn requests_value_ok(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return true;
+    };
+    if copilot_web::form::is_py_space(first) {
+        return false;
+    }
+    let tail = chars.as_str();
+    match tail.find(['\r', '\n']) {
+        None => true,
+        Some(p) => &tail[p..] == "\n",
+    }
+}
+
+/// The headers `requests.request(...)` puts on the wire, in order, as
+/// latin-1 bytes; the exception `prepare_headers` or http.client raises.
+fn requests_headers(
+    req: &PyRequest,
+    parts: &Parts,
+    body: Option<&str>,
+    auth: Option<String>,
+) -> Result<Vec<(String, Vec<u8>)>, PyExc> {
+    let mut headers: Vec<(String, String)> = vec![
+        ("User-Agent".into(), "python-requests/2.33.1".into()),
+        ("Accept-Encoding".into(), "gzip, deflate".into()),
+        ("Accept".into(), "*/*".into()),
+        ("Connection".into(), "keep-alive".into()),
+    ];
+    for (name, value) in &req.headers {
+        set_header(&mut headers, name, value.clone());
+    }
+    for (_, value) in &headers {
+        if !requests_value_ok(value) {
+            return Err(PyExc::Other(
+                "InvalidHeader",
+                format!(
+                    "Invalid leading whitespace, reserved character(s), or return character(s) in \
+                     header value: {}",
+                    str_repr(value)
+                ),
+            ));
+        }
+    }
+    match body {
+        Some(b) if !b.is_empty() => set_header(&mut headers, "Content-Length", b.len().to_string()),
+        Some(_) => {}
+        None => {
+            if req.method != Method::GET
+                && req.method != Method::HEAD
+                && !headers
+                    .iter()
+                    .any(|(k, _)| k.eq_ignore_ascii_case("content-length"))
+            {
+                set_header(&mut headers, "Content-Length", "0".into());
+            }
+        }
+    }
+    if body.is_some()
+        && !headers
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+    {
+        headers.push(("Content-Type".into(), "application/json".into()));
+    }
+    if let Some(a) = auth {
+        set_header(&mut headers, "Authorization", a);
+    }
+    if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("host")) {
+        let default = if parts.scheme == "https" { 443 } else { 80 };
+        let host = match parts.port {
+            Some(p) if p != default => format!("{}:{p}", parts.host),
+            _ => parts.host.clone(),
+        };
+        headers.insert(0, ("Host".into(), host));
+    }
+    // http.client: `value.encode('latin-1')`, then `_is_illegal_header_value`.
+    headers
+        .into_iter()
+        .map(|(k, v)| {
+            let bytes = latin1(&v)?;
+            let illegal = bytes.iter().enumerate().any(|(i, &b)| {
+                let next = bytes.get(i + 1).copied();
+                (b == b'\n' && !matches!(next, Some(b' ' | b'\t')))
+                    || (b == b'\r' && !matches!(next, Some(b' ' | b'\t' | b'\n')))
+            });
+            if illegal {
+                return Err(PyExc::ValueError(format!(
+                    "Invalid header value {}",
+                    bytes_repr(&bytes)
+                )));
+            }
+            Ok((k, bytes))
+        })
+        .collect()
 }
 
 fn timeout_text(d: Duration) -> String {
@@ -1010,6 +1211,59 @@ mod tests {
         assert_eq!(p.url, "http://g/a%20b/%2541%252F%25/x");
         let p = prepare_url("http://g/x/../y/./%7e%41?q=a b", &[]).unwrap();
         assert_eq!(p.url, "http://g/y/~A?q=a%20b");
+    }
+
+    #[test]
+    fn exact_headers_are_requests_order() {
+        // Recorded from cortex4py's `do_post` over requests 2.33.
+        let req = PyRequest::new(Method::POST, "http://Cortex.Example:9001/api/x")
+            .header("Authorization", "Bearer k\u{e9}y")
+            .header("Content-Type", "application/json")
+            .json(Some(PyValue::Dict(Vec::new())));
+        let url = prepare_url(&req.url, &[]).unwrap();
+        let parts = url.parts.unwrap();
+        let headers = requests_headers(&req, &parts, Some("{}"), None).unwrap();
+        let names: Vec<&str> = headers.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "Host",
+                "User-Agent",
+                "Accept-Encoding",
+                "Accept",
+                "Connection",
+                "Authorization",
+                "Content-Type",
+                "Content-Length"
+            ]
+        );
+        assert_eq!(headers[0].1, b"cortex.example:9001");
+        assert_eq!(headers[5].1, b"Bearer k\xe9y");
+        let get = PyRequest::new(Method::GET, "https://h:443/x").header("accept", "x");
+        let parts = prepare_url(&get.url, &[]).unwrap().parts.unwrap();
+        let headers = requests_headers(&get, &parts, None, None).unwrap();
+        assert_eq!(headers[0], ("Host".to_string(), b"h".to_vec()));
+        assert_eq!(headers[3], ("accept".to_string(), b"x".to_vec()));
+        assert_eq!(headers.len(), 5);
+        let bad = |v: &str| {
+            let req = PyRequest::new(Method::GET, "http://h/").header("Authorization", v);
+            requests_headers(&req, &parts, None, None)
+                .map(|_| ())
+                .map_err(|e| match e {
+                    PyExc::Other(class, _) => class.to_string(),
+                    other => format!("{other:?}")
+                        .split('(')
+                        .next()
+                        .unwrap_or("")
+                        .to_string(),
+                })
+        };
+        assert_eq!(bad("Bearer "), Ok(()));
+        assert_eq!(bad(" x"), Err("InvalidHeader".into()));
+        assert_eq!(bad("a\nb"), Err("InvalidHeader".into()));
+        assert_eq!(bad("ab\n"), Err("ValueError".into()));
+        assert_eq!(bad("\u{20ac}"), Err("ValueError".into()));
+        assert!(is_title_case("Content-Length") && !is_title_case("x-api-key"));
     }
 
     #[test]
