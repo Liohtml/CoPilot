@@ -368,30 +368,44 @@ pub async fn invalidate_license_cache(db: &Db, key: &str) {
     }
 }
 
-fn not_enabled(feature: &str) -> PyExc {
-    PyExc::http(
-        400,
-        format!(
-            "Feature is not enabled. You must purchase the {feature} license to use this feature."
+fn not_enabled(feature: &str, message: Option<&str>) -> PyExc {
+    match message {
+        Some(m) => PyExc::http(400, m),
+        None => PyExc::http(
+            400,
+            format!(
+                "Feature is not enabled. You must purchase the {feature} license to use this feature."
+            ),
         ),
-    )
+    }
 }
 
 /// `is_feature_enabled(feature_name, session)`: `Ok` when enabled, the 400
 /// when not, the 404 without a licence, the 500 (`Unable to verify
 /// license: …`) when the licence server's answer cannot be used.
 pub async fn is_feature_enabled(db: &Db, client: &LicenseClient, feature: &str) -> PyResult<()> {
+    is_feature_enabled_with(db, client, feature, None).await
+}
+
+/// `is_feature_enabled(feature_name, session, message=message)`: the 400 of
+/// a disabled feature carries `message` instead of the default sentence.
+pub async fn is_feature_enabled_with(
+    db: &Db,
+    client: &LicenseClient,
+    feature: &str,
+    message: Option<&str>,
+) -> PyResult<()> {
     let key = license_key(db).await?;
     if let Some(enabled) = cached_feature(db, &key, feature).await? {
         tracing::info!("Using cached result for feature '{feature}'");
         return if enabled {
             Ok(())
         } else {
-            Err(not_enabled(feature))
+            Err(not_enabled(feature, message))
         };
     }
     tracing::info!("Cache miss for feature '{feature}', fetching from API");
-    match verify(db, client, &key, feature).await {
+    match verify(db, client, &key, feature, message).await {
         Ok(()) => Ok(()),
         Err(e @ PyExc::Http(..)) => Err(e),
         Err(e) => Err(PyExc::http(
@@ -402,7 +416,13 @@ pub async fn is_feature_enabled(db: &Db, client: &LicenseClient, feature: &str) 
 }
 
 /// The `try` block of `is_feature_enabled` after a cache miss.
-async fn verify(db: &Db, client: &LicenseClient, key: &str, feature: &str) -> PyResult<()> {
+async fn verify(
+    db: &Db,
+    client: &LicenseClient,
+    key: &str,
+    feature: &str,
+    message: Option<&str>,
+) -> PyResult<()> {
     let result = client
         .post("verify-license", dict(vec![("license_key", s(key))]))
         .await?;
@@ -423,7 +443,118 @@ async fn verify(db: &Db, client: &LicenseClient, key: &str, feature: &str) -> Py
             return Ok(());
         }
     }
-    Err(not_enabled(feature))
+    Err(not_enabled(feature, message))
+}
+
+/// `SEATS_FEATURE_NAME`: the numeric MSSP customer-seat allowance.
+pub const SEATS_FEATURE_NAME: &str = "MSSP Seats";
+/// `UNLIMITED_FEATURE_NAME`: the boolean "unlimited" MSSP tier.
+pub const UNLIMITED_FEATURE_NAME: &str = "MSSP Unlimited";
+
+/// What `get_license_seat_allowance` returns when it returns something.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SeatAllowance {
+    /// `float("inf")`: "MSSP Unlimited" is enabled.
+    Unlimited,
+    /// The `intValue` of "MSSP Seats", as the licence server sent it.
+    Seats(PyValue),
+}
+
+/// A Python comparison operator, for the `TypeError` text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CmpOp {
+    /// `<`.
+    Lt,
+    /// `>=`.
+    Ge,
+}
+
+/// `a < b` / `a >= b` between `json.loads` numbers (`bool`, `int`, `float`),
+/// or CPython's `TypeError` for anything else. A `NaN` compares false.
+pub fn py_compare(a: &PyValue, op: CmpOp, b: &PyValue) -> PyResult<bool> {
+    fn num(v: &PyValue) -> Option<f64> {
+        match v {
+            PyValue::Bool(b) => Some(f64::from(u8::from(*b))),
+            PyValue::Int(i) => i.parse::<f64>().ok(),
+            PyValue::Float(f) => Some(*f),
+            _ => None,
+        }
+    }
+    match (num(a), num(b)) {
+        (Some(x), Some(y)) => Ok(match op {
+            CmpOp::Lt => x < y,
+            CmpOp::Ge => x >= y,
+        }),
+        _ => Err(PyExc::TypeError(format!(
+            "'{}' not supported between instances of '{}' and '{}'",
+            match op {
+                CmpOp::Lt => "<",
+                CmpOp::Ge => ">=",
+            },
+            type_name(a),
+            type_name(b)
+        ))),
+    }
+}
+
+/// `get_license_seat_allowance(session)`: the licence read fresh from the
+/// licence server (no cache), `Unlimited` for an enabled "MSSP Unlimited",
+/// the "MSSP Seats" `intValue` (the last one listed), else `None`. A
+/// licence-server failure is `None`; the 404 without a licence and what the
+/// loop over the data objects raises (`AttributeError`, `TypeError`) are
+/// not caught.
+pub async fn get_license_seat_allowance(
+    db: &Db,
+    client: &LicenseClient,
+) -> PyResult<Option<SeatAllowance>> {
+    let key = license_key(db).await?;
+    let read = async {
+        let result = client
+            .post("verify-license", dict(vec![("license_key", s(&key))]))
+            .await?;
+        let normalized = normalize_api_response(result)?;
+        let license = getitem(getitem(&normalized, "data")?, "license")?;
+        Ok::<PyValue, PyExc>(
+            get(license, "dataObjects")?
+                .cloned()
+                .unwrap_or(PyValue::List(Vec::new())),
+        )
+    };
+    let data_objects = match read.await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(
+                "Unable to read MSSP seat allowance from license server: {}",
+                e.display()
+            );
+            return Ok(None);
+        }
+    };
+    let mut seats = None;
+    for data_object in iterate(&data_objects)? {
+        let name = get(&data_object, "name")?.cloned().unwrap_or(PyValue::None);
+        if py_eq(&name, &s(UNLIMITED_FEATURE_NAME)) {
+            let value = get(&data_object, "intValue")?
+                .cloned()
+                .unwrap_or(PyValue::Int("0".into()));
+            if py_compare(&value, CmpOp::Ge, &PyValue::Int("1".into()))? {
+                return Ok(Some(SeatAllowance::Unlimited));
+            }
+        }
+        let name = get(&data_object, "name")?.cloned().unwrap_or(PyValue::None);
+        if py_eq(&name, &s(SEATS_FEATURE_NAME)) {
+            seats = Some(
+                get(&data_object, "intValue")?
+                    .cloned()
+                    .unwrap_or(PyValue::None),
+            );
+        }
+    }
+    // `return seats`: an `intValue` of `None` is the caller's `None`.
+    Ok(match seats {
+        None | Some(PyValue::None) => None,
+        Some(v) => Some(SeatAllowance::Seats(v)),
+    })
 }
 
 #[cfg(test)]

@@ -1706,13 +1706,33 @@ async fn customer_and_healthcheck_reads() {
         std::slice::from_ref(&velo)
     );
 
-    // --- Writes and unported routes still reach Python -------------------------
+    // --- The writes are answered here (copilot-customers) ----------------------
+    let before = legacy.received_requests().await.unwrap().len();
     for (m, p) in [
         ("POST", "/api/customers".to_string()),
         ("PUT", format!("/api/customers/{acme}")),
-        ("DELETE", format!("/api/customers/{acme}/meta")),
-        ("POST", "/api/healthcheck/logs".to_string()),
+        ("POST", format!("/api/customers/{acme}/meta")),
     ] {
+        let (st, _) = h.call(m, &p, Some(&admin), Some(json!({}))).await;
+        assert_eq!(st.as_u16(), 422, "{m} {p}");
+    }
+    let (st, body) = h
+        .call(
+            "DELETE",
+            "/api/customers/nosuch-e2e/meta",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 404);
+    assert_eq!(
+        msg(&body),
+        "Customer meta with customer_code nosuch-e2e not found"
+    );
+    assert_eq!(legacy.received_requests().await.unwrap().len(), before);
+
+    // --- Unported routes still reach Python -------------------------------------
+    for (m, p) in [("POST", "/api/healthcheck/logs".to_string())] {
         Mock::given(method(m))
             .and(path(p.clone()))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))

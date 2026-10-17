@@ -1,6 +1,6 @@
 [package]
 name = "copilot-customers"
-description = "Customer reads (GET /api/customers/*); writes stay in the Python backend for now"
+description = "Customers (/api/customers/*): reads, writes and the meta rows"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,6 +12,10 @@ copilot-db = { workspace = true }
 copilot-auth = { workspace = true }
 copilot-web = { workspace = true }
 copilot-healthchecks = { workspace = true }
+copilot-license = { workspace = true }
+copilot-upstream = { workspace = true }
+sqlx = { workspace = true }
+http = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

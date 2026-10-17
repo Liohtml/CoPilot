@@ -697,9 +697,13 @@ dependencies = [
  "copilot-core",
  "copilot-db",
  "copilot-healthchecks",
+ "copilot-license",
+ "copilot-upstream",
  "copilot-web",
+ "http",
  "serde",
  "serde_json",
+ "sqlx",
  "tracing",
 ]
 

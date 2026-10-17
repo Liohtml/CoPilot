@@ -1,10 +1,17 @@
-//! `GET /api/customers/*` — port of the read routes of
-//! `app/customers/routes/customers.py` (admin/analyst).
+//! `/api/customers/*` — port of `app/customers/routes/customers.py`.
 //!
-//! Check order is FastAPI's: token → customer access (`verify_customer_code_access`,
-//! a 403 for a customer the caller is not assigned) → query → the lookups.
+//! The reads are admin/analyst; the list is scoped to the caller's
+//! customers and the `{customer_code}` reads check that customer
+//! (`verify_customer_code_access`, a 403 for a customer the caller is not
+//! assigned). The writes — creating, updating and deleting a customer, and
+//! the (deprecated) meta row's create, update and delete — are admin only
+//! (`require_any_scope("admin")`), as in Python: admins are deployment-wide,
+//! so they carry no tenant check.
+//!
+//! Check order is FastAPI's: a body that is not JSON → token → path →
+//! query → body model → the services.
 
-use axum::extract::{Path, State};
+use axum::extract::{FromRef, Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -13,16 +20,36 @@ use copilot_core::time::now_utc_micros;
 use copilot_db::{agents, customers as db};
 use copilot_healthchecks::schema::TimeCriteria;
 use copilot_healthchecks::services::{self as health, Tool};
+use copilot_license::LicenseClient;
 use copilot_web::validate::{IntRules, StrRules, Validator};
-use copilot_web::{AdminOrAnalyst, ApiError, ApiResult, AppContext, Authorized, QueryPairs};
+use copilot_web::{
+    AdminOnly, AdminOrAnalyst, ApiError, ApiResult, AppContext, Authorized, QueryPairs, WithJson,
+};
 
 use crate::schema::{
-    AgentOut, AgentsResponse, CustomerFullResponse, CustomerMetaOut, CustomerMetaResponse,
-    CustomerOut, CustomerResponse, CustomersResponse,
+    AgentOut, AgentsResponse, CustomerFullResponse, CustomerMetaOut, CustomerMetaRequest,
+    CustomerMetaResponse, CustomerOut, CustomerRequest, CustomerResponse, CustomersResponse,
+    DeleteCustomerResponse,
 };
 use crate::services;
 
 type Auth = Authorized<AdminOrAnalyst>;
+type Admin = Authorized<AdminOnly>;
+
+/// What the customer routes need.
+#[derive(Clone, Debug)]
+pub struct CustomersState {
+    /// Shared dependencies.
+    pub ctx: AppContext,
+    /// The licence server (the MSSP seat check on creation).
+    pub license: LicenseClient,
+}
+
+impl FromRef<CustomersState> for AppContext {
+    fn from_ref(s: &CustomersState) -> AppContext {
+        s.ctx.clone()
+    }
+}
 
 /// `search_query`'s `limit`: `Query(None, ge=1, le=1000)`.
 const SEARCH_LIMIT: IntRules = IntRules {
@@ -30,14 +57,18 @@ const SEARCH_LIMIT: IntRules = IntRules {
     le: Some(1000),
 };
 
-/// The router, to be nested at `/api/customers`. Other methods on these
-/// paths (create, update, delete) are 405s that the binary forwards to the
-/// legacy backend.
-pub fn router(ctx: AppContext) -> Router {
+/// The router, to be nested at `/api/customers`.
+pub fn router(state: CustomersState) -> Router {
     Router::new()
-        .route("/", get(list))
-        .route("/{customer_code}", get(customer))
-        .route("/{customer_code}/meta", get(meta))
+        .route("/", get(list).post(create))
+        .route("/{customer_code}", get(customer).put(update).delete(remove))
+        .route(
+            "/{customer_code}/meta",
+            get(meta)
+                .post(create_meta)
+                .put(update_meta)
+                .delete(delete_meta),
+        )
         .route("/{customer_code}/full", get(full))
         .route("/{customer_code}/agents", get(customer_agents))
         .route(
@@ -48,7 +79,7 @@ pub fn router(ctx: AppContext) -> Router {
             "/{customer_code}/agents/healthcheck/velociraptor",
             get(velociraptor_health),
         )
-        .with_state(ctx)
+        .with_state(state)
 }
 
 fn json<T: serde::Serialize>(body: T) -> Response {
@@ -172,4 +203,90 @@ async fn velociraptor_health(
     q: QueryPairs,
 ) -> ApiResult {
     health(&auth, &ctx, &code, &q, Tool::Velociraptor).await
+}
+
+// --- writes (admin) ---------------------------------------------------------
+
+async fn create(
+    State(st): State<CustomersState>,
+    WithJson(_admin, body): WithJson<Admin>,
+) -> ApiResult {
+    let req = body.model(CustomerRequest::read)?;
+    services::create_customer(&st.ctx.db, &st.license, &req).await?;
+    Ok(json(CustomerResponse {
+        customer: Some(CustomerOut::from(&req)),
+        success: true,
+        message: "Customer created successfully".into(),
+    }))
+}
+
+async fn update(
+    State(ctx): State<AppContext>,
+    Path(code): Path<String>,
+    WithJson(_admin, body): WithJson<Admin>,
+) -> ApiResult {
+    let req = body.model(CustomerRequest::read)?;
+    tracing::info!("Updating customer with customer_code: {code}");
+    services::update_customer(&ctx.db, &code, &req).await?;
+    Ok(json(CustomerResponse {
+        customer: Some(CustomerOut::from(&req)),
+        success: true,
+        message: "Customer updated successfully".into(),
+    }))
+}
+
+async fn remove(
+    _admin: Admin,
+    State(ctx): State<AppContext>,
+    Path(code): Path<String>,
+) -> ApiResult {
+    tracing::info!("Deleting customer with customer_code: {code}");
+    let message = services::delete_customer(&ctx.db, &code).await?;
+    Ok(json(DeleteCustomerResponse {
+        success: true,
+        message,
+    }))
+}
+
+async fn create_meta(
+    State(ctx): State<AppContext>,
+    Path(code): Path<String>,
+    WithJson(_admin, body): WithJson<Admin>,
+) -> ApiResult {
+    let req = body.model(CustomerMetaRequest::read)?;
+    services::add_customer_meta(&ctx.db, &code, &req).await?;
+    Ok(json(CustomerMetaResponse {
+        customer_meta: Some(CustomerMetaOut::from(&req)),
+        success: true,
+        message: "Customer meta added successfully".into(),
+    }))
+}
+
+async fn update_meta(
+    State(ctx): State<AppContext>,
+    Path(code): Path<String>,
+    WithJson(_admin, body): WithJson<Admin>,
+) -> ApiResult {
+    let req = body.model(CustomerMetaRequest::read)?;
+    tracing::info!("Updating customer meta with customer_code: {code}");
+    services::update_customer_meta(&ctx.db, &code, &req).await?;
+    Ok(json(CustomerMetaResponse {
+        customer_meta: Some(CustomerMetaOut::from(&req)),
+        success: true,
+        message: "Customer meta updated successfully".into(),
+    }))
+}
+
+async fn delete_meta(
+    _admin: Admin,
+    State(ctx): State<AppContext>,
+    Path(code): Path<String>,
+) -> ApiResult {
+    tracing::info!("Deleting customer meta with customer_code: {code}");
+    let meta = services::delete_customer_meta(&ctx.db, &code).await?;
+    Ok(json(CustomerMetaResponse {
+        customer_meta: Some(meta),
+        success: true,
+        message: "Customer meta deleted successfully".into(),
+    }))
 }

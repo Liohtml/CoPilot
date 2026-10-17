@@ -33,7 +33,10 @@ use copilot_web::AppContext;
 
 pub use client::LicenseClient;
 pub use routes::router;
-pub use services::{is_feature_enabled, license_key};
+pub use services::{
+    SeatAllowance, get_license_seat_allowance, is_feature_enabled, is_feature_enabled_with,
+    license_key,
+};
 
 /// State of the licence routes.
 #[derive(Clone, Debug)]

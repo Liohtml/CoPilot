@@ -5,7 +5,7 @@
 //! frontend / portal ──►│ /api/ai_analyst/*  → copilot-ai-analyst             │
 //!                      │ /api/customer_portal/* (but /sla)                    │
 //!                      │                    → copilot-customer-portal         │
-//!                      │ GET /api/customers/*   → copilot-customers           │
+//!                      │ /api/customers/*       → copilot-customers           │
 //!                      │ GET /api/healthcheck/* → copilot-healthchecks        │
 //!                      │ /api/version/*, /api/audit/* → copilot-platform      │
 //!                      │ /api/auth/token*, /refresh, /2fa/*, users, /login,   │
@@ -90,7 +90,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // and branding, the Overview and dashboard counters, agents, `/me`; the
     // SLA page (below) is copilot-soc-management's.
     "/api/customer_portal",
-    "GET /api/customers",
+    // Every route of the customers router (copilot-customers): the reads, and
+    // creating, updating and deleting customers and their meta rows.
+    "/api/customers",
     "GET /api/healthcheck",
     "/api/version",
     "/api/audit",
@@ -746,7 +748,14 @@ impl App {
             )
             .nest(
                 "/api/customers",
-                copilot_customers::router(self.ctx.clone()),
+                copilot_customers::router(copilot_customers::CustomersState {
+                    ctx: self.ctx.clone(),
+                    license: self.license.clone(),
+                })
+                .layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
             )
             .nest(
                 "/api/healthcheck",
