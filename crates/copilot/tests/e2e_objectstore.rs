@@ -2070,3 +2070,233 @@ async fn unreachable_minio_fails_as_python_does() {
     .await;
     assert_eq!(r.status, StatusCode::INTERNAL_SERVER_ERROR, "a bare 500");
 }
+
+#[tokio::test]
+async fn default_templates_and_sysmon_upload() {
+    let standin = s3::get();
+    let h = harness_or_skip!(None, &env_for(s3::port()));
+    h.seed().await;
+    let t = tokens(&h).await;
+    let s = h.suffix.clone();
+
+    // --- POST /case-report-template/default-template ----------------------------------
+    const T: &str = "/api/incidents/db_operations/case-report-template/default-template";
+    let names = [
+        "_report_base.html",
+        "_report_macros.html",
+        "case_report_jinja_template.docx",
+        "case_report_jinja_template.html",
+        "customer_incident_report_analytics.html",
+        "customer_incident_report_executive.html",
+        "customer_incident_report_operational.html",
+        "customer_incident_report_template.html",
+    ];
+    let in_list = names
+        .iter()
+        .map(|n| format!("'{n}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    #[derive(sqlx::FromRow)]
+    struct Saved {
+        report_template_name: String,
+        bucket_name: String,
+        object_key: String,
+        file_name: String,
+        content_type: Option<String>,
+        file_size: Option<i32>,
+        upload_time: chrono::NaiveDateTime,
+        file_hash: String,
+    }
+    let saved = sqlx::query_as::<_, Saved>(&format!(
+        "SELECT report_template_name, bucket_name, object_key, file_name, content_type, \
+         file_size, upload_time, file_hash FROM incident_management_case_report_template_datastore \
+         WHERE report_template_name IN ({in_list})"
+    ))
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    let wipe = format!(
+        "DELETE FROM incident_management_case_report_template_datastore WHERE \
+         report_template_name IN ({in_list})"
+    );
+    h.exec(&wipe).await;
+    let r = raw(&h, "POST", T, Some(&t.portal), None, Vec::new()).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    standin.take();
+    let r = raw(&h, "POST", T, Some(&t.analyst), None, Vec::new()).await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.json());
+    assert_eq!(
+        r.json(),
+        json!({"case_report_template_data_store": names, "success": true,
+               "message": "Default file created successfully"})
+    );
+    let seen = standin.take();
+    all_signed(&seen);
+    let puts: Vec<String> = calls(&seen)
+        .into_iter()
+        .filter(|c| c.starts_with("PUT "))
+        .collect();
+    assert_eq!(
+        puts,
+        names
+            .iter()
+            .map(|n| format!("PUT /copilot-case-report-templates/{n}"))
+            .collect::<Vec<_>>()
+    );
+    let (docx, docx_type) = standin
+        .object(
+            "copilot-case-report-templates",
+            "case_report_jinja_template.docx",
+        )
+        .unwrap();
+    assert!(docx.starts_with(b"PK"));
+    assert_eq!(
+        docx_type,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+    assert_eq!(
+        standin
+            .object("copilot-case-report-templates", "_report_base.html")
+            .unwrap()
+            .1,
+        "text/html"
+    );
+    // The rows have no content type (Python's UploadFile has no headers).
+    assert_eq!(
+        h.scalar_i64(&format!(
+            "SELECT COUNT(*) FROM incident_management_case_report_template_datastore WHERE \
+             report_template_name IN ({in_list}) AND content_type IS NULL AND file_size > 0"
+        ))
+        .await,
+        8
+    );
+    // Again: the first name exists, nothing is stored.
+    let r = raw(&h, "POST", T, Some(&t.admin), None, Vec::new()).await;
+    assert_eq!(
+        (r.status, r.json()),
+        (
+            StatusCode::BAD_REQUEST,
+            json!({"message": "File name already exists for this template", "success": false})
+        )
+    );
+    assert!(
+        calls(&standin.take())
+            .iter()
+            .all(|c| !c.starts_with("PUT ")),
+        "nothing stored"
+    );
+    h.exec(&wipe).await;
+    for r in saved {
+        sqlx::query(
+            "INSERT INTO incident_management_case_report_template_datastore \
+             (report_template_name, bucket_name, object_key, file_name, content_type, file_size, \
+             upload_time, file_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(r.report_template_name)
+        .bind(r.bucket_name)
+        .bind(r.object_key)
+        .bind(r.file_name)
+        .bind(r.content_type)
+        .bind(r.file_size)
+        .bind(r.upload_time)
+        .bind(r.file_hash)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+
+    // --- POST /api/sysmon_config/upload --------------------------------------------------
+    const U: &str = "/api/sysmon_config/upload";
+    let code = format!("acme{s}");
+    let config = b"<Sysmon schemaversion='4.90'>\n  <EventFiltering>\n    <RuleGroup \
+                   groupRelation='or'/>\n  </EventFiltering>\n</Sysmon>";
+    let r = upload(
+        &h,
+        U,
+        &t.analyst,
+        &[
+            ("customer_code", None, code.as_bytes()),
+            ("file", Some(("c.xml", "application/xml")), config),
+        ],
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = upload(
+        &h,
+        U,
+        &t.admin,
+        &[("file", Some(("c.xml", "text/xml")), config)],
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{:?}", r.json());
+    for (file, data, message) in [
+        (
+            "c.txt",
+            &config[..],
+            "Only XML files are accepted for sysmon configs",
+        ),
+        (
+            "c.xml",
+            &b"\xff<Sysmon/>"[..],
+            "File is not valid UTF-8 encoded text",
+        ),
+        (
+            "c.xml",
+            &b"<Sysmon>\n  <EventFiltering>\n</Sysmon>"[..],
+            "Invalid XML syntax: mismatched tag: line 3, column 2",
+        ),
+        (
+            "c.xml",
+            &b"<Sysmon><EventFiltering><RuleGroup/></EventFiltering></Sysmon>"[..],
+            "RuleGroup must have 'groupRelation' attribute",
+        ),
+    ] {
+        let r = upload(
+            &h,
+            U,
+            &t.admin,
+            &[
+                ("customer_code", None, code.as_bytes()),
+                ("file", Some((file, "application/xml")), data),
+            ],
+        )
+        .await;
+        assert_eq!(
+            (r.status, r.json()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"message": message, "success": false})
+            ),
+            "{file}"
+        );
+    }
+    standin.take();
+    let mut overwritten = false;
+    for message in [
+        "Successfully uploaded Sysmon config",
+        "Successfully updated Sysmon config",
+    ] {
+        let r = upload(
+            &h,
+            U,
+            &t.admin,
+            &[
+                ("customer_code", None, code.as_bytes()),
+                ("file", Some(("mine.xml", "text/plain")), config),
+            ],
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::OK, "{:?}", r.json());
+        assert_eq!(
+            r.json(),
+            json!({"success": true, "message": message, "customer_code": code,
+                   "filename": "sysmon_config.xml", "overwritten": overwritten})
+        );
+        overwritten = true;
+    }
+    assert_eq!(
+        standin.object("sysmon-configs", &format!("{code}/sysmon_config.xml")),
+        Some((config.to_vec(), "application/xml".to_string()))
+    );
+    all_signed(&standin.take());
+}

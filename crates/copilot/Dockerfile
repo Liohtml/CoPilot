@@ -31,6 +31,8 @@ COPY backend/app/integrations/defender_for_endpoint/templates ./backend/app/inte
 COPY backend/app/integrations/bitdefender/templates ./backend/app/integrations/bitdefender/templates
 COPY backend/app/customer_provisioning/templates ./backend/app/customer_provisioning/templates
 COPY backend/app/connectors/portainer/templates ./backend/app/connectors/portainer/templates
+# copilot-incidents compiles in the default case report templates.
+COPY backend/app/incidents/templates ./backend/app/incidents/templates
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
     set -eux; \

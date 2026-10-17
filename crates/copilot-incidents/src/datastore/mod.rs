@@ -2,17 +2,18 @@
 //! /case/{id}`, customer report download and delete) over
 //! `copilot-objectstore`.
 //!
-//! Still Python: `POST /case-report-template/default-template` (it uploads
-//! the templates shipped under `backend/app/incidents/templates`, files on
-//! the Python host, in the order the host's directory lists them), the case
-//! DOCX/PDF reports and the customer report generation (docxtpl, the Jinja
-//! report templates, wkhtmltopdf).
+//! `POST /case-report-template/default-template` uploads the templates
+//! shipped under `backend/app/incidents/templates`, compiled in
+//! ([`default_templates`]). Still Python: the case DOCX/PDF reports and the
+//! customer report generation (docxtpl, the Jinja report templates,
+//! wkhtmltopdf).
 
 use axum::extract::FromRef;
 
 use copilot_objectstore::{LegacyProxy, ObjectStore};
 use copilot_web::AppContext;
 
+pub mod default_templates;
 pub mod routes;
 pub mod services;
 

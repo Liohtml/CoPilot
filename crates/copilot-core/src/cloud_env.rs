@@ -60,7 +60,11 @@ impl CloudEnv {
             aws_endpoint_url_sts: read("AWS_ENDPOINT_URL_STS"),
             aws_endpoint_url_s3: read("AWS_ENDPOINT_URL_S3"),
             aws_profile_check_seconds: read("COPILOT_AWS_PROFILE_CHECK_SECONDS"),
-            backend_data_dir: read("COPILOT_BACKEND_DATA_DIR"),
+            // Trimmed, as `CopilotConfig::backend_data_dir` reads the same variable.
+            backend_data_dir: env
+                .get("COPILOT_BACKEND_DATA_DIR")
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
             bitdefender_url: read("COPILOT_BITDEFENDER_URL"),
             provision_worker_port: env
                 .get("COPILOT_PROVISION_WORKER_PORT")

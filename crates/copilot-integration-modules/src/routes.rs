@@ -40,7 +40,11 @@ pub fn router(state: ModulesState) -> Router {
         .route(&format!("{MODULES}/cato"), post(cato))
         .route(&format!("{MODULES}/sap_siem"), post(sap_collect))
         .route("/api/mimecast/invoke", post(mimecast_invoke))
-        .route("/api/mimecast/ttp/urls", post(mimecast_ttp));
+        .route("/api/mimecast/ttp/urls", post(mimecast_ttp))
+        .route(
+            "/api/carbonblack/test",
+            axum::routing::get(carbonblack_test),
+        );
     for (i, analysis) in ANALYSES.iter().enumerate() {
         r = r.route(
             &format!("{MODULES}/sap_siem/{}", analysis.route),
@@ -48,6 +52,19 @@ pub fn router(state: ModulesState) -> Router {
         );
     }
     r.with_state(state)
+}
+
+/// `GET /api/carbonblack/test` (admin/analyst): the CarbonBlack collection
+/// job run as Python's route runs it ([`crate::jobs::carbonblack_test`]).
+async fn carbonblack_test(_auth: Soc, State(st): State<ModulesState>) -> ApiResult {
+    crate::jobs::carbonblack_test(&st).await?;
+    Ok(model_response(&PyValue::Dict(vec![
+        ("success".into(), PyValue::Bool(true)),
+        (
+            "message".into(),
+            PyValue::Str("CarbonBlack provisioned successfully".into()),
+        ),
+    ])))
 }
 
 fn text(v: &PyValue) -> String {

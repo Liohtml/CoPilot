@@ -461,11 +461,14 @@ PY_TARGET = {"port": S3_PORT}
 
 def patch_python_minio():
     from app.data_store import data_store_operations
+    from app.data_store import data_store_session
 
     async def create_session():
         return Minio(f"127.0.0.1:{PY_TARGET['port']}", access_key=S3_USER, secret_key=S3_SECRET, secure=False)
 
     data_store_operations.create_session = create_session
+    # The Sysmon upload's existence check imports it from here at call time.
+    data_store_session.create_session = create_session
 
 
 # --- Normalisation ----------------------------------------------------------------------------------
@@ -570,12 +573,14 @@ def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers import active_response
     from app.routers import data_store
     from app.routers import incidents
 
     api = APIRouter(prefix="/api")
     api.include_router(incidents.router)
     api.include_router(data_store.router)
+    api.include_router(active_response.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     # As in copilot.py: it decides how a download is encoded.
@@ -1511,6 +1516,139 @@ async def unreachable_checks(p, t):
     )
 
 
+async def default_and_sysmon_checks(p, t):
+    """`POST /case-report-template/default-template` and `POST /api/sysmon_config/upload`."""
+    import pathlib
+
+    print("\n=== default report templates ===")
+    T = f"{P}/case-report-template/default-template"
+    bucket = "copilot-case-report-templates"
+    templates = pathlib.Path(REPO) / "backend" / "app" / "incidents" / "templates"
+    names = sorted(f.name for f in templates.iterdir() if f.is_file())
+    saved = rows("SELECT * FROM incident_management_case_report_template_datastore WHERE report_template_name IN :n", n=names)
+
+    def wipe():
+        sql("DELETE FROM incident_management_case_report_template_datastore WHERE report_template_name IN :n", n=names)
+
+    def template_rows():
+        found = rows(
+            "SELECT report_template_name, bucket_name, object_key, file_name, content_type, file_size, file_hash "
+            "FROM incident_management_case_report_template_datastore WHERE report_template_name IN :n ORDER BY report_template_name",
+            n=names,
+        )
+        return [dict(r) for r in found]
+
+    try:
+        wipe()
+        await p.same("default templates: portal user", "POST", T, t["portal"])
+        await p.same("default templates: no token", "POST", T)
+        # Python visits the directory in the order the filesystem lists it, Rust in name order
+        # (RUST_MIGRATION.md §4): the answers' lists and the uploads are compared as sets.
+        S3.make_bucket(bucket)
+        start = S3.snapshot()
+        r1, out1 = await p.call(p.py, "POST", T, t["analyst"])
+        end1, rows1 = S3.snapshot(), template_rows()
+        wipe()
+        S3.restore(start)
+        r2, out2 = await p.call(p.rs, "POST", T, t["analyst"])
+        end2, rows2 = S3.snapshot(), template_rows()
+        b1, b2 = body_of(r1), body_of(r2)
+        listed = lambda b: {**b, "case_report_template_data_store": sorted(b["case_report_template_data_store"])}  # noqa: E731
+        o1 = sorted(outbound(out1), key=repr)
+        o2 = sorted(outbound(out2), key=repr)
+        check(
+            f"default templates: every file stored [{r1.status_code}]",
+            r1.status_code == r2.status_code == 200
+            and listed(b1) == listed(b2)
+            and sorted(b1["case_report_template_data_store"]) == names
+            and o1 == o2
+            and all(o[-1] == "ok" for o in o1 + o2)
+            and changes(start, end1) == changes(start, end2)
+            and rows1 == rows2
+            and all(r["content_type"] is None for r in rows2),
+            f"python {r1.status_code} {b1}\n        rust   {r2.status_code} {b2}\n        outbound equal {o1 == o2}"
+            f"\n        minio python {changes(start, end1)}\n        minio rust   {changes(start, end2)}\n        rows {rows1 == rows2}",
+        )
+        await p.same("default templates: they exist already", "POST", T, t["admin"])
+    finally:
+        wipe()
+        for r in saved:
+            cols = list(r.keys())
+            sql(
+                f"INSERT INTO incident_management_case_report_template_datastore ({', '.join(cols)}) "
+                f"VALUES ({', '.join(':' + c for c in cols)})",
+                **r,
+            )
+
+    print("\n=== sysmon config upload ===")
+    U = "/api/sysmon_config/upload"
+    config = b"<Sysmon schemaversion='4.90'>\n  <EventFiltering>\n    <RuleGroup groupRelation='or'/>\n  </EventFiltering>\n</Sysmon>"
+
+    def form(code=CUST_A, name="config.xml", data=config, ctype="text/xml"):
+        fields = [("customer_code", code)] if code is not None else []
+        files = [("file", name, ctype, data)] if name is not None else []
+        return multipart(fields, files)
+
+    await p.same("sysmon upload: no token", "POST", U, **form())
+    await p.same("sysmon upload: analyst", "POST", U, t["analyst"], **form())
+    await p.same("sysmon upload: no file", "POST", U, t["admin"], **form(name=None))
+    await p.same("sysmon upload: no customer", "POST", U, t["admin"], **form(code=None))
+    await p.same("sysmon upload: neither", "POST", U, t["admin"], **form(code=None, name=None))
+    await p.same("sysmon upload: not .xml", "POST", U, t["admin"], **form(name="config.txt"))
+    await p.same("sysmon upload: not UTF-8", "POST", U, t["admin"], **form(data=b"<Sysmon>\xff</Sysmon>"))
+    for label, doc in (
+        ("empty", b""),
+        ("text", b"not xml"),
+        ("mismatched tag", b"<Sysmon>\n  <EventFiltering>\n</Sysmon>"),
+        ("invalid token", b"<Sysmon>\n  <EventFiltering a=b/>\n</Sysmon>"),
+        ("unclosed", b"<Sysmon><EventFiltering"),
+        ("undefined entity", b"<Sysmon>&nbsp;</Sysmon>"),
+        ("duplicate attribute", b"<Sysmon a='1' a='2'/>"),
+        ("junk after the root", b"<Sysmon/>\n<Other/>"),
+        ("BOM, CRLF and a declaration", "﻿<?xml version='1.0' encoding='utf-8'?>\r\n<Sysmon>\r\n<EventFiltering>\r\n</Sysmon>".encode()),
+        ("another root", b"<sysmon><EventFiltering><RuleGroup groupRelation='or'/></EventFiltering></sysmon>"),
+        ("no EventFiltering", b"<Sysmon><Other/></Sysmon>"),
+        ("text in EventFiltering", b"<Sysmon><EventFiltering>x<RuleGroup groupRelation='or'/></EventFiltering></Sysmon>"),
+        ("no RuleGroup", b"<Sysmon><EventFiltering/></Sysmon>"),
+        (
+            "a RuleGroup without groupRelation",
+            b"<Sysmon><EventFiltering><RuleGroup groupRelation='or'/><RuleGroup/></EventFiltering></Sysmon>",
+        ),
+    ):
+        await p.same(f"sysmon upload: {label}", "POST", U, t["admin"], **form(data=doc))
+    S3.drop("sysmon-configs")
+    await p.same("sysmon upload: the bucket missing (created, uploaded)", "POST", U, t["admin"], **form())
+    S3.make_bucket("sysmon-configs")
+    await p.same("sysmon upload: a first config", "POST", U, t["admin"], **form(code=CUST_B))
+    S3.put("sysmon-configs", f"{CUST_A}/sysmon_config.xml", b"<old/>", "application/xml")
+    await p.same("sysmon upload: replacing one", "POST", U, t["admin"], **form())
+    await p.same(
+        "sysmon upload: MinIO fails the existence check",
+        "POST",
+        U,
+        t["admin"],
+        before=lambda: S3.fault(
+            lambda m, path, q: m == "HEAD" and path == "/sysmon-configs",
+            S3.error(500, "InternalError", "/sysmon-configs", head=True),
+            count=10,
+        ),
+        **form(),
+    )
+    await p.same(
+        "sysmon upload: MinIO fails the upload",
+        "POST",
+        U,
+        t["admin"],
+        before=lambda: S3.fault(
+            lambda m, path, q: m == "PUT" and path.endswith("/sysmon_config.xml"),
+            S3.error(500, "InternalError", "/x"),
+            count=10,
+        ),
+        **form(),
+    )
+    await p.same("sysmon upload: MinIO down", "POST", U, t["admin"], down=True, **form())
+
+
 async def main():
     server = S3.serve(S3_PORT)
     patch_python_minio()
@@ -1525,11 +1663,13 @@ async def main():
         "nobody": token(NOBODY, ["analyst"]),
     }
     try:
-        sections = os.environ.get("OBJECTSTORE_PARITY_SECTIONS", "cases,templates,reports,agents,down").split(",")
+        sections = os.environ.get("OBJECTSTORE_PARITY_SECTIONS", "cases,templates,defaults,reports,agents,down").split(",")
         if "cases" in sections:
             await case_file_checks(p, t)
         if "templates" in sections:
             await template_checks(p, t)
+        if "defaults" in sections:
+            await default_and_sysmon_checks(p, t)
         if "reports" in sections:
             await report_checks(p, t)
         if "agents" in sections:

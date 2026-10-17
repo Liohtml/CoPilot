@@ -8,13 +8,11 @@
 //! | `GET /mitre/{groups,mitigations,references,software,tactics,techniques}` | admin/analyst (`require_any_scope`) |
 //! | `POST /management/restart` | admin |
 //!
-//! Not routed here, so served by the Python backend: `/rule/disabled`,
-//! `/rule/disable`, `/rule/enable` (their `disabledrule` table is not in the
-//! Alembic schema: every call is a 500 there), `/rule/exclude` (a fixed
-//! `copilot-ai-module` host), `/mitre/atomic-tests`,
-//! `/mitre/techniques/{id}/atomic-tests` (GitHub with in-process caches) and
-//! the two MITRE alert searches (`/mitre/techniques/alerts`,
-//! `/mitre/techniques/{id}/alerts`).
+//! Not routed here: `/rule/disabled`, `/rule/disable`, `/rule/enable`,
+//! `/rule/exclude`, `/mitre/atomic-tests` and
+//! `/mitre/techniques/{id}/atomic-tests` are `copilot-wazuh-rules`'; the two
+//! MITRE alert searches (`/mitre/techniques/alerts`,
+//! `/mitre/techniques/{id}/alerts`) are served by the Python backend.
 
 use axum::Router;
 use axum::body::Bytes;

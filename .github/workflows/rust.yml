@@ -20,6 +20,8 @@ on:
       - "backend/app/integrations/*/templates/**"
       - "backend/app/customer_provisioning/templates/**"
       - "backend/app/connectors/portainer/templates/**"
+      # Embedded by copilot-incidents (a test pins the list to the directory).
+      - "backend/app/incidents/templates/**"
       - "scripts/check-alembic-head.py"
       - ".github/workflows/rust.yml"
   push:
@@ -33,6 +35,7 @@ on:
       - "backend/app/integrations/*/templates/**"
       - "backend/app/customer_provisioning/templates/**"
       - "backend/app/connectors/portainer/templates/**"
+      - "backend/app/incidents/templates/**"
       - ".github/workflows/rust.yml"
 
 permissions:

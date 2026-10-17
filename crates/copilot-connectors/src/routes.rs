@@ -6,6 +6,7 @@
 //! | `GET /{connector_id}` | `require_any_scope("admin")` | Rust |
 //! | `PUT /{connector_id}` | `get_current_user(scopes=["admin"])` | Rust for a connector this build verifies, else Python |
 //! | `POST /verify/{connector_id}` | `require_any_scope("admin", "analyst")` | Rust for a connector this build verifies, else Python |
+//! | `POST /upload/{connector_identifier}` | `get_current_user(scopes=["admin"])` | Rust ([`crate::upload`]); the verification that follows as `POST /verify` |
 //!
 //! An update writes the row, then verifies the connector (the tool's API
 //! is called) and records `connector.update`. Both steps need the tool's
@@ -13,7 +14,7 @@
 //! to Python whole — after the same 404 / validation checks — and this
 //! process forgets its cached row once Python has answered. Without a
 //! legacy backend such a connector is updated here and left as verified as
-//! it was. The YAML upload (a file on the Python host) is not routed here.
+//! it was.
 
 use std::net::SocketAddr;
 
@@ -45,6 +46,10 @@ pub fn router(state: ConnectorsState) -> Router {
         .route("/", get(list))
         .route("/{connector_id}", get(get_one).put(update))
         .route("/verify/{connector_id}", post(verify))
+        .route(
+            "/upload/{connector_identifier}",
+            post(crate::upload::upload),
+        )
         .with_state(state)
 }
 
@@ -87,16 +92,37 @@ fn not_found(id: i64) -> ApiError {
 }
 
 /// The request as it came in, for a hand-off to the Python backend.
-struct Received {
+pub(crate) struct Received {
     method: Method,
     uri: Uri,
-    headers: HeaderMap,
+    pub(crate) headers: HeaderMap,
     peer: Option<ConnectInfo<SocketAddr>>,
     body: Bytes,
 }
 
 impl Received {
-    fn into_request(self) -> Request {
+    /// What `parts` carry, the URI as the client sent it; the body follows
+    /// ([`Received::with_body`]).
+    pub(crate) fn capture(parts: &http::request::Parts) -> Self {
+        Self {
+            method: parts.method.clone(),
+            uri: parts
+                .extensions
+                .get::<OriginalUri>()
+                .map_or_else(|| parts.uri.clone(), |o| o.0.clone()),
+            headers: parts.headers.clone(),
+            peer: parts.extensions.get::<ConnectInfo<SocketAddr>>().cloned(),
+            body: Bytes::new(),
+        }
+    }
+
+    /// The same request with its body.
+    pub(crate) fn with_body(self, body: Bytes) -> Self {
+        Self { body, ..self }
+    }
+
+    /// The request again, for the legacy proxy.
+    pub(crate) fn into_request(self) -> Request {
         let mut req = Request::new(Body::from(self.body));
         *req.method_mut() = self.method;
         *req.uri_mut() = self.uri;
@@ -129,34 +155,22 @@ where
         let guard = A::from_request_parts(&mut parts, state)
             .await
             .map_err(IntoResponse::into_response);
-        let uri = parts
-            .extensions
-            .get::<OriginalUri>()
-            .map_or_else(|| parts.uri.clone(), |o| o.0.clone());
-        let peer = parts.extensions.get::<ConnectInfo<SocketAddr>>().cloned();
-        let method = parts.method.clone();
-        let headers = parts.headers.clone();
+        let received = Received::capture(&parts);
         let bytes = Bytes::from_request(Request::from_parts(parts, body), state)
             .await
             .map_err(IntoResponse::into_response)?;
         let json = JsonBody::read(ct.as_deref(), &bytes).map_err(IntoResponse::into_response)?;
         let guard = guard?;
-        Ok(Self(
-            guard,
-            json,
-            Received {
-                method,
-                uri,
-                headers,
-                peer,
-                body: bytes,
-            },
-        ))
+        Ok(Self(guard, json, received.with_body(bytes)))
     }
 }
 
 /// Python answers for this connector: forward, then forget the row here.
-async fn hand_off(st: &ConnectorsState, name: &str, received: Received) -> Option<Response> {
+pub(crate) async fn hand_off(
+    st: &ConnectorsState,
+    name: &str,
+    received: Received,
+) -> Option<Response> {
     let proxy = st.legacy.as_ref()?;
     let response = proxy.forward(received.into_request()).await;
     st.ctx.connectors.invalidate(name);

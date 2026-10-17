@@ -7,8 +7,10 @@
 //! answers with the template as the ORM holds it after the commit: the
 //! timestamps it just set keep their microseconds.
 //!
-//! Still Python ([`LEGACY_PATHS`]): the library (fetched from GitHub and
-//! cached in that process) and `/suggest` (reads the Wazuh indexer).
+//! The library (`/library*`, fetched from GitHub and cached per process)
+//! and `/suggest` are `copilot-case-templates`', which the binary merges
+//! into this router; it builds on [`load_all`], [`template_json`] and
+//! [`create_template`] here.
 //!
 //! Difference by design: a template scoped to a customer belongs to that
 //! tenant. Python let any analyst list, read, edit, delete and reorder every
@@ -38,17 +40,6 @@ use crate::requests::merge;
 type Soc = Authorized<AdminOrAnalyst>;
 type Obj = Map<String, Value>;
 
-/// Paths under `/api/incidents/case_templates` that Python keeps serving;
-/// the binary routes them to the legacy backend so `/{template_id}` does not
-/// swallow them.
-pub const LEGACY_PATHS: &[&str] = &[
-    "/library",
-    "/library/refresh",
-    "/library/{key}",
-    "/library/{key}/import",
-    "/suggest",
-];
-
 /// The router, to be nested at `/api/incidents/case_templates`.
 pub fn case_templates(ctx: AppContext) -> Router {
     Router::new()
@@ -63,19 +54,31 @@ pub fn case_templates(ctx: AppContext) -> Router {
         .with_state(ctx)
 }
 
+/// One `incident_management_case_template` row.
 #[derive(Debug, Clone, FromRow)]
-struct Template {
-    id: i32,
-    name: String,
-    description: Option<String>,
-    customer_code: Option<String>,
-    source: Option<String>,
-    is_default: bool,
-    match_field: Option<String>,
-    match_value: Option<String>,
-    created_by: String,
-    created_at: NaiveDateTime,
-    updated_at: NaiveDateTime,
+pub struct Template {
+    /// Id.
+    pub id: i32,
+    /// Name.
+    pub name: String,
+    /// Description.
+    pub description: Option<String>,
+    /// The customer it is scoped to (`None`: every customer).
+    pub customer_code: Option<String>,
+    /// The alert source it is scoped to (`None`: any).
+    pub source: Option<String>,
+    /// The default of its scope.
+    pub is_default: bool,
+    /// The auto-apply condition's field.
+    pub match_field: Option<String>,
+    /// The auto-apply condition's value.
+    pub match_value: Option<String>,
+    /// Who created it.
+    pub created_by: String,
+    /// Created.
+    pub created_at: NaiveDateTime,
+    /// Updated.
+    pub updated_at: NaiveDateTime,
 }
 
 /// Every column, in the model's order (what `select(CaseTemplate)` lists).
@@ -86,21 +89,29 @@ pub const TEMPLATE_COLS: &str = "incident_management_case_template.id, \
     incident_management_case_template.match_value, incident_management_case_template.created_by, \
     incident_management_case_template.created_at, incident_management_case_template.updated_at";
 
+/// One `incident_management_case_template_task` row.
 #[derive(Debug, Clone, FromRow, Serialize)]
-struct TemplateTask {
-    id: i32,
-    template_id: i32,
-    title: String,
-    description: Option<String>,
-    guidelines: Option<String>,
-    mandatory: bool,
-    order_index: i32,
+pub struct TemplateTask {
+    /// Id.
+    pub id: i32,
+    /// Its template.
+    pub template_id: i32,
+    /// Title.
+    pub title: String,
+    /// Description.
+    pub description: Option<String>,
+    /// Guidelines.
+    pub guidelines: Option<String>,
+    /// Mandatory.
+    pub mandatory: bool,
+    /// Order.
+    pub order_index: i32,
 }
 
 const TASK_COLS: &str = "id, template_id, title, description, guidelines, mandatory, order_index";
 
 /// `_template_to_response`: tasks by `(order_index, id)`.
-fn template_json(t: &Template, tasks: &[TemplateTask]) -> Value {
+pub fn template_json(t: &Template, tasks: &[TemplateTask]) -> Value {
     let mut tasks = tasks.to_vec();
     tasks.sort_by_key(|x| (x.order_index, x.id));
     let iso = copilot_core::time::to_pydantic_iso;
@@ -120,7 +131,8 @@ fn template_json(t: &Template, tasks: &[TemplateTask]) -> Value {
     })
 }
 
-fn template_op(template: Option<Value>, success: bool, message: String) -> Response {
+/// `CaseTemplateOperationResponse`.
+pub fn template_op(template: Option<Value>, success: bool, message: String) -> Response {
     json(json!({"template": template, "success": success, "message": message}))
 }
 
@@ -148,6 +160,44 @@ async fn load(
     .fetch_all(&mut *conn)
     .await?;
     Ok(Some((t, tasks)))
+}
+
+/// `select(CaseTemplate).options(selectinload(CaseTemplate.tasks))`: every
+/// template, in the order MySQL returns them, each with its tasks in the
+/// order the `IN` query returns them (the relationship has no `order_by`).
+pub async fn load_all(
+    db: &copilot_db::Db,
+) -> Result<Vec<(Template, Vec<TemplateTask>)>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, Template>(&format!(
+        "SELECT {TEMPLATE_COLS} FROM incident_management_case_template"
+    ))
+    .fetch_all(db.pool())
+    .await?;
+    let mut tasks: Vec<TemplateTask> = Vec::new();
+    // SQLAlchemy's `selectinload` asks for 500 parents at a time.
+    for chunk in rows.chunks(500) {
+        let mut qb = sqlx::QueryBuilder::new(format!(
+            "SELECT {TASK_COLS} FROM incident_management_case_template_task WHERE template_id IN ("
+        ));
+        crate::store::push_list(&mut qb, chunk.iter().map(|t| t.id));
+        qb.push(")");
+        tasks.extend(
+            qb.build_query_as::<TemplateTask>()
+                .fetch_all(db.pool())
+                .await?,
+        );
+    }
+    Ok(rows
+        .into_iter()
+        .map(|t| {
+            let own = tasks
+                .iter()
+                .filter(|x| x.template_id == t.id)
+                .cloned()
+                .collect();
+            (t, own)
+        })
+        .collect())
 }
 
 fn path_int(v: &mut Validator, name: &str, raw: &str) -> i64 {
@@ -178,12 +228,17 @@ const MATCH_PAIR: &str = "match_field and match_value must both be set or both b
 
 /// `CaseTemplateTaskCreate`.
 #[derive(Debug, Clone)]
-struct TaskCreate {
-    title: String,
-    description: Option<String>,
-    guidelines: Option<String>,
-    mandatory: bool,
-    order_index: i64,
+pub struct TaskCreate {
+    /// Title.
+    pub title: String,
+    /// Description.
+    pub description: Option<String>,
+    /// Guidelines.
+    pub guidelines: Option<String>,
+    /// Mandatory.
+    pub mandatory: bool,
+    /// Order.
+    pub order_index: i64,
 }
 
 impl TaskCreate {
@@ -211,15 +266,24 @@ impl TaskCreate {
 }
 
 /// `CaseTemplateCreate`.
-struct TemplateCreate {
-    name: String,
-    description: Option<String>,
-    customer_code: Option<String>,
-    source: Option<String>,
-    is_default: bool,
-    match_field: Option<String>,
-    match_value: Option<String>,
-    tasks: Vec<TaskCreate>,
+#[derive(Debug, Clone)]
+pub struct TemplateCreate {
+    /// Name.
+    pub name: String,
+    /// Description.
+    pub description: Option<String>,
+    /// The customer it is scoped to.
+    pub customer_code: Option<String>,
+    /// The alert source it is scoped to.
+    pub source: Option<String>,
+    /// The default of its scope.
+    pub is_default: bool,
+    /// The auto-apply condition's field.
+    pub match_field: Option<String>,
+    /// The auto-apply condition's value.
+    pub match_value: Option<String>,
+    /// The initial tasks.
+    pub tasks: Vec<TaskCreate>,
 }
 
 impl TemplateCreate {
@@ -465,6 +529,12 @@ async fn list(auth: Soc, State(ctx): State<AppContext>, q: QueryPairs) -> ApiRes
 async fn create(State(ctx): State<AppContext>, WithJson(auth, body): WithJson<Soc>) -> ApiResult {
     let req = body.model(TemplateCreate::read)?;
     ensure_customer(auth.access(&ctx).await?, req.customer_code.as_deref())?;
+    create_template(&ctx, &auth.username, &req).await
+}
+
+/// `create_template(request, actor, session)`: the service's answer (its
+/// refusals are `success: false`).
+pub async fn create_template(ctx: &AppContext, actor: &str, req: &TemplateCreate) -> ApiResult {
     if req.match_field.is_none() != req.match_value.is_none() {
         return Ok(template_op(
             None,
@@ -497,7 +567,7 @@ async fn create(State(ctx): State<AppContext>, WithJson(auth, body): WithJson<So
         .bind(req.is_default)
         .bind(&req.match_field)
         .bind(&req.match_value)
-        .bind(&auth.username)
+        .bind(actor)
         .bind(mysql_datetime(created_at))
         .bind(mysql_datetime(updated_at))
         .execute(&mut *tx)

@@ -1,0 +1,1680 @@
+{
+ "text": {
+  "texts": [
+   {
+    "text": "",
+    "tokens": [],
+    "mitre": []
+   },
+   {
+    "text": "Ransomware — host containment",
+    "tokens": [
+     "ransomware",
+     "host",
+     "containment"
+    ],
+    "mitre": []
+   },
+   {
+    "text": "T1059.001 and t1486; T10599 T1059.0011 xT1003 T1003_x (T1566) T1059.0 T١٢٣٤",
+    "tokens": [
+     "t1059",
+     "001",
+     "and",
+     "t1486",
+     "t10599",
+     "t1059",
+     "0011",
+     "xt1003",
+     "t1003",
+     "x",
+     "t1566",
+     "t1059",
+     "0",
+     "t"
+    ],
+    "mitre": [
+     "T1059",
+     "T1059.001",
+     "T1486",
+     "T1566",
+     "T١٢٣٤"
+    ]
+   },
+   {
+    "text": "Kelvin K and İstanbul ÉCOLE straße",
+    "tokens": [
+     "kelvin",
+     "k",
+     "and",
+     "i",
+     "stanbul",
+     "cole",
+     "stra",
+     "e"
+    ],
+    "mitre": []
+   },
+   {
+    "text": "foo-bar_baz qux1 2fa",
+    "tokens": [
+     "foo",
+     "bar",
+     "baz",
+     "qux1",
+     "2fa"
+    ],
+    "mitre": []
+   },
+   {
+    "text": "lateral-movement, LateralMovement; lateral_movement|x",
+    "tokens": [
+     "lateral",
+     "movement",
+     "lateralmovement",
+     "lateral",
+     "movement",
+     "x"
+    ],
+    "mitre": []
+   }
+  ],
+  "phrases": [
+   {
+    "corpus": "check the lateral movement of a host",
+    "phrase": "lateral-movement",
+    "matches": true
+   },
+   {
+    "corpus": "check the lateral movement of a host",
+    "phrase": "lateral_movement",
+    "matches": true
+   },
+   {
+    "corpus": "check the lateralmovement",
+    "phrase": "LateralMovement",
+    "matches": true
+   },
+   {
+    "corpus": "ransomware_behaviour detected",
+    "phrase": "ransomware_behaviour",
+    "matches": false
+   },
+   {
+    "corpus": "ransomware detected",
+    "phrase": "ransomware_behaviour",
+    "matches": false
+   },
+   {
+    "corpus": "a web server",
+    "phrase": "web",
+    "matches": true
+   },
+   {
+    "corpus": "an ad host",
+    "phrase": "ad",
+    "matches": false
+   },
+   {
+    "corpus": "x lateral   —  movement y",
+    "phrase": "lateral movement",
+    "matches": true
+   },
+   {
+    "corpus": "xlateral movement",
+    "phrase": "lateral movement",
+    "matches": false
+   },
+   {
+    "corpus": "lateral movementx",
+    "phrase": "lateral movement",
+    "matches": false
+   },
+   {
+    "corpus": "lateral é movement",
+    "phrase": "lateral movement",
+    "matches": false
+   },
+   {
+    "corpus": "lateral_movement",
+    "phrase": "lateral movement",
+    "matches": false
+   },
+   {
+    "corpus": "café lateral movement",
+    "phrase": "lateral movement",
+    "matches": true
+   },
+   {
+    "corpus": "ébrute force",
+    "phrase": "brute force",
+    "matches": false
+   },
+   {
+    "corpus": "brute force",
+    "phrase": "brute-force attack",
+    "matches": false
+   },
+   {
+    "corpus": "t1059 powershell",
+    "phrase": "T1059",
+    "matches": true
+   }
+  ],
+  "values": [
+   {
+    "value": null,
+    "strings": [],
+    "flat": []
+   },
+   {
+    "value": "a,b;c|d",
+    "strings": [
+     "a",
+     "b",
+     "c",
+     "d"
+    ],
+    "flat": [
+     "a,b;c|d"
+    ]
+   },
+   {
+    "value": " a , ,;|  ",
+    "strings": [
+     " a "
+    ],
+    "flat": [
+     " a , ,;|  "
+    ]
+   },
+   {
+    "value": [
+     "x",
+     [
+      "y,z"
+     ],
+     null,
+     3
+    ],
+    "strings": [
+     "x",
+     "y",
+     "z",
+     "3"
+    ],
+    "flat": [
+     "x",
+     "y,z",
+     "3"
+    ]
+   },
+   {
+    "value": 5,
+    "strings": [
+     "5"
+    ],
+    "flat": [
+     "5"
+    ]
+   },
+   {
+    "value": 2.5,
+    "strings": [
+     "2.5"
+    ],
+    "flat": [
+     "2.5"
+    ]
+   },
+   {
+    "value": true,
+    "strings": [
+     "True"
+    ],
+    "flat": [
+     "True"
+    ]
+   },
+   {
+    "value": {
+     "k": "v"
+    },
+    "strings": [
+     "{'k': 'v'}"
+    ],
+    "flat": [
+     "v"
+    ]
+   },
+   {
+    "value": [
+     {
+      "a": 1
+     },
+     [
+      1.0,
+      false
+     ]
+    ],
+    "strings": [
+     "{'a': 1}",
+     "1.0",
+     "False"
+    ],
+    "flat": [
+     "1",
+     "1.0",
+     "False"
+    ]
+   },
+   {
+    "value": "",
+    "strings": [],
+    "flat": [
+     ""
+    ]
+   }
+  ],
+  "usage": [
+   0,
+   4,
+   6,
+   8,
+   9,
+   10,
+   11,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12,
+   12
+  ]
+ },
+ "entries": [
+  {
+   "yaml": "key: a\nname: A\ntasks: []\n",
+   "normalized": true,
+   "response": {
+    "key": "a",
+    "name": "A",
+    "description": null,
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "A",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: '  spaced  '\nname: '  N  '\ndescription: d\nsource: wazuh\ntags: {mitre: [T1003], 1: x}\nmatch: {field: ' data_win_system_eventID ', value: 11}\ntasks:\n  - {title: ' b ', order_index: 2, mandatory: yes}\n  - {title: a, order_index: 1, description: '', guidelines: g}\n  - {title: c, order_index: true}\n  - {title: '  ', order_index: 0}\n  - {title: d, order_index: -1}\n  - {title: e, order_index: 1.0}\n  - not a dict\n  - {title: f}\n",
+   "normalized": true,
+   "response_error": "1 validation error for CaseTemplateLibraryEntry\ntags.1.[key]\n  Input should be a valid string [type=string_type, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type",
+   "import": {
+    "name": "N",
+    "description": "d",
+    "customer_code": null,
+    "source": "wazuh",
+    "is_default": false,
+    "match_field": "data_win_system_eventID",
+    "match_value": "11",
+    "tasks": [
+     {
+      "title": "a",
+      "description": null,
+      "guidelines": "g",
+      "mandatory": false,
+      "order_index": 1
+     },
+     {
+      "title": "c",
+      "description": null,
+      "guidelines": null,
+      "mandatory": false,
+      "order_index": 1
+     },
+     {
+      "title": "b",
+      "description": null,
+      "guidelines": null,
+      "mandatory": true,
+      "order_index": 2
+     }
+    ]
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\ntags: {when: 2024-01-02, at: 2024-01-02 03:04:05, b: !!binary aGk=, f: .inf}\ntasks:\n  - {title: t, order_index: 0}\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {
+     "when": "2024-01-02",
+     "at": "2024-01-02T03:04:05",
+     "b": "hi",
+     "f": null
+    },
+    "tasks": [
+     {
+      "title": "t",
+      "description": null,
+      "guidelines": null,
+      "mandatory": false,
+      "order_index": 0
+     }
+    ],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": [
+     {
+      "title": "t",
+      "description": null,
+      "guidelines": null,
+      "mandatory": false,
+      "order_index": 0
+     }
+    ]
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\nmatch: {field: f}\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\nmatch: {field: f, value: null}\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\nmatch: {field: f, value: [1, 'a']}\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": "f",
+    "match_value": "[1, 'a']",
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": "f",
+    "match_value": "[1, 'a']",
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\nmatch: {field: f, value: {a: 1.5}}\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": "f",
+    "match_value": "{'a': 1.5}",
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": "f",
+    "match_value": "{'a': 1.5}",
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\nmatch: {field: f, value: true}\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": "f",
+    "match_value": "True",
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": "f",
+    "match_value": "True",
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\nmatch: {field: '', value: x}\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\nmatch: [field, value]\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: 1\nname: n\n",
+   "normalized": false
+  },
+  {
+   "yaml": "key: ''\nname: n\n",
+   "normalized": false
+  },
+  {
+   "yaml": "key: k\nname: 2\n",
+   "normalized": false
+  },
+  {
+   "yaml": "key: k\n",
+   "normalized": false
+  },
+  {
+   "yaml": "key: k\nname: n\ntasks: {a: 1}\n",
+   "normalized": false
+  },
+  {
+   "yaml": "key: k\nname: n\ntasks: x\n",
+   "normalized": false
+  },
+  {
+   "yaml": "key: k\nname: n\ntasks: ''\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\ndescription: 5\n",
+   "normalized": true,
+   "response_error": "1 validation error for CaseTemplateLibraryEntry\ndescription\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type",
+   "import_error": "1 validation error for CaseTemplateCreate\ndescription\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+  },
+  {
+   "yaml": "key: k\nname: n\ndescription: [a]\nsource: 7\n",
+   "normalized": true,
+   "response_error": "2 validation errors for CaseTemplateLibraryEntry\ndescription\n  Input should be a valid string [type=string_type, input_value=['a'], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nsource\n  Input should be a valid string [type=string_type, input_value=7, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type",
+   "import_error": "2 validation errors for CaseTemplateCreate\ndescription\n  Input should be a valid string [type=string_type, input_value=['a'], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nsource\n  Input should be a valid string [type=string_type, input_value=7, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+  },
+  {
+   "yaml": "key: k\nname: NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN\n",
+   "normalized": true,
+   "response_error": "1 validation error for CaseTemplateLibraryEntry\nname\n  String should have at most 255 characters [type=string_too_long, input_value='NNNNNNNNNNNNNNNNNNNNNNNN...NNNNNNNNNNNNNNNNNNNNNNN', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_too_long",
+   "import_error": "1 validation error for CaseTemplateCreate\nname\n  String should have at most 255 characters [type=string_too_long, input_value='NNNNNNNNNNNNNNNNNNNNNNNN...NNNNNNNNNNNNNNNNNNNNNNN', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_too_long"
+  },
+  {
+   "yaml": "key: k\nname: n\nsource: sssssssssssssssssssssssssssssssssssssssssssssssssss\n",
+   "normalized": true,
+   "response_error": "1 validation error for CaseTemplateLibraryEntry\nsource\n  String should have at most 50 characters [type=string_too_long, input_value='ssssssssssssssssssssssss...sssssssssssssssssssssss', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_too_long",
+   "import_error": "1 validation error for CaseTemplateCreate\nsource\n  String should have at most 50 characters [type=string_too_long, input_value='ssssssssssssssssssssssss...sssssssssssssssssssssss', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_too_long"
+  },
+  {
+   "yaml": "key: k\nname: n\nmatch: {field: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, value: v}\n",
+   "normalized": true,
+   "response_error": "1 validation error for CaseTemplateLibraryEntry\nmatch_field\n  String should have at most 255 characters [type=string_too_long, input_value='ffffffffffffffffffffffff...fffffffffffffffffffffff', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_too_long",
+   "import_error": "1 validation error for CaseTemplateCreate\nmatch_field\n  String should have at most 255 characters [type=string_too_long, input_value='ffffffffffffffffffffffff...fffffffffffffffffffffff', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_too_long"
+  },
+  {
+   "yaml": "key: k\nname: n\ntasks:\n  - {title: ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt, order_index: 0}\n",
+   "normalized": true,
+   "response_error": "1 validation error for CaseTemplateLibraryTask\ntitle\n  String should have at most 500 characters [type=string_too_long, input_value='tttttttttttttttttttttttt...ttttttttttttttttttttttt', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_too_long",
+   "import_error": "1 validation error for CaseTemplateTaskCreate\ntitle\n  String should have at most 500 characters [type=string_too_long, input_value='tttttttttttttttttttttttt...ttttttttttttttttttttttt', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_too_long"
+  },
+  {
+   "yaml": "key: k\nname: n\ntasks:\n  - {title: t, order_index: 0, description: 5, guidelines: [1]}\n  - {title: u, order_index: 1, description: 6}\n",
+   "normalized": true,
+   "response_error": "2 validation errors for CaseTemplateLibraryTask\ndescription\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nguidelines\n  Input should be a valid string [type=string_type, input_value=[1], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type",
+   "import_error": "2 validation errors for CaseTemplateTaskCreate\ndescription\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nguidelines\n  Input should be a valid string [type=string_type, input_value=[1], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+  },
+  {
+   "yaml": "key: k\nname: n\ndescription: 0\nsource: ''\ntags: [a]\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\ntags: {a: {b: [1, 2]}, c: null}\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": null,
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {
+     "a": {
+      "b": [
+       1,
+       2
+      ]
+     },
+     "c": null
+    },
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "key: k\nname: n\ndescription: !!binary aGk=\n",
+   "normalized": true,
+   "response": {
+    "key": "k",
+    "name": "n",
+    "description": "hi",
+    "source": null,
+    "match_field": null,
+    "match_value": null,
+    "tags": {},
+    "tasks": [],
+    "file_path": "sysmon/x.yaml"
+   },
+   "import": {
+    "name": "n",
+    "description": "hi",
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   }
+  },
+  {
+   "yaml": "- a\n- b\n",
+   "normalized": false
+  },
+  {
+   "yaml": "just text\n",
+   "normalized": false
+  }
+ ],
+ "scores": {
+  "templates": [
+   {
+    "id": 1,
+    "name": "Ransomware — host containment",
+    "description": "Isolate the host; see T1486.",
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": [
+     {
+      "title": "Isolate",
+      "description": "Cut network T1486",
+      "guidelines": null
+     },
+     {
+      "title": "Backups",
+      "description": null,
+      "guidelines": "check vss"
+     }
+    ]
+   },
+   {
+    "id": 2,
+    "name": "Endpoint triage",
+    "description": null,
+    "customer_code": "ACME",
+    "source": "wazuh",
+    "is_default": true,
+    "match_field": null,
+    "match_value": null,
+    "tasks": [
+     {
+      "title": "Collect",
+      "description": "PowerShell T1059",
+      "guidelines": null
+     }
+    ]
+   },
+   {
+    "id": 3,
+    "name": "Sysmon process create",
+    "description": null,
+    "customer_code": null,
+    "source": "wazuh",
+    "is_default": false,
+    "match_field": "data_win_system_eventID",
+    "match_value": "1",
+    "tasks": [
+     {
+      "title": "Review",
+      "description": "process tree",
+      "guidelines": null
+     }
+    ]
+   },
+   {
+    "id": 4,
+    "name": "Phishing",
+    "description": "Email phishing with lateral movement and brute force",
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": [
+     {
+      "title": "Check",
+      "description": "T1566.001 attachment",
+      "guidelines": "web proxy"
+     }
+    ]
+   },
+   {
+    "id": 5,
+    "name": "Other customer",
+    "description": null,
+    "customer_code": "OTHER",
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": []
+   },
+   {
+    "id": 6,
+    "name": "Half condition",
+    "description": null,
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": "field",
+    "match_value": "",
+    "tasks": []
+   },
+   {
+    "id": 7,
+    "name": "Credential dumping",
+    "description": "Mimikatz lsass T1003",
+    "customer_code": null,
+    "source": null,
+    "is_default": false,
+    "match_field": null,
+    "match_value": null,
+    "tasks": [
+     {
+      "title": "Dump",
+      "description": "Command and Scripting Interpreter",
+      "guidelines": null
+     }
+    ]
+   }
+  ],
+  "usage": {
+   "1": 3,
+   "2": 40,
+   "4": 1
+  },
+  "cases": [
+   {
+    "signals": {
+     "customer_code": "ACME",
+     "source": "wazuh"
+    },
+    "keywords": [],
+    "results": [
+     {
+      "template": 1,
+      "in_scope": true,
+      "score": 8,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 3 case(s) for ACME",
+        "points": 8
+       }
+      ]
+     },
+     {
+      "template": 2,
+      "in_scope": true,
+      "score": 62,
+      "confidence": "high",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "customer",
+        "detail": "Scoped to customer ACME",
+        "points": 25
+       },
+       {
+        "signal": "source",
+        "detail": "Scoped to wazuh alerts",
+        "points": 20
+       },
+       {
+        "signal": "usage",
+        "detail": "Applied to 40 case(s) for ACME",
+        "points": 12
+       },
+       {
+        "signal": "default",
+        "detail": "Default template for its scope",
+        "points": 5
+       }
+      ]
+     },
+     {
+      "template": 3,
+      "in_scope": true,
+      "score": 20,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "source",
+        "detail": "Scoped to wazuh alerts",
+        "points": 20
+       },
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on data_win_system_eventID could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 4,
+      "in_scope": true,
+      "score": 4,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 1 case(s) for ACME",
+        "points": 4
+       }
+      ]
+     },
+     {
+      "template": 5,
+      "in_scope": false,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     },
+     {
+      "template": 6,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on field could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 7,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     }
+    ]
+   },
+   {
+    "signals": {
+     "customer_code": null,
+     "source": null
+    },
+    "keywords": [],
+    "results": [
+     {
+      "template": 1,
+      "in_scope": true,
+      "score": 8,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 3 case(s)",
+        "points": 8
+       }
+      ]
+     },
+     {
+      "template": 2,
+      "in_scope": false,
+      "score": 17,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 40 case(s)",
+        "points": 12
+       },
+       {
+        "signal": "default",
+        "detail": "Default template for its scope",
+        "points": 5
+       }
+      ]
+     },
+     {
+      "template": 3,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on data_win_system_eventID could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 4,
+      "in_scope": true,
+      "score": 4,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 1 case(s)",
+        "points": 4
+       }
+      ]
+     },
+     {
+      "template": 5,
+      "in_scope": false,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     },
+     {
+      "template": 6,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on field could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 7,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     }
+    ]
+   },
+   {
+    "signals": {
+     "customer_code": "",
+     "source": ""
+    },
+    "keywords": [],
+    "results": [
+     {
+      "template": 1,
+      "in_scope": true,
+      "score": 8,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 3 case(s)",
+        "points": 8
+       }
+      ]
+     },
+     {
+      "template": 2,
+      "in_scope": false,
+      "score": 17,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 40 case(s)",
+        "points": 12
+       },
+       {
+        "signal": "default",
+        "detail": "Default template for its scope",
+        "points": 5
+       }
+      ]
+     },
+     {
+      "template": 3,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on data_win_system_eventID could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 4,
+      "in_scope": true,
+      "score": 4,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 1 case(s)",
+        "points": 4
+       }
+      ]
+     },
+     {
+      "template": 5,
+      "in_scope": false,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     },
+     {
+      "template": 6,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on field could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 7,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     }
+    ]
+   },
+   {
+    "signals": {
+     "customer_code": "ACME",
+     "source": "wazuh",
+     "alert_name": "Possible ransomware PowerShell lsass dump detected on host",
+     "tags": [
+      "lateral-movement",
+      "T1486",
+      "web",
+      "brute force",
+      "t1003.001"
+     ],
+     "mitre_ids": [
+      "T1059.001",
+      "T1003",
+      "T1566.002",
+      "T1486"
+     ],
+     "mitre_names": [
+      "Command and Scripting Interpreter",
+      "Phishing"
+     ],
+     "rule_groups": [
+      "windows",
+      "syslog",
+      "ransomware_behaviour",
+      "lateral movement",
+      "web"
+     ],
+     "document": {
+      "data_win_system_eventID": 1
+     },
+     "document_available": true
+    },
+    "keywords": [
+     "ransomware",
+     "powershell",
+     "lsass",
+     "dump",
+     "host"
+    ],
+    "results": [
+     {
+      "template": 1,
+      "in_scope": true,
+      "score": 41,
+      "confidence": "medium",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "mitre",
+        "detail": "Covers MITRE technique(s): T1486",
+        "points": 15
+       },
+       {
+        "signal": "tag",
+        "detail": "Matches alert tag(s): T1486",
+        "points": 10
+       },
+       {
+        "signal": "keyword",
+        "detail": "Alert title mentions: ransomware, host",
+        "points": 8
+       },
+       {
+        "signal": "usage",
+        "detail": "Applied to 3 case(s) for ACME",
+        "points": 8
+       }
+      ]
+     },
+     {
+      "template": 2,
+      "in_scope": true,
+      "score": 73,
+      "confidence": "high",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "customer",
+        "detail": "Scoped to customer ACME",
+        "points": 25
+       },
+       {
+        "signal": "source",
+        "detail": "Scoped to wazuh alerts",
+        "points": 20
+       },
+       {
+        "signal": "usage",
+        "detail": "Applied to 40 case(s) for ACME",
+        "points": 12
+       },
+       {
+        "signal": "mitre_parent",
+        "detail": "Covers the parent technique of: T1059.001 → T1059",
+        "points": 7
+       },
+       {
+        "signal": "default",
+        "detail": "Default template for its scope",
+        "points": 5
+       },
+       {
+        "signal": "keyword",
+        "detail": "Alert title mentions: powershell",
+        "points": 4
+       }
+      ]
+     },
+     {
+      "template": 3,
+      "in_scope": true,
+      "score": 60,
+      "confidence": "high",
+      "condition": true,
+      "reasons": [
+       {
+        "signal": "condition",
+        "detail": "Auto-apply condition matches (data_win_system_eventID = 1)",
+        "points": 40
+       },
+       {
+        "signal": "source",
+        "detail": "Scoped to wazuh alerts",
+        "points": 20
+       }
+      ]
+     },
+     {
+      "template": 4,
+      "in_scope": true,
+      "score": 53,
+      "confidence": "medium",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "tag",
+        "detail": "Matches alert tag(s): lateral-movement, web, brute force",
+        "points": 30
+       },
+       {
+        "signal": "rule_group",
+        "detail": "Matches rule group(s): lateral movement, web",
+        "points": 12
+       },
+       {
+        "signal": "mitre_name",
+        "detail": "Mentions MITRE technique(s): Phishing",
+        "points": 7
+       },
+       {
+        "signal": "usage",
+        "detail": "Applied to 1 case(s) for ACME",
+        "points": 4
+       }
+      ]
+     },
+     {
+      "template": 5,
+      "in_scope": false,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     },
+     {
+      "template": 6,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on field could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 7,
+      "in_scope": true,
+      "score": 23,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "mitre",
+        "detail": "Covers MITRE technique(s): T1003",
+        "points": 15
+       },
+       {
+        "signal": "keyword",
+        "detail": "Alert title mentions: lsass, dump",
+        "points": 8
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "signals": {
+     "customer_code": "ACME",
+     "source": "wazuh",
+     "document": {
+      "data_win_system_eventID": "2"
+     },
+     "document_available": true
+    },
+    "keywords": [],
+    "results": [
+     {
+      "template": 1,
+      "in_scope": true,
+      "score": 8,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 3 case(s) for ACME",
+        "points": 8
+       }
+      ]
+     },
+     {
+      "template": 2,
+      "in_scope": true,
+      "score": 62,
+      "confidence": "high",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "customer",
+        "detail": "Scoped to customer ACME",
+        "points": 25
+       },
+       {
+        "signal": "source",
+        "detail": "Scoped to wazuh alerts",
+        "points": 20
+       },
+       {
+        "signal": "usage",
+        "detail": "Applied to 40 case(s) for ACME",
+        "points": 12
+       },
+       {
+        "signal": "default",
+        "detail": "Default template for its scope",
+        "points": 5
+       }
+      ]
+     },
+     {
+      "template": 3,
+      "in_scope": true,
+      "score": 20,
+      "confidence": "low",
+      "condition": false,
+      "reasons": [
+       {
+        "signal": "source",
+        "detail": "Scoped to wazuh alerts",
+        "points": 20
+       }
+      ]
+     },
+     {
+      "template": 4,
+      "in_scope": true,
+      "score": 4,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 1 case(s) for ACME",
+        "points": 4
+       }
+      ]
+     },
+     {
+      "template": 5,
+      "in_scope": false,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     },
+     {
+      "template": 6,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on field could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 7,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     }
+    ]
+   },
+   {
+    "signals": {
+     "customer_code": "OTHER",
+     "source": "office365",
+     "document": {},
+     "document_available": false
+    },
+    "keywords": [],
+    "results": [
+     {
+      "template": 1,
+      "in_scope": true,
+      "score": 8,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 3 case(s) for OTHER",
+        "points": 8
+       }
+      ]
+     },
+     {
+      "template": 2,
+      "in_scope": false,
+      "score": 17,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 40 case(s) for OTHER",
+        "points": 12
+       },
+       {
+        "signal": "default",
+        "detail": "Default template for its scope",
+        "points": 5
+       }
+      ]
+     },
+     {
+      "template": 3,
+      "in_scope": false,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on data_win_system_eventID could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 4,
+      "in_scope": true,
+      "score": 4,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "usage",
+        "detail": "Applied to 1 case(s) for OTHER",
+        "points": 4
+       }
+      ]
+     },
+     {
+      "template": 5,
+      "in_scope": true,
+      "score": 25,
+      "confidence": "medium",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "customer",
+        "detail": "Scoped to customer OTHER",
+        "points": 25
+       }
+      ]
+     },
+     {
+      "template": 6,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": [
+       {
+        "signal": "condition_unverified",
+        "detail": "Auto-apply condition on field could not be checked — the originating event was not readable",
+        "points": 0
+       }
+      ]
+     },
+     {
+      "template": 7,
+      "in_scope": true,
+      "score": 0,
+      "confidence": "low",
+      "condition": null,
+      "reasons": []
+     }
+    ]
+   }
+  ]
+ }
+}

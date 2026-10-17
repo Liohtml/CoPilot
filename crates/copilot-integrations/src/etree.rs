@@ -26,9 +26,11 @@
 //! declaration; `us-ascii` (`ET.tostring`'s default) writes every non-ASCII
 //! character as a decimal character reference.
 //!
-//! `etree_vectors.json` (`scripts/gen-integrations-vectors.py`) and
+//! `etree_vectors.json` (`scripts/gen-integrations-vectors.py`),
 //! `etree_expat_vectors.json` (`scripts/gen-remaining-provisioning-vectors.py`)
-//! pin both halves against CPython 3.11 and its expat.
+//! and `expat_vectors.json` (`scripts/gen-expat-vectors.py`: each refusal's
+//! text and position, as the Sysmon config upload reports them) pin both
+//! halves against CPython 3.11 and its expat.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -393,8 +395,11 @@ impl Parser {
     /// After `<?`, the `<` at `token`.
     fn pi(&mut self, token: usize) -> Res<()> {
         let target = self.name(token)?;
-        if target.eq_ignore_ascii_case("xml") {
+        if target == "xml" {
             return self.fail(token, "XML or text declaration not at start of entity");
+        }
+        if target.eq_ignore_ascii_case("xml") {
+            return self.fail(self.pos, INVALID);
         }
         if let Some(i) = target.find(':') {
             let colon = self.pos - target[i..].chars().count();
@@ -441,75 +446,93 @@ impl Parser {
         Ok(v)
     }
 
-    /// After `<?xml` followed by a space or `?`.
+    /// After `<?xml` followed by a space or `?` (the declaration starts at
+    /// 0). A malformed one is reported where expat stops: the
+    /// pseudo-attribute that is out of place, the character a value may not
+    /// hold.
     fn xml_decl(&mut self) -> Res<()> {
         const BAD: &str = "XML declaration not well-formed";
+        let start = 0;
         let mut seen: Vec<&str> = Vec::new();
         loop {
             let spaced = self.skip_space();
+            let end_at = self.pos;
             if self.eat("?>") {
-                break;
+                if seen.first() != Some(&"version") {
+                    return self.fail(end_at, BAD);
+                }
+                return Ok(());
             }
             if self.peek().is_none() {
-                return self.fail(0, UNCLOSED);
+                return self.fail(start, UNCLOSED);
             }
             if !spaced {
                 return self.fail(self.pos, BAD);
             }
-            let at_name = self.pos;
-            let name = match self.name(0) {
-                Ok(n) => n,
-                Err(_) => return self.fail(at_name, BAD),
-            };
-            self.skip_space();
-            if !self.eat("=") {
+            let name_at = self.pos;
+            if !self.peek().is_some_and(is_name_start) {
                 return self.fail(self.pos, BAD);
             }
+            let name = self.name(start)?;
             self.skip_space();
-            let value_at = self.pos + 1;
-            let value = match self.quoted(0) {
-                Ok(v) => v,
-                Err(e) if e.message == UNCLOSED => return Err(e),
-                Err(_) => return self.fail(self.pos, BAD),
-            };
-            let ok = match name.as_str() {
-                "version" => {
-                    seen.is_empty()
-                        && !value.is_empty()
-                        && value
-                            .chars()
-                            .all(|c| c.is_ascii_alphanumeric() || "_.:-".contains(c))
-                }
-                "encoding" => {
-                    seen == ["version"]
-                        && value
-                            .chars()
-                            .next()
-                            .is_some_and(|c| c.is_ascii_alphabetic())
-                        && value
-                            .chars()
-                            .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
-                }
-                "standalone" => {
-                    seen.first().is_some_and(|f| *f == "version")
-                        && !seen.contains(&"standalone")
-                        && (value == "yes" || value == "no")
-                }
-                _ => return self.fail(at_name, BAD),
-            };
-            if !ok {
-                return self.fail(value_at, BAD);
+            match self.peek() {
+                Some('=') => self.pos += 1,
+                Some(_) => return self.fail(self.pos, BAD),
+                None => return self.fail(start, UNCLOSED),
             }
-            seen.push(match name.as_str() {
-                "version" => "version",
-                "encoding" => "encoding",
-                _ => "standalone",
-            });
+            self.skip_space();
+            match self.peek() {
+                Some('"' | '\'') => {}
+                Some(_) => return self.fail(self.pos, BAD),
+                None => return self.fail(start, UNCLOSED),
+            }
+            let value_at = self.pos + 1;
+            let value = self.quoted(start)?;
+            let first_bad = |ok: &dyn Fn(usize, char) -> bool| {
+                value
+                    .chars()
+                    .enumerate()
+                    .find(|(i, c)| !ok(*i, *c))
+                    .map(|(i, _)| value_at + i)
+            };
+            match name.as_str() {
+                "version" if seen.is_empty() => {
+                    let bad = first_bad(&|_, c| c.is_ascii_alphanumeric() || "_.:-".contains(c));
+                    if let Some(at) = bad {
+                        return self.fail(at, BAD);
+                    }
+                    if value.is_empty() {
+                        return self.fail(value_at, BAD);
+                    }
+                    seen.push("version");
+                }
+                "encoding" if seen == ["version"] => {
+                    let bad = first_bad(&|i, c| {
+                        if i == 0 {
+                            c.is_ascii_alphabetic()
+                        } else {
+                            c.is_ascii_alphanumeric() || "._-".contains(c)
+                        }
+                    });
+                    if let Some(at) = bad {
+                        return self.fail(at, BAD);
+                    }
+                    if value.is_empty() {
+                        return self.fail(value_at, BAD);
+                    }
+                    seen.push("encoding");
+                }
+                "standalone"
+                    if seen.first() == Some(&"version") && !seen.contains(&"standalone") =>
+                {
+                    if value != "yes" && value != "no" {
+                        return self.fail(value_at, BAD);
+                    }
+                    seen.push("standalone");
+                }
+                _ => return self.fail(name_at, BAD),
+            }
         }
-        if seen.first() != Some(&"version") {
-            return self.fail(5, BAD);
-        }
-        Ok(())
     }
 
     /// After `<!DOCTYPE`, the `<` at `token`.
@@ -633,7 +656,11 @@ impl Parser {
     /// An attribute value between its quotes, references expanded and
     /// whitespace normalised; the start tag's `<` at `token`. An undefined
     /// entity is reported at the start tag.
-    fn attribute_value(&mut self, token: usize) -> Res<String> {
+    ///
+    /// The outer error is the tokenizer's (the tag is not read to its end);
+    /// the inner one is `storeAtts`' (a reference whose value is refused),
+    /// reported only once the whole tag is tokenized, in attribute order.
+    fn attribute_value(&mut self, token: usize) -> Res<(String, Option<ParseError>)> {
         let q = match self.peek() {
             Some(q @ ('"' | '\'')) => q,
             None => return self.fail(token, UNCLOSED),
@@ -641,12 +668,13 @@ impl Parser {
         };
         self.pos += 1;
         let mut out = String::new();
+        let mut refused: Option<ParseError> = None;
         loop {
             match self.peek() {
                 None => return self.fail(token, UNCLOSED),
                 Some(c) if c == q => {
                     self.pos += 1;
-                    return Ok(out);
+                    return Ok((out, refused));
                 }
                 Some('<') => return self.fail(self.pos, INVALID),
                 Some('&') => {
@@ -655,10 +683,17 @@ impl Parser {
                     match self.reference(amp) {
                         Ok(r) => out.push_str(&r),
                         Err(e) if e.message == UNCLOSED => return self.fail(token, UNCLOSED),
-                        Err(e) if e.message == "undefined entity" => {
-                            return self.fail(token, "undefined entity");
+                        Err(e) if e.message == INVALID => return Err(e),
+                        Err(e) => {
+                            // An undefined entity is reported at the start tag.
+                            if refused.is_none() {
+                                refused = if e.message == "undefined entity" {
+                                    self.fail::<()>(token, "undefined entity").err()
+                                } else {
+                                    Some(e)
+                                };
+                            }
                         }
-                        Err(e) => return Err(e),
                     }
                 }
                 Some(c) => {
@@ -696,10 +731,37 @@ impl Parser {
         }
     }
 
-    /// `<` already consumed (it is at `token`), at the name.
+    /// `xmlns[:prefix]="uri"`: expat's refusal of the binding, if any.
+    fn binding_error(prefix: Option<&str>, uri: &str) -> Option<&'static str> {
+        const RESERVED_URI: &str =
+            "prefix must not be bound to one of the reserved namespace names";
+        if uri.is_empty() && prefix.is_some() {
+            return Some("must not undeclare prefix");
+        }
+        if prefix == Some("xmlns") {
+            return Some("reserved prefix (xmlns) must not be declared or undeclared");
+        }
+        let must_be_xml = prefix == Some("xml");
+        let is_xml = uri == XML_NS;
+        if must_be_xml != is_xml {
+            return Some(if must_be_xml {
+                "reserved prefix (xml) must not be undeclared or bound to another namespace name"
+            } else {
+                RESERVED_URI
+            });
+        }
+        if uri == XMLNS_NS {
+            return Some(RESERVED_URI);
+        }
+        None
+    }
+
+    /// `<` already consumed (it is at `token`), at the name: the tag
+    /// tokenized first, then `storeAtts` — per attribute in order its
+    /// duplicate, its value, its namespace binding; then the prefixed names.
     fn start_tag(&mut self, token: usize) -> Res<(Open, bool)> {
         let raw = self.name(token)?;
-        let mut raw_attrs: Vec<(String, String)> = Vec::new();
+        let mut raw_attrs: Vec<(String, usize, String, Option<ParseError>)> = Vec::new();
         let empty;
         loop {
             let spaced = self.skip_space();
@@ -733,37 +795,33 @@ impl Parser {
                 Some(_) => return self.fail(self.pos, INVALID),
             }
             self.skip_space();
-            let value = self.attribute_value(token)?;
-            if raw_attrs.iter().any(|(n, _)| *n == name) {
-                return self.fail(name_at, "duplicate attribute");
-            }
-            raw_attrs.push((name, value));
+            let (value, refused) = self.attribute_value(token)?;
+            raw_attrs.push((name, name_at, value, refused));
         }
-        // Namespace declarations first, then the names.
         let mut scope = HashMap::new();
         let mut plain = Vec::new();
-        for (name, value) in raw_attrs {
-            if name == "xmlns" {
-                scope.insert(String::new(), value);
-            } else if let Some(prefix) = name.strip_prefix("xmlns:") {
-                if prefix == "xmlns" || (prefix == "xml" && value != XML_NS) {
-                    return self.fail(
-                        token,
-                        "reserved prefix (xml) must not be undeclared or bound to another namespace name",
-                    );
-                }
-                if value.is_empty() {
-                    return self.fail(token, "must not undeclare prefix");
-                }
-                if value == XMLNS_NS || (value == XML_NS && prefix != "xml") {
-                    return self.fail(
-                        token,
-                        "reserved prefix (xmlns) must not be declared or undeclared",
-                    );
-                }
-                scope.insert(prefix.to_string(), value);
+        for i in 0..raw_attrs.len() {
+            let (name, name_at, _, _) = &raw_attrs[i];
+            if raw_attrs[..i].iter().any(|(n, _, _, _)| n == name) {
+                return self.fail(*name_at, "duplicate attribute");
+            }
+            let (name, _, value, refused) = raw_attrs[i].clone();
+            if let Some(e) = refused {
+                return Err(e);
+            }
+            let prefix = if name == "xmlns" {
+                Some(None)
             } else {
-                plain.push((name, value));
+                name.strip_prefix("xmlns:").map(Some)
+            };
+            match prefix {
+                Some(prefix) => {
+                    if let Some(message) = Self::binding_error(prefix, &value) {
+                        return self.fail(token, message);
+                    }
+                    scope.insert(prefix.unwrap_or_default().to_string(), value);
+                }
+                None => plain.push((name, value)),
             }
         }
         self.scopes.push(scope);
@@ -827,6 +885,31 @@ impl Parser {
             return Ok(start);
         }
         self.fail(start, INVALID)
+    }
+
+    /// `<!` after the root (not a comment), at `at`: a declaration is junk,
+    /// a malformed one an invalid token where expat's prolog tokenizer stops.
+    fn epilog_declaration<T>(&self, at: usize) -> Res<T> {
+        let mut i = at + 2;
+        match self.at(i) {
+            None => return self.fail(at, UNCLOSED),
+            Some('-') => {
+                return match self.at(i + 1) {
+                    None => self.fail(at, UNCLOSED),
+                    Some(_) => self.fail(i + 1, INVALID),
+                };
+            }
+            Some(c) if is_name_start(c) => {}
+            Some(_) => return self.fail(i, INVALID),
+        }
+        while self.at(i).is_some_and(is_name_char) {
+            i += 1;
+        }
+        match self.at(i) {
+            None => self.fail(at, UNCLOSED),
+            Some(c) if is_space(c) => self.fail(at, "junk after document element"),
+            Some(_) => self.fail(i, INVALID),
+        }
     }
 
     /// A comment in the content: kept (with `insert_comments`) as a child
@@ -905,6 +988,23 @@ impl Parser {
                     if self.eat("<!--") {
                         let text = self.comment(here)?;
                         self.content_comment(&mut stack, &mut data, text);
+                    } else if self.starts_with("<!-") {
+                        // `<!-` not followed by `-`: invalid at the character
+                        // after the dash (an end of input: unclosed).
+                        return match self.at(self.pos + 3) {
+                            Some(_) => self.fail(self.pos + 3, INVALID),
+                            None => self.fail(here, UNCLOSED),
+                        };
+                    } else if self.starts_with("<![") && !self.starts_with("<![CDATA[") {
+                        // The first character that breaks `<![CDATA[`.
+                        self.pos += 2;
+                        for expected in "[CDATA[".chars() {
+                            match self.peek() {
+                                Some(c) if c == expected => self.pos += 1,
+                                Some(_) => return self.fail(self.pos, INVALID),
+                                None => return self.fail(here, UNCLOSED),
+                            }
+                        }
                     } else if self.eat("<![CDATA[") {
                         loop {
                             if self.eat("]]>") {
@@ -1004,6 +1104,8 @@ impl Parser {
                 }
             } else if self.starts_with("</") {
                 return self.fail(here + 1, INVALID);
+            } else if self.starts_with("<!") {
+                return self.epilog_declaration(here);
             } else if self.peek() == Some('<') {
                 return self.fail(here, "junk after document element");
             } else {
@@ -1411,6 +1513,33 @@ mod tests {
             tostring(&root),
             "<a xmlns:ns0=\"urn:x\" ns0:k=\"1 2&#10;\"><ns0:b /></a>"
         );
+    }
+
+    /// `ET.fromstring` against expat 2.6 (`scripts/gen-expat-vectors.py`):
+    /// what it accepts, and each refusal's text and position.
+    #[test]
+    fn refusals_are_expats() {
+        #[derive(serde::Deserialize)]
+        struct Probe {
+            text: String,
+            error: Option<String>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Vectors {
+            documents: Vec<Probe>,
+        }
+        let v: Vectors = serde_json::from_str(include_str!("expat_vectors.json")).unwrap();
+        let mut failures = Vec::new();
+        for probe in v.documents {
+            let got = fromstring(&probe.text).err().map(|e| e.to_string());
+            if got != probe.error {
+                failures.push(format!(
+                    "{:?}: python {:?}, rust {:?}",
+                    probe.text, probe.error, got
+                ));
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
     /// `etree_expat_vectors.json`: expat's verdict and message for every

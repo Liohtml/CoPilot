@@ -18,6 +18,7 @@ copilot-agents = { workspace = true }
 copilot-velociraptor = { workspace = true }
 copilot-objectstore = { workspace = true }
 copilot-ingest = { workspace = true }
+copilot-integrations = { workspace = true }
 axum = { workspace = true }
 http = { workspace = true }
 reqwest = { workspace = true }

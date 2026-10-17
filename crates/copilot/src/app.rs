@@ -5,8 +5,8 @@
 //! frontend / portal ──►│ /api/ai_analyst/*  → copilot-ai-analyst             │
 //!                      │ /api/customer_portal/* (but /sla)                    │
 //!                      │                    → copilot-customer-portal         │
-//!                      │ GET /api/customers/*   → copilot-customers           │
-//!                      │ GET /api/healthcheck/* → copilot-healthchecks        │
+//!                      │ /api/customers/*       → copilot-customers           │
+//!                      │ /api/healthcheck/*     → copilot-healthchecks        │
 //!                      │ /api/version/*, /api/audit/* → copilot-platform      │
 //!                      │ /api/auth/token*, /refresh, /2fa/*, users, /login,   │
 //!                      │ /register, /reset-password*, /me/customers,          │
@@ -92,8 +92,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // and branding, the Overview and dashboard counters, agents, `/me`; the
     // SLA page (below) is copilot-soc-management's.
     "/api/customer_portal",
-    "GET /api/customers",
-    "GET /api/healthcheck",
+    // Every route of the customers router (copilot-customers): the reads, and
+    // creating, updating and deleting customers and their meta rows.
+    "/api/customers",
+    // The agent healthchecks and the host logs (copilot-healthchecks).
+    "/api/healthcheck",
     "/api/version",
     "/api/audit",
     "/api/auth/token",
@@ -108,14 +111,15 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/sso",
     "/api/auth/passkey",
     "/api/auth/security",
-    // /api/incidents/db_operations but POST /case-report-template/default-template
-    // (the templates are files on the Python host), which falls through to the
-    // legacy backend; POST /case/notification is copilot-shuffle's. The MinIO routes
+    // /api/incidents/db_operations (POST /case-report-template/default-template
+    // uploads the templates compiled in from the Python tree); POST
+    // /case/notification is copilot-shuffle's. The MinIO routes
     // (case files, report templates, DELETE /case/{id}) are copilot-objectstore's,
     // the Wazuh-indexer reads (/available-source, /available-indices, /mappings)
     // copilot-ingest's.
     "/api/incidents/db_operations",
-    // The template CRUD; the library and /suggest stay in Python.
+    // The template CRUD (copilot-incidents), the library and /suggest
+    // (copilot-case-templates).
     "/api/incidents/case_templates",
     "/api/incidents/tag_access",
     // /api/incidents/alerts: the Velociraptor Sigma exclusion rules (CRUD and
@@ -141,20 +145,18 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customers/{customer_code}/notification_routes",
     "/api/customers/{customer_code}/notification_dispatch_log",
     "/api/customers/{customer_code}/shuffle_integrations",
-    // The connector list, rows, updates and verification; a connector whose
-    // tool has no Rust verifier is updated and verified by Python, and the YAML
-    // upload (a file on the Python host) stays there.
-    "GET /api/connectors",
-    "PUT /api/connectors",
-    "POST /api/connectors/verify",
+    // The connector list, rows, updates, verification and the YAML upload; a
+    // connector whose tool has no Rust verifier is updated and verified by
+    // Python.
+    "/api/connectors",
     // The Wazuh indexer: every route of its three routers.
     "/api/alerts",
     "/api/wazuh_indexer",
     "/api/snapshots",
     // The Wazuh manager: rules and rule files (the upload included), groups,
-    // the six MITRE listings and the restart; /rule/disabled|disable|enable
-    // (no `disabledrule` table), /rule/exclude, the Atomic Red Team routes and
-    // the two MITRE alert searches stay in Python.
+    // the six MITRE listings and the restart; the rule switches, the
+    // exclusion and the Atomic Red Team listings are copilot-wazuh-rules'.
+    // The two MITRE alert searches stay in Python.
     "/api/wazuh_manager/rules",
     "/api/wazuh_manager/groups",
     "GET /api/wazuh_manager/mitre/groups",
@@ -164,6 +166,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/wazuh_manager/mitre/tactics",
     "GET /api/wazuh_manager/mitre/techniques",
     "POST /api/wazuh_manager/management/restart",
+    "/api/wazuh_manager/rule",
+    "GET /api/wazuh_manager/mitre/atomic-tests",
+    "GET /api/wazuh_manager/mitre/techniques/{technique_id}/atomic-tests",
     // The Graylog connector (copilot-graylog); `POST /api/graylog/invoke`,
     // the active-response webhook, is copilot-response's (below).
     "GET /api/graylog/indices",
@@ -177,6 +182,7 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/graylog/metrics",
     "GET /api/graylog/event_notifications",
     "GET /api/graylog/streams",
+    "GET /api/graylog/pipelines",
     "GET /api/graylog/pipeline",
     "POST /api/graylog/receiver",
     // The InfluxDB connector (copilot-influxdb): alerts and metrics.
@@ -257,6 +263,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/duo/provision",
     "POST /api/cato/provision",
     "POST /api/carbonblack/provision",
+    // The CarbonBlack job run by hand (copilot-integration-modules).
+    "GET /api/carbonblack/test",
     "POST /api/mimecast/provision",
     "POST /api/sap_siem/provision",
     "POST /api/socfortress_mdr/provision",
@@ -280,9 +288,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // its Graylog webhook.
     "/api/active_response",
     "POST /api/graylog/invoke",
-    // Sysmon configs but `POST /upload` (ElementTree's XML validation).
-    "GET /api/sysmon_config",
-    "POST /api/sysmon_config/deploy",
+    // Sysmon configs: the reads, the deploy and the upload (expat-exact
+    // validation on copilot-integrations' parser).
+    "/api/sysmon_config",
     // CoPilot Actions: the inventory and the invoke.
     "/api/copilot_action",
     // The Shuffle connector (copilot-shuffle), and its case notification.
@@ -375,6 +383,8 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend(copilot_agent_reports::requirements());
     all.extend_from_slice(copilot_uba::REQUIREMENTS);
     all.extend_from_slice(copilot_integration_modules::REQUIREMENTS);
+    all.extend_from_slice(copilot_wazuh_rules::REQUIREMENTS);
+    all.extend_from_slice(copilot_case_templates::REQUIREMENTS);
     all.extend_from_slice(copilot_license::REQUIREMENTS);
     all.extend_from_slice(copilot_status::REQUIREMENTS);
     all.extend_from_slice(copilot_sublime::REQUIREMENTS);
@@ -492,6 +502,14 @@ pub struct App {
     /// The GitHub audit and Nuclei routes (`/api/github-audit`,
     /// `/api/nuclei`).
     pub assessments: copilot_assessments::AssessmentsState,
+    /// The Wazuh manager's rule switches, the exclusion and the Atomic Red
+    /// Team listings (`copilot-wazuh-rules`) with their caches.
+    pub wazuh_rules: copilot_wazuh_rules::RulesState,
+    /// The case-template library (with its per-process cache) and the
+    /// template suggestions (`copilot-case-templates`).
+    pub case_templates: copilot_case_templates::CaseTemplatesState,
+    /// The Python backend's data directory (`COPILOT_BACKEND_DATA_DIR`).
+    pub backend_data_dir: std::path::PathBuf,
 }
 
 impl App {
@@ -569,6 +587,26 @@ impl App {
             epss: copilot_agents::services::epss::EpssClient::new()
                 .context("building the EPSS client")?,
         };
+        let wazuh_rules = copilot_wazuh_rules::RulesState::new(
+            wazuh.clone(),
+            cfg.integration_modules_url.clone(),
+            cfg.catalog.github_raw_url.clone(),
+            cfg.catalog.github_api_url.clone(),
+        )
+        .map_err(anyhow::Error::msg)
+        .context("building the Atomic Red Team client")?;
+        let case_templates = copilot_case_templates::CaseTemplatesState::new(
+            ctx.clone(),
+            wazuh.es.clone(),
+            cfg.catalog
+                .github_api_url
+                .clone()
+                .unwrap_or_else(|| "https://api.github.com".into()),
+            cfg.catalog
+                .github_raw_url
+                .clone()
+                .unwrap_or_else(|| "https://raw.githubusercontent.com".into()),
+        );
         let modules = copilot_integration_modules::ModulesState::new(
             ctx.clone(),
             cfg.integration_modules_url.clone(),
@@ -756,6 +794,9 @@ impl App {
             sublime,
             scoutsuite,
             assessments,
+            wazuh_rules,
+            case_templates,
+            backend_data_dir: cfg.backend_data_dir.clone(),
         })
     }
 
@@ -809,12 +850,21 @@ impl App {
             )
             .nest(
                 "/api/customers",
-                copilot_customers::router(self.ctx.clone()),
+                copilot_customers::router(copilot_customers::CustomersState {
+                    ctx: self.ctx.clone(),
+                    license: self.license.clone(),
+                })
+                .layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
             )
             .nest(
                 "/api/healthcheck",
                 copilot_healthchecks::router(self.ctx.clone()),
             )
+            // `POST /api/healthcheck/logs`, at its full path (the indexer).
+            .merge(copilot_healthchecks::logs::router(self.wazuh.clone()))
             .nest(
                 "/api/version",
                 copilot_platform::version_router(platform.clone()),
@@ -827,9 +877,16 @@ impl App {
                 "/api/incidents/db_operations",
                 copilot_incidents::db_operations(self.ctx.clone()),
             )
+            // The template CRUD and, merged into it, the library and the
+            // suggestions (static paths, which axum prefers to `/{template_id}`).
             .nest(
                 "/api/incidents/case_templates",
-                copilot_incidents::case_templates(self.ctx.clone()),
+                copilot_incidents::case_templates(self.ctx.clone())
+                    .merge(copilot_case_templates::router(self.case_templates.clone()))
+                    .layer(axum::middleware::from_fn_with_state(
+                        self.wazuh.legacy.clone(),
+                        copilot_wazuh::decoded_slash_to_legacy,
+                    )),
             )
             .nest(
                 "/api/incidents/tag_access",
@@ -887,7 +944,12 @@ impl App {
                     ctx: self.ctx.clone(),
                     verifiers: self.verifiers.clone(),
                     legacy: self.legacy.clone(),
-                }),
+                    data_dir: self.backend_data_dir.clone(),
+                })
+                .layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
             )
             // Only the Graylog connector's routes; `POST /invoke` (active
             // response) falls through to the legacy backend.
@@ -1150,6 +1212,14 @@ impl App {
             // copilot-integrations' routes, and `POST /api/mimecast/invoke`,
             // `/ttp/urls`.
             .merge(copilot_integration_modules::router(self.modules.clone()))
+            // Full paths under `/api/wazuh_manager` (the manager's other
+            // routes are nested above).
+            .merge(copilot_wazuh_rules::router(self.wazuh_rules.clone()).layer(
+                axum::middleware::from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                ),
+            ))
             .nest(
                 "/api/license",
                 copilot_license::router(copilot_license::LicenseState {
@@ -1209,37 +1279,15 @@ impl App {
                 let fallback = Router::new()
                     .fallback(copilot_gateway::proxy_handler)
                     .with_state(proxy.clone());
-                // Static paths still served by Python under a prefix whose
-                // `/{id}` route would otherwise capture them.
-                let mut app = app;
-                for path in copilot_incidents::routes::case_templates::LEGACY_PATHS {
-                    let proxy = proxy.clone();
-                    app = app.route(
-                        &format!("/api/incidents/case_templates{path}"),
-                        axum::routing::any(
-                            move |req: Request| async move { proxy.forward(req).await },
-                        ),
-                    );
-                }
                 app.method_not_allowed_fallback({
                     let proxy = proxy.clone();
                     move |req: Request| async move { proxy.forward(req).await }
                 })
                 .fallback_service(fallback)
             }
-            None => {
-                // Without Python nothing serves these; keep `/{template_id}`
-                // from answering them.
-                let mut app = app;
-                for path in copilot_incidents::routes::case_templates::LEGACY_PATHS {
-                    app = app.route(
-                        &format!("/api/incidents/case_templates{path}"),
-                        axum::routing::any(|| async { ApiError::RouteNotFound }),
-                    );
-                }
-                app.method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
-                    .fallback(root_or_404)
-            }
+            None => app
+                .method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
+                .fallback(root_or_404),
         };
         // Last, so it wraps every route and the fallback (the proxy to
         // Python included) after routing: the request timer of

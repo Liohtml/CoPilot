@@ -35,10 +35,10 @@
 //! | `COPILOT_API_KEY` | *(unset)* | the licence server's `x-api-key` (secret), read as `os.getenv` reads it (unset is sent as `None`) |
 //! | `GITHUB_TOKEN` | *(unset)* | the Detections Catalog's GitHub bearer token when a custom repository has none (secret), read as `os.getenv` reads it |
 //! | `COPILOT_CATALOG_REFRESH` | `true` | this process warms and refreshes its own catalog caches (`false`: they load on demand only — the parity suites, an air-gapped deployment) |
-//! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
-//! | `COPILOT_INTEGRATION_MODULES_URL` | *(unset)* | tests only: every request to an integration module container (`http://copilot-<name>-module/…`) and to Mimecast's region discovery goes to `{url}/{host}{path}` (the parity harness's stand-in); never set in production |
+//! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's (and the Atomic Red Team listings') GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
+//! | `COPILOT_INTEGRATION_MODULES_URL` | *(unset)* | tests only: every request to an integration module container (`http://copilot-<name>-module/…`, the AI module's rule exclusion included) and to Mimecast's region discovery goes to `{url}/{host}{path}` (the parity harness's stand-in); never set in production |
 //! | `AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_STS`, `AWS_ENDPOINT_URL_S3` | *(unset)* | botocore's endpoint overrides, honoured by the AWS provisioning's credential check as botocore honours them |
-//! | `COPILOT_BACKEND_DATA_DIR` | `/opt/copilot/backend/data` | the Python backend's `data/` directory, where the CrowdStrike, Defender for Endpoint and Bitdefender provisioning write their collectors' docker-compose and configuration files (mounted read-write by `docker-compose.rust.yml`) |
+//! | `COPILOT_BACKEND_DATA_DIR` | `/opt/copilot/backend/data` | the Python backend's `data/` directory (`UPLOAD_FOLDER`), where the connector YAML upload writes its file and records its path, and the CrowdStrike, Defender for Endpoint and Bitdefender provisioning write their collectors' docker-compose and configuration files (mounted read-write at that path by `docker-compose.rust.yml`) |
 //! | `COPILOT_AWS_PROFILE_CHECK_SECONDS`, `COPILOT_BITDEFENDER_URL`, `COPILOT_PROVISION_WORKER_PORT` | *(unset)* | tests only: how long the AWS provisioning watches the manager's log after a restart (`interval,timeout`), the GravityZone base URL the Bitdefender provisioning calls, and the port of the provisioning worker on the Wazuh master and each swarm node instead of `5003` (the parity harness's stand-ins); never set in production |
 //! | `COPILOT_GITHUB_AUDIT_API_URL`, `COPILOT_NUCLEI_MODULE_URL` | *(unset)* | tests only: the GitHub API base the organization audit calls instead of `https://api.github.com`, and the stand-in every request to `http://copilot-nuclei-module/…` goes to as `{url}/{host}{path}` (`copilot-assessments`); never set in production |
 //! | `COPILOT_SIDEBAR_REFRESH` | `COPILOT_CATALOG_REFRESH` | this process warms and refreshes its own sidebar indicators (`copilot-status`); unset, it follows the catalog switch |
@@ -190,6 +190,8 @@ pub struct CopilotConfig {
     /// The security assessments' test-only upstream overrides
     /// (`copilot-assessments`).
     pub assessments: crate::assessments_env::AssessmentsEnv,
+    /// `COPILOT_BACKEND_DATA_DIR`: the Python backend's `UPLOAD_FOLDER`.
+    pub backend_data_dir: PathBuf,
     /// `COPILOT_SIDEBAR_REFRESH`, as set (`copilot-status`'s refresher).
     pub sidebar_refresh: Option<String>,
     /// `ENVIRONMENT`, as set (`os.getenv` semantics).
@@ -197,6 +199,10 @@ pub struct CopilotConfig {
     /// The `PERF_*` and `DB_*` instrumentation settings, as set.
     pub perf: PerfEnv,
 }
+
+/// The Python backend's `UPLOAD_FOLDER` in its image (`/opt/copilot/backend`
+/// + `data`).
+pub const DEFAULT_BACKEND_DATA_DIR: &str = crate::cloud_env::CloudEnv::DEFAULT_BACKEND_DATA_DIR;
 
 /// Raw instrumentation settings (`os.environ.get`; `None` = unset),
 /// interpreted by `copilot-status`'s performance module.
@@ -459,6 +465,11 @@ impl CopilotConfig {
                 .map(|v| v.trim().trim_end_matches('/').to_string())
                 .filter(|v| !v.is_empty()),
             assessments: crate::assessments_env::AssessmentsEnv::from_env(env),
+            backend_data_dir: env
+                .get("COPILOT_BACKEND_DATA_DIR")
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .map_or_else(|| PathBuf::from(DEFAULT_BACKEND_DATA_DIR), PathBuf::from),
             sidebar_refresh: env.get_raw("COPILOT_SIDEBAR_REFRESH"),
             environment: env.get_raw("ENVIRONMENT"),
             perf: PerfEnv {

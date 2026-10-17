@@ -77,6 +77,116 @@ pub async fn list(store: &ObjectStore) -> Vec<String> {
     }
 }
 
+/// `validate_sysmon_config(xml_content)`: `ET.fromstring`, then the shape
+/// a Sysmon config needs; each refusal is Python's 400.
+pub fn validate_config(xml: &str) -> Result<(), PyExc> {
+    let bad = |detail: &str| PyExc::Http(400, detail.to_string());
+    let root = copilot_integrations::etree::fromstring(xml)
+        .map_err(|e| PyExc::Http(400, format!("Invalid XML syntax: {e}")))?;
+    if root.tag != "Sysmon" {
+        return Err(bad("Root element must be 'Sysmon'"));
+    }
+    let Some(filtering) = root.find("EventFiltering") else {
+        return Err(bad("Missing required 'EventFiltering' element"));
+    };
+    if filtering
+        .text
+        .as_deref()
+        .is_some_and(|t| !t.trim_matches(char::is_whitespace).is_empty())
+    {
+        return Err(bad(
+            "Invalid text content found directly in EventFiltering element",
+        ));
+    }
+    let groups = filtering.findall("RuleGroup");
+    if groups.is_empty() {
+        return Err(bad("EventFiltering must contain at least one RuleGroup"));
+    }
+    for i in groups {
+        let relation = filtering.children[i]
+            .attrib
+            .iter()
+            .find(|(k, _)| k == "groupRelation")
+            .map(|(_, v)| v.as_str());
+        if relation.is_none_or(str::is_empty) {
+            return Err(bad("RuleGroup must have 'groupRelation' attribute"));
+        }
+    }
+    Ok(())
+}
+
+/// `check_config_exists(customer_code)`: the bucket made when missing (no
+/// config then), else whether the object answers `stat_object`; a failure
+/// of the bucket calls is the 500 `Error checking config existence: …`.
+pub async fn config_exists(store: &ObjectStore, customer_code: &str) -> Result<bool, PyExc> {
+    let checking = |e: PyExc| {
+        PyExc::Http(
+            500,
+            format!("Error checking config existence: {}", e.display()),
+        )
+    };
+    let client = store.session().map_err(checking)?;
+    if !client
+        .bucket_exists(BUCKET)
+        .await
+        .map_err(|e| checking(e.into_py()))?
+    {
+        tracing::info!("Bucket {BUCKET} doesn't exist. Creating it.");
+        client
+            .make_bucket(BUCKET)
+            .await
+            .map_err(|e| checking(e.into_py()))?;
+        return Ok(false);
+    }
+    match client
+        .stat_object(BUCKET, &object_name(customer_code))
+        .await
+    {
+        Ok(_) => {
+            tracing::info!("Found existing sysmon config for customer {customer_code}");
+            Ok(true)
+        }
+        Err(e) => {
+            tracing::info!(
+                "No existing sysmon config found for customer {customer_code} - {}",
+                e.into_py().display()
+            );
+            Ok(false)
+        }
+    }
+}
+
+/// `upload_sysmon_config(customer_code, file)`: the uploading client is
+/// made first, `create_bucket_if_not_exists` runs on a client of its own,
+/// then the object is put as `application/xml`.
+pub async fn upload(store: &ObjectStore, customer_code: &str, data: &[u8]) -> Result<(), PyExc> {
+    let client = store.session()?;
+    let bucketing = store.session()?;
+    if bucketing
+        .bucket_exists(BUCKET)
+        .await
+        .map_err(|e| e.into_py())?
+    {
+        tracing::info!("Bucket {BUCKET} already exists");
+    } else {
+        bucketing
+            .make_bucket(BUCKET)
+            .await
+            .map_err(|e| e.into_py())?;
+        tracing::info!("Created bucket {BUCKET}");
+    }
+    tracing::info!("Uploading sysmon config for customer {customer_code}");
+    client
+        .fput_object(
+            BUCKET,
+            &object_name(customer_code),
+            data,
+            Some("application/xml"),
+        )
+        .await
+        .map_err(|e| e.into_py())
+}
+
 /// `urlparse(url).netloc` as CPython 3.11's `urlsplit` finds it; `Err` is
 /// the `ValueError` it raises.
 pub fn netloc(url: &str) -> Result<String, String> {
@@ -282,6 +392,24 @@ pub async fn deploy(
 
 #[cfg(test)]
 mod tests {
+    /// `validate_sysmon_config` against Python's (`scripts/gen-expat-vectors.py`).
+    #[test]
+    fn configs_are_validated_as_python_validates_them() {
+        #[derive(serde::Deserialize)]
+        struct Probe {
+            text: String,
+            detail: Option<String>,
+        }
+        let v: Vec<Probe> = serde_json::from_str(include_str!("sysmon_vectors.json")).unwrap();
+        for probe in v {
+            let got = super::validate_config(&probe.text).err().map(|e| match e {
+                super::PyExc::Http(400, d) => d,
+                other => format!("{other:?}"),
+            });
+            assert_eq!(got, probe.detail, "{:?}", probe.text);
+        }
+    }
+
     use super::*;
 
     #[test]

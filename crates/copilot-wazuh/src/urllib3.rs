@@ -1,9 +1,9 @@
 //! The wire side of the sync indexer client: what elasticsearch-py's
 //! `Urllib3HttpConnection` sends through urllib3 2.x — the request line,
 //! `Host` and `Accept-Encoding: identity` (http.client's `putrequest`), the
-//! connection's own headers and nothing else (reqwest would add `Accept: */*`
-//! to every request), `Content-Length: 0` on a body-less POST/PUT/PATCH and
-//! none on a body-less GET/HEAD/DELETE (`body_to_chunks`), over HTTP/1.1 with
+//! `Content-Length` (`0` on a body-less POST/PUT/PATCH, none on a body-less
+//! GET/HEAD/DELETE: `body_to_chunks`), then the connection's own headers and
+//! nothing else (reqwest would add `Accept: */*` to every request), over HTTP/1.1 with
 //! ALPN `http/1.1` and, as `verify_certs=False`, no certificate check.
 
 use std::sync::{Arc, OnceLock};
@@ -175,9 +175,8 @@ pub(crate) async fn send(
         .uri(path_and_query)
         .header("host", host_header(tls, host, port))
         .header("accept-encoding", "identity");
-    for (k, v) in headers {
-        req = req.header(*k, *v);
-    }
+    // urllib3 2.x writes `Content-Length` right after `putrequest`'s two,
+    // before the connection's own headers.
     let payload = match body {
         Some(b) => {
             req = req.header("content-length", b.len().to_string());
@@ -190,6 +189,9 @@ pub(crate) async fn send(
             Bytes::new()
         }
     };
+    for (k, v) in headers {
+        req = req.header(*k, *v);
+    }
     let req = req
         .body(Full::new(payload))
         .map_err(|e| Failure::Other(e.to_string()))?;
@@ -281,6 +283,11 @@ mod tests {
         assert!(!head_of(Method::DELETE, None).contains("content-length"));
         assert!(head_of(Method::POST, None).contains("content-length: 0\r\n"));
         assert!(head_of(Method::POST, Some(b"{}")).contains("content-length: 2\r\n"));
+        assert!(
+            head_of(Method::POST, Some(b"{}"))
+                .contains("accept-encoding: identity\r\ncontent-length: 2\r\n"),
+            "urllib3 writes Content-Length before the connection's headers"
+        );
     }
 
     #[test]

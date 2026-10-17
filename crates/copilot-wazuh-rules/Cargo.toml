@@ -1,0 +1,38 @@
+[package]
+name = "copilot-wazuh-rules"
+description = "The Wazuh manager's rule disable/enable/exclude routes and the Atomic Red Team listings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-integration-modules = { workspace = true }
+copilot-yaml = { workspace = true }
+copilot-searches = { workspace = true }
+copilot-monitoring-alerts = { workspace = true }
+copilot-jinja = { workspace = true }
+num-bigint-dig = { workspace = true }
+axum = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+http = { workspace = true }
+reqwest = { workspace = true }
+regex = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+flate2 = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+serde = { workspace = true }
+
+[lints]
+workspace = true

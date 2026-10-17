@@ -1706,26 +1706,63 @@ async fn customer_and_healthcheck_reads() {
         std::slice::from_ref(&velo)
     );
 
-    // --- Writes and unported routes still reach Python -------------------------
+    // --- The writes are answered here (copilot-customers) ----------------------
+    let before = legacy.received_requests().await.unwrap().len();
     for (m, p) in [
         ("POST", "/api/customers".to_string()),
         ("PUT", format!("/api/customers/{acme}")),
-        ("DELETE", format!("/api/customers/{acme}/meta")),
-        ("POST", "/api/healthcheck/logs".to_string()),
+        ("POST", format!("/api/customers/{acme}/meta")),
     ] {
-        Mock::given(method(m))
-            .and(path(p.clone()))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
-            .expect(1)
-            .mount(&legacy)
-            .await;
-        let (st, body) = h.call(m, &p, Some(&admin), Some(json!({}))).await;
-        assert_eq!(
-            (st.as_u16(), body),
-            (200, json!({"from": "python"})),
-            "{m} {p}"
-        );
+        let (st, _) = h.call(m, &p, Some(&admin), Some(json!({}))).await;
+        assert_eq!(st.as_u16(), 422, "{m} {p}");
     }
+    let (st, body) = h
+        .call(
+            "DELETE",
+            "/api/customers/nosuch-e2e/meta",
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 404);
+    assert_eq!(
+        msg(&body),
+        "Customer meta with customer_code nosuch-e2e not found"
+    );
+    assert_eq!(legacy.received_requests().await.unwrap().len(), before);
+
+    // --- The host logs are answered here too (the host before the indexer) ------
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/healthcheck/logs",
+            Some(&admin),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(st, 422);
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/healthcheck/logs",
+            Some(&admin),
+            Some(json!({"agent_name": "nosuch-e2e"})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (404, "Agent with hostname nosuch-e2e not found".into())
+    );
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/healthcheck/logs",
+            Some(&analyst),
+            Some(json!({"agent_name": "nosuch-e2e"})),
+        )
+        .await;
+    assert_eq!(st, 403);
+    assert_eq!(legacy.received_requests().await.unwrap().len(), before);
 }
 
 #[tokio::test]
