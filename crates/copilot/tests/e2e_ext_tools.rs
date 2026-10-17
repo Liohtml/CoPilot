@@ -300,3 +300,244 @@ async fn patch_tuesday_failures_and_validation() {
     let n = body["cycles"].as_array().unwrap().len();
     assert!((11..=12).contains(&n), "{body}");
 }
+
+// --- /api/copilot_mcp -----------------------------------------------------------------
+
+const MCP: &str = "/api/copilot_mcp";
+
+/// The MCP routes with the local servers and SOCFortress's cloud (its MCP
+/// base and licence server) on `upstream`.
+fn mcp_router(h: &Harness, upstream: &str) -> axum::Router {
+    let mut st = h.app.mcp.clone();
+    let mut urls = (*st.threat_intel.urls).clone();
+    urls.mcp = format!("{upstream}/query");
+    urls.license = format!("{upstream}/");
+    st.threat_intel.urls = Arc::new(urls);
+    st.local_base = format!("{upstream}/mcp");
+    copilot_mcp::router(st)
+}
+
+type LicenceRow = (i64, String, String, String, String);
+
+/// The test's own licence (the first row `get_license` reads) with a fresh
+/// cached `SOCFORTRESS AI` feature; the saved rows go back in [`mcp_restore`].
+async fn mcp_licence(h: &Harness, key: &str, enabled: bool) -> Vec<LicenceRow> {
+    let saved = sqlx::query_as::<_, LicenceRow>(
+        "SELECT id, license_key, customer_name, customer_email, company_name FROM license",
+    )
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    h.exec("DELETE FROM license").await;
+    h.exec(&format!(
+        "INSERT INTO license (license_key, customer_name, customer_email, company_name) \
+         VALUES ('{key}', 'e2e', 'e2e@example.com', 'e2e')"
+    ))
+    .await;
+    h.exec(&format!(
+        "INSERT INTO license_cache (license_key, feature_name, is_enabled, cached_at, \
+         expires_at, license_data) VALUES ('{key}', 'SOCFORTRESS AI', {}, UTC_TIMESTAMP(), \
+         UTC_TIMESTAMP() + INTERVAL 1 HOUR, '{{}}')",
+        i32::from(enabled)
+    ))
+    .await;
+    saved
+}
+
+async fn mcp_restore(h: &Harness, key: &str, saved: Vec<LicenceRow>) {
+    h.exec(&format!(
+        "DELETE FROM license_cache WHERE license_key = '{key}'"
+    ))
+    .await;
+    h.exec(&format!("DELETE FROM license WHERE license_key = '{key}'"))
+        .await;
+    for (id, k, name, email, company) in saved {
+        sqlx::query(
+            "INSERT INTO license (id, license_key, customer_name, customer_email, company_name) \
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(k)
+        .bind(name)
+        .bind(email)
+        .bind(company)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn mcp_routes_are_for_analysts() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let portal = h.token(&format!("portal{}", h.suffix), "customer_user");
+    for (method, uri) in [
+        ("GET", "/servers"),
+        ("GET", "/servers/copilot"),
+        ("GET", "/example-questions?mcp_server=copilot"),
+        ("GET", "/categories?mcp_server=copilot"),
+        ("POST", "/query"),
+    ] {
+        let body = (method == "POST").then(|| json!({"input": "x", "mcp_server": "copilot"}));
+        let (status, _) = h
+            .call(method, &format!("{MCP}{uri}"), None, body.clone())
+            .await;
+        assert_eq!(status, 401, "{uri}");
+        let (status, _) = h
+            .call(method, &format!("{MCP}{uri}"), Some(&portal), body)
+            .await;
+        assert_eq!(status, 403, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn mcp_servers_and_questions() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let (status, body) = h
+        .call("GET", &format!("{MCP}/servers"), Some(&analyst), None)
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["total_servers"], 8);
+    assert_eq!(body["servers"][0]["value"], "copilot");
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("{MCP}/servers/velociraptor"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(body["server"]["name"], "Velociraptor");
+    assert_eq!(
+        body["available_categories"],
+        json!(["artifacts", "hunting", "network", "persistence", "users"])
+    );
+    assert_eq!(body["total_example_questions"], 7);
+    let (status, body) = h
+        .call("GET", &format!("{MCP}/servers/nope"), Some(&analyst), None)
+        .await;
+    assert_eq!(status, 422, "{body}");
+    assert_eq!(body["details"][0]["error_type"], "enum");
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("{MCP}/example-questions?mcp_server=copilot&category=alerts"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(body["total_questions"], 3);
+    assert_eq!(body["mcp_server"], "copilot");
+    let (status, _) = h
+        .call(
+            "GET",
+            &format!("{MCP}/example-questions"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 422);
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("{MCP}/categories?mcp_server=cyber-news"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(body["categories"], json!(["cyber_news"]));
+    assert_eq!(body["total_categories"], 1);
+}
+
+#[tokio::test]
+async fn mcp_queries_go_local_or_to_the_cloud() {
+    let mut h = harness_or_skip!(None);
+    h.seed().await;
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let upstream = MockServer::start().await;
+    h.router = mcp_router(&h, &upstream.uri());
+    let answer =
+        json!({"message": "done", "success": true, "result": {"rows": 3}, "execution_time": 2});
+    Mock::given(method("POST"))
+        .and(path("/mcp/mysql-query"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(answer.clone()))
+        .mount(&upstream)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/query/attack_surface"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(answer))
+        .mount(&upstream)
+        .await;
+
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{MCP}/query"),
+            Some(&analyst),
+            Some(json!({"input": "How many alerts?", "mcp_server": "copilot", "verbose": "no"})),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({"message": "done", "success": true, "result": {"rows": 3},
+               "structured_result": null, "execution_time": 2.0})
+    );
+    let sent = &upstream.received_requests().await.unwrap()[0];
+    assert_eq!(
+        sent.body,
+        br#"{"input":"How many alerts?","mcp_server":"copilot","verbose":false}"#
+    );
+    assert!(sent.headers.get("x-api-key").is_none());
+
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{MCP}/query"),
+            Some(&analyst),
+            Some(json!({"input": 5, "mcp_server": "nope"})),
+        )
+        .await;
+    assert_eq!(status, 400, "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("Invalid MCP server type: 'nope'.")
+    );
+
+    let key = format!("e2e-mcp-{}", h.suffix);
+    let saved = mcp_licence(&h, &key, true).await;
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{MCP}/query"),
+            Some(&analyst),
+            Some(json!({"input": "breaches?", "mcp_server": "attack-surface"})),
+        )
+        .await;
+    let received = upstream.received_requests().await.unwrap();
+    mcp_restore(&h, &key, saved).await;
+    assert_eq!(status, 200, "{body}");
+    let cloud = received.last().unwrap();
+    assert_eq!(cloud.url.path(), "/query/attack_surface");
+    assert_eq!(
+        cloud.headers.get("x-api-key").unwrap().to_str().unwrap(),
+        key
+    );
+
+    let saved = mcp_licence(&h, &key, false).await;
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{MCP}/query"),
+            Some(&analyst),
+            Some(json!({"input": "news?", "mcp_server": "cyber-news"})),
+        )
+        .await;
+    mcp_restore(&h, &key, saved).await;
+    assert_ne!(status, 200, "{body}");
+}

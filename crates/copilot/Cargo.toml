@@ -57,6 +57,7 @@ copilot-integration-provisioning = { workspace = true }
 copilot-license = { workspace = true }
 copilot-status = { workspace = true }
 copilot-patch-tuesday = { workspace = true }
+copilot-mcp = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

@@ -9,17 +9,26 @@ included) and the body bytes — and both backends' requests are compared one by
 * Microsoft Patch Tuesday (`/api/patch-tuesday`, `crates/copilot-patch-tuesday`): MSRC's CVRF
   documents, FIRST's EPSS API (several chunks, one failing) and CISA's KEV catalog, odd document
   shapes and every failure `fetch_json` words (an HTTP error, XML, invalid JSON, invalid UTF-8,
-  a server that hangs up).
+  a server that hangs up);
+* CoPilot MCP (`/api/copilot_mcp`, `crates/copilot-mcp`): the servers and their example questions,
+  and the query to the local `copilot-mcp` container and to SOCFortress's cloud (the licence's
+  `SOCFORTRESS AI` feature, cached or asked of the licence server) with every answer
+  `execute_query` turns into a message. The cloud request's header names are compared
+  lower-cased: hyper writes one case per request, httpx a lower-case `x-api-key` among title-case
+  names (a §4 row); values and order are compared as sent. So are the licence server's
+  (`copilot-license`'s client): `requests` writes the names as given over urllib3 1.26 (the
+  backend image) but title-cases them over urllib3-future (a development venv).
 
-Python reaches the stand-ins because the module's URL constants are patched here; Rust because
-its instance is started with the `COPILOT_*_URL` overrides (parity harness only). Each backend
+Python reaches the stand-ins because the modules' URL constants are patched here (and the
+licence server's host rewritten in `requests`); Rust because its instance is started with the
+`COPILOT_*_URL` overrides (parity harness only). Each backend
 stamps the items with its own clock: those stamps are masked in the bodies after a check that
 they are within seconds of each other; everything else is compared byte for byte.
 
     PARITY_SUITES=tests/e2e/rust_parity_ext_tools_e2e.py scripts/rust-parity.sh
 
 Ports (all overridable, defaults in the suite's own range): EXT_PARITY_RUST_PORT,
-EXT_FEEDS_STUB_PORT.
+EXT_FEEDS_STUB_PORT, EXT_MCP_STUB_PORT.
 """
 
 import asyncio
@@ -42,9 +51,12 @@ os.environ.setdefault("MYSQL_PASSWORD", "e2epass")
 os.environ.setdefault("MYSQL_ROOT_PASSWORD", "e2eroot")
 os.environ.setdefault("JWT_SECRET", "e2e-test-secret-not-the-default")
 os.environ["CONNECTOR_CACHE_TTL_SECONDS"] = "0"
+# `send_post_request` (the licence server) reads it per call; the Rust instance gets the same.
+os.environ["COPILOT_API_KEY"] = "parity-copilot-api-key"
 
 import httpx  # noqa: E402
 import jwt  # noqa: E402
+import requests  # noqa: E402
 from fastapi import APIRouter  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
@@ -57,10 +69,13 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")
 RS_PORT = int(os.environ.get("EXT_PARITY_RUST_PORT", "6634"))
 FEEDS_PORT = int(os.environ.get("EXT_FEEDS_STUB_PORT", "6631"))
 FEEDS = f"http://127.0.0.1:{FEEDS_PORT}"
+MCP_PORT = int(os.environ.get("EXT_MCP_STUB_PORT", "6632"))
+MCP_URL = f"http://127.0.0.1:{MCP_PORT}"
 
 SFX = uuid.uuid4().hex[:6]
 ADMIN, ANALYST, PORTAL = f"ext_admin{SFX}", f"ext_analyst{SFX}", f"ext_portal{SFX}"
 USERS = (ADMIN, ANALYST, PORTAL)
+LICENSE_KEY = f"ext-lic-{SFX}"
 results = []
 
 
@@ -88,9 +103,11 @@ class Recorder:
     they came, body); `answer(method, target, headers, body)` returns (status, [(header, value)],
     bytes), or None to hang up without a response. Nothing is dropped or normalized."""
 
-    def __init__(self, name, port, answer):
+    def __init__(self, name, port, answer, fold=None):
         self.name = name
         self.answer = answer
+        #: `fold(target)`: whether this request's header names are recorded lower-cased.
+        self.fold = fold or (lambda target: False)
         self.lock = threading.Lock()
         self.requests = []
         recorder = self
@@ -101,8 +118,11 @@ class Recorder:
             def _handle(self):
                 length = int(self.headers.get("Content-Length") or 0)
                 body = self.rfile.read(length) if length else b""
+                headers = list(self.headers.items())
+                if recorder.fold(self.path):
+                    headers = [(k.lower(), v) for k, v in headers]
                 with recorder.lock:
-                    recorder.requests.append((self.command, self.path, list(self.headers.items()), body))
+                    recorder.requests.append((self.command, self.path, headers, body))
                 out = recorder.answer(self.command, self.path, self.headers, body)
                 if out is None:
                     self.close_connection = True
@@ -312,23 +332,95 @@ class Feeds:
 FEEDS_ANSWER = Feeds()
 
 
+# --- CoPilot MCP: the local container, SOCFortress's cloud and the licence server ---------------------
+
+FEATURES = [{"name": "SOCFORTRESS AI", "intValue": 1}, {"name": "THREAT INTEL", "intValue": 0}]
+
+
+class Mcp:
+    """`/mcp/{endpoint}` (local), `/query/{endpoint}` (cloud) and `/verify-license`; `mode` (reset
+    before each backend's call) chooses the answers."""
+
+    def __init__(self):
+        self.mode = {}
+
+    def reset(self, **mode):
+        self.mode = dict(mode)
+
+    def __call__(self, method, target, headers, body):
+        if target == "/verify-license":
+            license_mode = self.mode.get("license", "ok")
+            if license_mode == "ok":
+                return as_json(200, {"data": {"license": {"key": LICENSE_KEY, "dataObjects": FEATURES}}, "success": True})
+            if license_mode == "disabled":
+                return as_json(200, {"data": {"license": {"dataObjects": [{"name": "SOCFORTRESS AI", "intValue": 0}]}}})
+            return as_json(500, {"message": "licence server down", "detail": "x"})
+        answer = self.mode.get("answer", "ok")
+        if answer == "ok":
+            try:
+                sent = json.loads(body)
+            except ValueError:
+                sent = None
+            return as_json(
+                200,
+                {
+                    "message": f"answered {target}",
+                    "success": True,
+                    "result": {"echo": sent, "rows": [1, 2.5, None, "é ✓"]},
+                    "structured_result": {"response": "**Markdown** answer", "thinking_process": None},
+                    "execution_time": 1.25,
+                },
+            )
+        return {
+            "error500": raw(500, "text/plain", b"boom"),
+            "error404": as_json(404, {"detail": "no such tool"}),
+            "redirect": (307, [("Location", "http://elsewhere.invalid/x")], b""),
+            "notjson": raw(200, "text/html", b"<html>not json</html>"),
+            "empty": raw(200, "application/json", b""),
+            "list": as_json(200, [1, 2]),
+            "string": as_json(200, "text"),
+            "invalid": as_json(200, {"message": 5, "success": None}),
+            "structured": as_json(200, {"message": "ok", "success": True, "structured_result": {"thinking_process": "t"}}),
+            "lax": as_json(200, {"message": "ok", "success": "true", "execution_time": "2.5", "extra": "dropped", "result": [1]}),
+            "minimal": as_json(200, {"message": "ok", "success": False}),
+            "hangup": None,
+        }[answer]
+
+
+MCP_ANSWER = Mcp()
+
+
 # --- The two backends --------------------------------------------------------------------------------
 
 
 def build_python_app():
+    from app.integrations.copilot_mcp.services.copilot_mcp import MCPService
+    from app.integrations.copilot_mcp.services.copilot_mcp import MCPServiceType
     from app.integrations.microsoft_patch_tuesday.services import (
         microsoft_patch_tuesday as pt_services,
     )
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers import copilot_mcp
     from app.routers import microsoft_patch_tuesday
 
+    MCPService._BASE_URLS[MCPServiceType.LOCAL] = f"{MCP_URL}/mcp"
+    MCPService._BASE_URLS[MCPServiceType.CLOUD] = f"{MCP_URL}/query"
+    original_request = requests.Session.request
+
+    def session_request(self, method, url, *args, **kwargs):
+        if url.startswith("https://license.socfortress.co/"):
+            url = MCP_URL + url[len("https://license.socfortress.co") :]
+        return original_request(self, method, url, *args, **kwargs)
+
+    requests.Session.request = session_request
     pt_services.MSRC_CVRF_BASE = f"{FEEDS}/cvrf/v3.0/cvrf"
     pt_services.EPSS_BASE = f"{FEEDS}/data/v1/epss"
     pt_services.CISA_KEV_JSON = f"{FEEDS}/kev.json"
     api = APIRouter(prefix="/api")
     api.include_router(microsoft_patch_tuesday.router)
+    api.include_router(copilot_mcp.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -354,6 +446,10 @@ def start_rust():
         "COPILOT_MSRC_CVRF_URL": f"{FEEDS}/cvrf/v3.0/cvrf",
         "COPILOT_EPSS_URL": f"{FEEDS}/data/v1/epss",
         "COPILOT_CISA_KEV_URL": f"{FEEDS}/kev.json",
+        "COPILOT_MCP_LOCAL_URL": f"{MCP_URL}/mcp",
+        "COPILOT_SOCFORTRESS_MCP_URL": f"{MCP_URL}/query",
+        "COPILOT_LICENSE_URL": f"{MCP_URL}/",
+        "COPILOT_API_KEY": os.environ["COPILOT_API_KEY"],
     }
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
     for _ in range(100):
@@ -578,10 +674,213 @@ async def patch_tuesday_checks(p, t_admin, t_analyst, t_portal):
     await p.same("/cycles: admin", "GET", f"{PT}/cycles?x=1", t_admin, expect=200)
 
 
+# --- CoPilot MCP checks ------------------------------------------------------------------------------
+
+M = "/api/copilot_mcp"
+SERVERS = ("wazuh-indexer", "wazuh-manager", "copilot", "velociraptor", "threat-intel", "cyber-news", "knowledgebase", "attack-surface")
+
+
+def licence(cache=None, licensed=True, **mode):
+    """A reset: the suite's licence row (or none), its `SOCFORTRESS AI` cache row as given
+    (`enabled`, fresh) or none, and the stand-in's mode."""
+
+    def go():
+        sql("DELETE FROM license_cache WHERE license_key = :k", k=LICENSE_KEY)
+        sql("DELETE FROM license WHERE license_key = :k", k=LICENSE_KEY)
+        if licensed:
+            sql(
+                "INSERT INTO license (license_key, customer_name, customer_email, company_name) "
+                "VALUES (:k, 'Parity', 'p@parity.test', 'Parity Co')",
+                k=LICENSE_KEY,
+            )
+        if cache is not None:
+            enabled, fresh = cache
+            sql(
+                "INSERT INTO license_cache (license_key, feature_name, is_enabled, cached_at, expires_at, license_data) VALUES "
+                "(:k, 'SOCFORTRESS AI', :e, UTC_TIMESTAMP() - INTERVAL 2 HOUR, UTC_TIMESTAMP() + INTERVAL :h HOUR, '{}')",
+                k=LICENSE_KEY,
+                e=enabled,
+                h=1 if fresh else -1,
+            )
+        MCP_ANSWER.reset(**mode)
+
+    return go
+
+
+def licence_rows():
+    with sync_engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT feature_name, is_enabled, license_data FROM license_cache WHERE license_key = :k ORDER BY feature_name"),
+            {"k": LICENSE_KEY},
+        )
+        return [tuple(r) for r in rows]
+
+
+async def mcp_checks(p, t_admin, t_analyst, t_portal):
+    print("\n== CoPilot MCP: auth, servers and questions")
+    for method, route in (
+        ("GET", "/servers"),
+        ("GET", "/servers/copilot"),
+        ("GET", "/example-questions?mcp_server=copilot"),
+        ("GET", "/categories?mcp_server=copilot"),
+        ("POST", "/query"),
+    ):
+        await p.same(f"{route}: no token", method, M + route, expect=401)
+        await p.same(f"{route}: portal user", method, M + route, t_portal, expect=403)
+    await p.same("/servers", "GET", f"{M}/servers", t_analyst, expect=200)
+    await p.same("/servers: admin", "GET", f"{M}/servers", t_admin, expect=200)
+    for server in SERVERS + ("nope", "COPILOT", "copilot%20", "%E2%9C%93"):
+        await p.same(f"/servers/{server}", "GET", f"{M}/servers/{server}", t_analyst)
+    await p.same("/servers: an encoded slash", "GET", f"{M}/servers/copilot%2Fx", t_analyst)
+    for server in SERVERS:
+        await p.same(f"/example-questions {server}", "GET", f"{M}/example-questions?mcp_server={server}", t_analyst, expect=200)
+        await p.same(f"/categories {server}", "GET", f"{M}/categories?mcp_server={server}", t_analyst, expect=200)
+    for query in (
+        "mcp_server=copilot&category=alerts",
+        "mcp_server=wazuh-manager&category=agents",
+        "mcp_server=velociraptor&category=persistence",
+        "mcp_server=copilot&category=nope",
+        "mcp_server=copilot&category=",
+        "mcp_server=copilot&category=ALERTS",
+        "mcp_server=nope",
+        "mcp_server=",
+        "category=alerts",
+        "",
+    ):
+        await p.same(f"/example-questions?{query}", "GET", f"{M}/example-questions?{query}", t_analyst)
+    for query in ("mcp_server=nope", "", "mcp_server=Copilot"):
+        await p.same(f"/categories?{query}", "GET", f"{M}/categories?{query}", t_analyst)
+
+    print("\n== CoPilot MCP: the query's body")
+    Q = f"{M}/query"
+    for body in (
+        {"input": "hello", "mcp_server": "nope"},
+        {"input": 5, "mcp_server": "nope"},
+        {"mcp_server": ""},
+        {"input": "hello", "mcp_server": 5},
+        {"input": "hello", "mcp_server": None},
+        {"input": "hello"},
+        {"mcp_server": "copilot"},
+        {"input": 5, "mcp_server": "copilot", "verbose": "x"},
+        {"input": None, "mcp_server": 7},
+        {"input": "hello", "mcp_server": "copilot", "verbose": 2},
+        {},
+        [],
+        "text",
+    ):
+        await p.same(f"/query: {json.dumps(body)[:60]}", "POST", Q, t_analyst, before=licence(), json=body)
+    await p.same("/query: no body", "POST", Q, t_analyst)
+    await p.same("/query: malformed JSON", "POST", Q, t_analyst, content=b'{"input": ', headers={"Content-Type": "application/json"})
+    await p.same("/query: malformed JSON, no token", "POST", Q, content=b"{", headers={"Content-Type": "application/json"})
+
+    print("\n== CoPilot MCP: the local servers")
+    for server in SERVERS[:4]:
+        await p.same(f"/query {server}", "POST", Q, t_analyst, before=licence(), json={"input": "How many alerts?", "mcp_server": server})
+    for verbose in (False, None, "yes", 0, "off"):
+        await p.same(
+            f"/query: verbose {verbose!r}",
+            "POST",
+            Q,
+            t_analyst,
+            before=licence(),
+            json={"input": "x", "mcp_server": "copilot", "verbose": verbose},
+        )
+    await p.same(
+        "/query: Unicode input",
+        "POST",
+        Q,
+        t_admin,
+        before=licence(),
+        json={"input": 'é ✓ \u0000 "q"', "mcp_server": "velociraptor"},
+    )
+    for answer in (
+        "error500",
+        "error404",
+        "redirect",
+        "notjson",
+        "empty",
+        "list",
+        "string",
+        "invalid",
+        "structured",
+        "lax",
+        "minimal",
+        "hangup",
+    ):
+        await p.same(
+            f"/query: the local server answers {answer}",
+            "POST",
+            Q,
+            t_analyst,
+            before=licence(answer=answer),
+            json={"input": "x", "mcp_server": "wazuh-manager"},
+        )
+
+    print("\n== CoPilot MCP: the cloud servers and the licence")
+    for server in SERVERS[4:]:
+        await p.same(
+            f"/query {server}",
+            "POST",
+            Q,
+            t_analyst,
+            before=licence(cache=(1, True)),
+            json={"input": "What is new?", "mcp_server": server},
+            table=licence_rows,
+        )
+    for answer in ("error500", "notjson", "invalid", "hangup"):
+        await p.same(
+            f"/query cloud: the server answers {answer}",
+            "POST",
+            Q,
+            t_analyst,
+            before=licence(cache=(1, True), answer=answer),
+            json={"input": "x", "mcp_server": "knowledgebase"},
+        )
+    cloud = {"input": "x", "mcp_server": "threat-intel"}
+    await p.same("/query cloud: no licence", "POST", Q, t_analyst, before=licence(licensed=False), json=cloud, table=licence_rows)
+    await p.same("/query cloud: cached as disabled", "POST", Q, t_analyst, before=licence(cache=(0, True)), json=cloud, table=licence_rows)
+    await p.same("/query cloud: the licence verified", "POST", Q, t_analyst, before=licence(), json=cloud, table=licence_rows)
+    await p.same("/query cloud: an expired cache", "POST", Q, t_analyst, before=licence(cache=(1, False)), json=cloud, table=licence_rows)
+    await p.same(
+        "/query cloud: the licence server refuses",
+        "POST",
+        Q,
+        t_analyst,
+        before=licence(license="disabled"),
+        json=cloud,
+        table=licence_rows,
+    )
+    await p.same(
+        "/query cloud: the licence server fails",
+        "POST",
+        Q,
+        t_analyst,
+        before=licence(license="error"),
+        json=cloud,
+        table=licence_rows,
+    )
+    await p.same(
+        "/query local: no licence needed",
+        "POST",
+        Q,
+        t_analyst,
+        before=licence(licensed=False),
+        json={"input": "x", "mcp_server": "copilot"},
+    )
+
+
 # --- Database ----------------------------------------------------------------------------------------
 
 
+SAVED_LICENSES = []
+
+
 def seed():
+    # `get_license` reads the first row: the suite's is the only one while it runs.
+    with sync_engine.connect() as conn:
+        rows = conn.execute(text("SELECT id, license_key, customer_name, customer_email, company_name FROM license ORDER BY id"))
+        SAVED_LICENSES.extend(dict(r._mapping) for r in rows)
+    sql("DELETE FROM license")
     for name, role in ((ADMIN, 1), (ANALYST, 2), (PORTAL, 4)):
         sql(
             "INSERT INTO `user` (username, password, email, created_at, role_id) VALUES (:n, 'x', 'p@example.com', UTC_TIMESTAMP(), :r)",
@@ -591,13 +890,24 @@ def seed():
 
 
 def cleanup():
+    sql("DELETE FROM license_cache WHERE license_key = :k", k=LICENSE_KEY)
+    sql("DELETE FROM license WHERE license_key = :k", k=LICENSE_KEY)
+    for row in SAVED_LICENSES:
+        sql(
+            "INSERT INTO license (id, license_key, customer_name, customer_email, company_name) "
+            "VALUES (:id, :license_key, :customer_name, :customer_email, :company_name)",
+            **row,
+        )
     for name in USERS:
         sql("DELETE FROM log_entries WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
         sql("DELETE FROM `user` WHERE username = :n", n=name)
 
 
 async def main():
-    recorders = [Recorder("feeds", FEEDS_PORT, FEEDS_ANSWER)]
+    recorders = [
+        Recorder("feeds", FEEDS_PORT, FEEDS_ANSWER),
+        Recorder("mcp", MCP_PORT, MCP_ANSWER, fold=lambda target: target.startswith("/query/") or target == "/verify-license"),
+    ]
     proc = None
     try:
         seed()
@@ -612,9 +922,11 @@ async def main():
     p = Pair(recorders)
     t_admin, t_analyst, t_portal = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"]), token(PORTAL, ["customer_user"])
     try:
-        sections = os.environ.get("EXT_PARITY_SECTIONS", "patch").split(",")
+        sections = os.environ.get("EXT_PARITY_SECTIONS", "patch,mcp").split(",")
         if "patch" in sections:
             await patch_tuesday_checks(p, t_admin, t_analyst, t_portal)
+        if "mcp" in sections:
+            await mcp_checks(p, t_admin, t_analyst, t_portal)
     finally:
         await p.close()
         proc.terminate()

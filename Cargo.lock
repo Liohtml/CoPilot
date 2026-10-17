@@ -486,6 +486,7 @@ dependencies = [
  "copilot-integrations",
  "copilot-intel-connectors",
  "copilot-license",
+ "copilot-mcp",
  "copilot-monitoring-alerts",
  "copilot-notifications",
  "copilot-objectstore",
@@ -1059,6 +1060,23 @@ version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "copilot-mcp"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "copilot-auth",
+ "copilot-gateway",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "http",
+ "pretty_assertions",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

@@ -309,6 +309,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/performance",
     // Microsoft Patch Tuesday (copilot-patch-tuesday): MSRC, EPSS and KEV.
     "/api/patch-tuesday",
+    // CoPilot MCP (copilot-mcp): the servers, their questions and the query.
+    "/api/copilot_mcp",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -455,6 +457,8 @@ pub struct App {
     pub sidebar: copilot_status::sidebar::SidebarState,
     /// Microsoft Patch Tuesday (`/api/patch-tuesday`).
     pub patch_tuesday: copilot_patch_tuesday::PatchTuesdayState,
+    /// CoPilot MCP (`/api/copilot_mcp`).
+    pub mcp: copilot_mcp::McpState,
 }
 
 impl App {
@@ -641,6 +645,7 @@ impl App {
         };
         let patch_tuesday =
             copilot_patch_tuesday::PatchTuesdayState::new(ctx.clone(), legacy.clone());
+        let mcp = copilot_mcp::McpState::new(ctx.clone(), threat_intel.clone(), legacy.clone());
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -700,6 +705,7 @@ impl App {
             license,
             sidebar,
             patch_tuesday,
+            mcp,
         })
     }
 
@@ -1107,6 +1113,8 @@ impl App {
             )
             // Full paths: `/api/patch-tuesday*`.
             .merge(copilot_patch_tuesday::router(self.patch_tuesday.clone()))
+            // Full paths: `/api/copilot_mcp/*`.
+            .merge(copilot_mcp::router(self.mcp.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
