@@ -37,6 +37,9 @@
 //! | `COPILOT_CATALOG_REFRESH` | `true` | this process warms and refreshes its own catalog caches (`false`: they load on demand only — the parity suites, an air-gapped deployment) |
 //! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
 //! | `COPILOT_INTEGRATION_MODULES_URL` | *(unset)* | tests only: every request to an integration module container (`http://copilot-<name>-module/…`) and to Mimecast's region discovery goes to `{url}/{host}{path}` (the parity harness's stand-in); never set in production |
+//! | `AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_STS`, `AWS_ENDPOINT_URL_S3` | *(unset)* | botocore's endpoint overrides, honoured by the AWS provisioning's credential check as botocore honours them |
+//! | `COPILOT_BACKEND_DATA_DIR` | `/opt/copilot/backend/data` | the Python backend's `data/` directory, where the CrowdStrike, Defender for Endpoint and Bitdefender provisioning write their collectors' docker-compose and configuration files (mounted read-write by `docker-compose.rust.yml`) |
+//! | `COPILOT_AWS_PROFILE_CHECK_SECONDS`, `COPILOT_BITDEFENDER_URL`, `COPILOT_PROVISION_WORKER_PORT` | *(unset)* | tests only: how long the AWS provisioning watches the manager's log after a restart (`interval,timeout`), the GravityZone base URL the Bitdefender provisioning calls, and the port of the provisioning worker on the Wazuh master and each swarm node instead of `5003` (the parity harness's stand-ins); never set in production |
 //! | `COPILOT_SIDEBAR_REFRESH` | `COPILOT_CATALOG_REFRESH` | this process warms and refreshes its own sidebar indicators (`copilot-status`); unset, it follows the catalog switch |
 //! | `ENVIRONMENT` | `PRODUCTION` | the sidebar's `environment` field, as `os.getenv` reads it |
 //! | `PERF_MONITOR_ENABLED`, `PERF_LAG_SAMPLE_INTERVAL`, `PERF_LAG_STALL_THRESHOLD_MS`, `PERF_SLOW_REQUEST_MS`, `PERF_RECENT_REQUESTS`, `PERF_RECENT_STALLS`, `PERF_LAG_SAMPLES`, `PERF_DURATION_SAMPLES`, `PERF_MAX_ENDPOINTS`, `DB_SLOW_QUERY_MS`, `DB_QUERY_SAMPLES`, `DB_MAX_STATEMENTS` | `true`, `0.25`, `100`, `1000`, `500`, `200`, `2000`, `200`, `500`, `250`, `2000`, `300` | this process's request timing, runtime-lag watchdog and query metrics (`/api/performance`, `copilot-status`), read as `app/middleware/performance.py` and `app/db/query_metrics.py` read them |
@@ -178,6 +181,8 @@ pub struct CopilotConfig {
     pub response: crate::response_env::ResponseEnv,
     /// The Detections Catalog's settings (`copilot-searches`).
     pub catalog: crate::catalog_env::CatalogEnv,
+    /// The remaining provisioning's settings (`copilot-cloud-provisioning`).
+    pub cloud: crate::cloud_env::CloudEnv,
     /// `COPILOT_INTEGRATION_MODULES_URL` — tests only: the stand-in the
     /// integration modules and Mimecast's discovery are reached at.
     pub integration_modules_url: Option<String>,
@@ -444,6 +449,7 @@ impl CopilotConfig {
             copilot_api_key: env.get_raw("COPILOT_API_KEY").map(Secret::new),
             response: crate::response_env::ResponseEnv::from_env(env),
             catalog: crate::catalog_env::CatalogEnv::from_env(env),
+            cloud: crate::cloud_env::CloudEnv::from_env(env),
             integration_modules_url: env
                 .get("COPILOT_INTEGRATION_MODULES_URL")
                 .map(|v| v.trim().trim_end_matches('/').to_string())

@@ -230,6 +230,18 @@ pub fn event_stream_config(
     index_set_id: &PyValue,
     rules: Vec<(&str, String)>,
 ) -> PyResult<PyValue> {
+    event_stream_config_matching(title, description, index_set_id, rules, "AND")
+}
+
+/// [`event_stream_config`] with its `matching_type` (the customer's Wazuh
+/// stream matches either rule: `OR`).
+pub fn event_stream_config_matching(
+    title: &str,
+    description: &str,
+    index_set_id: &PyValue,
+    rules: Vec<(&str, String)>,
+    matching_type: &str,
+) -> PyResult<PyValue> {
     let rules = rules
         .into_iter()
         .map(|(f, v)| {
@@ -248,7 +260,7 @@ pub fn event_stream_config(
             ("description", s(description)),
             ("index_set_id", index_set_id.clone()),
             ("rules", PyValue::List(rules)),
-            ("matching_type", s("AND")),
+            ("matching_type", s(matching_type)),
             ("remove_matches_from_default_stream", PyValue::Bool(true)),
             ("content_pack", PyValue::None),
         ]),

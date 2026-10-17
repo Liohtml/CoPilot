@@ -9,8 +9,9 @@
 //! - [`schema`]   — the Pydantic models, pinned by `model_vectors.json`
 //! - [`services`] — swarm nodes, stacks (details, start, stop, delete), the
 //!   customer's stack id in `customersmeta`
-//! - [`routes`]   — the eight routes (`create-wazuh-customer-stack` stays in
-//!   Python)
+//! - [`routes`]   — eight routes (`create-wazuh-customer-stack` is
+//!   `copilot-integration-provisioning`'s, with the customer provisioning
+//!   that also creates the stack)
 
 #![warn(missing_docs)]
 

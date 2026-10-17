@@ -466,6 +466,48 @@ pub async fn send_get(
     }))
 }
 
+/// `send_post_request(endpoint, data)`: `requests.post(json=data)`, the
+/// body given as the text `json.dumps(data)` writes; `Value::Null` is its
+/// `None` (no connector row). Every failure is a `{"success": False, …}`
+/// answer; no retry on a 401 (unlike a GET).
+pub async fn send_post_json(st: &WazuhState, endpoint: &str, json: String) -> Result<Value, PyErr> {
+    tracing::info!("Sending POST request to {endpoint}");
+    let http = &st.manager;
+    let first_row = row(st).await?;
+    let token = http.token(first_row.as_ref()).await;
+    let Some(attributes) = row(st).await? else {
+        tracing::error!("No Wazuh Manager connector found in the database");
+        return Ok(Value::Null);
+    };
+    let Some(token) = token else {
+        return Ok(auth_failed());
+    };
+    let url = format!("{}{endpoint}", attributes.connector_url);
+    let outcome: Result<Value, String> = async {
+        let reply = http
+            .send(
+                Method::POST,
+                &url,
+                &[],
+                &[
+                    bearer(&token),
+                    ("content-type", "application/json".to_string()),
+                ],
+                Some(&Body::Text(json)),
+            )
+            .await?;
+        reply.raise_for_status()?;
+        Ok(ok(reply.json()?, "Successfully retrieved data"))
+    }
+    .await;
+    Ok(outcome.unwrap_or_else(|e| {
+        tracing::error!("Failed to send POST request to {endpoint} with error: {e}");
+        failure(format!(
+            "Failed to send POST request to {endpoint} with error: {e}"
+        ))
+    }))
+}
+
 /// How `send_put_request` labels the body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PutKind {

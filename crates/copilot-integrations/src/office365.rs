@@ -64,11 +64,13 @@ pub fn remove_api_auth_block(config: &str, tenant_id: &str) -> Result<Option<Str
     Ok(Some(etree::tostring(&root)))
 }
 
-fn attribute_error(type_name: &str) -> PyExc {
+/// The `AttributeError` of `.get` on a value that is not a dict.
+pub fn attribute_error(type_name: &str) -> PyExc {
     PyExc::AttributeError(format!("'{type_name}' object has no attribute 'get'"))
 }
 
-fn json_type(v: &Value) -> &'static str {
+/// `type(value).__name__` of a JSON value.
+pub fn json_type(v: &Value) -> &'static str {
     match v {
         Value::Null => "NoneType",
         Value::Bool(_) => "bool",
@@ -82,7 +84,7 @@ fn json_type(v: &Value) -> &'static str {
 
 /// `response.get(key, default)` on a JSON value (an `AttributeError` when it
 /// is not a dict).
-fn get<'a>(v: &'a Value, key: &str) -> Result<Option<&'a Value>, PyExc> {
+pub fn get<'a>(v: &'a Value, key: &str) -> Result<Option<&'a Value>, PyExc> {
     match v {
         Value::Object(m) => Ok(m.get(key)),
         other => Err(attribute_error(json_type(other))),
@@ -90,7 +92,7 @@ fn get<'a>(v: &'a Value, key: &str) -> Result<Option<&'a Value>, PyExc> {
 }
 
 /// Python truthiness of a JSON value.
-fn truthy(v: &Value) -> bool {
+pub fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
         Value::Bool(b) => *b,
@@ -102,7 +104,7 @@ fn truthy(v: &Value) -> bool {
 }
 
 /// `x == 0` in Python (`False` and `0.0` are equal to `0`).
-fn equals_zero(v: &Value) -> bool {
+pub fn equals_zero(v: &Value) -> bool {
     match v {
         Value::Bool(b) => !b,
         Value::Number(n) => n.as_f64() == Some(0.0),
@@ -110,7 +112,8 @@ fn equals_zero(v: &Value) -> bool {
     }
 }
 
-fn wazuh(e: PyErr) -> PyExc {
+/// A Wazuh manager helper's failure as the Python exception.
+pub fn wazuh(e: PyErr) -> PyExc {
     match e {
         PyErr::Http { status, detail } => PyExc::Http(status, detail),
         PyErr::Value(m) => PyExc::ValueError(m),
@@ -119,7 +122,7 @@ fn wazuh(e: PyErr) -> PyExc {
 }
 
 /// `repr()` of a helper's answer dict.
-fn repr(v: &Value) -> String {
+pub fn repr(v: &Value) -> String {
     copilot_upstream::respond::from_json(v).py_repr()
 }
 

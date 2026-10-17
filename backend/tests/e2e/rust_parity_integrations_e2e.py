@@ -4,9 +4,10 @@ by pytest (needs a live MySQL and the Rust binary; run by scripts/rust-parity.sh
 The real FastAPI routers of `/api/integrations`, `/api/api/v1/alert_settings` and
 `/api/network_connectors` (in-process) and a Rust instance answer the same requests on one
 database. The Rust instance's legacy backend is the same routers served by uvicorn in a
-subprocess, so what Rust hands over (the delete of a deployed AWS instance, the 405s) is answered
-by Python too. One local stand-in records every request either backend sends — every header, the
-body bytes — as the Wazuh manager (`/wazuh`), Graylog (`/graylog`) and Grafana (`/grafana/api`).
+subprocess, so what Rust hands over (the 405s) is answered by Python too; the delete of a deployed
+AWS instance is Rust's own since AWS provisioning was ported (the two share the ossec.conf lock).
+One local stand-in records every request either backend sends — every header, the body bytes —
+as the Wazuh manager (`/wazuh`), Graylog (`/graylog`) and Grafana (`/grafana/api`).
 
 For each request the suite compares the status, the body (byte for byte, or with created ids
 masked, or — for a table model, whose key order Python takes from its process — key by key), the
@@ -1366,7 +1367,7 @@ async def delete_checks(p, t_admin, t_analyst):
     await p.same("delete: a network integration (FORTINET, its network metadata)", "DELETE", url, t_admin, json=body(name="FORTINET"))
     await p.same("delete: Crowdstrike, undeployed (its note)", "DELETE", url, t_admin, json=body(name="Crowdstrike", code=CUST_B))
     await p.same("delete: AWS undeployed", "DELETE", url, t_admin, json=body(name="AWS", instance_name="acct-1"))
-    await p.same("delete: AWS deployed (handed to Python)", "DELETE", url, t_admin, json=body(name="AWS", instance_name="acct-2"))
+    await p.same("delete: AWS deployed (Rust's own decommission)", "DELETE", url, t_admin, json=body(name="AWS", instance_name="acct-2"))
     await p.same("delete: analyst of A, for A", "DELETE", url, t_analyst, json=body(name="Mimecast"))
     await p.same("delete: analyst of A, for B", "DELETE", url, t_analyst, json=body(name="Crowdstrike", code=CUST_B), expect=(200, 403))
 

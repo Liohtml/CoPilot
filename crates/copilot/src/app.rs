@@ -189,9 +189,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // compiled in from backend/); its customer-provisioning twin
     // `POST /api/customer_provisioning/provision/dashboards` is below.
     "POST /api/grafana/dashboards",
-    // The Portainer connector (copilot-portainer) but
-    // `POST /api/portainer/create-wazuh-customer-stack` (Wazuh, provisioning).
+    // The Portainer connector (copilot-portainer); its
+    // `POST /api/portainer/create-wazuh-customer-stack` is
+    // copilot-integration-provisioning's (the customer provisioning's stack).
     "GET /api/portainer",
+    "POST /api/portainer/create-wazuh-customer-stack",
     "POST /api/portainer/start-wazuh-customer-stack",
     "POST /api/portainer/stop-wazuh-customer-stack",
     "POST /api/portainer/update-customer-stack-id",
@@ -216,9 +218,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/stack_provisioning/influxdb",
     "/api/stack_decommissioning",
     // Customer provisioning (copilot-provisioning; `POST /provision/dashboards`
-    // is copilot-grafana-dashboards') but `POST /provision` and
-    // `POST /provision/wazuh_worker` (Grafana dashboards and the Portainer
-    // stack in one request), which fall through.
+    // is copilot-grafana-dashboards', `POST /provision` and
+    // `POST /provision/wazuh_worker` copilot-integration-provisioning's).
     "/api/customer_provisioning",
     // The agents router (copilot-agents, on copilot-velociraptor's client).
     "/api/agents",
@@ -246,8 +247,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/api/v1/alert_settings",
     "/api/network_connectors",
     // The integrations' provisioning (copilot-integration-provisioning; the
-    // scheduler jobs handed to Python) but CrowdStrike, Defender for Endpoint
-    // and Bitdefender (collector files on the Python host), Office365 and AWS.
+    // scheduler jobs handed to Python), CrowdStrike, Defender for Endpoint and
+    // Bitdefender included (their collectors' files written under the
+    // backend's data directory).
     "POST /api/huntress/provision",
     "POST /api/darktrace/provision",
     "POST /api/duo/provision",
@@ -256,6 +258,14 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/mimecast/provision",
     "POST /api/sap_siem/provision",
     "POST /api/socfortress_mdr/provision",
+    "POST /api/crowdstrike/provision",
+    "POST /api/defender_for_endpoint/provision",
+    "POST /api/bitdefender/provision",
+    // Office 365 and AWS (copilot-cloud-provisioning): the tenant's or the
+    // account's ossec.conf entries, Graylog and Grafana objects, rolled back
+    // on failure.
+    "POST /api/office365/provision",
+    "POST /api/aws/provision",
     // SIEM (copilot-siem): dashboards (built-in and custom templates, panel
     // data), event sources and the event search.
     "/api/siem/dashboards",
@@ -347,6 +357,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_waf::REQUIREMENTS);
     all.extend_from_slice(copilot_provisioning::REQUIREMENTS);
     all.extend_from_slice(copilot_integration_provisioning::REQUIREMENTS);
+    all.extend_from_slice(copilot_cloud_provisioning::REQUIREMENTS);
     all.extend_from_slice(copilot_agents::REQUIREMENTS);
     all.extend_from_slice(copilot_velociraptor::REQUIREMENTS);
     all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
@@ -438,6 +449,8 @@ pub struct App {
     pub objectstore: ObjectStore,
     /// The threat-intel routes' clients (`/api/threat_intel`).
     pub threat_intel: copilot_threat_intel::ThreatIntelState,
+    /// What the remaining provisioning reads from the environment.
+    pub cloud: copilot_core::cloud_env::CloudEnv,
     /// The response routes (`/api/active_response`, the Graylog webhook,
     /// `/api/sysmon_config`).
     pub response: copilot_response::ResponseState,
@@ -713,6 +726,7 @@ impl App {
             agents,
             objectstore,
             threat_intel,
+            cloud: cfg.cloud.clone(),
             response,
             shuffle,
             agent_reports,
@@ -881,7 +895,8 @@ impl App {
                 ctx: self.ctx.clone(),
                 client: self.grafana.clone(),
             }))
-            // All but `POST /create-wazuh-customer-stack`, which falls through.
+            // All but `POST /create-wazuh-customer-stack`, which is
+            // copilot-integration-provisioning's (merged below).
             .nest(
                 "/api/portainer",
                 copilot_portainer::router(PortainerState {
@@ -916,7 +931,10 @@ impl App {
                 },
             ))
             // Full paths: `POST /api/stack_provisioning/graylog/provision/
-            // {fortinet,sonicwall,sentinelone}` and `POST /api/<integration>/provision`.
+            // {fortinet,sonicwall,sentinelone}`, `POST /api/<integration>/provision`
+            // (CrowdStrike, Defender for Endpoint and Bitdefender included),
+            // `POST /api/customer_provisioning/provision[/wazuh_worker]` and
+            // `POST /api/portainer/create-wazuh-customer-stack`.
             .merge(copilot_integration_provisioning::router(
                 copilot_integration_provisioning::ProvisioningState {
                     ctx: self.ctx.clone(),
@@ -924,6 +942,20 @@ impl App {
                     grafana: self.grafana.clone(),
                     wazuh: self.wazuh.clone(),
                     legacy: self.legacy.clone(),
+                    env: self.cloud.clone(),
+                    portainer: self.portainer.clone(),
+                    worker_http: self.worker_http.clone(),
+                },
+            ))
+            // Full paths: `POST /api/office365/provision` and
+            // `POST /api/aws/provision`.
+            .merge(copilot_cloud_provisioning::router(
+                copilot_cloud_provisioning::CloudState {
+                    ctx: self.ctx.clone(),
+                    graylog: self.graylog.clone(),
+                    grafana: self.grafana.clone(),
+                    wazuh: self.wazuh.clone(),
+                    env: self.cloud.clone(),
                 },
             ))
             // Full paths: `POST /api/grafana/dashboards` and

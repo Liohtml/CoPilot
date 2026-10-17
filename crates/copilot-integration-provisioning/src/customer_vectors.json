@@ -1,0 +1,282 @@
+{
+ "provision_new_customer": [
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "status": 200,
+   "dump": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"], \"organizationId\": 0, \"folderId\": 0, \"datasourceUid\": \"uid-to-be-replaced\", \"grafana_url\": \"https://grafana.company.local\"}, \"wazuh_auth_password\": \"n/a\", \"wazuh_registration_port\": \"n/a\", \"wazuh_logs_port\": \"n/a\", \"wazuh_api_port\": \"n/a\", \"wazuh_cluster_name\": \"n/a\", \"wazuh_cluster_key\": \"n/a\", \"wazuh_master_ip\": \"n/a\", \"grafana_url\": \"https://grafana.example\", \"grafana_org_id\": \"0\", \"only_insert_into_db\": false, \"graylog_index_id\": null, \"graylog_stream_id\": null, \"wazuh_worker_hostname\": null, \"provision_wazuh_worker\": false, \"provision_ha_proxy\": false, \"portainer_deployment\": null}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"Acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "status": 422,
+   "body": "{\"message\":\"customer_index_name: customer_index_name must start with a lowercase letter or number and can only contain lowercase letters, numbers, underscores, plus signs, and hyphens.\",\"details\":[{\"field\":\"customer_index_name\",\"error_type\":\"value_error\",\"message\":\"customer_index_name: customer_index_name must start with a lowercase letter or number and can only contain lowercase letters, numbers, underscores, plus signs, and hyphens.\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\\n\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "status": 200,
+   "dump": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\\n\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"], \"organizationId\": 0, \"folderId\": 0, \"datasourceUid\": \"uid-to-be-replaced\", \"grafana_url\": \"https://grafana.company.local\"}, \"wazuh_auth_password\": \"n/a\", \"wazuh_registration_port\": \"n/a\", \"wazuh_logs_port\": \"n/a\", \"wazuh_api_port\": \"n/a\", \"wazuh_cluster_name\": \"n/a\", \"wazuh_cluster_key\": \"n/a\", \"wazuh_master_ip\": \"n/a\", \"grafana_url\": \"https://grafana.example\", \"grafana_org_id\": \"0\", \"only_insert_into_db\": false, \"graylog_index_id\": null, \"graylog_stream_id\": null, \"wazuh_worker_hostname\": null, \"provision_wazuh_worker\": false, \"provision_ha_proxy\": false, \"portainer_deployment\": null}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"-acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "status": 422,
+   "body": "{\"message\":\"customer_index_name: customer_index_name must start with a lowercase letter or number and can only contain lowercase letters, numbers, underscores, plus signs, and hyphens.\",\"details\":[{\"field\":\"customer_index_name\",\"error_type\":\"value_error\",\"message\":\"customer_index_name: customer_index_name must start with a lowercase letter or number and can only contain lowercase letters, numbers, underscores, plus signs, and hyphens.\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": 5, \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "status": 422,
+   "body": "{\"message\":\"customer_index_name: Input should be a valid string\",\"details\":[{\"field\":\"customer_index_name\",\"error_type\":\"value_error\",\"message\":\"customer_index_name: Input should be a valid string\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Office365\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "status": 422,
+   "body": "{\"message\":\"Value is not a valid enumeration member.\",\"details\":[{\"field\":\"0\",\"error_type\":\"enum\",\"message\":\"Value is not a valid enumeration member.\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": \"Wazuh\", \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "status": 422,
+   "body": "{\"message\":\"customer_subscription: Input should be a valid list\",\"details\":[{\"field\":\"customer_subscription\",\"error_type\":\"value_error\",\"message\":\"customer_subscription: Input should be a valid list\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"NOPE\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "status": 422,
+   "body": "{\"message\":\"dashboards_to_include.dashboards: Dashboard identifier \\\"NOPE\\\" is not recognized.\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"value_error\",\"message\":\"dashboards_to_include.dashboards: Dashboard identifier \\\"NOPE\\\" is not recognized.\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {}, \"grafana_url\": \"https://grafana.example\"}",
+   "status": 422,
+   "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"dashboards\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\", \"wazuh_logs_port\": null, \"grafana_org_id\": null, \"only_insert_into_db\": null}",
+   "status": 200,
+   "dump": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"], \"organizationId\": 0, \"folderId\": 0, \"datasourceUid\": \"uid-to-be-replaced\", \"grafana_url\": \"https://grafana.company.local\"}, \"wazuh_auth_password\": \"n/a\", \"wazuh_registration_port\": \"n/a\", \"wazuh_logs_port\": null, \"wazuh_api_port\": \"n/a\", \"wazuh_cluster_name\": \"n/a\", \"wazuh_cluster_key\": \"n/a\", \"wazuh_master_ip\": \"n/a\", \"grafana_url\": \"https://grafana.example\", \"grafana_org_id\": null, \"only_insert_into_db\": null, \"graylog_index_id\": null, \"graylog_stream_id\": null, \"wazuh_worker_hostname\": null, \"provision_wazuh_worker\": false, \"provision_ha_proxy\": false, \"portainer_deployment\": null}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\", \"wazuh_logs_port\": 1514, \"provision_wazuh_worker\": \"yes\"}",
+   "status": 422,
+   "body": "{\"message\":\"wazuh_logs_port: Input should be a valid string\",\"details\":[{\"field\":\"wazuh_logs_port\",\"error_type\":\"value_error\",\"message\":\"wazuh_logs_port: Input should be a valid string\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\", \"provision_ha_proxy\": null}",
+   "status": 422,
+   "body": "{\"message\":\"provision_ha_proxy: Input should be a valid boolean\",\"details\":[{\"field\":\"provision_ha_proxy\",\"error_type\":\"value_error\",\"message\":\"provision_ha_proxy: Input should be a valid boolean\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": \"7\", \"index_replicas\": 0, \"index_shards\": 1.0, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\", \"graylog_index_id\": \"is-1\", \"portainer_deployment\": 1}",
+   "status": 200,
+   "dump": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 7, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"], \"organizationId\": 0, \"folderId\": 0, \"datasourceUid\": \"uid-to-be-replaced\", \"grafana_url\": \"https://grafana.company.local\"}, \"wazuh_auth_password\": \"n/a\", \"wazuh_registration_port\": \"n/a\", \"wazuh_logs_port\": \"n/a\", \"wazuh_api_port\": \"n/a\", \"wazuh_cluster_name\": \"n/a\", \"wazuh_cluster_key\": \"n/a\", \"wazuh_master_ip\": \"n/a\", \"grafana_url\": \"https://grafana.example\", \"grafana_org_id\": \"0\", \"only_insert_into_db\": false, \"graylog_index_id\": \"is-1\", \"graylog_stream_id\": null, \"wazuh_worker_hostname\": null, \"provision_wazuh_worker\": false, \"provision_ha_proxy\": false, \"portainer_deployment\": true}"
+  },
+  {
+   "input": "{\"customer_code\": \"x\"}",
+   "status": 422,
+   "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"customer_index_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"customer_grafana_org_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"hot_data_retention\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_replicas\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_shards\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"customer_subscription\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"dashboards_to_include\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_url\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+  },
+  {
+   "input": "{}",
+   "status": 422,
+   "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"customer_index_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"customer_grafana_org_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"hot_data_retention\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_replicas\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"index_shards\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"customer_subscription\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"dashboards_to_include\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"grafana_url\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+  },
+  {
+   "input": "null",
+   "status": 422,
+   "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+  },
+  {
+   "input": "[]",
+   "status": 422,
+   "body": "{\"message\":\"Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"body\",\"error_type\":\"value_error\",\"message\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+  },
+  {
+   "input": "\"x\"",
+   "status": 422,
+   "body": "{\"message\":\"Input should be a valid dictionary or object to extract fields from\",\"details\":[{\"field\":\"body\",\"error_type\":\"value_error\",\"message\":\"Input should be a valid dictionary or object to extract fields from\"}]}"
+  }
+ ],
+ "provision_worker_request": [
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"ac01\", \"wazuh_auth_password\": \"pw\", \"wazuh_registration_port\": \"1515\", \"wazuh_logs_port\": \"1514\", \"wazuh_api_port\": \"55000\", \"wazuh_cluster_name\": \"cluster\", \"wazuh_cluster_key\": \"key\", \"wazuh_master_ip\": \"10.0.0.1\"}",
+   "status": 200,
+   "dump": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"ac01\", \"wazuh_auth_password\": \"pw\", \"wazuh_registration_port\": \"1515\", \"wazuh_logs_port\": \"1514\", \"wazuh_api_port\": \"55000\", \"wazuh_cluster_name\": \"cluster\", \"wazuh_cluster_key\": \"key\", \"wazuh_master_ip\": \"10.0.0.1\", \"wazuh_worker_hostname\": null, \"portainer_deployment\": null, \"swarm_nodes\": null, \"wazuh_manager_version\": null, \"node_id\": \"1\"}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"ac01\", \"wazuh_auth_password\": \"pw\", \"wazuh_registration_port\": \"1515\", \"wazuh_logs_port\": \"1514\", \"wazuh_api_port\": \"55000\", \"wazuh_cluster_name\": \"cluster\", \"wazuh_cluster_key\": \"key\", \"wazuh_master_ip\": \"10.0.0.1\", \"node_id\": null, \"swarm_nodes\": [\"1.1.1.1\"], \"wazuh_worker_hostname\": \"w1\"}",
+   "status": 200,
+   "dump": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"ac01\", \"wazuh_auth_password\": \"pw\", \"wazuh_registration_port\": \"1515\", \"wazuh_logs_port\": \"1514\", \"wazuh_api_port\": \"55000\", \"wazuh_cluster_name\": \"cluster\", \"wazuh_cluster_key\": \"key\", \"wazuh_master_ip\": \"10.0.0.1\", \"wazuh_worker_hostname\": \"w1\", \"portainer_deployment\": null, \"swarm_nodes\": [\"1.1.1.1\"], \"wazuh_manager_version\": null, \"node_id\": null}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"ac01\", \"wazuh_auth_password\": \"pw\", \"wazuh_registration_port\": \"1515\", \"wazuh_logs_port\": 1514, \"wazuh_api_port\": \"55000\", \"wazuh_cluster_name\": \"cluster\", \"wazuh_cluster_key\": \"key\", \"wazuh_master_ip\": \"10.0.0.1\"}",
+   "status": 422,
+   "body": "{\"message\":\"wazuh_logs_port: Input should be a valid string\",\"details\":[{\"field\":\"wazuh_logs_port\",\"error_type\":\"value_error\",\"message\":\"wazuh_logs_port: Input should be a valid string\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"ac01\", \"wazuh_auth_password\": \"pw\", \"wazuh_registration_port\": \"1515\", \"wazuh_logs_port\": \"1514\", \"wazuh_api_port\": \"55000\", \"wazuh_cluster_name\": \"cluster\", \"wazuh_cluster_key\": \"key\", \"wazuh_master_ip\": \"10.0.0.1\", \"swarm_nodes\": \"1.1.1.1\"}",
+   "status": 422,
+   "body": "{\"message\":\"swarm_nodes: Input should be a valid list\",\"details\":[{\"field\":\"swarm_nodes\",\"error_type\":\"value_error\",\"message\":\"swarm_nodes: Input should be a valid list\"}]}"
+  },
+  {
+   "input": "{\"customer_name\": \"x\"}",
+   "status": 422,
+   "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_auth_password\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_registration_port\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_logs_port\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_api_port\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_cluster_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_cluster_key\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_master_ip\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+  },
+  {
+   "input": "{}",
+   "status": 422,
+   "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_auth_password\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_registration_port\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_logs_port\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_api_port\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_cluster_name\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_cluster_key\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"},{\"field\":\"wazuh_master_ip\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+  },
+  {
+   "input": "null",
+   "status": 422,
+   "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+  }
+ ],
+ "graylog": [
+  {
+   "name": "Acme Corp",
+   "code": "AC 01",
+   "index": "acme",
+   "index_set": "{\"title\": \"Acme Corp - Wazuh EDR EVENTS\", \"description\": \"Acme Corp - Wazuh EDR EVENTS\", \"index_prefix\": \"acme\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"<t>\", \"index_analyzer\": \"standard\", \"shards\": 1, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}",
+   "stream": "{\"title\": \"Acme Corp - Wazuh EDR EVENTS\", \"description\": \"Acme Corp - Wazuh EDR EVENTS\", \"index_set_id\": \"is-1\", \"rules\": [{\"field\": \"agent_labels_customer\", \"type\": 1, \"inverted\": false, \"value\": \"AC 01\"}, {\"field\": \"cluster_node\", \"type\": 1, \"inverted\": false, \"value\": \"wazuh-worker-AC_01-1\"}], \"matching_type\": \"OR\", \"remove_matches_from_default_stream\": true, \"content_pack\": null}"
+  },
+  {
+   "name": "É \"x\"",
+   "code": "c_1",
+   "index": "x-1",
+   "index_set": "{\"title\": \"\\u00c9 \\\"x\\\" - Wazuh EDR EVENTS\", \"description\": \"\\u00c9 \\\"x\\\" - Wazuh EDR EVENTS\", \"index_prefix\": \"x-1\", \"rotation_strategy_class\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategy\", \"rotation_strategy\": {\"type\": \"org.graylog2.indexer.rotation.strategies.TimeBasedRotationStrategyConfig\", \"rotation_period\": \"P1D\"}, \"retention_strategy_class\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategy\", \"retention_strategy\": {\"type\": \"org.graylog2.indexer.retention.strategies.DeletionRetentionStrategyConfig\", \"max_number_of_indices\": 30}, \"creation_date\": \"<t>\", \"index_analyzer\": \"standard\", \"shards\": 1, \"replicas\": 0, \"index_optimization_max_num_segments\": 1, \"index_optimization_disabled\": false, \"writable\": true, \"field_type_refresh_interval\": 5000}",
+   "stream": "{\"title\": \"\\u00c9 \\\"x\\\" - Wazuh EDR EVENTS\", \"description\": \"\\u00c9 \\\"x\\\" - Wazuh EDR EVENTS\", \"index_set_id\": \"is-1\", \"rules\": [{\"field\": \"agent_labels_customer\", \"type\": 1, \"inverted\": false, \"value\": \"c_1\"}, {\"field\": \"cluster_node\", \"type\": 1, \"inverted\": false, \"value\": \"wazuh-worker-c_1-1\"}], \"matching_type\": \"OR\", \"remove_matches_from_default_stream\": true, \"content_pack\": null}"
+  }
+ ],
+ "groups": [
+  {
+   "code": "AC01",
+   "cluster": "prod",
+   "sent": [
+    {
+     "endpoint": "/groups/Linux_AC01/configuration",
+     "sha256": "45036aed487b7fc920196657d2a6a227b14e8ec16a65c68b896f9dadf48e5a75",
+     "xml": true
+    },
+    {
+     "endpoint": "/groups/Windows_AC01/configuration",
+     "sha256": "ca617c08a8fbde6c506c63552f1038a856a67e92d2480d4aa0f211094b3f419d",
+     "xml": true
+    },
+    {
+     "endpoint": "/groups/Mac_AC01/configuration",
+     "sha256": "8aa5b085501d5f05513db6c0e1269e6891b6037538e96d78b7f57f053d5141d3",
+     "xml": true
+    }
+   ]
+  },
+  {
+   "code": "AB_C",
+   "cluster": "",
+   "sent": [
+    {
+     "endpoint": "/groups/Linux_AB_C/configuration",
+     "sha256": "f14cf92ef902721eca6b52dc3e1e44e7c50a24d3eae142817aa5bd1a77ad95a5",
+     "xml": true
+    },
+    {
+     "endpoint": "/groups/Windows_AB_C/configuration",
+     "sha256": "e1e0cd057c76e34f454bcb2ab732f65843c344bb400650cd8d3e493cd0742cb0",
+     "xml": true
+    },
+    {
+     "endpoint": "/groups/Mac_AB_C/configuration",
+     "sha256": "3a57cf9c70932456ce7ef1a87346647eb78ab453d1f28023af7897a0589dfe1a",
+     "xml": true
+    }
+   ]
+  },
+  {
+   "code": "x y",
+   "cluster": null,
+   "sent": [
+    {
+     "endpoint": "/groups/Linux_x y/configuration",
+     "sha256": "ea1a5796b01b8ba19b7e15d86bf49e7b14cebde6617014387342e58d1c9f516d",
+     "xml": true
+    },
+    {
+     "endpoint": "/groups/Windows_x y/configuration",
+     "sha256": "ef16951a2553874790ccf681cc55b5bf8721fe6486a2c20da3a10fc88afad41c",
+     "xml": true
+    },
+    {
+     "endpoint": "/groups/Mac_x y/configuration",
+     "sha256": "26c23a29d4f83b8ae11cbf14c403e99baf5a0fcc14e69c17aea7e704a639669d",
+     "xml": true
+    }
+   ]
+  }
+ ],
+ "datasources": [
+  {
+   "grafana_url": "https://grafana.example",
+   "payload": "{\"name\": \"WAZUH\", \"type\": \"grafana-opensearch-datasource\", \"typeName\": \"OpenSearch\", \"access\": \"proxy\", \"url\": \"https://idx:9200\", \"database\": \"acme*\", \"basicAuth\": true, \"basicAuthUser\": \"u\", \"secureJsonData\": {\"basicAuthPassword\": \"p\"}, \"isDefault\": false, \"jsonData\": {\"database\": \"acme*\", \"flavor\": \"opensearch\", \"version\": \"2.19.1\", \"includeFrozen\": false, \"logLevelField\": \"syslog_level\", \"logMessageField\": \"rule_description\", \"maxConcurrentShardRequests\": 5, \"timeField\": \"timestamp\", \"tlsSkipVerify\": true, \"dataLinks\": [{\"field\": \"^data_vulnerability_cve$\", \"url\": \"https://nvd.nist.gov/vuln/detail/${__value.raw}\"}, {\"field\": \"^_id$\", \"url\": \"https://grafana.example/explore?left=%7B%22datasource%22:%22WAZUH%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22query%22:%22_id:${__value.raw}%22,%22alias%22:%22%22,%22metrics%22:%5B%7B%22id%22:%221%22,%22type%22:%22logs%22,%22settings%22:%7B%22limit%22:%22500%22%7D%7D%5D,%22bucketAggs%22:%5B%7B%22type%22:%22date_histogram%22,%22id%22:%221%22,%22settings%22:%7B%22interval%22:%22auto%22%7D%7D%5D,%22timeField%22:%22timestamp%22%7D%5D,%22range%22:%7B%22from%22:%22now-6h%22,%22to%22:%22now%22%7D%7D\"}]}, \"readOnly\": true}"
+  },
+  {
+   "grafana_url": "http://g:3000/x?y={z}",
+   "payload": "{\"name\": \"WAZUH\", \"type\": \"grafana-opensearch-datasource\", \"typeName\": \"OpenSearch\", \"access\": \"proxy\", \"url\": \"https://idx:9200\", \"database\": \"acme*\", \"basicAuth\": true, \"basicAuthUser\": \"u\", \"secureJsonData\": {\"basicAuthPassword\": \"p\"}, \"isDefault\": false, \"jsonData\": {\"database\": \"acme*\", \"flavor\": \"opensearch\", \"version\": \"2.19.1\", \"includeFrozen\": false, \"logLevelField\": \"syslog_level\", \"logMessageField\": \"rule_description\", \"maxConcurrentShardRequests\": 5, \"timeField\": \"timestamp\", \"tlsSkipVerify\": true, \"dataLinks\": [{\"field\": \"^data_vulnerability_cve$\", \"url\": \"https://nvd.nist.gov/vuln/detail/${__value.raw}\"}, {\"field\": \"^_id$\", \"url\": \"http://g:3000/x?y={z}/explore?left=%7B%22datasource%22:%22WAZUH%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22query%22:%22_id:${__value.raw}%22,%22alias%22:%22%22,%22metrics%22:%5B%7B%22id%22:%221%22,%22type%22:%22logs%22,%22settings%22:%7B%22limit%22:%22500%22%7D%7D%5D,%22bucketAggs%22:%5B%7B%22type%22:%22date_histogram%22,%22id%22:%221%22,%22settings%22:%7B%22interval%22:%22auto%22%7D%7D%5D,%22timeField%22:%22timestamp%22%7D%5D,%22range%22:%7B%22from%22:%22now-6h%22,%22to%22:%22now%22%7D%7D\"}]}, \"readOnly\": true}"
+  }
+ ],
+ "iris_index": [
+  [
+   "Acme Corp",
+   "dfir_iris_acme_corp"
+  ],
+  [
+   "ÀB Ç",
+   "dfir_iris_àb_ç"
+  ],
+  [
+   "ΣΑΣ Σ",
+   "dfir_iris_σας_σ"
+  ],
+  [
+   "İx",
+   "dfir_iris_i̇x"
+  ]
+ ],
+ "stacks": [
+  {
+   "request": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "version": "4.10.1",
+   "exception": [
+    "ValidationError",
+    "1 validation error for StackResponse\ndata\n  Input should be a valid dictionary or instance of StackData [type=model_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/model_type"
+   ],
+   "endpoint": "/api/stacks?type=1&method=string&endpointId=3",
+   "name": "wazuh-worker-AC_01",
+   "swarm": "swarm-1",
+   "sha256": "d1503e2452e7663c5ac50ae739e9cdedccb528a85972f383334f26168a9570ce"
+  },
+  {
+   "request": "{\"customer_name\": \"A b c\", \"customer_code\": \"x y\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\", \"wazuh_logs_port\": \"1600\"}",
+   "version": "4.9.0",
+   "exception": [
+    "ValidationError",
+    "1 validation error for StackResponse\ndata\n  Input should be a valid dictionary or instance of StackData [type=model_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/model_type"
+   ],
+   "endpoint": "/api/stacks?type=1&method=string&endpointId=3",
+   "name": "wazuh-worker-x_y",
+   "swarm": "swarm-1",
+   "sha256": "2292337b1353f6aa23e32e44905d8101ecda2a35fcc58b223e55220f2dbcf463"
+  },
+  {
+   "request": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\", \"wazuh_api_port\": null}",
+   "version": "4.10.1",
+   "exception": [
+    "TypeError",
+    "replace() argument 2 must be str, not None"
+   ]
+  },
+  {
+   "request": "{\"customer_name\": \"Acme Corp\", \"customer_code\": \"AC 01\", \"customer_index_name\": \"acme\", \"customer_grafana_org_name\": \"Acme\", \"hot_data_retention\": 30, \"index_replicas\": 0, \"index_shards\": 1, \"customer_subscription\": [\"Wazuh\"], \"dashboards_to_include\": {\"dashboards\": [\"WAZUH_SUMMARY\"]}, \"grafana_url\": \"https://grafana.example\"}",
+   "version": 4,
+   "exception": [
+    "TypeError",
+    "replace() argument 2 must be str, not int"
+   ]
+  }
+ ]
+}

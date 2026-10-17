@@ -39,7 +39,7 @@ static FOLDER: Model = Model::new(
 );
 
 /// `delete_stream(stream_id)`.
-async fn delete_stream(graylog: &GraylogClient, id: &str) -> PyResult<()> {
+pub async fn delete_stream(graylog: &GraylogClient, id: &str) -> PyResult<()> {
     let reply = graylog.delete(&format!("/api/streams/{id}"), &[]).await?;
     if reply.success {
         Ok(())
@@ -49,7 +49,7 @@ async fn delete_stream(graylog: &GraylogClient, id: &str) -> PyResult<()> {
 }
 
 /// `delete_index_by_id(index_id)` (a failed answer is not looked at).
-async fn delete_index(graylog: &GraylogClient, id: &str) -> PyResult<()> {
+pub async fn delete_index(graylog: &GraylogClient, id: &str) -> PyResult<()> {
     graylog
         .delete(&format!("/api/system/indices/index_sets/{id}"), &[])
         .await?;

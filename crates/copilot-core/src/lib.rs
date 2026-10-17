@@ -17,6 +17,7 @@
 
 pub mod audit;
 pub mod catalog_env;
+pub mod cloud_env;
 pub mod config;
 pub mod env;
 pub mod error;

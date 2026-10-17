@@ -1,5 +1,8 @@
-//! `/api/customer_provisioning/*` but the three provisioning `POST`s, which
-//! reach Python through the router's fallback.
+//! `/api/customer_provisioning/*` but the three provisioning `POST`s:
+//! `/provision/dashboards` is `copilot-grafana-dashboards`', `/provision`
+//! and `/provision/wazuh_worker` `copilot-integration-provisioning`'s. As
+//! that static path exists, `GET /provision/wazuh_worker` is answered here as
+//! FastAPI routes it: the customer meta of a customer named `wazuh_worker`.
 //!
 //! Every route is admin/analyst. A route keyed by a customer carries
 //! `verify_customer_code_access` (the path's, or for `/decommission` the
@@ -40,6 +43,10 @@ pub fn router(tools: Tools) -> Router {
         .route(
             &format!("{p}/provision/{{customer_code}}"),
             get(customer_meta),
+        )
+        .route(
+            &format!("{p}/provision/wazuh_worker"),
+            get(customer_meta_wazuh_worker),
         )
         .route(
             &format!("{p}/update/office365_org_id/{{customer_code}}"),
@@ -129,6 +136,16 @@ async fn customer_meta(
     auth: Reader,
     Path(code): Path<String>,
 ) -> ApiResult {
+    meta_answer(&t, &auth, code).await
+}
+
+/// `GET /provision/wazuh_worker`: `/provision/{customer_code}` with that
+/// code (the `POST` of the static path is another router's).
+async fn customer_meta_wazuh_worker(State(t): State<Tools>, auth: Reader) -> ApiResult {
+    meta_answer(&t, &auth, "wazuh_worker".to_string()).await
+}
+
+async fn meta_answer(t: &Tools, auth: &Reader, code: String) -> ApiResult {
     auth.enforce_customer(&t.ctx, &code).await?;
     let meta = store::meta_by_code(&t.ctx.db, &code)
         .await

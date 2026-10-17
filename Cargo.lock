@@ -467,6 +467,7 @@ dependencies = [
  "copilot-agents",
  "copilot-ai-analyst",
  "copilot-auth",
+ "copilot-cloud-provisioning",
  "copilot-connectors",
  "copilot-core",
  "copilot-customer-portal",
@@ -627,6 +628,45 @@ dependencies = [
  "thiserror",
  "unicode-normalization",
  "zeroize",
+]
+
+[[package]]
+name = "copilot-cloud-provisioning"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-grafana",
+ "copilot-grafana-dashboards",
+ "copilot-graylog",
+ "copilot-ingest",
+ "copilot-integration-provisioning",
+ "copilot-integrations",
+ "copilot-jinja",
+ "copilot-monitoring-alerts",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "hex",
+ "hmac",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rand 0.8.8",
+ "rustls",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "uuid",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -955,6 +995,7 @@ name = "copilot-integration-provisioning"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "chrono",
  "copilot-auth",
  "copilot-core",
@@ -965,7 +1006,9 @@ dependencies = [
  "copilot-graylog",
  "copilot-integrations",
  "copilot-monitoring-alerts",
+ "copilot-portainer",
  "copilot-provisioning",
+ "copilot-threat-intel",
  "copilot-upstream",
  "copilot-wazuh",
  "copilot-web",
@@ -985,12 +1028,14 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "bytes",
+ "chrono",
  "copilot-auth",
  "copilot-core",
  "copilot-db",
  "copilot-gateway",
  "copilot-grafana",
  "copilot-graylog",
+ "copilot-jinja",
  "copilot-upstream",
  "copilot-wazuh",
  "copilot-web",
@@ -998,6 +1043,7 @@ dependencies = [
  "pretty_assertions",
  "serde_json",
  "sqlx",
+ "tokio",
  "tracing",
 ]
 

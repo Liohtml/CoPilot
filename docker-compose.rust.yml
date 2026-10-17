@@ -27,10 +27,14 @@ services:
             # ScoutSuite's reports, shared with copilot-backend; the scans run in
             # /opt/copilot/backend (COPILOT_SCOUTSUITE_DIR), as the backend's do.
             - scoutsuite-reports:/opt/copilot/backend/scoutsuite-report
-            # The Velociraptor connector's api.config.yaml: its row holds a path in
-            # the backend's data directory (where the connector's YAML upload puts
-            # it), read here at that same path.
-            - ./data/data:/opt/copilot/backend/data:ro
+            # The backend's data directory, at the backend's own path: the
+            # Velociraptor connector's api.config.yaml is read there (its row holds
+            # that path), and the CrowdStrike, Defender for Endpoint and Bitdefender
+            # provisioning write their collectors' docker-compose and configuration
+            # files under it (COPILOT_BACKEND_DATA_DIR, this path by default). The
+            # image runs as uid 10001: that user must be able to write here
+            # (e.g. `chown 10001 data/data`, or `user: "0"` on this service).
+            - ./data/data:/opt/copilot/backend/data
         environment:
             - COPILOT_LEGACY_URL=http://copilot-backend:5000
             - COPILOT_SCOUTSUITE_DIR=/opt/copilot/backend

@@ -1,6 +1,6 @@
 [package]
 name = "copilot-integration-provisioning"
-description = "Network-connector and integration provisioning: the Fortinet / SonicWall / SentinelOne stack provisioning (/api/stack_provisioning/graylog/provision/*) and the integrations' POST /provision routes (Graylog index set and stream, Grafana datasource, folder and dashboards)"
+description = "Network-connector and integration provisioning: the Fortinet / SonicWall / SentinelOne stack provisioning (/api/stack_provisioning/graylog/provision/*) and the integrations' POST /provision routes (Graylog index set and stream, Grafana datasource, folder and dashboards; the CrowdStrike, Defender for Endpoint and Bitdefender collectors' files)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,6 +20,9 @@ copilot-provisioning = { workspace = true }
 copilot-integrations = { workspace = true }
 copilot-wazuh = { workspace = true }
 copilot-gateway = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-portainer = { workspace = true }
+base64 = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 axum = { workspace = true }

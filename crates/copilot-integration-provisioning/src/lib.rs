@@ -4,10 +4,11 @@
 //! routes (`app/integrations/{huntress,darktrace,duo,cato,carbonblack,
 //! mimecast,sap_siem,socfortress_mdr}/`, [`integrations`]).
 //!
-//! Still Python: the CrowdStrike, Defender for Endpoint and Bitdefender
-//! provisioning (each writes its collector's docker-compose and configuration
-//! files under the backend's `data/` directory, on the Python host — and
-//! Bitdefender pushes its configuration to GravityZone), Office365 and AWS.
+//! The CrowdStrike, Defender for Endpoint and Bitdefender provisioning
+//! ([`collectors`]) also write their collectors' docker-compose and
+//! configuration files under the Python backend's `data/` directory
+//! (`COPILOT_BACKEND_DATA_DIR`), and Bitdefender pushes its settings to
+//! GravityZone. Office 365 and AWS are `copilot-cloud-provisioning`'s.
 //!
 //! - [`schema`]  — the Pydantic models the flows build and read
 //! - [`graylog`] — index sets, streams, pipelines, the id lookups, the
@@ -18,6 +19,11 @@
 //! - [`network`] — Fortinet, SonicWall and SentinelOne, one data table
 //! - [`integrations`] — the seven Graylog-and-Grafana integrations, one data
 //!   table, the scheduler jobs handed to Python; SOCFortress MDR
+//! - [`collectors`] — CrowdStrike, Defender for Endpoint and Bitdefender, one
+//!   data table: the Graylog and Grafana objects, then the collector's files
+//! - [`customer`] — the customer provisioning (`POST /api/customer_provisioning
+//!   /provision`, `/provision/wazuh_worker`) and the Portainer worker stack
+//!   (`POST /api/portainer/create-wazuh-customer-stack`)
 //! - [`routes`]  — the handlers
 //!
 //! The dashboards themselves are `copilot-grafana-dashboards`'
@@ -26,6 +32,8 @@
 
 #![warn(missing_docs)]
 
+pub mod collectors;
+pub mod customer;
 pub mod grafana;
 pub mod graylog;
 pub mod integrations;
@@ -35,10 +43,13 @@ pub mod schema;
 pub mod store;
 
 use axum::extract::FromRef;
+use copilot_core::cloud_env::CloudEnv;
 use copilot_db::schema::TableRequirement;
 use copilot_gateway::LegacyProxy;
 use copilot_grafana::GrafanaClient;
 use copilot_graylog::GraylogClient;
+use copilot_portainer::PortainerClient;
+use copilot_upstream::http::PyHttp;
 use copilot_wazuh::WazuhState;
 use copilot_web::AppContext;
 
@@ -57,6 +68,14 @@ pub struct ProvisioningState {
     pub wazuh: WazuhState,
     /// The Python backend, which registers the integrations' scheduler jobs.
     pub legacy: Option<LegacyProxy>,
+    /// What the collectors read from the environment (the backend's data
+    /// directory, the GravityZone URL of the tests).
+    pub env: CloudEnv,
+    /// Portainer (the customer's worker stack).
+    pub portainer: PortainerClient,
+    /// `requests` (`timeout=60`, certificates verified) for the provisioning
+    /// worker and HAProxy services.
+    pub worker_http: PyHttp,
 }
 
 impl FromRef<ProvisioningState> for AppContext {
@@ -95,11 +114,40 @@ pub const REQUIREMENTS: &[TableRequirement] = &[
     },
     TableRequirement {
         table: "customersmeta",
-        columns: &["customer_code", "customer_meta_grafana_org_id"],
+        columns: &[
+            "id",
+            "customer_code",
+            "customer_name",
+            "customer_meta_graylog_index",
+            "customer_meta_graylog_stream",
+            "customer_meta_grafana_org_id",
+            "customer_meta_wazuh_group",
+            "customer_meta_index_retention",
+            "customer_meta_wazuh_registration_port",
+            "customer_meta_wazuh_log_ingestion_port",
+            "customer_meta_wazuh_api_port",
+            "customer_meta_wazuh_auth_password",
+            "customer_meta_iris_customer_id",
+            "customer_meta_portainer_stack_id",
+        ],
     },
     TableRequirement {
         table: "customer_integrations",
         columns: &["customer_code", "integration_service_name", "deployed"],
+    },
+    TableRequirement {
+        table: "custom_alert_creation_settings",
+        columns: &[
+            "customer_code",
+            "customer_name",
+            "timefield",
+            "iris_customer_id",
+            "iris_customer_name",
+            "iris_index",
+            "grafana_url",
+            "custom_message",
+            "nvd_url",
+        ],
     },
 ];
 

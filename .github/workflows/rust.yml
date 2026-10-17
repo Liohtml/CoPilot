@@ -13,8 +13,13 @@ on:
       - "rustfmt.toml"
       - "clippy.toml"
       - "backend/alembic/**"
-      # Embedded by copilot-grafana-dashboards (its vectors pin every template).
+      # Embedded by copilot-grafana-dashboards (its vectors pin every template)
+      # and by copilot-integration-provisioning (the collectors' files, the
+      # Wazuh group configurations, the Portainer worker stack).
       - "backend/app/connectors/grafana/dashboards/**"
+      - "backend/app/integrations/*/templates/**"
+      - "backend/app/customer_provisioning/templates/**"
+      - "backend/app/connectors/portainer/templates/**"
       - "scripts/check-alembic-head.py"
       - ".github/workflows/rust.yml"
   push:
@@ -25,6 +30,9 @@ on:
       - "Cargo.lock"
       - "backend/alembic/**"
       - "backend/app/connectors/grafana/dashboards/**"
+      - "backend/app/integrations/*/templates/**"
+      - "backend/app/customer_provisioning/templates/**"
+      - "backend/app/connectors/portainer/templates/**"
       - ".github/workflows/rust.yml"
 
 permissions:

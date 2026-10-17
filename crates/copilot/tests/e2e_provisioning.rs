@@ -1271,33 +1271,43 @@ async fn decommissioning_a_customer_tears_down_every_tool() {
 }
 
 #[tokio::test]
-async fn template_bound_provisioning_stays_in_python() {
+async fn template_bound_provisioning_is_answered_in_rust() {
     if !configured() {
         eprintln!("COPILOT_TEST_DATABASE_URL not set; skipping");
         return;
     }
+    // `copilot-integration-provisioning` answers both now (its own suite,
+    // `e2e_cloud_provisioning`, drives them); nothing reaches Python.
     let legacy = stand_in(2).await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+        .expect(0)
+        .mount(&legacy)
+        .await;
     let h = harness_or_skip!(Some(&legacy), &env());
     let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
     h.seed().await;
-    let routes = [
-        "/api/customer_provisioning/provision",
-        "/api/customer_provisioning/provision/wazuh_worker",
-    ];
-    for route in routes {
-        Mock::given(method("POST"))
-            .and(path(route))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
-            .expect(1)
-            .mount(&legacy)
-            .await;
-    }
-    for route in routes {
-        let (status, body) = h
-            .call("POST", route, Some(&analyst), Some(json!({"x": 1})))
-            .await;
-        assert_eq!(status, StatusCode::OK, "{route}: {body}");
-        assert_eq!(body, json!({"from": "python"}), "{route}");
-    }
+    // No query: `check_customer_exists`' error first, then the body's.
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/customer_provisioning/provision",
+            Some(&analyst),
+            Some(json!({"x": 1})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["details"][0]["field"], json!("customer_code"));
+    assert_eq!(body["details"][1]["field"], json!("customer_name"));
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/customer_provisioning/provision/wazuh_worker",
+            Some(&analyst),
+            Some(json!({"x": 1})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["details"][0]["field"], json!("customer_name"));
     legacy.verify().await;
 }

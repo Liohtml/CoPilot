@@ -587,6 +587,30 @@ pub async fn meta_first(
     rows.first().map(meta_row).transpose()
 }
 
+/// Every metadata row of a customer's integration (`.scalars().all()`), in
+/// the plan's order.
+pub async fn integration_metas(
+    db: &Db,
+    code: &str,
+    integration: &str,
+    instance: Option<&Clause>,
+) -> Result<Vec<Meta>, sqlx::Error> {
+    let narrow = instance.map_or(String::new(), |c| format!(" AND {}", c.0));
+    let sql = format!(
+        "{META_SELECT} \nWHERE customer_integrations_meta.customer_code = ? AND \
+         customer_integrations_meta.integration_name = ?{narrow}"
+    );
+    let mut q = sqlx::query(&sql)
+        .bind(code)
+        .bind(integration)
+        .persistent(false);
+    if let Some(c) = instance {
+        q = bind_clause(q, c);
+    }
+    let rows = q.fetch_all(db.pool()).await?;
+    rows.iter().map(meta_row).collect()
+}
+
 /// One `customer_network_connectors_meta` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetworkMeta {
