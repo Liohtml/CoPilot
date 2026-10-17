@@ -327,17 +327,22 @@ async def restore_table(table, saved):
 
 
 async def cleanup():
-    await cleanup_suggestions()
+    try:
+        await cleanup_suggestions()
+    except Exception as e:  # noqa: BLE001 - the restores below must still run
+        print(f"  (suggestion rows not removed: {e})")
     if "license" in SAVED:
         await restore_table("license_cache", SAVED.get("license_cache", []))
         await restore_table("license", SAVED.get("license", []))
     if "disabledrule" in SAVED:
         await restore_table("disabledrule", SAVED["disabledrule"])
-    await sql("DELETE FROM integration_auth_keys WHERE id BETWEEN 7731300 AND 7731399")
-    await sql("DELETE FROM integration_subscriptions WHERE id BETWEEN 7731200 AND 7731299")
-    await sql("DELETE FROM customer_integrations WHERE id BETWEEN 7731000 AND 7731099")
-    await sql("DELETE FROM integration_services WHERE id BETWEEN 7731100 AND 7731199")
-    await sql("DELETE FROM agents WHERE id BETWEEN 7731001 AND 7731099")
+    # The seeded ids exactly: rows other suites insert without an id follow ours
+    # (an explicit id moves AUTO_INCREMENT past it), so a range would take theirs.
+    await sql("DELETE FROM integration_auth_keys WHERE id IN (7731300, 7731301, 7731302, 7731303)")
+    await sql("DELETE FROM integration_subscriptions WHERE id = 7731200")
+    await sql("DELETE FROM customer_integrations WHERE id = 7731000")
+    await sql("DELETE FROM integration_services WHERE id = 7731100")
+    await sql("DELETE FROM agents WHERE id IN (7731001, 7731002, 7731003, 7731004, 7731005)")
     if "cb_jobs" in SAVED:
         await sql("DELETE FROM scheduled_job_metadata WHERE job_id = :j", j=CB_JOB)
         for row in SAVED["cb_jobs"]:
@@ -1865,6 +1870,8 @@ def doc_answer(rec, p):
 
 
 async def seed_suggestions():
+    # What a run that stopped half-way left.
+    await cleanup_suggestions()
     templates = [
         (7731500, f"Ransomware — host containment {SFX}", "Isolate the host; see T1486 and lateral movement.", None, None, 0, None, None),
         (7731501, f"Endpoint triage {SFX}", None, CUST_A, "wazuh", 1, None, None),
@@ -1961,15 +1968,18 @@ async def seed_suggestions():
 
 
 async def cleanup_suggestions():
-    await sql("DELETE FROM incident_management_case_task WHERE id BETWEEN 7731900 AND 7731999")
-    await sql("DELETE FROM incident_management_case WHERE id BETWEEN 7731900 AND 7731999")
-    await sql("DELETE FROM incident_management_alert_to_tag WHERE alert_id BETWEEN 7731700 AND 7731709")
-    await sql("DELETE FROM incident_management_alerttag WHERE id BETWEEN 7731730 AND 7731739")
-    await sql("DELETE FROM incident_management_asset WHERE id BETWEEN 7731720 AND 7731729")
-    await sql("DELETE FROM incident_management_alertcontext WHERE id BETWEEN 7731710 AND 7731719")
-    await sql("DELETE FROM incident_management_alert WHERE id BETWEEN 7731700 AND 7731709")
-    await sql("DELETE FROM incident_management_case_template_task WHERE id BETWEEN 7731600 AND 7731699")
-    await sql("DELETE FROM incident_management_case_template WHERE id BETWEEN 7731500 AND 7731599")
+    """The seeded ids exactly (rows other suites insert without an id follow ours)."""
+    await sql("DELETE FROM incident_management_case_task WHERE id = 7731910")
+    await sql("DELETE FROM incident_management_case WHERE id = 7731900")
+    await sql("DELETE FROM incident_management_alert_to_tag WHERE alert_id IN (7731700, 7731701, 7731702)")
+    await sql("DELETE FROM incident_management_alerttag WHERE id IN (7731730, 7731731, 7731732)")
+    await sql("DELETE FROM incident_management_asset WHERE id IN (7731720, 7731721, 7731722)")
+    await sql("DELETE FROM incident_management_alertcontext WHERE id IN (7731710, 7731711, 7731712)")
+    await sql("DELETE FROM incident_management_alert WHERE id IN (7731700, 7731701, 7731702)")
+    await sql("DELETE FROM incident_management_case_template_task WHERE id IN (7731600, 7731601, 7731602, 7731603, 7731604)")
+    await sql(
+        "DELETE FROM incident_management_case_template WHERE id IN (7731500, 7731501, 7731502, 7731503, 7731504, 7731505, 7731506)",
+    )
 
 
 def async_es(out):
