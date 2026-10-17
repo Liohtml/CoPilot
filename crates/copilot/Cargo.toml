@@ -61,6 +61,7 @@ copilot-mcp = { workspace = true }
 copilot-sublime = { workspace = true }
 copilot-scoutsuite = { workspace = true }
 copilot-cloud-provisioning = { workspace = true }
+copilot-assessments = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

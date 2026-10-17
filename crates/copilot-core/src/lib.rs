@@ -15,6 +15,7 @@
 
 #![warn(missing_docs)]
 
+pub mod assessments_env;
 pub mod audit;
 pub mod catalog_env;
 pub mod cloud_env;

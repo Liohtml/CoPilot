@@ -1292,13 +1292,13 @@ async fn customer_portal_ai_reports_flow() {
 
     // --- Unported paths and methods still reach Python ------------------------------
     Mock::given(method("GET"))
-        .and(path("/api/github-audit/checks"))
+        .and(path("/api/file-analysis/history"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
         .expect(1)
         .mount(&legacy)
         .await;
     let (st, body) = h
-        .call("GET", "/api/github-audit/checks", Some(&portal), None)
+        .call("GET", "/api/file-analysis/history", Some(&portal), None)
         .await;
     assert_eq!((st.as_u16(), body), (200, json!({"from": "python"})));
     Mock::given(method("DELETE"))
