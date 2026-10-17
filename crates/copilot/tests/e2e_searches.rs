@@ -9,7 +9,7 @@
 //! ```
 //!
 //! The stand-ins listen on `CATALOG_E2E_PORT_BASE` (default 6180) and the
-//! four ports after it. The tests that need the upstreams call the crate's
+//! six ports after it (each test on ports of its own). The tests that need the upstreams call the crate's
 //! router with its GitHub URLs on the stand-in (the production router keeps
 //! the public ones); the connector rows they need are created and deleted
 //! again (the harness runs with the connector cache off). Byte-for-byte
@@ -43,6 +43,8 @@ const MANAGER: u16 = 1;
 const INDEXER: u16 = 2;
 const GRAYLOG: u16 = 3;
 const MINIO: u16 = 4;
+/// `wazuh_failures_degrade_the_catalog`'s GitHub, manager and closed indexer.
+const FAILING: u16 = 5;
 const CATALOG: &str = "socfortress/CoPilot-Search-Queries";
 const STREAM: &str = "6600000000000000000000a1";
 
@@ -58,8 +60,21 @@ fn configured() -> bool {
     std::env::var("COPILOT_TEST_DATABASE_URL").is_ok()
 }
 
+/// A stand-in on its port, retried while the previous test's server lets
+/// the port go (wiremock closes its listener on its own thread after the
+/// `MockServer` is dropped).
 async fn stand_in(offset: u16) -> MockServer {
-    let listener = std::net::TcpListener::bind(("127.0.0.1", port(offset))).unwrap();
+    let mut tries = 0;
+    let listener = loop {
+        match std::net::TcpListener::bind(("127.0.0.1", port(offset))) {
+            Ok(l) => break l,
+            Err(_) if tries < 50 => {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            Err(e) => panic!("cannot bind the stand-in on {}: {e}", port(offset)),
+        }
+    };
     MockServer::builder().listener(listener).start().await
 }
 
@@ -977,8 +992,8 @@ async fn wazuh_failures_degrade_the_catalog() {
         eprintln!("COPILOT_TEST_DATABASE_URL not set; skipping");
         return;
     }
-    let gh = stand_in(GITHUB).await;
-    let mgr = stand_in(MANAGER).await;
+    let gh = stand_in(FAILING).await;
+    let mgr = stand_in(FAILING + 1).await;
     github(&gh).await;
     manager(&mgr, true).await;
     let h = harness_or_skip!(None);
@@ -989,7 +1004,7 @@ async fn wazuh_failures_degrade_the_catalog() {
     connector(
         &h,
         "Wazuh-Indexer",
-        &format!("http://127.0.0.1:{}", port(INDEXER)),
+        &format!("http://127.0.0.1:{}", port(FAILING + 2)),
     )
     .await;
     let (router, _) = catalog(&h, &gh);
