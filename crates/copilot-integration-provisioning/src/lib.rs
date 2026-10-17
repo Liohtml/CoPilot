@@ -7,7 +7,8 @@
 //! Still Python: the CrowdStrike, Defender for Endpoint and Bitdefender
 //! provisioning (each writes its collector's docker-compose and configuration
 //! files under the backend's `data/` directory, on the Python host — and
-//! Bitdefender pushes its configuration to GravityZone), Office365 and AWS.
+//! Bitdefender pushes its configuration to GravityZone) and AWS. Office365 is
+//! `copilot-cloud-provisioning`'s.
 //!
 //! - [`schema`]  — the Pydantic models the flows build and read
 //! - [`graylog`] — index sets, streams, pipelines, the id lookups, the

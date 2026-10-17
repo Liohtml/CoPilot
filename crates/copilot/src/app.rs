@@ -247,7 +247,7 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/network_connectors",
     // The integrations' provisioning (copilot-integration-provisioning; the
     // scheduler jobs handed to Python) but CrowdStrike, Defender for Endpoint
-    // and Bitdefender (collector files on the Python host), Office365 and AWS.
+    // and Bitdefender (collector files on the Python host) and AWS.
     "POST /api/huntress/provision",
     "POST /api/darktrace/provision",
     "POST /api/duo/provision",
@@ -256,6 +256,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/mimecast/provision",
     "POST /api/sap_siem/provision",
     "POST /api/socfortress_mdr/provision",
+    // Office 365 (copilot-cloud-provisioning): the tenant's ossec.conf block,
+    // Graylog and Grafana objects, rolled back on failure.
+    "POST /api/office365/provision",
     // SIEM (copilot-siem): dashboards (built-in and custom templates, panel
     // data), event sources and the event search.
     "/api/siem/dashboards",
@@ -338,6 +341,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_waf::REQUIREMENTS);
     all.extend_from_slice(copilot_provisioning::REQUIREMENTS);
     all.extend_from_slice(copilot_integration_provisioning::REQUIREMENTS);
+    all.extend_from_slice(copilot_cloud_provisioning::REQUIREMENTS);
     all.extend_from_slice(copilot_agents::REQUIREMENTS);
     all.extend_from_slice(copilot_velociraptor::REQUIREMENTS);
     all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
@@ -891,6 +895,15 @@ impl App {
                     grafana: self.grafana.clone(),
                     wazuh: self.wazuh.clone(),
                     legacy: self.legacy.clone(),
+                },
+            ))
+            // Full paths: `POST /api/office365/provision`.
+            .merge(copilot_cloud_provisioning::router(
+                copilot_cloud_provisioning::CloudState {
+                    ctx: self.ctx.clone(),
+                    graylog: self.graylog.clone(),
+                    grafana: self.grafana.clone(),
+                    wazuh: self.wazuh.clone(),
                 },
             ))
             // Full paths: `POST /api/grafana/dashboards` and

@@ -1,0 +1,1045 @@
+{
+ "office365": [
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>c-1</client_id>\n    <client_secret>s3cr3t</client_secret>\n    <api_type>commercial</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>tén&amp;&lt;ant&gt;</tenant_id>\n    <client_id> c\n2 </client_id>\n    <client_secret>ü&quot;'s</client_secret>\n    <api_type>gcc-high</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id/>\n    <client_secret>x\ny</client_secret>\n    <api_type/>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "not well-formed (invalid token): line 1, column 183"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "reference to invalid character number: line 1, column 210"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>😀</client_id>\n    <client_secret>]]&gt;</client_secret>\n    <api_type>&lt;api_type&gt;</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<!-- Wazuh - Manager - Default configuration -->\n<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- a comment -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  \n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>c-1</client_id>\n    <client_secret>s3cr3t</client_secret>\n    <api_type>commercial</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<!-- Wazuh - Manager - Default configuration -->\n<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- a comment -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  \n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>tén&amp;&lt;ant&gt;</tenant_id>\n    <client_id> c\n2 </client_id>\n    <client_secret>ü&quot;'s</client_secret>\n    <api_type>gcc-high</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<!-- Wazuh - Manager - Default configuration -->\n<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- a comment -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  \n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id/>\n    <client_secret>x\ny</client_secret>\n    <api_type/>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<!-- Wazuh - Manager - Default configuration -->\n<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- a comment -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "not well-formed (invalid token): line 1, column 183"
+   }
+  },
+  {
+   "config": "<!-- Wazuh - Manager - Default configuration -->\n<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- a comment -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "reference to invalid character number: line 1, column 210"
+   }
+  },
+  {
+   "config": "<!-- Wazuh - Manager - Default configuration -->\n<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- a comment -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  \n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>😀</client_id>\n    <client_secret>]]&gt;</client_secret>\n    <api_type>&lt;api_type&gt;</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<ossec_config>\r\n  <global>\r\n    <jsonout_output>yes</jsonout_output>\r\n  </global>\r\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>c-1</client_id>\n    <client_secret>s3cr3t</client_secret>\n    <api_type>commercial</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<ossec_config>\r\n  <global>\r\n    <jsonout_output>yes</jsonout_output>\r\n  </global>\r\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>tén&amp;&lt;ant&gt;</tenant_id>\n    <client_id> c\n2 </client_id>\n    <client_secret>ü&quot;'s</client_secret>\n    <api_type>gcc-high</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<ossec_config>\r\n  <global>\r\n    <jsonout_output>yes</jsonout_output>\r\n  </global>\r\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id/>\n    <client_secret>x\ny</client_secret>\n    <api_type/>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<ossec_config>\r\n  <global>\r\n    <jsonout_output>yes</jsonout_output>\r\n  </global>\r\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "not well-formed (invalid token): line 1, column 183"
+   }
+  },
+  {
+   "config": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<ossec_config>\r\n  <global>\r\n    <jsonout_output>yes</jsonout_output>\r\n  </global>\r\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "reference to invalid character number: line 1, column 210"
+   }
+  },
+  {
+   "config": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<ossec_config>\r\n  <global>\r\n    <jsonout_output>yes</jsonout_output>\r\n  </global>\r\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>😀</client_id>\n    <client_secret>]]&gt;</client_secret>\n    <api_type>&lt;api_type&gt;</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y='q\"'>é &lt; ü — 😀</x>\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y=\"q&quot;\">&#233; &lt; &#252; &#8212; &#128512;</x>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>c-1</client_id>\n    <client_secret>s3cr3t</client_secret>\n    <api_type>commercial</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y='q\"'>é &lt; ü — 😀</x>\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y=\"q&quot;\">&#233; &lt; &#252; &#8212; &#128512;</x>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>tén&amp;&lt;ant&gt;</tenant_id>\n    <client_id> c\n2 </client_id>\n    <client_secret>ü&quot;'s</client_secret>\n    <api_type>gcc-high</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y='q\"'>é &lt; ü — 😀</x>\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y=\"q&quot;\">&#233; &lt; &#252; &#8212; &#128512;</x>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id/>\n    <client_secret>x\ny</client_secret>\n    <api_type/>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y='q\"'>é &lt; ü — 😀</x>\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "not well-formed (invalid token): line 1, column 183"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y='q\"'>é &lt; ü — 😀</x>\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "reference to invalid character number: line 1, column 210"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y='q\"'>é &lt; ü — 😀</x>\n</ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <x attr=\"a&amp;b\" y=\"q&quot;\">&#233; &lt; &#252; &#8212; &#128512;</x>\n<office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>😀</client_id>\n    <client_secret>]]&gt;</client_secret>\n    <api_type>&lt;api_type&gt;</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n\n<ossec_config>\n  <remote/>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "error": {
+    "status": 500,
+    "text": "junk after document element: line 7, column 0"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n\n<ossec_config>\n  <remote/>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "error": {
+    "status": 500,
+    "text": "junk after document element: line 7, column 0"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n\n<ossec_config>\n  <remote/>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "error": {
+    "status": 500,
+    "text": "junk after document element: line 7, column 0"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n\n<ossec_config>\n  <remote/>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "junk after document element: line 7, column 0"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n\n<ossec_config>\n  <remote/>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "junk after document element: line 7, column 0"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n\n<ossec_config>\n  <remote/>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "error": {
+    "status": 500,
+    "text": "junk after document element: line 7, column 0"
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n   <tenant_id>t-new</tenant_id>\n   <client_id>c-1</client_id>\n   <client_secret>s3cr3t</client_secret>\n   <api_type>commercial</api_type>\n</api_auth><subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n   <tenant_id>tén&amp;&lt;ant&gt;</tenant_id>\n   <client_id> c\n2 </client_id>\n   <client_secret>ü\"'s</client_secret>\n   <api_type>gcc-high</api_type>\n</api_auth><subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n   <tenant_id>t-new</tenant_id>\n   <client_id />\n   <client_secret>x\ny</client_secret>\n   <api_type />\n</api_auth><subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n   <tenant_id>t-new</tenant_id>\n   <client_id>😀</client_id>\n   <client_secret>]]&gt;</client_secret>\n   <api_type>&lt;api_type&gt;</api_type>\n</api_auth><subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  <!-- c -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n   <tenant_id>t-new</tenant_id>\n   <client_id>c-1</client_id>\n   <client_secret>s3cr3t</client_secret>\n   <api_type>commercial</api_type>\n</api_auth><subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  \n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  <!-- c -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n   <tenant_id>tén&amp;&lt;ant&gt;</tenant_id>\n   <client_id> c\n2 </client_id>\n   <client_secret>ü\"'s</client_secret>\n   <api_type>gcc-high</api_type>\n</api_auth><subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  \n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  <!-- c -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n   <tenant_id>t-new</tenant_id>\n   <client_id />\n   <client_secret>x\ny</client_secret>\n   <api_type />\n</api_auth><subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  \n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  <!-- c -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  <!-- c -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  <!-- c -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-ü</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n   <tenant_id>t-new</tenant_id>\n   <client_id>😀</client_id>\n   <client_secret>]]&gt;</client_secret>\n   <api_type>&lt;api_type&gt;</api_type>\n</api_auth><subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n  \n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n<ossec_config/>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n<ossec_config/>\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n<ossec_config/>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n<ossec_config/>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n<ossec_config/>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <interval>1m</interval>\n    <api_auth>\n      <tenant_id>t-old</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <subscriptions>\n      <subscription>Audit.General</subscription>\n    </subscriptions>\n  </office365>\n</ossec_config>\n<ossec_config/>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><enabled>no</enabled></office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><enabled>no</enabled></office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><enabled>no</enabled></office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><enabled>no</enabled></office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><enabled>no</enabled></office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><enabled>no</enabled></office365>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365/></wodle>\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <!-- office365 is mentioned here only -->\n</ossec_config>\n"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><subscriptions/><subscriptions/></office365>\n</ossec_config>\r\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><api_auth>\n   <tenant_id>t-new</tenant_id>\n   <client_id>c-1</client_id>\n   <client_secret>s3cr3t</client_secret>\n   <api_type>commercial</api_type>\n</api_auth><subscriptions /><subscriptions /></office365>\n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><subscriptions/><subscriptions/></office365>\n</ossec_config>\r\n",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><api_auth>\n   <tenant_id>tén&amp;&lt;ant&gt;</tenant_id>\n   <client_id> c\n2 </client_id>\n   <client_secret>ü\"'s</client_secret>\n   <api_type>gcc-high</api_type>\n</api_auth><subscriptions /><subscriptions /></office365>\n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><subscriptions/><subscriptions/></office365>\n</ossec_config>\r\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><api_auth>\n   <tenant_id>t-new</tenant_id>\n   <client_id />\n   <client_secret>x\ny</client_secret>\n   <api_type />\n</api_auth><subscriptions /><subscriptions /></office365>\n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><subscriptions/><subscriptions/></office365>\n</ossec_config>\r\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><subscriptions/><subscriptions/></office365>\n</ossec_config>\r\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "Error found in ossec.conf. Multiple <ossec_config> blocks found. Remove all additional <ossec_config> blocks and try again."
+   }
+  },
+  {
+   "config": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><subscriptions/><subscriptions/></office365>\n</ossec_config>\r\n",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><api_auth>\n   <tenant_id>t-new</tenant_id>\n   <client_id>😀</client_id>\n   <client_secret>]]&gt;</client_secret>\n   <api_type>&lt;api_type&gt;</api_type>\n</api_auth><subscriptions /><subscriptions /></office365>\n</ossec_config>"
+  },
+  {
+   "config": "<ossec_config><x>a\rb</x><y>&#13;</y></ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "put": "<ossec_config><x>a\nb</x><y>\n</y><office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>c-1</client_id>\n    <client_secret>s3cr3t</client_secret>\n    <api_type>commercial</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config><x>a\rb</x><y>&#13;</y></ossec_config>",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "put": "<ossec_config><x>a\nb</x><y>\n</y><office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>tén&amp;&lt;ant&gt;</tenant_id>\n    <client_id> c\n2 </client_id>\n    <client_secret>ü&quot;'s</client_secret>\n    <api_type>gcc-high</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config><x>a\rb</x><y>&#13;</y></ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "put": "<ossec_config><x>a\nb</x><y>\n</y><office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id/>\n    <client_secret>x\ny</client_secret>\n    <api_type/>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "<ossec_config><x>a\rb</x><y>&#13;</y></ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "not well-formed (invalid token): line 1, column 183"
+   }
+  },
+  {
+   "config": "<ossec_config><x>a\rb</x><y>&#13;</y></ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "reference to invalid character number: line 1, column 210"
+   }
+  },
+  {
+   "config": "<ossec_config><x>a\rb</x><y>&#13;</y></ossec_config>",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "put": "<ossec_config><x>a\nb</x><y>\n</y><office365>\n  <enabled>yes</enabled>\n  <interval>1m</interval>\n  <curl_max_size>5M</curl_max_size>\n  <only_future_events>yes</only_future_events>\n  <api_auth>\n    <tenant_id>t-new</tenant_id>\n    <client_id>😀</client_id>\n    <client_secret>]]&gt;</client_secret>\n    <api_type>&lt;api_type&gt;</api_type>\n  </api_auth>\n  <subscriptions>\n    <subscription>Audit.SharePoint</subscription>\n    <subscription>Audit.Exchange</subscription>\n    <subscription>DLP.ALL</subscription>\n    <subscription>Audit.General</subscription>\n    <subscription>Audit.AzureActiveDirectory</subscription>\n  </subscriptions>\n</office365></ossec_config>"
+  },
+  {
+   "config": "not xml at all",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "error": {
+    "status": 500,
+    "text": "syntax error: line 1, column 0"
+   }
+  },
+  {
+   "config": "not xml at all",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "error": {
+    "status": 500,
+    "text": "syntax error: line 1, column 0"
+   }
+  },
+  {
+   "config": "not xml at all",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "error": {
+    "status": 500,
+    "text": "syntax error: line 1, column 0"
+   }
+  },
+  {
+   "config": "not xml at all",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "syntax error: line 1, column 0"
+   }
+  },
+  {
+   "config": "not xml at all",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "syntax error: line 1, column 0"
+   }
+  },
+  {
+   "config": "not xml at all",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "error": {
+    "status": 500,
+    "text": "syntax error: line 1, column 0"
+   }
+  },
+  {
+   "config": "",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c-1",
+    "CLIENT_SECRET": "s3cr3t",
+    "API_TYPE": "commercial"
+   },
+   "error": {
+    "status": 500,
+    "text": "no element found: line 1, column 0"
+   }
+  },
+  {
+   "config": "",
+   "keys": {
+    "TENANT_ID": "tén&<ant>",
+    "CLIENT_ID": " c\n2 ",
+    "CLIENT_SECRET": "ü\"'s",
+    "API_TYPE": "gcc-high"
+   },
+   "error": {
+    "status": 500,
+    "text": "no element found: line 1, column 0"
+   }
+  },
+  {
+   "config": "",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "",
+    "CLIENT_SECRET": "x\ry",
+    "API_TYPE": ""
+   },
+   "error": {
+    "status": 500,
+    "text": "no element found: line 1, column 0"
+   }
+  },
+  {
+   "config": "",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c\u0001",
+    "CLIENT_SECRET": "s",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "no element found: line 1, column 0"
+   }
+  },
+  {
+   "config": "",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "c",
+    "CLIENT_SECRET": "￾",
+    "API_TYPE": "a"
+   },
+   "error": {
+    "status": 500,
+    "text": "no element found: line 1, column 0"
+   }
+  },
+  {
+   "config": "",
+   "keys": {
+    "TENANT_ID": "t-new",
+    "CLIENT_ID": "😀",
+    "CLIENT_SECRET": "]]>",
+    "API_TYPE": "<api_type>"
+   },
+   "error": {
+    "status": 500,
+    "text": "no element found: line 1, column 0"
+   }
+  }
+ ],
+ "rules": {
+  "office365_utc": "rule \"Office365 Timestamp - UTC\"\nwhen\n  has_field(\"data_office365_CreationTime\")\nthen\n  let creation_time = $message.data_office365_CreationTime;\n  set_field(\"timestamp_utc\", creation_time);\nend"
+ }
+}

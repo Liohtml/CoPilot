@@ -476,6 +476,7 @@ pub async fn provision(
             database: format!("{}{code}*", integration.database),
             log_level_field: integration.log_level_field,
             log_message_field: integration.log_message_field,
+            data_links: None,
         },
     )
     .await

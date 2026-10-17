@@ -343,6 +343,7 @@ async fn provision_customer(
             database: format!("{}-{code}*", network.prefix),
             log_level_field: "severity",
             log_message_field: "summary",
+            data_links: None,
         },
     )
     .await?;

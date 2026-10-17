@@ -22,9 +22,10 @@
 //! What stays in Python: the delete of a *deployed* AWS instance (its
 //! `ossec.conf` edit reconciles buckets under an in-process lock that AWS
 //! provisioning, still Python, takes too — two processes could interleave),
-//! handed over whole; the Office365 and AWS provisioning. The network
-//! connectors' and the other integrations' provisioning routes are
-//! `copilot-integration-provisioning`'s.
+//! handed over whole; the AWS provisioning. The network connectors' and the
+//! other integrations' provisioning routes are
+//! `copilot-integration-provisioning`'s, Office365's
+//! `copilot-cloud-provisioning`'s.
 
 #![warn(missing_docs)]
 

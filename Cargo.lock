@@ -467,6 +467,7 @@ dependencies = [
  "copilot-agents",
  "copilot-ai-analyst",
  "copilot-auth",
+ "copilot-cloud-provisioning",
  "copilot-connectors",
  "copilot-core",
  "copilot-customer-portal",
@@ -623,6 +624,31 @@ dependencies = [
  "thiserror",
  "unicode-normalization",
  "zeroize",
+]
+
+[[package]]
+name = "copilot-cloud-provisioning"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-grafana",
+ "copilot-grafana-dashboards",
+ "copilot-graylog",
+ "copilot-integration-provisioning",
+ "copilot-integrations",
+ "copilot-monitoring-alerts",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "http",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

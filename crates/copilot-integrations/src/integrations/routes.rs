@@ -5,7 +5,7 @@
 //! checked before the query and the body are validated (FastAPI's order).
 //! The provisioning routes of individual integrations
 //! (`/api/office365/provision`, the AWS ones, `/api/integrations/modules/*`)
-//! are not part of this router and reach Python through the fallback.
+//! are not part of this router.
 
 use axum::Router;
 use axum::body::{Body, Bytes};

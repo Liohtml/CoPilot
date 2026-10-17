@@ -367,7 +367,7 @@ async fn ensure_aws_account_not_owned_elsewhere(
 }
 
 /// `resolve_integration_instance`.
-async fn resolve_instance(
+pub async fn resolve_instance(
     ctx: &AppContext,
     code: &str,
     name: &str,

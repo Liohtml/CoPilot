@@ -50,6 +50,27 @@ pub async fn shard_number(wazuh: &WazuhState) -> PyResult<PyValue> {
     serde_to_py(&nodes)
 }
 
+/// An indexer failure as the exception elasticsearch-py raises: the class
+/// tells a `TransportError` (whose `status_code` is the HTTP status) from a
+/// `ConnectionError` (whose `status_code` is `"N/A"`), as
+/// `getattr(exc, "status_code", 500)` reads them.
+pub fn es_exc(e: copilot_wazuh::es::EsError) -> PyExc {
+    use copilot_wazuh::es::EsError;
+    let class = match &e {
+        EsError::Transport { .. } => ES_TRANSPORT_ERROR,
+        EsError::Connection { .. } | EsError::Timeout { .. } => ES_CONNECTION_ERROR,
+        EsError::Serialization(_) | EsError::Value(_) => "TransportError",
+    };
+    PyExc::Other(class, e.to_string())
+}
+
+/// The class [`es_exc`] gives an elasticsearch-py `TransportError` (status ≥
+/// 400): `str(e)` starts with `Class(status, `.
+pub const ES_TRANSPORT_ERROR: &str = "elasticsearch.TransportError";
+/// The class [`es_exc`] gives an elasticsearch-py `ConnectionError` or
+/// `ConnectionTimeout` (`status_code == "N/A"`).
+pub const ES_CONNECTION_ERROR: &str = "elasticsearch.ConnectionError";
+
 /// `get_opensearch_version()`: the first node's version.
 pub async fn opensearch_version(wazuh: &WazuhState) -> PyResult<String> {
     let es = copilot_wazuh::indexer::services::client(wazuh)
@@ -63,7 +84,7 @@ pub async fn opensearch_version(wazuh: &WazuhState) -> PyResult<String> {
             None,
         )
         .await
-        .map_err(|e| PyExc::Other("TransportError", e.to_string()))?;
+        .map_err(es_exc)?;
     let answer = serde_to_py(&answer)?;
     let response = construct_star(&NODES_VERSION_RESPONSE, qualname::NODES_VERSION, &answer)?;
     if let PyValue::Dict(nodes) = field(&response, "nodes") {
@@ -85,6 +106,9 @@ pub struct Datasource {
     pub log_level_field: &'static str,
     /// `jsonData.logMessageField`.
     pub log_message_field: &'static str,
+    /// `jsonData.dataLinks` when the flow sets them (else the model's
+    /// default).
+    pub data_links: Option<PyValue>,
 }
 
 fn opt_str(v: Option<String>) -> PyValue {
@@ -102,7 +126,21 @@ pub async fn create_datasource(
 ) -> PyResult<PyValue> {
     let api = grafana.create(CONNECTOR).await?;
     let org = store::grafana_org_id(db, customer_code).await?;
-    grafana.switch_organization(&api, &org).await?;
+    create_datasource_on(db, grafana, wazuh, &api, &org, spec).await
+}
+
+/// [`create_datasource`] once the client exists and the organization is
+/// known (`switch_actual_user_organisation(org)` first).
+pub async fn create_datasource_on(
+    db: &Db,
+    grafana: &GrafanaClient,
+    wazuh: &WazuhState,
+    api: &copilot_grafana::client::GrafanaApi,
+    org: &str,
+    spec: &Datasource,
+) -> PyResult<PyValue> {
+    let api = api.clone();
+    grafana.switch_organization(&api, org).await?;
     let indexer = store::connector_by_id(db, 1).await?;
     let (url, user, password) = match indexer {
         Some(row) => (
@@ -113,6 +151,24 @@ pub async fn create_datasource(
         None => (PyValue::None, PyValue::None, PyValue::None),
     };
     let version = opensearch_version(wazuh).await?;
+    let mut json_data = vec![
+        ("database", PyValue::Str(spec.database.clone())),
+        ("flavor", PyValue::Str("opensearch".into())),
+        ("includeFrozen", PyValue::Bool(false)),
+        ("logLevelField", PyValue::Str(spec.log_level_field.into())),
+        (
+            "logMessageField",
+            PyValue::Str(spec.log_message_field.into()),
+        ),
+        ("maxConcurrentShardRequests", PyValue::Int("5".into())),
+        ("pplEnabled", PyValue::Bool(true)),
+        ("timeField", PyValue::Str("timestamp".into())),
+        ("tlsSkipVerify", PyValue::Bool(true)),
+        ("version", PyValue::Str(version)),
+    ];
+    if let Some(links) = &spec.data_links {
+        json_data.insert(0, ("dataLinks", links.clone()));
+    }
     let payload = construct(
         &GRAFANA_DATASOURCE,
         &kwargs(vec![
@@ -129,24 +185,7 @@ pub async fn create_datasource(
                 kwargs(vec![("basicAuthPassword", password)]),
             ),
             ("isDefault", PyValue::Bool(false)),
-            (
-                "jsonData",
-                kwargs(vec![
-                    ("database", PyValue::Str(spec.database.clone())),
-                    ("flavor", PyValue::Str("opensearch".into())),
-                    ("includeFrozen", PyValue::Bool(false)),
-                    ("logLevelField", PyValue::Str(spec.log_level_field.into())),
-                    (
-                        "logMessageField",
-                        PyValue::Str(spec.log_message_field.into()),
-                    ),
-                    ("maxConcurrentShardRequests", PyValue::Int("5".into())),
-                    ("pplEnabled", PyValue::Bool(true)),
-                    ("timeField", PyValue::Str("timestamp".into())),
-                    ("tlsSkipVerify", PyValue::Bool(true)),
-                    ("version", PyValue::Str(version)),
-                ]),
-            ),
+            ("jsonData", kwargs(json_data)),
             ("readOnly", PyValue::Bool(true)),
         ]),
     )?;
