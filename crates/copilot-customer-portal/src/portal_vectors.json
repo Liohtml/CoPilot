@@ -1,0 +1,3184 @@
+{
+ "validators": [
+  {
+   "field": "brand_color",
+   "value": null,
+   "ok": null
+  },
+  {
+   "field": "brand_color",
+   "value": "",
+   "ok": null
+  },
+  {
+   "field": "brand_color",
+   "value": "  ",
+   "ok": null
+  },
+  {
+   "field": "brand_color",
+   "value": " #ABC ",
+   "ok": "#abc"
+  },
+  {
+   "field": "brand_color",
+   "value": "#abcdef",
+   "ok": "#abcdef"
+  },
+  {
+   "field": "brand_color",
+   "value": "#ABCDEF",
+   "ok": "#abcdef"
+  },
+  {
+   "field": "brand_color",
+   "value": "#12345",
+   "error": "Expected a hex color like #RGB or #RRGGBB"
+  },
+  {
+   "field": "brand_color",
+   "value": "red",
+   "error": "Expected a hex color like #RGB or #RRGGBB"
+  },
+  {
+   "field": "brand_color",
+   "value": "#abcd",
+   "error": "Expected a hex color like #RGB or #RRGGBB"
+  },
+  {
+   "field": "brand_color",
+   "value": "#ggg",
+   "error": "Expected a hex color like #RGB or #RRGGBB"
+  },
+  {
+   "field": "brand_color",
+   "value": "　#abc\n",
+   "ok": "#abc"
+  },
+  {
+   "field": "brand_color",
+   "value": "#abc\n",
+   "ok": "#abc"
+  },
+  {
+   "field": "brand_color",
+   "value": "##abc",
+   "error": "Expected a hex color like #RGB or #RRGGBB"
+  },
+  {
+   "field": "brand_color",
+   "value": "#ABCDEF0",
+   "error": "Expected a hex color like #RGB or #RRGGBB"
+  },
+  {
+   "field": "logo_base64",
+   "value": null,
+   "ok": null
+  },
+  {
+   "field": "logo_base64",
+   "value": "",
+   "ok": null
+  },
+  {
+   "field": "logo_base64",
+   "value": "QQ==",
+   "ok": "QQ=="
+  },
+  {
+   "field": "logo_base64",
+   "value": "QR==",
+   "ok": "QR=="
+  },
+  {
+   "field": "logo_base64",
+   "value": "QQ=",
+   "error": "Base64 data cannot be decoded"
+  },
+  {
+   "field": "logo_base64",
+   "value": "QQ",
+   "error": "Base64 data cannot be decoded"
+  },
+  {
+   "field": "logo_base64",
+   "value": "Q",
+   "error": "Base64 data cannot be decoded"
+  },
+  {
+   "field": "logo_base64",
+   "value": "QUJD",
+   "ok": "QUJD"
+  },
+  {
+   "field": "logo_base64",
+   "value": "QUJD=",
+   "ok": "QUJD="
+  },
+  {
+   "field": "logo_base64",
+   "value": "QUJD==",
+   "ok": "QUJD=="
+  },
+  {
+   "field": "logo_base64",
+   "value": "QUJD===",
+   "error": "Not a valid base64 string"
+  },
+  {
+   "field": "logo_base64",
+   "value": "=",
+   "error": "Base64 data cannot be decoded"
+  },
+  {
+   "field": "logo_base64",
+   "value": "==",
+   "error": "Base64 data cannot be decoded"
+  },
+  {
+   "field": "logo_base64",
+   "value": "QQ==\n",
+   "error": "Base64 data cannot be decoded"
+  },
+  {
+   "field": "logo_base64",
+   "value": "QUJD\n",
+   "error": "Base64 data cannot be decoded"
+  },
+  {
+   "field": "logo_base64",
+   "value": "QQ==\n\n",
+   "error": "Not a valid base64 string"
+  },
+  {
+   "field": "logo_base64",
+   "value": "not base64!",
+   "error": "Not a valid base64 string"
+  },
+  {
+   "field": "logo_base64",
+   "value": "data:image/png;base64,iVBORw0KGgo=",
+   "ok": "iVBORw0KGgo="
+  },
+  {
+   "field": "logo_base64",
+   "value": "data:,",
+   "ok": null
+  },
+  {
+   "field": "logo_base64",
+   "value": "data:x",
+   "error": "Not a valid base64 string"
+  },
+  {
+   "field": "logo_base64",
+   "value": "data:image/png;base64,",
+   "ok": null
+  },
+  {
+   "field": "logo_base64",
+   "value": "data:a,b,c",
+   "error": "Not a valid base64 string"
+  },
+  {
+   "field": "logo_base64",
+   "value": "iVBORw0KGgo=",
+   "ok": "iVBORw0KGgo="
+  },
+  {
+   "field": "logo_base64",
+   "value": "a=b",
+   "error": "Not a valid base64 string"
+  },
+  {
+   "field": "logo_base64",
+   "value": "Q=Q=",
+   "error": "Not a valid base64 string"
+  },
+  {
+   "field": "logo_base64",
+   "value": "é",
+   "error": "Not a valid base64 string"
+  },
+  {
+   "field": "logo_base64",
+   "value": {
+    "repeat": "A",
+    "times": 5242884
+   },
+   "error": "Logo file too large. Maximum size is 5MB (base64-encoded)"
+  },
+  {
+   "field": "logo_base64",
+   "value": {
+    "repeat": "A",
+    "times": 5242880
+   },
+   "ok": {
+    "repeat": "A",
+    "times": 5242880
+   }
+  },
+  {
+   "field": "logo_mime_type",
+   "value": null,
+   "ok": null
+  },
+  {
+   "field": "logo_mime_type",
+   "value": "",
+   "ok": null
+  },
+  {
+   "field": "logo_mime_type",
+   "value": "image/png",
+   "ok": "image/png"
+  },
+  {
+   "field": "logo_mime_type",
+   "value": "image/svg+xml",
+   "ok": "image/svg+xml"
+  },
+  {
+   "field": "logo_mime_type",
+   "value": "IMAGE/PNG",
+   "error": "Unsupported MIME type. Allowed types are: image/png, image/jpeg, image/jpg, image/gif, image/svg+xml, image/webp"
+  },
+  {
+   "field": "logo_mime_type",
+   "value": "application/pdf",
+   "error": "Unsupported MIME type. Allowed types are: image/png, image/jpeg, image/jpg, image/gif, image/svg+xml, image/webp"
+  },
+  {
+   "field": "logo_mime_type",
+   "value": " image/png",
+   "error": "Unsupported MIME type. Allowed types are: image/png, image/jpeg, image/jpg, image/gif, image/svg+xml, image/webp"
+  }
+ ],
+ "b64decode": [
+  {
+   "value": "",
+   "ok": ""
+  },
+  {
+   "value": "=",
+   "error": "Leading padding not allowed"
+  },
+  {
+   "value": "==",
+   "error": "Leading padding not allowed"
+  },
+  {
+   "value": "QQ==",
+   "ok": "41"
+  },
+  {
+   "value": "QQ=",
+   "error": "Incorrect padding"
+  },
+  {
+   "value": "QQ",
+   "error": "Incorrect padding"
+  },
+  {
+   "value": "Q",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "value": "QUJD",
+   "ok": "414243"
+  },
+  {
+   "value": "QUJDR",
+   "error": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "value": "QUJDRA==",
+   "ok": "41424344"
+  },
+  {
+   "value": "QUJDRA=",
+   "error": "Incorrect padding"
+  },
+  {
+   "value": "QR==",
+   "ok": "41"
+  },
+  {
+   "value": "QQ==QQ==",
+   "error": "Excess data after padding"
+  },
+  {
+   "value": "QQ=a",
+   "error": "Discontinuous padding not allowed"
+  },
+  {
+   "value": "Q=Q=",
+   "error": "Discontinuous padding not allowed"
+  },
+  {
+   "value": "QUJD=",
+   "ok": "414243"
+  },
+  {
+   "value": "QUJD==",
+   "ok": "414243"
+  },
+  {
+   "value": "QQ===",
+   "error": "Excess data after padding"
+  },
+  {
+   "value": "Q===",
+   "error": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+  },
+  {
+   "value": "QUI=",
+   "ok": "4142"
+  },
+  {
+   "value": "QUI==",
+   "error": "Excess data after padding"
+  },
+  {
+   "value": "QU=I",
+   "error": "Discontinuous padding not allowed"
+  },
+  {
+   "value": "Q U",
+   "error": "Only base64 data is allowed"
+  },
+  {
+   "value": "QQ==\n",
+   "error": "Excess data after padding"
+  },
+  {
+   "value": "QUJD\n",
+   "error": "Only base64 data is allowed"
+  },
+  {
+   "value": "=QUJD",
+   "error": "Leading padding not allowed"
+  },
+  {
+   "value": "QUJDRA",
+   "error": "Incorrect padding"
+  },
+  {
+   "value": "QUJ",
+   "error": "Incorrect padding"
+  },
+  {
+   "value": "QUJDRAE",
+   "error": "Incorrect padding"
+  },
+  {
+   "value": " QQ==",
+   "error": "Only base64 data is allowed"
+  },
+  {
+   "value": "é",
+   "error": "string argument should contain only ASCII characters"
+  },
+  {
+   "value": "+/+/",
+   "ok": "fbffbf"
+  },
+  {
+   "value": "-_-_",
+   "error": "Only base64 data is allowed"
+  }
+ ],
+ "models": [
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {},
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": "x"
+   },
+   "fields": {
+    "title": "x",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": ""
+   },
+   "fields": {
+    "title": "",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": null
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": 5
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "title"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "fields": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "errors": [
+    {
+     "type": "string_too_long",
+     "loc": [
+      "title"
+     ],
+     "msg": "String should have at most 255 characters"
+    }
+   ]
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+   },
+   "fields": {
+    "title": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "brand_color": " #ABC "
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": "#abc"
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "brand_color": "#12345"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "brand_color"
+     ],
+     "msg": "Value error, Expected a hex color like #RGB or #RRGGBB"
+    }
+   ]
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "brand_color": "  "
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "brand_color": null
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "brand_color": "   #abcdef   "
+   },
+   "errors": [
+    {
+     "type": "string_too_long",
+     "loc": [
+      "brand_color"
+     ],
+     "msg": "String should have at most 9 characters"
+    }
+   ]
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ=="
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": "data:image/png;base64,QQ==",
+    "logo_mime_type": "image/png"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": "",
+    "logo_mime_type": "image/png"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": ""
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": null
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ=",
+    "logo_mime_type": "image/png"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "logo_base64"
+     ],
+     "msg": "Value error, Base64 data cannot be decoded"
+    }
+   ]
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": 5,
+    "logo_mime_type": "image/png"
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "logo_base64"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_mime_type": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "errors": [
+    {
+     "type": "string_too_long",
+     "loc": [
+      "logo_mime_type"
+     ],
+     "msg": "String should have at most 50 characters"
+    }
+   ]
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_mime_type": "application/pdf"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "logo_mime_type"
+     ],
+     "msg": "Value error, Unsupported MIME type. Allowed types are: image/png, image/jpeg, image/jpg, image/gif, image/svg+xml, image/webp"
+    }
+   ]
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "reset": []
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "reset": [
+     "title"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "reset": [
+     "logo",
+     "brand_color",
+     "title"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "reset": [
+     "logo",
+     "logo"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "reset": [
+     "x"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "reset": [
+     5,
+     null,
+     "Title"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "reset": null
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "reset": "title"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "reset": {
+     "title": 1
+    }
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": "x",
+    "reset": [
+     "title"
+    ]
+   },
+   "fields": {
+    "title": "x",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "reset": [
+     "logo"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "title": "x",
+    "reset": [
+     "logo",
+     "title",
+     "brand_color"
+    ]
+   },
+   "fields": {
+    "title": "x",
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": "",
+    "brand_color": "zz",
+    "reset": [
+     "x"
+    ]
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "brand_color"
+     ],
+     "msg": "Value error, Expected a hex color like #RGB or #RRGGBB"
+    }
+   ]
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "title": "T",
+    "brand_color": "#ABC",
+    "unknown": 1
+   },
+   "fields": {
+    "title": "T",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": "#abc"
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "enabled": true
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "enabled": false,
+    "title": "Off"
+   },
+   "fields": {
+    "title": "Off",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "enabled": null
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "enabled": "yes"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "enabled": "True "
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "enabled": 1.0
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "enabled": 2
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "enabled": 0.5
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   }
+  },
+  {
+   "model": "UpdatePortalSettingsRequest",
+   "body": {
+    "enabled": [],
+    "title": 3
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "title"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {},
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Nothing to update"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": "x"
+   },
+   "fields": {
+    "title": "x",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "sent": [
+    "title"
+   ],
+   "reset": []
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": ""
+   },
+   "errors": [
+    {
+     "type": "string_too_short",
+     "loc": [
+      "title"
+     ],
+     "msg": "String should have at least 1 character"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": null
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, title cannot be empty; to restore its default send reset: [\"title\"]"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": 5
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "title"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "fields": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "sent": [
+    "title"
+   ],
+   "reset": []
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "errors": [
+    {
+     "type": "string_too_long",
+     "loc": [
+      "title"
+     ],
+     "msg": "String should have at most 255 characters"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+   },
+   "fields": {
+    "title": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "sent": [
+    "title"
+   ],
+   "reset": []
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "brand_color": " #ABC "
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": "#abc"
+   },
+   "sent": [
+    "brand_color"
+   ],
+   "reset": []
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "brand_color": "#12345"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "brand_color"
+     ],
+     "msg": "Value error, Expected a hex color like #RGB or #RRGGBB"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "brand_color": "  "
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, brand_color cannot be empty; to restore its default send reset: [\"brand_color\"]"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "brand_color": null
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, brand_color cannot be empty; to restore its default send reset: [\"brand_color\"]"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "brand_color": "   #abcdef   "
+   },
+   "errors": [
+    {
+     "type": "string_too_long",
+     "loc": [
+      "brand_color"
+     ],
+     "msg": "String should have at most 9 characters"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ=="
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, logo_base64 and logo_mime_type must be sent together"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   },
+   "sent": [
+    "logo_base64",
+    "logo_mime_type"
+   ],
+   "reset": []
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": "data:image/png;base64,QQ==",
+    "logo_mime_type": "image/png"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   },
+   "sent": [
+    "logo_base64",
+    "logo_mime_type"
+   ],
+   "reset": []
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": "",
+    "logo_mime_type": "image/png"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, logo_base64 cannot be empty; to restore its default send reset: [\"logo\"]"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": ""
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, logo_mime_type cannot be empty; to restore its default send reset: [\"logo\"]"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": null
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, logo_mime_type cannot be empty; to restore its default send reset: [\"logo\"]"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ=",
+    "logo_mime_type": "image/png"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "logo_base64"
+     ],
+     "msg": "Value error, Base64 data cannot be decoded"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": 5,
+    "logo_mime_type": "image/png"
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "logo_base64"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_mime_type": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "errors": [
+    {
+     "type": "string_too_long",
+     "loc": [
+      "logo_mime_type"
+     ],
+     "msg": "String should have at most 50 characters"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_mime_type": "application/pdf"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "logo_mime_type"
+     ],
+     "msg": "Value error, Unsupported MIME type. Allowed types are: image/png, image/jpeg, image/jpg, image/gif, image/svg+xml, image/webp"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "reset": []
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Nothing to update"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "reset": [
+     "title"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "sent": [],
+   "reset": [
+    "title"
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "reset": [
+     "logo",
+     "brand_color",
+     "title"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "sent": [],
+   "reset": [
+    "logo",
+    "brand_color",
+    "title"
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "reset": [
+     "logo",
+     "logo"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "sent": [],
+   "reset": [
+    "logo",
+    "logo"
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "reset": [
+     "x"
+    ]
+   },
+   "errors": [
+    {
+     "type": "literal_error",
+     "loc": [
+      "reset",
+      0
+     ],
+     "msg": "Input should be 'title', 'logo' or 'brand_color'"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "reset": [
+     5,
+     null,
+     "Title"
+    ]
+   },
+   "errors": [
+    {
+     "type": "literal_error",
+     "loc": [
+      "reset",
+      0
+     ],
+     "msg": "Input should be 'title', 'logo' or 'brand_color'"
+    },
+    {
+     "type": "literal_error",
+     "loc": [
+      "reset",
+      1
+     ],
+     "msg": "Input should be 'title', 'logo' or 'brand_color'"
+    },
+    {
+     "type": "literal_error",
+     "loc": [
+      "reset",
+      2
+     ],
+     "msg": "Input should be 'title', 'logo' or 'brand_color'"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "reset": null
+   },
+   "errors": [
+    {
+     "type": "list_type",
+     "loc": [
+      "reset"
+     ],
+     "msg": "Input should be a valid list"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "reset": "title"
+   },
+   "errors": [
+    {
+     "type": "list_type",
+     "loc": [
+      "reset"
+     ],
+     "msg": "Input should be a valid list"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "reset": {
+     "title": 1
+    }
+   },
+   "errors": [
+    {
+     "type": "list_type",
+     "loc": [
+      "reset"
+     ],
+     "msg": "Input should be a valid list"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": "x",
+    "reset": [
+     "title"
+    ]
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Cannot both set and reset: title"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "reset": [
+     "logo"
+    ]
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Cannot both set and reset: logo"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "title": "x",
+    "reset": [
+     "logo",
+     "title",
+     "brand_color"
+    ]
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Cannot both set and reset: logo, title"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": "",
+    "brand_color": "zz",
+    "reset": [
+     "x"
+    ]
+   },
+   "errors": [
+    {
+     "type": "string_too_short",
+     "loc": [
+      "title"
+     ],
+     "msg": "String should have at least 1 character"
+    },
+    {
+     "type": "value_error",
+     "loc": [
+      "brand_color"
+     ],
+     "msg": "Value error, Expected a hex color like #RGB or #RRGGBB"
+    },
+    {
+     "type": "literal_error",
+     "loc": [
+      "reset",
+      0
+     ],
+     "msg": "Input should be 'title', 'logo' or 'brand_color'"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "title": "T",
+    "brand_color": "#ABC",
+    "unknown": 1
+   },
+   "fields": {
+    "title": "T",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": "#abc"
+   },
+   "sent": [
+    "title",
+    "brand_color"
+   ],
+   "reset": []
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "enabled": true
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Nothing to update"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "enabled": false,
+    "title": "Off"
+   },
+   "fields": {
+    "title": "Off",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "sent": [
+    "title"
+   ],
+   "reset": []
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "enabled": null
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Nothing to update"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "enabled": "yes"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Nothing to update"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "enabled": "True "
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Nothing to update"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "enabled": 1.0
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Nothing to update"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "enabled": 2
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Nothing to update"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "enabled": 0.5
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [],
+     "msg": "Value error, Nothing to update"
+    }
+   ]
+  },
+  {
+   "model": "PatchPortalSettingsRequest",
+   "body": {
+    "enabled": [],
+    "title": 3
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "title"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {},
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": "x"
+   },
+   "fields": {
+    "title": "x",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": ""
+   },
+   "fields": {
+    "title": "",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": null
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": 5
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "title"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "fields": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "errors": [
+    {
+     "type": "string_too_long",
+     "loc": [
+      "title"
+     ],
+     "msg": "String should have at most 255 characters"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+   },
+   "fields": {
+    "title": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "brand_color": " #ABC "
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": "#abc"
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "brand_color": "#12345"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "brand_color"
+     ],
+     "msg": "Value error, Expected a hex color like #RGB or #RRGGBB"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "brand_color": "  "
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "brand_color": null
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "brand_color": "   #abcdef   "
+   },
+   "errors": [
+    {
+     "type": "string_too_long",
+     "loc": [
+      "brand_color"
+     ],
+     "msg": "String should have at most 9 characters"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": "QQ=="
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": "data:image/png;base64,QQ==",
+    "logo_mime_type": "image/png"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": "",
+    "logo_mime_type": "image/png"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": ""
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": null
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": "QQ=",
+    "logo_mime_type": "image/png"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "logo_base64"
+     ],
+     "msg": "Value error, Base64 data cannot be decoded"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": 5,
+    "logo_mime_type": "image/png"
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "logo_base64"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_mime_type": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "errors": [
+    {
+     "type": "string_too_long",
+     "loc": [
+      "logo_mime_type"
+     ],
+     "msg": "String should have at most 50 characters"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_mime_type": "application/pdf"
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "logo_mime_type"
+     ],
+     "msg": "Value error, Unsupported MIME type. Allowed types are: image/png, image/jpeg, image/jpg, image/gif, image/svg+xml, image/webp"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "reset": []
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "reset": [
+     "title"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "reset": [
+     "logo",
+     "brand_color",
+     "title"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "reset": [
+     "logo",
+     "logo"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "reset": [
+     "x"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "reset": [
+     5,
+     null,
+     "Title"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "reset": null
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "reset": "title"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "reset": {
+     "title": 1
+    }
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": "x",
+    "reset": [
+     "title"
+    ]
+   },
+   "fields": {
+    "title": "x",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "reset": [
+     "logo"
+    ]
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "title": "x",
+    "reset": [
+     "logo",
+     "title",
+     "brand_color"
+    ]
+   },
+   "fields": {
+    "title": "x",
+    "logo_base64": "QQ==",
+    "logo_mime_type": "image/png",
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": "",
+    "brand_color": "zz",
+    "reset": [
+     "x"
+    ]
+   },
+   "errors": [
+    {
+     "type": "value_error",
+     "loc": [
+      "brand_color"
+     ],
+     "msg": "Value error, Expected a hex color like #RGB or #RRGGBB"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "title": "T",
+    "brand_color": "#ABC",
+    "unknown": 1
+   },
+   "fields": {
+    "title": "T",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": "#abc"
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "enabled": true
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "enabled": false,
+    "title": "Off"
+   },
+   "fields": {
+    "title": "Off",
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": false
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "enabled": null
+   },
+   "errors": [
+    {
+     "type": "bool_type",
+     "loc": [
+      "enabled"
+     ],
+     "msg": "Input should be a valid boolean"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "enabled": "yes"
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "enabled": "True "
+   },
+   "errors": [
+    {
+     "type": "bool_parsing",
+     "loc": [
+      "enabled"
+     ],
+     "msg": "Input should be a valid boolean, unable to interpret input"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "enabled": 1.0
+   },
+   "fields": {
+    "title": null,
+    "logo_base64": null,
+    "logo_mime_type": null,
+    "brand_color": null
+   },
+   "enabled": true
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "enabled": 2
+   },
+   "errors": [
+    {
+     "type": "bool_parsing",
+     "loc": [
+      "enabled"
+     ],
+     "msg": "Input should be a valid boolean, unable to interpret input"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "enabled": 0.5
+   },
+   "errors": [
+    {
+     "type": "bool_type",
+     "loc": [
+      "enabled"
+     ],
+     "msg": "Input should be a valid boolean"
+    }
+   ]
+  },
+  {
+   "model": "UpdateCustomerBrandingRequest",
+   "body": {
+    "enabled": [],
+    "title": 3
+   },
+   "errors": [
+    {
+     "type": "bool_type",
+     "loc": [
+      "enabled"
+     ],
+     "msg": "Input should be a valid boolean"
+    },
+    {
+     "type": "string_type",
+     "loc": [
+      "title"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  }
+ ],
+ "bools": [
+  {
+   "value": true,
+   "ok": true
+  },
+  {
+   "value": false,
+   "ok": false
+  },
+  {
+   "value": 0,
+   "ok": false
+  },
+  {
+   "value": 1,
+   "ok": true
+  },
+  {
+   "value": 2,
+   "errors": [
+    {
+     "type": "bool_parsing",
+     "loc": [],
+     "msg": "Input should be a valid boolean, unable to interpret input"
+    }
+   ]
+  },
+  {
+   "value": -1,
+   "errors": [
+    {
+     "type": "bool_parsing",
+     "loc": [],
+     "msg": "Input should be a valid boolean, unable to interpret input"
+    }
+   ]
+  },
+  {
+   "value": 1.0,
+   "ok": true
+  },
+  {
+   "value": 0.0,
+   "ok": false
+  },
+  {
+   "value": -0.0,
+   "ok": false
+  },
+  {
+   "value": 1.5,
+   "errors": [
+    {
+     "type": "bool_type",
+     "loc": [],
+     "msg": "Input should be a valid boolean"
+    }
+   ]
+  },
+  {
+   "value": "TRUE",
+   "ok": true
+  },
+  {
+   "value": " true",
+   "errors": [
+    {
+     "type": "bool_parsing",
+     "loc": [],
+     "msg": "Input should be a valid boolean, unable to interpret input"
+    }
+   ]
+  },
+  {
+   "value": "true ",
+   "errors": [
+    {
+     "type": "bool_parsing",
+     "loc": [],
+     "msg": "Input should be a valid boolean, unable to interpret input"
+    }
+   ]
+  },
+  {
+   "value": "Yes",
+   "ok": true
+  },
+  {
+   "value": "oN",
+   "ok": true
+  },
+  {
+   "value": "F",
+   "ok": false
+  },
+  {
+   "value": "",
+   "errors": [
+    {
+     "type": "bool_parsing",
+     "loc": [],
+     "msg": "Input should be a valid boolean, unable to interpret input"
+    }
+   ]
+  },
+  {
+   "value": "1",
+   "ok": true
+  },
+  {
+   "value": "0",
+   "ok": false
+  },
+  {
+   "value": "01",
+   "errors": [
+    {
+     "type": "bool_parsing",
+     "loc": [],
+     "msg": "Input should be a valid boolean, unable to interpret input"
+    }
+   ]
+  },
+  {
+   "value": "off",
+   "ok": false
+  },
+  {
+   "value": "no",
+   "ok": false
+  },
+  {
+   "value": "nope",
+   "errors": [
+    {
+     "type": "bool_parsing",
+     "loc": [],
+     "msg": "Input should be a valid boolean, unable to interpret input"
+    }
+   ]
+  },
+  {
+   "value": null,
+   "errors": [
+    {
+     "type": "bool_type",
+     "loc": [],
+     "msg": "Input should be a valid boolean"
+    }
+   ]
+  },
+  {
+   "value": [],
+   "errors": [
+    {
+     "type": "bool_type",
+     "loc": [],
+     "msg": "Input should be a valid boolean"
+    }
+   ]
+  },
+  {
+   "value": {},
+   "errors": [
+    {
+     "type": "bool_type",
+     "loc": [],
+     "msg": "Input should be a valid boolean"
+    }
+   ]
+  }
+ ],
+ "ints": [
+  {
+   "value": "1",
+   "ok": 1
+  },
+  {
+   "value": "+5",
+   "ok": 5
+  },
+  {
+   "value": " 5 ",
+   "ok": 5
+  },
+  {
+   "value": "5_000",
+   "ok": 5000
+  },
+  {
+   "value": "-0",
+   "ok": 0
+  },
+  {
+   "value": "1e3",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "0x10",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "1.0",
+   "ok": 1
+  },
+  {
+   "value": "1.00",
+   "ok": 1
+  },
+  {
+   "value": "1.",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "1.01",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": ".0",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "5__0",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "_5",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "5_",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "1_0.0",
+   "ok": 10
+  },
+  {
+   "value": " +1_0.000 ",
+   "ok": 10
+  },
+  {
+   "value": "　 5",
+   "ok": 5
+  },
+  {
+   "value": "5\n",
+   "ok": 5
+  },
+  {
+   "value": "\t5\t",
+   "ok": 5
+  },
+  {
+   "value": "1.0_0",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "-1.0",
+   "ok": -1
+  },
+  {
+   "value": "+-1",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": " ",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "00012",
+   "ok": 12
+  },
+  {
+   "value": "1 2",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  },
+  {
+   "value": "٣",
+   "errors": [
+    {
+     "type": "int_parsing",
+     "loc": [],
+     "msg": "Input should be a valid integer, unable to parse string as an integer"
+    }
+   ]
+  }
+ ],
+ "csv": [
+  {
+   "row": [
+    "a",
+    "",
+    "b c"
+   ],
+   "text": "a,,b c\r\n"
+  },
+  {
+   "row": [
+    "a,b",
+    "say \"hi\"",
+    "x\ny"
+   ],
+   "text": "\"a,b\",\"say \"\"hi\"\"\",\"x\ny\"\r\n"
+  },
+  {
+   "row": [
+    "\r"
+   ],
+   "text": "\"\r\"\r\n"
+  },
+  {
+   "row": [
+    "tab\there",
+    "semi;colon",
+    "'single'"
+   ],
+   "text": "tab\there,semi;colon,'single'\r\n"
+  },
+  {
+   "row": [
+    "é",
+    "ü,",
+    " lead",
+    "trail "
+   ],
+   "text": "é,\"ü,\", lead,trail \r\n"
+  },
+  {
+   "row": [
+    "a\r\nb"
+   ],
+   "text": "\"a\r\nb\"\r\n"
+  }
+ ],
+ "timestamps": [
+  {
+   "value": "2026-09-01T12:00:00",
+   "text": "2026-09-01T12:00:00.000Z"
+  },
+  {
+   "value": "2026-09-01T12:00:00.987654",
+   "text": "2026-09-01T12:00:00.987Z"
+  },
+  {
+   "value": "2026-12-31T23:59:59.000999",
+   "text": "2026-12-31T23:59:59.000Z"
+  },
+  {
+   "value": "1999-01-02T03:04:05.001000",
+   "text": "1999-01-02T03:04:05.001Z"
+  }
+ ],
+ "content_versions": [
+  {
+   "logo": "iVBORw0KGgo=",
+   "version": "929e08d597feae56"
+  },
+  {
+   "logo": "QQ==",
+   "version": "ee0b13692453f0f8"
+  },
+  {
+   "logo": "é",
+   "version": "4a99557e4033c353"
+  },
+  {
+   "logo": "",
+   "version": "e3b0c44298fc1c14"
+  }
+ ],
+ "logo_versions": [
+  {
+   "value": "2026-10-17T10:05:23",
+   "version": "1792231523000"
+  },
+  {
+   "value": "1970-01-01T00:00:00",
+   "version": "0"
+  },
+  {
+   "value": "2038-01-19T03:14:08",
+   "version": "2147483648000"
+  }
+ ],
+ "sorted_customers": [
+  {
+   "customers": [
+    [
+     "b",
+     "Beta"
+    ],
+    [
+     "a",
+     "alpha"
+    ],
+    [
+     "c",
+     "Árvíz"
+    ],
+    [
+     "d",
+     "STRASSE"
+    ],
+    [
+     "e",
+     "straße"
+    ],
+    [
+     "f",
+     "Beta"
+    ]
+   ],
+   "sorted": [
+    "a",
+    "b",
+    "f",
+    "d",
+    "e",
+    "c"
+   ]
+  },
+  {
+   "customers": [
+    [
+     "z",
+     "z"
+    ],
+    [
+     "y",
+     "Z"
+    ],
+    [
+     "x",
+     "ǅ"
+    ]
+   ],
+   "sorted": [
+    "y",
+    "z",
+    "x"
+   ]
+  }
+ ],
+ "responses": [
+  {
+   "status": 200,
+   "size": 3,
+   "media_type": "text/csv",
+   "accept": null,
+   "headers_in": {
+    "Content-Disposition": "attachment; filename=\"x.csv\""
+   },
+   "headers_out": [
+    [
+     "content-disposition",
+     "attachment; filename=\"x.csv\""
+    ],
+    [
+     "content-length",
+     "3"
+    ],
+    [
+     "content-type",
+     "text/csv; charset=utf-8"
+    ]
+   ],
+   "gzipped": false
+  },
+  {
+   "status": 200,
+   "size": 999,
+   "media_type": "image/png",
+   "accept": "gzip",
+   "headers_in": {
+    "ETag": "\"1\""
+   },
+   "headers_out": [
+    [
+     "etag",
+     "\"1\""
+    ],
+    [
+     "content-length",
+     "999"
+    ],
+    [
+     "content-type",
+     "image/png"
+    ]
+   ],
+   "gzipped": false
+  },
+  {
+   "status": 200,
+   "size": 1000,
+   "media_type": "image/png",
+   "accept": null,
+   "headers_in": {
+    "ETag": "\"1\""
+   },
+   "headers_out": [
+    [
+     "etag",
+     "\"1\""
+    ],
+    [
+     "content-length",
+     "1000"
+    ],
+    [
+     "content-type",
+     "image/png"
+    ],
+    [
+     "vary",
+     "Accept-Encoding"
+    ]
+   ],
+   "gzipped": false
+  },
+  {
+   "status": 200,
+   "size": 1000,
+   "media_type": "image/png",
+   "accept": "gzip, deflate",
+   "headers_in": {
+    "ETag": "\"1\""
+   },
+   "headers_out": [
+    [
+     "etag",
+     "\"1\""
+    ],
+    [
+     "content-type",
+     "image/png"
+    ],
+    [
+     "vary",
+     "Accept-Encoding"
+    ],
+    [
+     "content-encoding",
+     "gzip"
+    ]
+   ],
+   "gzipped": true
+  },
+  {
+   "status": 200,
+   "size": 1500,
+   "media_type": "text/plain",
+   "accept": "deflate",
+   "headers_in": {},
+   "headers_out": [
+    [
+     "content-length",
+     "1500"
+    ],
+    [
+     "content-type",
+     "text/plain; charset=utf-8"
+    ],
+    [
+     "vary",
+     "Accept-Encoding"
+    ]
+   ],
+   "gzipped": false
+  },
+  {
+   "status": 200,
+   "size": 1500,
+   "media_type": "text/plain; charset=latin-1",
+   "accept": "GZIP",
+   "headers_in": {
+    "Vary": "Origin"
+   },
+   "headers_out": [
+    [
+     "vary",
+     "Origin, Accept-Encoding"
+    ],
+    [
+     "content-length",
+     "1500"
+    ],
+    [
+     "content-type",
+     "text/plain; charset=latin-1"
+    ]
+   ],
+   "gzipped": false
+  },
+  {
+   "status": 200,
+   "size": 1500,
+   "media_type": "text/event-stream",
+   "accept": "gzip",
+   "headers_in": {},
+   "headers_out": [
+    [
+     "content-length",
+     "1500"
+    ],
+    [
+     "content-type",
+     "text/event-stream; charset=utf-8"
+    ]
+   ],
+   "gzipped": false
+  },
+  {
+   "status": 304,
+   "size": 0,
+   "media_type": null,
+   "accept": "gzip",
+   "headers_in": {
+    "ETag": "\"1\"",
+    "Cache-Control": "public, max-age=3600"
+   },
+   "headers_out": [
+    [
+     "etag",
+     "\"1\""
+    ],
+    [
+     "cache-control",
+     "public, max-age=3600"
+    ]
+   ],
+   "gzipped": false
+  },
+  {
+   "status": 200,
+   "size": 2000,
+   "media_type": "image/svg+xml",
+   "accept": "gzip",
+   "headers_in": {
+    "Content-Encoding": "br"
+   },
+   "headers_out": [
+    [
+     "content-encoding",
+     "br"
+    ],
+    [
+     "content-length",
+     "2000"
+    ],
+    [
+     "content-type",
+     "image/svg+xml"
+    ]
+   ],
+   "gzipped": false
+  }
+ ]
+}

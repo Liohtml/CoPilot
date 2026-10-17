@@ -21,6 +21,18 @@ pub enum Base64Error {
     /// `ValueError` from `_bytes_from_decode_data` for a non-ASCII `str`.
     #[error("string argument should contain only ASCII characters")]
     NonAscii,
+    /// Strict mode: `=` as the first character.
+    #[error("Leading padding not allowed")]
+    LeadingPadding,
+    /// Strict mode: anything after a complete padding sequence.
+    #[error("Excess data after padding")]
+    ExcessDataAfterPadding,
+    /// Strict mode: a character outside the alphabet.
+    #[error("Only base64 data is allowed")]
+    OnlyBase64,
+    /// Strict mode: data after a `=` that did not end the quad.
+    #[error("Discontinuous padding not allowed")]
+    DiscontinuousPadding,
 }
 
 fn sextet(byte: u8) -> Option<u8> {
@@ -81,6 +93,79 @@ pub fn a2b_base64(data: &[u8]) -> Result<Vec<u8>, Base64Error> {
         1 => Err(Base64Error::OneTooMany(out.len() / 3 * 4 + 1)),
         _ => Err(Base64Error::IncorrectPadding),
     }
+}
+
+/// `binascii.a2b_base64(data, strict_mode=True)` (CPython 3.11), which
+/// `base64.b64decode(s, validate=True)` calls: no character outside the
+/// alphabet, no `=` first, nothing after a complete padding sequence, no data
+/// after a `=`. A `=` after a complete quad is skipped, as in CPython, and the
+/// unused bits of the last character are not checked.
+pub fn a2b_base64_strict(data: &[u8]) -> Result<Vec<u8>, Base64Error> {
+    let mut out = Vec::with_capacity(data.len() / 4 * 3 + 3);
+    let mut quad_pos = 0u8;
+    let mut pads = 0u8;
+    let mut left = 0u8;
+    let mut padding_started = false;
+    for (i, &byte) in data.iter().enumerate() {
+        if byte == b'=' {
+            padding_started = true;
+            if i == 0 {
+                return Err(Base64Error::LeadingPadding);
+            }
+            if quad_pos >= 2 {
+                pads += 1;
+                if quad_pos + pads >= 4 {
+                    if i + 1 < data.len() {
+                        return Err(Base64Error::ExcessDataAfterPadding);
+                    }
+                    return Ok(out);
+                }
+            }
+            continue;
+        }
+        let Some(value) = sextet(byte) else {
+            return Err(Base64Error::OnlyBase64);
+        };
+        if padding_started {
+            return Err(Base64Error::DiscontinuousPadding);
+        }
+        pads = 0;
+        match quad_pos {
+            0 => {
+                quad_pos = 1;
+                left = value;
+            }
+            1 => {
+                quad_pos = 2;
+                out.push((left << 2) | (value >> 4));
+                left = value & 0x0f;
+            }
+            2 => {
+                quad_pos = 3;
+                out.push((left << 4) | (value >> 2));
+                left = value & 0x03;
+            }
+            _ => {
+                quad_pos = 0;
+                out.push((left << 6) | value);
+                left = 0;
+            }
+        }
+    }
+    match quad_pos {
+        0 => Ok(out),
+        1 => Err(Base64Error::OneTooMany(out.len() / 3 * 4 + 1)),
+        _ => Err(Base64Error::IncorrectPadding),
+    }
+}
+
+/// `base64.b64decode(s, validate=True)` on a `str`: ASCII only, then
+/// [`a2b_base64_strict`].
+pub fn b64decode_validate(value: &str) -> Result<Vec<u8>, Base64Error> {
+    if !value.is_ascii() {
+        return Err(Base64Error::NonAscii);
+    }
+    a2b_base64_strict(value.as_bytes())
 }
 
 /// `base64.urlsafe_b64decode(bytes)`: `-`/`_` read as `+`/`/`.
@@ -144,5 +229,31 @@ mod tests {
         );
         assert_eq!(jwt_base64url_decode("eyJ").unwrap(), b"{\"");
         assert_eq!(bytes_to_base64url(&[0xfb, 0xff]), "-_8");
+    }
+
+    #[test]
+    fn strict_rules() {
+        let text = |s: &str| match b64decode_validate(s) {
+            Ok(b) => b.iter().map(|x| format!("{x:02x}")).collect::<String>(),
+            Err(e) => e.to_string(),
+        };
+        assert_eq!(text("QQ=="), "41");
+        assert_eq!(text("QR=="), "41", "unused bits are not checked");
+        assert_eq!(text("QUJD="), "414243");
+        assert_eq!(text("QUJD=="), "414243");
+        assert_eq!(text("="), "Leading padding not allowed");
+        assert_eq!(text("QQ==\n"), "Excess data after padding");
+        assert_eq!(text("QUJD\n"), "Only base64 data is allowed");
+        assert_eq!(text("Q=Q="), "Discontinuous padding not allowed");
+        assert_eq!(text("QUJDRA="), "Incorrect padding");
+        assert_eq!(
+            text("QUJDR"),
+            "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+        );
+        assert_eq!(text("Q==="), text("Q"));
+        assert_eq!(
+            text("é"),
+            "string argument should contain only ASCII characters"
+        );
     }
 }

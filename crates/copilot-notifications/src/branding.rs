@@ -57,33 +57,68 @@ fn normalize(value: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
-/// `build_effective_branding(global, override)`: an enabled override's
-/// fields win one by one; the logo comes with its own MIME type.
-pub fn effective(global: Option<&BrandingRow>, custom: Option<&BrandingRow>) -> Effective {
+/// `build_effective_branding(global, override, customer_code)` in full:
+/// the merged fields, where they came from and the customer they were
+/// resolved for (the portal's `EffectiveBranding`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Resolved {
+    /// The merged fields.
+    pub branding: Effective,
+    /// `"custom"` when the override supplied the title, the logo or the
+    /// colour (not the MIME type alone), else `"global"`.
+    pub source: &'static str,
+    /// `customer_code`, when the override supplied a field.
+    pub customer_code: Option<String>,
+}
+
+/// `build_effective_branding(global, override, customer_code)`: an enabled
+/// override's fields win one by one; the logo comes with its own MIME type
+/// (`image/png` when it has none).
+pub fn resolve(
+    global: Option<&BrandingRow>,
+    custom: Option<&BrandingRow>,
+    customer_code: Option<&str>,
+) -> Resolved {
     let g = |f: fn(&BrandingRow) -> Option<&str>| normalize(global.and_then(f));
     let global_title = g(|r| r.title.as_deref()).unwrap_or_else(|| "CoPilot".into());
     let global_logo = g(|r| r.logo_base64.as_deref());
     let global_mime = g(|r| r.logo_mime_type.as_deref());
     let global_color = g(|r| r.brand_color.as_deref());
     let Some(c) = custom.filter(|c| c.enabled) else {
-        return Effective {
-            title: global_title,
-            logo_base64: global_logo,
-            logo_mime_type: global_mime,
-            brand_color: global_color,
+        return Resolved {
+            branding: Effective {
+                title: global_title,
+                logo_base64: global_logo,
+                logo_mime_type: global_mime,
+                brand_color: global_color,
+            },
+            source: "global",
+            customer_code: None,
         };
     };
+    let custom_title = normalize(c.title.as_deref());
     let custom_logo = normalize(c.logo_base64.as_deref());
-    Effective {
-        title: normalize(c.title.as_deref()).unwrap_or(global_title),
-        logo_mime_type: if custom_logo.is_some() {
-            Some(normalize(c.logo_mime_type.as_deref()).unwrap_or_else(|| "image/png".into()))
-        } else {
-            global_mime
+    let custom_color = normalize(c.brand_color.as_deref());
+    let used_custom = custom_title.is_some() || custom_logo.is_some() || custom_color.is_some();
+    Resolved {
+        branding: Effective {
+            title: custom_title.unwrap_or(global_title),
+            logo_mime_type: if custom_logo.is_some() {
+                Some(normalize(c.logo_mime_type.as_deref()).unwrap_or_else(|| "image/png".into()))
+            } else {
+                global_mime
+            },
+            logo_base64: custom_logo.or(global_logo),
+            brand_color: custom_color.or(global_color),
         },
-        logo_base64: custom_logo.or(global_logo),
-        brand_color: normalize(c.brand_color.as_deref()).or(global_color),
+        source: if used_custom { "custom" } else { "global" },
+        customer_code: customer_code.filter(|_| used_custom).map(str::to_string),
     }
+}
+
+/// `build_effective_branding(global, override)`: the merged fields only.
+pub fn effective(global: Option<&BrandingRow>, custom: Option<&BrandingRow>) -> Effective {
+    resolve(global, custom, None).branding
 }
 
 /// `int(text, 16)` for the two-character slices `_hex_to_rgb` takes.
@@ -434,5 +469,33 @@ mod tests {
             Some("AAA")
         );
         assert_eq!(effective(None, None).title, "CoPilot");
+    }
+
+    #[test]
+    fn source_names_the_override_only_when_it_supplied_a_field() {
+        let mime_only = BrandingRow {
+            enabled: true,
+            logo_mime_type: Some("image/gif".into()),
+            ..BrandingRow::default()
+        };
+        let r = resolve(None, Some(&mime_only), Some("acme"));
+        assert_eq!((r.source, r.customer_code), ("global", None));
+        assert_eq!(r.branding.logo_mime_type, None);
+        let colour = BrandingRow {
+            enabled: true,
+            brand_color: Some(" #abc ".into()),
+            ..BrandingRow::default()
+        };
+        let r = resolve(None, Some(&colour), Some("acme"));
+        assert_eq!(
+            (r.source, r.customer_code.as_deref()),
+            ("custom", Some("acme"))
+        );
+        assert_eq!(r.branding.brand_color.as_deref(), Some("#abc"));
+        let off = BrandingRow {
+            enabled: false,
+            ..colour
+        };
+        assert_eq!(resolve(None, Some(&off), Some("acme")).source, "global");
     }
 }

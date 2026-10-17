@@ -22,6 +22,8 @@
 //! | `DEFAULT_ALERT_SEVERITY` | `High` | notification severity fallback |
 //! | `CONNECTOR_CACHE_TTL_SECONDS` | `600` | `connectors` row cache; `0` disables |
 //! | `CONNECTOR_CACHE_CHECK_SECONDS` | `5` | how stale a cached `connectors` row may get when another process wrote it (the change check, `copilot_db::connectors`); `0` disables the check |
+//! | `BRANDING_CACHE_TTL_SECONDS` | `600` | resolved Customer Portal branding cache, read like Python's `int()` (negative = `0`, anything else `600`); `0` disables |
+//! | `BRANDING_CACHE_CHECK_SECONDS` | `5` | how stale cached branding may get when another process wrote it (the change check, `copilot-customer-portal`); `0` disables the check |
 //! | `COPILOT_RS_PALACE_JOBS` | `false` | run the palace-lesson drainer/sweeper here instead of in APScheduler |
 //! | `COPILOT_RS_JOBS` | *(unset)* | scheduled jobs this service may take over (ids, comma-separated, or `all`); each runs only while its `scheduled_job_metadata` row is disabled |
 //! | `AUDIT_LOG_RETENTION_DAYS` | `90` | `prune_audit_log`'s window, read as Python reads it (`<= 0` keeps everything) |
@@ -129,6 +131,11 @@ pub struct CopilotConfig {
     /// Interval of the connector cache's cross-process change check (`0` =
     /// no check).
     pub connector_cache_check: Duration,
+    /// Resolved Customer Portal branding cache TTL (`0` = disabled).
+    pub branding_cache_ttl: Duration,
+    /// Interval of the branding cache's cross-process change check (`0` =
+    /// no check).
+    pub branding_cache_check: Duration,
     /// Run the palace-lesson jobs in this process.
     pub palace_jobs: bool,
     /// `COPILOT_RS_JOBS`, as set: the scheduled jobs this process may take
@@ -341,6 +348,8 @@ impl CopilotConfig {
                 5,
                 0,
             )),
+            branding_cache_ttl: python_seconds(env, "BRANDING_CACHE_TTL_SECONDS", 600),
+            branding_cache_check: python_seconds(env, "BRANDING_CACHE_CHECK_SECONDS", 5),
             palace_jobs: env.get_bool("COPILOT_RS_PALACE_JOBS"),
             rust_jobs: env.get("COPILOT_RS_JOBS"),
             audit_log_retention_days: env.get_raw("AUDIT_LOG_RETENTION_DAYS"),
@@ -394,6 +403,18 @@ impl CopilotConfig {
             catalog: crate::catalog_env::CatalogEnv::from_env(env),
         })
     }
+}
+
+/// `max(int(os.getenv(key, default)), 0)` seconds, `default` when the value
+/// is not an integer (`branding_cache.py`).
+fn python_seconds(env: &EnvFile, key: &str, default: u64) -> Duration {
+    let seconds = env
+        .get_raw(key)
+        .map_or(Some(default), |raw| {
+            python_int(&raw).map(|v| u64::try_from(v.max(0)).unwrap_or(0))
+        })
+        .unwrap_or(default);
+    Duration::from_secs(seconds)
 }
 
 /// Python's `int(text)` for base-10 ASCII input: surrounding whitespace, a
@@ -511,6 +532,24 @@ mod tests {
         assert!(ttl("1__0").is_err());
         assert!(ttl("_1").is_err());
         assert!(ttl("ten").is_err());
+    }
+
+    #[test]
+    fn branding_cache_settings_read_like_python_int() {
+        let read = |extra: &str| {
+            let cfg = load(&format!("JWT_SECRET=x\nMYSQL_PASSWORD=p\n{extra}")).unwrap();
+            (
+                cfg.branding_cache_ttl.as_secs(),
+                cfg.branding_cache_check.as_secs(),
+            )
+        };
+        assert_eq!(read(""), (600, 5));
+        assert_eq!(
+            read("BRANDING_CACHE_TTL_SECONDS= 1_0 \nBRANDING_CACHE_CHECK_SECONDS=1\n"),
+            (10, 1)
+        );
+        assert_eq!(read("BRANDING_CACHE_TTL_SECONDS=-3\n"), (0, 5));
+        assert_eq!(read("BRANDING_CACHE_CHECK_SECONDS=1.5\n"), (600, 5));
     }
 
     #[test]

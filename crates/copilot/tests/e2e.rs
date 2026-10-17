@@ -1290,15 +1290,15 @@ async fn customer_portal_ai_reports_flow() {
     );
     assert_eq!(wait_count(&h, &failed_talon, 1).await, 1);
 
-    // --- Unported portal paths and methods still reach Python -----------------------
+    // --- Unported paths and methods still reach Python ------------------------------
     Mock::given(method("GET"))
-        .and(path("/api/customer_portal/overview"))
+        .and(path("/api/license/get_license"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
         .expect(1)
         .mount(&legacy)
         .await;
     let (st, body) = h
-        .call("GET", "/api/customer_portal/overview", Some(&portal), None)
+        .call("GET", "/api/license/get_license", Some(&portal), None)
         .await;
     assert_eq!((st.as_u16(), body), (200, json!({"from": "python"})));
     Mock::given(method("DELETE"))

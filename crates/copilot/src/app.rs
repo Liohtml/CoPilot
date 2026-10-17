@@ -3,7 +3,7 @@
 //! ```text
 //!                      ┌─────────────── copilot (Rust, :5000) ───────────────┐
 //! frontend / portal ──►│ /api/ai_analyst/*  → copilot-ai-analyst             │
-//!                      │ /api/customer_portal/ai_reports/*                    │
+//!                      │ /api/customer_portal/* (but /sla)                    │
 //!                      │                    → copilot-customer-portal         │
 //!                      │ GET /api/customers/*   → copilot-customers           │
 //!                      │ GET /api/healthcheck/* → copilot-healthchecks        │
@@ -86,7 +86,10 @@ use copilot_webauthn::RelyingParty;
 pub const PORTED_PREFIXES: &[&str] = &[
     "/api/ai_analyst",
     "/api/talon",
-    "/api/customer_portal/ai_reports",
+    // The whole portal module (copilot-customer-portal): AI reports, settings
+    // and branding, the Overview and dashboard counters, agents, `/me`; the
+    // SLA page (below) is copilot-soc-management's.
+    "/api/customer_portal",
     "GET /api/customers",
     "GET /api/healthcheck",
     "/api/version",
@@ -289,6 +292,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_db::passkeys::REQUIREMENTS);
     all.extend_from_slice(copilot_db::security::REQUIREMENTS);
     all.extend_from_slice(copilot_db::branding::REQUIREMENTS);
+    all.extend_from_slice(copilot_customer_portal::REQUIREMENTS);
     all.extend_from_slice(copilot_incidents::REQUIREMENTS);
     all.extend_from_slice(copilot_ingest::REQUIREMENTS);
     all.extend_from_slice(copilot_sla::REQUIREMENTS);
@@ -399,6 +403,8 @@ pub struct App {
     pub intel: copilot_intel_connectors::IntelState,
     /// The Detections Catalog (`/api/copilot_searches`) and its caches.
     pub searches: copilot_searches::SearchesState,
+    /// The Customer Portal routes and their branding cache.
+    pub portal: copilot_customer_portal::PortalState,
 }
 
 impl App {
@@ -549,6 +555,11 @@ impl App {
             legacy.clone(),
         )
         .context("building the catalog clients")?;
+        let portal = copilot_customer_portal::PortalState::new(
+            ctx.clone(),
+            cfg.branding_cache_ttl,
+            cfg.branding_cache_check,
+        );
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -603,6 +614,7 @@ impl App {
             agent_reports,
             intel,
             searches,
+            portal,
         })
     }
 
@@ -643,11 +655,11 @@ impl App {
         let ported = Router::new()
             .nest("/api/ai_analyst", copilot_ai_analyst::router(state.clone()))
             .nest("/api/talon", copilot_talon::router(state.clone()))
-            // Only `/ai_reports/*` is ported; other portal paths are not
-            // routes here and fall through to the legacy proxy.
+            // Every portal route but `/sla/*` (copilot-soc-management's,
+            // merged below with full paths).
             .nest(
                 "/api/customer_portal",
-                copilot_customer_portal::router(state),
+                copilot_customer_portal::router(state, self.portal.clone()),
             )
             .nest(
                 "/api/customers",

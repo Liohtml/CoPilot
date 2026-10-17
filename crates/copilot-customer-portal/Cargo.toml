@@ -1,6 +1,6 @@
 [package]
 name = "copilot-customer-portal"
-description = "Customer Portal surfaces ported from app/customer_portal (/api/customer_portal/ai_reports)"
+description = "Customer Portal surfaces ported from app/customer_portal (/api/customer_portal)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,6 +13,14 @@ copilot-auth = { workspace = true }
 copilot-web = { workspace = true }
 copilot-talon = { workspace = true }
 copilot-ai-analyst = { workspace = true }
+# The incidents' status counts, the agents' row, the branding merge (one
+# definition each) and CPython's `str.casefold`.
+copilot-incidents = { workspace = true }
+copilot-agents = { workspace = true }
+copilot-notifications = { workspace = true }
+copilot-jinja = { workspace = true }
+# `latin1` header values and `gzip` as Starlette writes them.
+copilot-objectstore = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -20,6 +28,13 @@ axum = { workspace = true }
 http = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
+sqlx = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+flate2 = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
 
 [lints]
 workspace = true

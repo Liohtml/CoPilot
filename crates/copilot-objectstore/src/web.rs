@@ -210,7 +210,7 @@ pub fn streaming_response(
 
 /// `gzip.GzipFile(mode="wb", fileobj=BytesIO(), compresslevel=9)`: no file
 /// name, the current time as `mtime`, `XFL` 2, `OS` 255.
-fn gzip(data: &[u8]) -> Result<Bytes, PyExc> {
+pub fn gzip(data: &[u8]) -> Result<Bytes, PyExc> {
     use std::io::Write as _;
     let mtime = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

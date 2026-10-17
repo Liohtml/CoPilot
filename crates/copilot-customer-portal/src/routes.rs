@@ -1,5 +1,6 @@
 //! `/api/customer_portal/ai_reports/*` — port of
-//! `app/customer_portal/routes/ai_reports.py`.
+//! `app/customer_portal/routes/ai_reports.py` — and the router of the whole
+//! module.
 //!
 //! | Route | Scope | Notes |
 //! |---|---|---|
@@ -29,12 +30,14 @@ use copilot_web::{
     QueryPairs, WithJson,
 };
 
+use crate::errors::internal_errors;
 use crate::reports;
 use crate::requests;
 use crate::schema::{
     AlertAnalysisResponse, AnalysisRequestResponse, AvailabilityResponse, InsightsResponse,
     PortalAiReportSettings, SettingsResponse, UpdateSettingsRequest, settings_values,
 };
+use crate::state::PortalState;
 
 /// `insights?limit=`: `Query(5, ge=1, le=25)`.
 const INSIGHTS_LIMIT: IntRules = IntRules {
@@ -42,9 +45,21 @@ const INSIGHTS_LIMIT: IntRules = IntRules {
     le: Some(25),
 };
 
-/// The router, to be nested at `/api/customer_portal`. Paths it does not
-/// know fall through to the legacy proxy.
-pub fn router(state: TalonState) -> Router {
+/// The router, to be nested at `/api/customer_portal`: the AI reports and
+/// every other portal route ([`crate::PortalState`]). Paths it does not know
+/// (`/sla/*` is `copilot-soc-management`'s) fall through.
+pub fn router(state: TalonState, portal: PortalState) -> Router {
+    ai_reports_router(state).merge(
+        Router::new()
+            .merge(crate::branding::routes::router())
+            .merge(crate::dashboard::routes::router())
+            .merge(crate::agents::routes::router())
+            .merge(crate::me::routes::router())
+            .with_state(portal),
+    )
+}
+
+fn ai_reports_router(state: TalonState) -> Router {
     Router::new()
         .route(
             "/ai_reports/settings/{customer_code}",
@@ -58,18 +73,6 @@ pub fn router(state: TalonState) -> Router {
             post(investigate),
         )
         .with_state(state)
-}
-
-/// `internal_errors(action)`: service refusals pass through; anything
-/// unexpected is logged and answered generically.
-fn internal_errors<T>(action: &str, result: Result<T, ApiError>) -> Result<T, ApiError> {
-    result.map_err(|e| match e {
-        ApiError::Internal(cause) => {
-            tracing::error!(%cause, "Failed to {action}");
-            ApiError::server_error(format!("Failed to {action}"))
-        }
-        other => other,
-    })
 }
 
 fn json<T: serde::Serialize>(body: T) -> Response {
