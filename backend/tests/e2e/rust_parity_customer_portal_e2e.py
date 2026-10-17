@@ -491,6 +491,9 @@ def mask_clocks(p, q):
 #: Response headers of the byte routes worth comparing (the rest come from the servers or,
 #: on the Rust side, from its global layers).
 GLOBAL_LAYER_VARY = {"origin", "access-control-request-method", "access-control-request-headers"}
+#: The request timer's pair: Rust's timing layer adds it to every response, as copilot.py's
+#: `RequestTimingMiddleware` does; the routers mounted here run without that middleware.
+TIMING_HEADERS = {"x-process-time-ms", "x-request-id"}
 STAMP = re.compile(r"assets-export-\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d\.csv")
 
 
@@ -499,7 +502,7 @@ def byte_headers(r, keep_nosniff):
     gzipped = r.headers.get("content-encoding") == "gzip"
     for k, v in r.headers.multi_items():
         k = k.lower()
-        if k in ("date", "server", "x-frame-options") or k.startswith("access-control-"):
+        if k in ("date", "server", "x-frame-options") or k in TIMING_HEADERS or k.startswith("access-control-"):
             continue
         if k == "x-content-type-options" and not keep_nosniff:
             continue
