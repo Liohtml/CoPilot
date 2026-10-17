@@ -1065,6 +1065,9 @@ writing the row (`copilot_web::middleware`). `/api/sublime` stays in
 Python: `sublimealerts` and its five child tables are not in Alembic's
 history (`alembic/env.py` leaves the model commented out), so both routes
 fail today; creating them or dropping the routes is a product decision.
+Neither connector keeps state in the process beyond the shared connector
+cache: both send their key with every request (no session, no token), so
+the two backends can answer side by side.
 `rust_parity_intel_connectors_e2e.py` runs every route against recording
 OpenCTI and Cortex stand-ins (HTTP and HTTPS with a self-signed
 certificate), every outbound header compared in order.
