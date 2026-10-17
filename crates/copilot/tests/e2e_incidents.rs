@@ -563,29 +563,43 @@ async fn unported_paths_and_methods_reach_the_legacy_backend() {
     let legacy = MockServer::start().await;
     let h = harness_or_skip!(Some(&legacy));
     h.seed().await;
-    // The MinIO routes are copilot-objectstore's now (e2e_objectstore.rs),
-    // the indexer reads copilot-ingest's (e2e_ingest.rs), the case notification
-    // copilot-shuffle's (e2e_response.rs); the default-template upload reads
-    // files on the Python host.
+    // The MinIO routes are copilot-objectstore's now (e2e_objectstore.rs), the
+    // default-template upload included; the indexer reads copilot-ingest's
+    // (e2e_ingest.rs), the case notification copilot-shuffle's
+    // (e2e_response.rs). The DOCX/PDF reports stay Python.
+    const R: &str = "/api/incidents/report";
     Mock::given(method("POST"))
-        .and(path(format!("{P}/case-report-template/default-template")))
+        .and(path(format!("{R}/generate-report-docx")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-post"})))
+        .expect(1)
+        .mount(&legacy)
+        .await;
+    Mock::given(path(format!("{P}/case-report-template/default-template")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+        .expect(0)
         .mount(&legacy)
         .await;
     let s = h.suffix.clone();
     let admin = h.token(&format!("admin{s}"), "admin");
-    for (m, uri, want) in [(
-        "POST",
-        format!("{P}/case-report-template/default-template"),
-        "python-post",
-    )] {
-        let (st, body) = h.call(m, &uri, Some(&admin), Some(json!({}))).await;
-        assert_eq!(
-            (st.as_u16(), body),
-            (200, json!({"from": want})),
-            "{m} {uri}"
-        );
-    }
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("{R}/generate-report-docx"),
+            Some(&admin),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!((st.as_u16(), body), (200, json!({"from": "python-post"})));
+    // Answered here (no MinIO in this harness), never by Python.
+    let (_, body) = h
+        .call(
+            "POST",
+            &format!("{P}/case-report-template/default-template"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_ne!(body, json!({"from": "python"}));
 }
 
 // ---------------------------------------------------------------------------
@@ -1068,35 +1082,27 @@ async fn case_task_assignment_notifies_and_template_routes_split() {
         "task_assigned".to_string()
     ]));
 
-    // Templates: the CRUD is Rust, the library and /suggest stay in Python.
+    // Templates: the CRUD is Rust, and so are /suggest and the library
+    // (copilot-case-templates, e2e_core_leftovers.rs): none reaches Python.
     const T: &str = "/api/incidents/case_templates";
-    for p in [
-        "/suggest",
-        "/library",
-        "/library/k1",
-        "/library/refresh",
-        "/library/k1/import",
-    ] {
-        Mock::given(path(format!("{T}{p}")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
-            .mount(&legacy)
-            .await;
-    }
+    Mock::given(wiremock::matchers::path_regex(format!(
+        "^{T}/(suggest|library)"
+    )))
+    .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+    .expect(0)
+    .mount(&legacy)
+    .await;
     let admin = h.token(&format!("admin{s}"), "admin");
-    for (m, p) in [
-        ("GET", "/suggest?customer_code=x"),
-        ("GET", "/library"),
-        ("GET", "/library/k1"),
-        ("POST", "/library/refresh"),
-        ("POST", "/library/k1/import"),
-    ] {
-        let (st, body) = h.call(m, &format!("{T}{p}"), Some(&admin), None).await;
-        assert_eq!(
-            (st.as_u16(), body),
-            (200, json!({"from": "python"})),
-            "{m} {p}"
-        );
-    }
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("{T}/suggest?customer_code=x"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st.as_u16(), 200);
+    assert_eq!(body["success"], json!(true), "{body}");
     let (st, body) = h
         .call("GET", &format!("{T}/999999999"), Some(&admin), None)
         .await;
