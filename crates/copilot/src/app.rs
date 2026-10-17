@@ -30,6 +30,7 @@
 //!                      │                                                      │   api.first.org
 //!                      │ /api/vulnerabilities/*, /api/sca/*,                  │
 //!                      │ /api/syscollector/* → copilot-agent-reports          │
+//!                      │ /api/copilot_searches/* → copilot-searches ──────────► GitHub, Wazuh, Graylog
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
