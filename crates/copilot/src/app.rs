@@ -33,6 +33,8 @@
 //!                      │ /api/monitoring_alert/*                              │
 //!                      │                    → copilot-monitoring-alerts ──────► Graylog, Event Shipper
 //!                      │ /api/copilot_searches/* → copilot-searches ──────────► GitHub, Wazuh, Graylog
+//!                      │ /api/github-audit/*, /api/nuclei/*                   │
+//!                      │                    → copilot-assessments ────────────► GitHub, Nuclei module
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -307,6 +309,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // This process's request timing, runtime lag and query metrics
     // (copilot-status).
     "/api/performance",
+    // The GitHub organization audit and the Nuclei scans
+    // (copilot-assessments), routed on the decoded path as Starlette does.
+    "/api/github-audit",
+    "/api/nuclei",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -351,6 +357,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_integration_modules::REQUIREMENTS);
     all.extend_from_slice(copilot_license::REQUIREMENTS);
     all.extend_from_slice(copilot_status::REQUIREMENTS);
+    all.extend_from_slice(copilot_assessments::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -451,6 +458,9 @@ pub struct App {
     /// The sidebar's status panel (`/api/status/sidebar`) and its process
     /// state.
     pub sidebar: copilot_status::sidebar::SidebarState,
+    /// The GitHub audit and Nuclei routes (`/api/github-audit`,
+    /// `/api/nuclei`).
+    pub assessments: copilot_assessments::AssessmentsState,
 }
 
 impl App {
@@ -635,6 +645,11 @@ impl App {
             )),
             cache: Arc::default(),
         };
+        let assessments = copilot_assessments::AssessmentsState::new(
+            ctx.clone(),
+            &cfg.assessments,
+            legacy.clone(),
+        );
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -693,6 +708,7 @@ impl App {
             modules,
             license,
             sidebar,
+            assessments,
         })
     }
 
@@ -1098,6 +1114,9 @@ impl App {
                     copilot_wazuh::decoded_slash_to_legacy,
                 )),
             )
+            // Full paths: `/api/github-audit/*` and `/api/nuclei/*`, routed on
+            // the decoded path (an encoded `/` never reaches Python).
+            .merge(copilot_assessments::router(self.assessments.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

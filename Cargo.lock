@@ -466,6 +466,7 @@ dependencies = [
  "copilot-agent-reports",
  "copilot-agents",
  "copilot-ai-analyst",
+ "copilot-assessments",
  "copilot-auth",
  "copilot-connectors",
  "copilot-core",
@@ -600,6 +601,30 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-assessments"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-threat-intel",
+ "copilot-uba",
+ "copilot-upstream",
+ "copilot-web",
+ "futures",
+ "http",
+ "pretty_assertions",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tower",
  "tracing",
 ]
 

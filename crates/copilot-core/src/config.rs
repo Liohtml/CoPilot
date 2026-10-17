@@ -37,6 +37,7 @@
 //! | `COPILOT_CATALOG_REFRESH` | `true` | this process warms and refreshes its own catalog caches (`false`: they load on demand only — the parity suites, an air-gapped deployment) |
 //! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
 //! | `COPILOT_INTEGRATION_MODULES_URL` | *(unset)* | tests only: every request to an integration module container (`http://copilot-<name>-module/…`) and to Mimecast's region discovery goes to `{url}/{host}{path}` (the parity harness's stand-in); never set in production |
+//! | `COPILOT_GITHUB_AUDIT_API_URL`, `COPILOT_NUCLEI_MODULE_URL` | *(unset)* | tests only: the GitHub API base the organization audit calls instead of `https://api.github.com`, and the stand-in every request to `http://copilot-nuclei-module/…` goes to as `{url}/{host}{path}` (`copilot-assessments`); never set in production |
 //! | `COPILOT_SIDEBAR_REFRESH` | `COPILOT_CATALOG_REFRESH` | this process warms and refreshes its own sidebar indicators (`copilot-status`); unset, it follows the catalog switch |
 //! | `ENVIRONMENT` | `PRODUCTION` | the sidebar's `environment` field, as `os.getenv` reads it |
 //! | `PERF_MONITOR_ENABLED`, `PERF_LAG_SAMPLE_INTERVAL`, `PERF_LAG_STALL_THRESHOLD_MS`, `PERF_SLOW_REQUEST_MS`, `PERF_RECENT_REQUESTS`, `PERF_RECENT_STALLS`, `PERF_LAG_SAMPLES`, `PERF_DURATION_SAMPLES`, `PERF_MAX_ENDPOINTS`, `DB_SLOW_QUERY_MS`, `DB_QUERY_SAMPLES`, `DB_MAX_STATEMENTS` | `true`, `0.25`, `100`, `1000`, `500`, `200`, `2000`, `200`, `500`, `250`, `2000`, `300` | this process's request timing, runtime-lag watchdog and query metrics (`/api/performance`, `copilot-status`), read as `app/middleware/performance.py` and `app/db/query_metrics.py` read them |
@@ -181,6 +182,9 @@ pub struct CopilotConfig {
     /// `COPILOT_INTEGRATION_MODULES_URL` — tests only: the stand-in the
     /// integration modules and Mimecast's discovery are reached at.
     pub integration_modules_url: Option<String>,
+    /// The security assessments' test-only upstream overrides
+    /// (`copilot-assessments`).
+    pub assessments: crate::assessments_env::AssessmentsEnv,
     /// `COPILOT_SIDEBAR_REFRESH`, as set (`copilot-status`'s refresher).
     pub sidebar_refresh: Option<String>,
     /// `ENVIRONMENT`, as set (`os.getenv` semantics).
@@ -448,6 +452,7 @@ impl CopilotConfig {
                 .get("COPILOT_INTEGRATION_MODULES_URL")
                 .map(|v| v.trim().trim_end_matches('/').to_string())
                 .filter(|v| !v.is_empty()),
+            assessments: crate::assessments_env::AssessmentsEnv::from_env(env),
             sidebar_refresh: env.get_raw("COPILOT_SIDEBAR_REFRESH"),
             environment: env.get_raw("ENVIRONMENT"),
             perf: PerfEnv {
