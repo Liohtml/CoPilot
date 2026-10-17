@@ -1338,10 +1338,12 @@ async def main():  # noqa: C901 - one scenario after the other
         """A difference by design (§4): Python answers `py_status`, Rust `rs_status` with
         `rs_detail`, sends nothing upstream and leaves the rows as they were."""
         await reset()
-        before = await snapshot()
         r = await send(py, method, path, tok, body, None, None)
         check(f"python: {name} [{r.status_code}]", r.status_code == py_status, f"{r.status_code} {r.text[:600]}")
         await reset()
+        # Taken after the reset Rust runs on: a reset stamps `UTC_TIMESTAMP()`, so a snapshot
+        # from before Python's call differs by a second whenever the clock ticks in between.
+        before = await snapshot()
         for rec in RECS:
             rec.take()
         q = await send(rs, method, path, tok, body, None, None)
