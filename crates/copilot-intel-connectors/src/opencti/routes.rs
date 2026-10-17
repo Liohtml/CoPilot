@@ -4,7 +4,7 @@
 //! Python).
 
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::routing::{get, post};
 use copilot_auth::pyvalue::PyValue;
 use copilot_upstream::model::{self, Loc, PyError, Ty};
@@ -13,6 +13,7 @@ use copilot_upstream::respond::{from_json, model_response, validation_error};
 use copilot_web::{
     AdminOrAnalyst, ApiError, ApiResult, Authorized, JsonBody, QueryPairs, WithJson,
 };
+use http::Uri;
 
 use super::schema;
 use super::services::{self, IndicatorQuery};
@@ -221,13 +222,44 @@ async fn indicators(_: Reader, State(st): State<IntelState>, q: QueryPairs) -> A
     answer(services::search_indicators(&st.ctx.connectors, &query).await)
 }
 
-async fn entity(
-    _: Reader,
-    State(st): State<IntelState>,
-    Path(entity_id): Path<String>,
-) -> ApiResult {
+/// `urllib.parse.unquote`: what uvicorn makes of the path (`%XX` runs
+/// decoded as UTF-8, errors replaced).
+fn unquote(raw: &str) -> String {
+    let raw = raw.as_bytes();
+    let mut bytes = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        let hex = |b: u8| char::from(b).to_digit(16);
+        if raw[i] == b'%' && i + 2 < raw.len() {
+            if let (Some(h), Some(l)) = (hex(raw[i + 1]), hex(raw[i + 2])) {
+                bytes.push(u8::try_from(h * 16 + l).unwrap_or(0));
+                i += 3;
+                continue;
+            }
+        }
+        bytes.push(raw[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+async fn entity(_: Reader, State(st): State<IntelState>, uri: Uri) -> ApiResult {
+    // The route's last segment, still percent-encoded (an encoded `/` has
+    // been handed to Python by `decoded_slash_to_legacy`).
+    let entity_id = unquote(uri.path().rsplit('/').next().unwrap_or_default());
     let mut p = Params::new("path");
     let entity_id = p.text("entity_id", Some(&entity_id), true, 1, 256);
     p.finish()?;
     answer(services::entity(&st.ctx.connectors, &entity_id.unwrap_or_default()).await)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paths_unquote_like_uvicorn() {
+        assert_eq!(unquote("r%C3%A9port%201"), "r\u{e9}port 1");
+        assert_eq!(unquote("a%FFb%zz%4"), "a\u{fffd}b%zz%4");
+    }
 }

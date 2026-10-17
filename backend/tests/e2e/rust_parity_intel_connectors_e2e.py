@@ -947,6 +947,8 @@ async def opencti_checks(p, t_admin, t_analyst, t_portal):
     )
     await p.same("entity, an id with spaces and accents", "GET", f"{E}/r%C3%A9port%201", t_analyst, before=octi(), expect=200)
     await p.same("entity, an encoded slash", "GET", f"{E}/a%2Fb", t_analyst, before=octi(), expect=404)
+    await p.same("entity, an id that is no UTF-8 once decoded", "GET", f"{E}/a%FFb", t_analyst, before=octi(), expect=200)
+    await p.same("entity, an encoded percent", "GET", f"{E}/a%2541", t_analyst, before=octi(), expect=200)
     await p.same(
         "entity, representative not an object",
         "GET",
