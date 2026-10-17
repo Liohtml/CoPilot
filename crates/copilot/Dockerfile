@@ -9,7 +9,8 @@
 # only the Cargo workspace and the Grafana dashboard templates the binary
 # embeds — never .env, data/, the rest of backend/ or target/).
 #
-# Runtime: debian:bookworm-slim, non-root, one static-ish binary. The service
+# Runtime: debian:bookworm-slim, non-root, one static-ish binary (and the
+# ScoutSuite CLI its scans run). The service
 # listens on :5000 (COPILOT_PORT) and reads the same environment as the
 # Python backend (MYSQL_*, JWT_SECRET, …); see docs/architecture/RUST_MIGRATION.md.
 
@@ -30,11 +31,26 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     install -D -m 0755 target/release/copilot /out/copilot
 
 FROM ${DEBIAN_IMAGE} AS runtime
+# The ScoutSuite CLI the /api/scoutsuite scans run (copilot-scoutsuite), pinned
+# to the backend's requirements.txt (scoutsuite==5.9.1), in a venv of its own on
+# the image's Python 3.11 (built with the compilers the backend image has, which
+# are removed again); `scout` on PATH, as subprocess finds it in Python.
+# /opt/copilot/backend is the scans' working directory (COPILOT_SCOUTSUITE_DIR in
+# docker-compose.rust.yml): its scoutsuite-report/ is the volume shared with the
+# Python backend, which serves the reports; Docker gives an empty volume the
+# owner of the directory it is mounted on, here the copilot user.
+ARG SCOUTSUITE_VERSION=5.9.1
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl tzdata; \
+    apt-get install -y --no-install-recommends ca-certificates curl tzdata python3 python3-venv; \
+    apt-get install -y --no-install-recommends build-essential python3-dev; \
+    python3 -m venv /opt/scoutsuite; \
+    /opt/scoutsuite/bin/pip install --no-cache-dir "scoutsuite==${SCOUTSUITE_VERSION}"; \
+    ln -s /opt/scoutsuite/bin/scout /usr/local/bin/scout; \
+    apt-get purge -y --auto-remove build-essential python3-dev; \
     rm -rf /var/lib/apt/lists/*; \
-    useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin copilot
+    useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin copilot; \
+    install -d -o copilot -g copilot -m 0755 /opt/copilot/backend/scoutsuite-report
 COPY --from=rust-builder /out/copilot /usr/local/bin/copilot
 USER copilot
 WORKDIR /tmp

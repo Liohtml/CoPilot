@@ -10,6 +10,10 @@
 services:
     copilot-backend:
         ports: !reset []
+        volumes:
+            # ScoutSuite's reports: copilot-rs runs the scans, this service's
+            # static /scoutsuite-report mount serves them.
+            - scoutsuite-reports:/opt/copilot/backend/scoutsuite-report
 
     copilot-rs:
         image: ghcr.io/socfortress/copilot-rs:latest
@@ -20,12 +24,16 @@ services:
             - "5000:5000"
         env_file: .env
         volumes:
+            # ScoutSuite's reports, shared with copilot-backend; the scans run in
+            # /opt/copilot/backend (COPILOT_SCOUTSUITE_DIR), as the backend's do.
+            - scoutsuite-reports:/opt/copilot/backend/scoutsuite-report
             # The Velociraptor connector's api.config.yaml: its row holds a path in
             # the backend's data directory (where the connector's YAML upload puts
             # it), read here at that same path.
             - ./data/data:/opt/copilot/backend/data:ro
         environment:
             - COPILOT_LEGACY_URL=http://copilot-backend:5000
+            - COPILOT_SCOUTSUITE_DIR=/opt/copilot/backend
             # Opt-in: scheduled jobs this service may take over from APScheduler
             # (ids, comma-separated: prune_audit_log, invoke_palace_lesson_drainer,
             # invoke_palace_lesson_sweeper, or "all"; COPILOT_RS_PALACE_JOBS=true
@@ -37,3 +45,6 @@ services:
             - copilot-mysql
             - copilot-backend
         restart: always
+
+volumes:
+    scoutsuite-reports:

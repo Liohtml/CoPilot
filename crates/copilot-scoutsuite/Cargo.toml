@@ -1,0 +1,29 @@
+[package]
+name = "copilot-scoutsuite"
+description = "ScoutSuite: /api/scoutsuite (the AWS, Azure and GCP scans run with the scout CLI, the reports listed and deleted)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-objectstore = { workspace = true }
+copilot-patch-tuesday = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-gateway = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

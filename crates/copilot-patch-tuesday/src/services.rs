@@ -39,23 +39,42 @@ pub trait Fetch: Sync {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Http;
 
-/// `json.loads(response.content)`: the value, or the `str()` of what it
-/// raises (`JSONDecodeError`, or the `UnicodeDecodeError` of bytes that are
-/// not UTF-8).
-pub fn json_loads_bytes(content: &[u8]) -> Result<PyValue, String> {
+/// What `json.loads(bytes)` raises: `JSONDecodeError`, or the
+/// `UnicodeDecodeError` of bytes that are not UTF-8 (both `ValueError`s).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoadsError {
+    /// `json.JSONDecodeError`'s `str()`.
+    Json(String),
+    /// `UnicodeDecodeError`'s `str()`.
+    Unicode(String),
+}
+
+impl std::fmt::Display for LoadsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadsError::Json(t) | LoadsError::Unicode(t) => f.write_str(t),
+        }
+    }
+}
+
+/// `json.loads(content)` of `bytes` (`json.detect_encoding`, then the
+/// parse): the value, or what it raises. The one Rust definition: the
+/// ScoutSuite upload reads its file with it too.
+pub fn json_loads_bytes(content: &[u8]) -> Result<PyValue, LoadsError> {
     let utf8 = content.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(content);
     let zero_led = |n: usize| content.len() == n || (n == 4 && content.len() > 4);
     let wide = content.starts_with(&[0xff, 0xfe])
         || content.starts_with(&[0xfe, 0xff])
         || ((zero_led(4) || zero_led(2)) && (content[0] == 0 || content[1] == 0));
     if wide {
-        // UTF-16/32 (`json.detect_encoding`): never sent by the feeds.
+        // UTF-16/32 (`json.detect_encoding`): parsed, but a document that
+        // fails reads as the first character's error.
         return copilot_auth::pyvalue::loads_bytes(content)
-            .map_err(|_| "Expecting value: line 1 column 1 (char 0)".to_string());
+            .map_err(|_| LoadsError::Json("Expecting value: line 1 column 1 (char 0)".into()));
     }
-    let text =
-        std::str::from_utf8(utf8).map_err(|_| copilot_yaml::pyint::utf8_decode_error(utf8))?;
-    copilot_upstream::json::py_loads(text)
+    let text = std::str::from_utf8(utf8)
+        .map_err(|_| LoadsError::Unicode(copilot_yaml::pyint::utf8_decode_error(utf8)))?;
+    copilot_upstream::json::py_loads(text).map_err(LoadsError::Json)
 }
 
 /// `text[:n]`.

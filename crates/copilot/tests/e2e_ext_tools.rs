@@ -942,3 +942,339 @@ async fn sublime_failures_are_pythons() {
     assert_eq!(check.url.path(), "/v0/rules");
     assert_eq!(check.url.query(), Some("limit=1"));
 }
+
+// --- /api/scoutsuite -------------------------------------------------------------------
+
+const SC: &str = "/api/scoutsuite";
+
+/// A `scout` stand-in: records its working directory and arguments (and,
+/// for GCP, the credential and its directory's mode) in `log`, then writes
+/// the three report files under `scoutsuite-report/` as ScoutSuite does.
+fn scout_stub(dir: &std::path::Path, log: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("scout");
+    let script = format!(
+        r#"#!/bin/sh
+out="{log}/$$"
+printf '%s\n' "$PWD" > "$out.tmp"
+prev=""
+name=""
+for a in "$@"; do
+  printf '%s\n' "$a" >> "$out.tmp"
+  if [ "$prev" = "--service-account" ]; then
+    cat "$a" > "$out.cred"
+    stat -c %a "$(dirname "$a")" > "$out.mode"
+  fi
+  if [ "$prev" = "--report-name" ]; then name="$a"; fi
+  prev="$a"
+done
+mkdir -p scoutsuite-report/scoutsuite-results
+echo report > "scoutsuite-report/$name.html"
+echo results > "scoutsuite-report/scoutsuite-results/scoutsuite_results_$name.js"
+echo exceptions > "scoutsuite-report/scoutsuite-results/scoutsuite_exceptions_$name.js"
+mv "$out.tmp" "$out.done"
+"#,
+        log = log.display()
+    );
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+fn scout_router(h: &Harness, work: &std::path::Path, program: &std::path::Path) -> axum::Router {
+    let mut st = h.app.scoutsuite.clone();
+    st.dir = Arc::new(work.to_path_buf());
+    st.program = Arc::from(program.to_str().unwrap());
+    copilot_scoutsuite::router(st)
+}
+
+/// The stand-in's runs, waited for: (working directory, arguments, the
+/// credential's contents and directory mode, if any).
+async fn scout_runs(
+    log: &std::path::Path,
+    n: usize,
+) -> Vec<(String, Vec<String>, Option<(String, String)>)> {
+    for _ in 0..100 {
+        let done: Vec<_> = std::fs::read_dir(log)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".done"))
+            .collect();
+        if done.len() >= n {
+            let mut out = Vec::new();
+            for e in done {
+                let text = std::fs::read_to_string(e.path()).unwrap();
+                let mut lines = text.lines().map(str::to_string);
+                let cwd = lines.next().unwrap();
+                let stem = e.path().with_extension("");
+                let cred = std::fs::read_to_string(stem.with_extension("cred"))
+                    .ok()
+                    .map(|c| {
+                        let mode = std::fs::read_to_string(stem.with_extension("mode")).unwrap();
+                        (c, mode.trim().to_string())
+                    });
+                out.push((cwd, lines.collect(), cred));
+                std::fs::remove_file(e.path()).unwrap();
+            }
+            return out;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("scout did not run");
+}
+
+#[tokio::test]
+async fn scoutsuite_routes_are_for_analysts() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let portal = h.token(&format!("portal{}", h.suffix), "customer_user");
+    for (m, uri) in [
+        ("GET", "/report-generation-options"),
+        ("GET", "/available-reports"),
+        ("POST", "/generate-aws-report"),
+        ("POST", "/generate-azure-report"),
+        ("DELETE", "/delete-report/x.html"),
+    ] {
+        let body = (m == "POST").then(|| json!({}));
+        let (status, _) = h.call(m, &format!("{SC}{uri}"), None, body.clone()).await;
+        assert_eq!(status, 401, "{uri}");
+        let (status, _) = h.call(m, &format!("{SC}{uri}"), Some(&portal), body).await;
+        assert_eq!(status, 403, "{uri}");
+    }
+    let (status, _) = h
+        .call_raw(
+            "POST",
+            &format!("{SC}/generate-gcp-report"),
+            Some(&portal),
+            Some("multipart/form-data; boundary=b"),
+            "--b--\r\n",
+        )
+        .await;
+    assert_eq!(status, 403);
+}
+
+#[tokio::test]
+async fn scoutsuite_scans_and_reports() {
+    let mut h = harness_or_skip!(None);
+    h.seed().await;
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let work = tempfile::tempdir().unwrap();
+    let log = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let stub = scout_stub(bin.path(), log.path());
+    h.router = scout_router(&h, work.path(), &stub);
+
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("{SC}/report-generation-options"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["options"], json!(["aws", "azure", "gcp"]));
+    // No `scoutsuite-report` yet.
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("{SC}/available-reports"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 404, "{body}");
+    assert_eq!(body["message"], "Directory does not exist");
+
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{SC}/generate-aws-report"),
+            Some(&analyst),
+            Some(json!({"report_type": "aws", "access_key_id": "AKIA", "secret_access_key": "s 3", "report_name": "aws-one"})),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["message"],
+        "AWS ScoutSuite report generation started successfully. This will take a few minutes \
+         to complete. Check back in shortly."
+    );
+    let runs = scout_runs(log.path(), 1).await;
+    let cwd = std::fs::canonicalize(work.path()).unwrap();
+    assert_eq!(runs[0].0, cwd.to_str().unwrap());
+    assert_eq!(
+        runs[0].1,
+        [
+            "aws",
+            "--access-key-id",
+            "AKIA",
+            "--secret-access-key",
+            "s 3",
+            "--report-name",
+            "aws-one",
+            "--force",
+            "--no-browser"
+        ]
+    );
+
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{SC}/generate-azure-report"),
+            Some(&analyst),
+            Some(json!({"report_type": "aws", "username": "u", "password": "p", "tenant_id": "t", "report_name": "r"})),
+        )
+        .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(body["message"], "Invalid report type.");
+    let (status, _) = h
+        .call(
+            "POST",
+            &format!("{SC}/generate-azure-report"),
+            Some(&analyst),
+            Some(json!({"report_type": "azure", "username": "u"})),
+        )
+        .await;
+    assert_eq!(status, 422);
+
+    // GCP: the key in a private directory, removed after the scan.
+    let key = json!({
+        "type": "service_account", "project_id": "p", "private_key_id": "k", "private_key": "pk",
+        "client_email": "e", "client_id": "1", "auth_uri": "a", "token_uri": "t",
+        "auth_provider_x509_cert_url": "c", "client_x509_cert_url": "x", "universe_domain": "g",
+    })
+    .to_string();
+    let multipart = |content: &str| {
+        format!(
+            "--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"key.json\"\r\n\
+             Content-Type: application/json\r\n\r\n{content}\r\n--b--\r\n"
+        )
+    };
+    let (status, body) = h
+        .call_raw(
+            "POST",
+            &format!("{SC}/generate-gcp-report?report_name=gcp-one"),
+            Some(&analyst),
+            Some("multipart/form-data; boundary=b"),
+            multipart(&key),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let runs = scout_runs(log.path(), 1).await;
+    let args = &runs[0].1;
+    assert_eq!(args[..2], ["gcp", "--service-account"]);
+    assert_eq!(
+        args[3..],
+        [
+            "--all-projects",
+            "--report-name",
+            "gcp-one",
+            "--force",
+            "--no-browser"
+        ]
+    );
+    let cred = std::path::Path::new(&args[2]);
+    assert!(cred.ends_with("gcp-service-account.json"), "{args:?}");
+    assert!(
+        cred.parent()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("scoutsuite-gcp-cred-")
+    );
+    assert_eq!(runs[0].2, Some((key.clone(), "700".to_string())));
+    for _ in 0..50 {
+        if !cred.parent().unwrap().exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(!cred.parent().unwrap().exists());
+
+    for (content, want) in [
+        (
+            "{bad",
+            "Invalid JSON file - Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+        ),
+        (
+            "[1]",
+            "JSON file does not have the correct format and fields - app.integrations.scoutsuite.schema.scoutsuite.GCPScoutSuiteJSON() argument after ** must be a mapping, not list",
+        ),
+    ] {
+        let (status, body) = h
+            .call_raw(
+                "POST",
+                &format!("{SC}/generate-gcp-report"),
+                Some(&analyst),
+                Some("multipart/form-data; boundary=b"),
+                multipart(content),
+            )
+            .await;
+        assert_eq!(status, 400, "{body}");
+        assert_eq!(body["message"], want);
+    }
+    let (status, _) = h
+        .call_raw(
+            "POST",
+            &format!("{SC}/generate-gcp-report"),
+            Some(&analyst),
+            Some("multipart/form-data; boundary=b"),
+            "--b--\r\n",
+        )
+        .await;
+    assert_eq!(status, 422);
+
+    // The reports the scans wrote, then a delete.
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("{SC}/available-reports"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let mut reports: Vec<String> =
+        serde_json::from_value(body["available_reports"].clone()).unwrap();
+    reports.sort();
+    assert_eq!(reports, ["aws-one.html", "gcp-one.html"]);
+    let (status, body) = h
+        .call(
+            "DELETE",
+            &format!("{SC}/delete-report/aws-one.html"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["message"],
+        "Report aws-one.html and associated files deleted successfully"
+    );
+    let reports_dir = work.path().join("scoutsuite-report");
+    assert!(!reports_dir.join("aws-one.html").exists());
+    assert!(
+        !reports_dir
+            .join("scoutsuite-results/scoutsuite_results_aws-one.js")
+            .exists()
+    );
+    assert!(
+        reports_dir
+            .join("scoutsuite-results/scoutsuite_results_gcp-one.js")
+            .exists()
+    );
+    // A directory of that name is `os.remove`'s error: a bare 500.
+    std::fs::create_dir(reports_dir.join("dir.html")).unwrap();
+    let (status, _) = h
+        .call(
+            "DELETE",
+            &format!("{SC}/delete-report/dir.html"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 500);
+}

@@ -27,6 +27,13 @@ included) and the body bytes — and both backends' requests are compared one by
   the rows a failed store rolled back differ (Python's attempt takes one first), and so does the
   timestamp each backend stamps: those are masked in the error texts; the timestamp is its own
   check (Python stamps its import time, a §4 row).
+* ScoutSuite (`/api/scoutsuite`, `crates/copilot-scoutsuite`): `scout` is a stand-in first on
+  both processes' `PATH` that records its arguments, working directory, an environment variable
+  both processes hold, and for GCP the credential it was handed and its directory's mode, then
+  writes the three report files ScoutSuite writes. Both backends work in one directory (Python's
+  working directory for this section, Rust's `COPILOT_SCOUTSUITE_DIR`) and one `TMPDIR`; each
+  scan's record is compared (the credential directory's random name masked after a check of its
+  shape), and so is the report tree a delete leaves.
 
 Python reaches the stand-ins because the modules' URL constants are patched here (and the
 licence server's host rewritten in `requests`); Rust because its instance is started with the
@@ -45,8 +52,10 @@ import datetime
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -83,6 +92,16 @@ MCP_URL = f"http://127.0.0.1:{MCP_PORT}"
 SUBLIME_PORT = int(os.environ.get("EXT_SUBLIME_STUB_PORT", "6633"))
 SUBLIME_URL = f"http://127.0.0.1:{SUBLIME_PORT}"
 CLOSED_PORT = int(os.environ.get("EXT_CLOSED_PORT", "6635"))
+# ScoutSuite: the working directory, the stand-in's records, its directory and the TMPDIR both
+# backends write the GCP credential under.
+SCOUT_ROOT = tempfile.mkdtemp(prefix="ext-parity-scout-")
+SCOUT_WORK = os.path.join(SCOUT_ROOT, "work")
+SCOUT_LOG = os.path.join(SCOUT_ROOT, "log")
+SCOUT_BIN = os.path.join(SCOUT_ROOT, "bin")
+SCOUT_TMP = os.path.join(SCOUT_ROOT, "tmp")
+for _d in (SCOUT_WORK, SCOUT_LOG, SCOUT_BIN, SCOUT_TMP):
+    os.makedirs(_d)
+SCOUT_MARKER = f"scout-marker-{uuid.uuid4().hex[:6]}"
 
 SFX = uuid.uuid4().hex[:6]
 ADMIN, ANALYST, PORTAL = f"ext_admin{SFX}", f"ext_analyst{SFX}", f"ext_portal{SFX}"
@@ -417,6 +436,7 @@ def build_python_app():
     from app.routers import connectors
     from app.routers import copilot_mcp
     from app.routers import microsoft_patch_tuesday
+    from app.routers import scoutsuite
     from app.routers import sublime
 
     MCPService._BASE_URLS[MCPServiceType.LOCAL] = f"{MCP_URL}/mcp"
@@ -436,6 +456,7 @@ def build_python_app():
     api.include_router(microsoft_patch_tuesday.router)
     api.include_router(copilot_mcp.router)
     api.include_router(sublime.router)
+    api.include_router(scoutsuite.router)
     api.include_router(connectors.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
@@ -449,7 +470,7 @@ def start_rust():
     binary = os.environ.get("COPILOT_BIN", os.path.join(REPO, "target", "debug", "copilot"))
     user, password, host = os.environ["MYSQL_USER"], os.environ["MYSQL_PASSWORD"], os.environ["MYSQL_URL"]
     env = {
-        "PATH": os.environ.get("PATH", ""),
+        "PATH": SCOUT_BIN + os.pathsep + os.environ.get("PATH", ""),
         "HOME": os.environ.get("HOME", "/tmp"),
         "COPILOT_DATABASE_URL": f"mysql://{user}:{password}@{host}/copilot",
         "JWT_SECRET": os.environ["JWT_SECRET"],
@@ -466,6 +487,9 @@ def start_rust():
         "COPILOT_SOCFORTRESS_MCP_URL": f"{MCP_URL}/query",
         "COPILOT_LICENSE_URL": f"{MCP_URL}/",
         "COPILOT_API_KEY": os.environ["COPILOT_API_KEY"],
+        "COPILOT_SCOUTSUITE_DIR": SCOUT_WORK,
+        "TMPDIR": SCOUT_TMP,
+        "SCOUT_PARITY_MARKER": SCOUT_MARKER,
     }
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
     for _ in range(100):
@@ -1268,6 +1292,309 @@ async def sublime_checks(p, t_admin, t_analyst, t_portal):
     SUBLIME_ANSWER.rules = None
 
 
+# --- ScoutSuite: the scout stand-in -------------------------------------------------------------------
+
+SCOUT_STUB = r"""#!/bin/sh
+out="__LOG__/$$"
+{
+  printf 'cwd=%s\n' "$PWD"
+  printf 'marker=%s\n' "$SCOUT_PARITY_MARKER"
+  for a in "$@"; do printf 'arg=%s\n' "$a"; done
+} > "$out.tmp"
+prev=""
+name=""
+for a in "$@"; do
+  if [ "$prev" = "--service-account" ]; then
+    cat "$a" > "$out.cred"
+    stat -c %a "$(dirname "$a")" > "$out.mode"
+  fi
+  if [ "$prev" = "--report-name" ]; then name="$a"; fi
+  prev="$a"
+done
+mkdir -p scoutsuite-report/scoutsuite-results
+echo report > "scoutsuite-report/$name.html"
+echo results > "scoutsuite-report/scoutsuite-results/scoutsuite_results_$name.js"
+echo exceptions > "scoutsuite-report/scoutsuite-results/scoutsuite_exceptions_$name.js"
+mv "$out.tmp" "$out.done"
+case "$name" in fail*) echo "stand-in failure" >&2; exit 3;; esac
+"""
+SC = "/api/scoutsuite"
+CRED_PATH = re.compile(r"^" + re.escape(os.path.realpath(SCOUT_TMP)) + r"/scoutsuite-gcp-cred-[a-z0-9_]{8}/gcp-service-account\.json$")
+
+
+def install_scout_stub():
+    path = os.path.join(SCOUT_BIN, "scout")
+    with open(path, "w") as f:
+        f.write(SCOUT_STUB.replace("__LOG__", SCOUT_LOG))
+    os.chmod(path, 0o755)
+    # Python's side: the stand-in first on PATH, the TMPDIR and the marker both processes hold.
+    os.environ["PATH"] = SCOUT_BIN + os.pathsep + os.environ.get("PATH", "")
+    os.environ["TMPDIR"] = SCOUT_TMP
+    os.environ["SCOUT_PARITY_MARKER"] = SCOUT_MARKER
+    tempfile.tempdir = None
+
+
+def scout_run(wait=10.0):
+    """The next run of the stand-in (waited for: Rust starts it after answering): its record, the
+    credential path checked and masked, and whether the credential's directory is gone after."""
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        done = sorted(f for f in os.listdir(SCOUT_LOG) if f.endswith(".done"))
+        if done:
+            stem = os.path.join(SCOUT_LOG, done[0][: -len(".done")])
+            with open(stem + ".done") as f:
+                lines = f.read().splitlines()
+            record = {"lines": lines}
+            for suffix in ("cred", "mode"):
+                if os.path.exists(f"{stem}.{suffix}"):
+                    with open(f"{stem}.{suffix}", "rb") as f:
+                        record[suffix] = f.read()
+            for suffix in ("done", "cred", "mode"):
+                if os.path.exists(f"{stem}.{suffix}"):
+                    os.remove(f"{stem}.{suffix}")
+            cred = next((line[4:] for i, line in enumerate(lines) if i and lines[i - 1] == "arg=--service-account"), None)
+            if cred is not None:
+                record["cred_path_ok"] = bool(CRED_PATH.match(cred))
+                for _ in range(100):
+                    if not os.path.exists(os.path.dirname(cred)):
+                        break
+                    time.sleep(0.05)
+                record["cred_dir_removed"] = not os.path.exists(os.path.dirname(cred))
+                record["lines"] = [("arg=<credential>" if line == f"arg={cred}" else line) for line in lines]
+            return record
+        time.sleep(0.05)
+    return None
+
+
+def gcp_run():
+    """`scout_run` for a GCP scan, its credential checked: under TMPDIR in a private directory of
+    `mkdtemp`'s shape, holding the upload, and gone once the scan ended."""
+    record = scout_run()
+    ok = bool(record) and record.get("cred_path_ok") and record.get("cred_dir_removed") and record.get("mode") == b"700\n"
+    check("ScoutSuite: the GCP credential's directory (shape, mode 0700, removed)", bool(ok), str(record)[:600])
+    return record
+
+
+def no_scout_run():
+    time.sleep(0.5)
+    return sorted(f for f in os.listdir(SCOUT_LOG) if f.endswith(".done"))
+
+
+def report_tree():
+    root = os.path.join(SCOUT_WORK, "scoutsuite-report")
+    out = []
+    for base, dirs, files in os.walk(root):
+        for name in dirs + files:
+            out.append(os.path.relpath(os.path.join(base, name), root))
+    return sorted(out)
+
+
+def report_files(*names):
+    def go():
+        results = os.path.join(SCOUT_WORK, "scoutsuite-report", "scoutsuite-results")
+        os.makedirs(results, exist_ok=True)
+        for name in names:
+            base = os.path.splitext(name)[0]
+            for path in (
+                os.path.join(SCOUT_WORK, "scoutsuite-report", name),
+                os.path.join(results, f"scoutsuite_results_{base}.js"),
+                os.path.join(results, f"scoutsuite_exceptions_{base}.js"),
+            ):
+                with open(path, "w") as f:
+                    f.write("x")
+
+    return go
+
+
+GCP_KEY = {
+    "type": "service_account",
+    "project_id": "parity",
+    "private_key_id": "kid",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nMII\n-----END PRIVATE KEY-----\n",
+    "client_email": "sa@parity.iam.gserviceaccount.com",
+    "client_id": "123",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/sa",
+    "universe_domain": "googleapis.com",
+}
+
+
+async def scoutsuite_checks(p, t_admin, t_analyst, t_portal):
+    cwd = os.getcwd()
+    os.chdir(SCOUT_WORK)
+    try:
+        await _scoutsuite_checks(p, t_admin, t_analyst, t_portal)
+    finally:
+        os.chdir(cwd)
+
+
+async def _scoutsuite_checks(p, t_admin, t_analyst, t_portal):
+    print("\n== ScoutSuite: guards and the options")
+    for method, path in (
+        ("GET", "/report-generation-options"),
+        ("GET", "/available-reports"),
+        ("POST", "/generate-aws-report"),
+        ("POST", "/generate-azure-report"),
+        ("POST", "/generate-gcp-report"),
+        ("DELETE", "/delete-report/x.html"),
+    ):
+        kw = {"json": {}} if path in ("/generate-aws-report", "/generate-azure-report") else {}
+        await p.same(f"{path}, no token", method, f"{SC}{path}", expect=401, **kw)
+        await p.same(f"{path}, a portal user", method, f"{SC}{path}", t_portal, expect=403, **kw)
+    await p.same("report options", "GET", f"{SC}/report-generation-options", t_analyst, expect=200)
+
+    print("\n== ScoutSuite: the AWS and Azure scans")
+    aws = {"report_type": "aws", "access_key_id": "AKIA-PARITY", "secret_access_key": "s3 cr$t'", "report_name": "aws-parity"}
+    azure = {"report_type": "azure", "username": "u@example.com", "password": "p w", "tenant_id": "tenant", "report_name": "azure-parity"}
+    A, Z = f"{SC}/generate-aws-report", f"{SC}/generate-azure-report"
+    await p.same("AWS scan", "POST", A, t_analyst, json=aws, table=scout_run, expect=200)
+    await p.same(
+        "AWS scan, odd values and an extra field",
+        "POST",
+        A,
+        t_admin,
+        json={**aws, "report_name": "ü -x", "access_key_id": "--help", "extra": 1},
+        table=scout_run,
+        expect=200,
+    )
+    await p.same("AWS scan, scout fails", "POST", A, t_analyst, json={**aws, "report_name": "fail-aws"}, table=scout_run, expect=200)
+    await p.same("Azure scan", "POST", Z, t_analyst, json=azure, table=scout_run, expect=200)
+    for label, path, body, status in (
+        ("AWS, another report type", A, {**aws, "report_type": "azure"}, 400),
+        ("AWS, report type in capitals", A, {**aws, "report_type": "AWS"}, 400),
+        ("AWS, a missing field and another type", A, {"report_type": "azure", "access_key_id": "x"}, 422),
+        ("AWS, wrong types", A, {"report_type": None, "access_key_id": 1, "secret_access_key": [], "report_name": True}, 422),
+        ("AWS, a list", A, [1], 422),
+        ("Azure, another report type", Z, {**azure, "report_type": "aws"}, 400),
+        ("Azure, no tenant", Z, {k: v for k, v in azure.items() if k != "tenant_id"}, 422),
+    ):
+        await p.same(label, "POST", path, t_analyst, json=body, expect=status)
+    await p.same("AWS, malformed JSON", "POST", A, t_analyst, content=b"{", headers={"Content-Type": "application/json"}, expect=422)
+    await p.same("Azure, no body", "POST", Z, t_analyst, expect=422)
+    check("ScoutSuite: no scan started by a refused request", no_scout_run() == [])
+
+    print("\n== ScoutSuite: the GCP scan")
+    G = f"{SC}/generate-gcp-report"
+    key = json.dumps(GCP_KEY).encode()
+
+    def upload(content, name="key.json", ctype="application/json"):
+        return {"files": {"file": (name, content, ctype)}}
+
+    await p.same("GCP scan", "POST", G, t_analyst, table=gcp_run, expect=200, **upload(key))
+    await p.same("GCP scan, a report name", "POST", f"{G}?report_name=gcp%20parity", t_admin, table=gcp_run, expect=200, **upload(key))
+    await p.same(
+        "GCP scan, the last of two report names",
+        "POST",
+        f"{G}?report_name=a&report_name=gcp-last",
+        t_analyst,
+        table=gcp_run,
+        expect=200,
+        **upload(key),
+    )
+    await p.same(
+        "GCP scan, a UTF-16 key with a BOM",
+        "POST",
+        G,
+        t_analyst,
+        table=gcp_run,
+        expect=200,
+        **upload(b"\xff\xfe" + json.dumps(GCP_KEY).encode("utf-16-le")),
+    )
+    await p.same(
+        "GCP scan, a UTF-8 BOM and extra keys",
+        "POST",
+        G,
+        t_analyst,
+        table=gcp_run,
+        expect=200,
+        **upload(b"\xef\xbb\xbf" + json.dumps({**GCP_KEY, "x": [1]}).encode()),
+    )
+    await p.same("GCP scan, a file name to ignore", "POST", G, t_analyst, table=gcp_run, expect=200, **upload(key, name="../../etc/passwd"))
+    for label, content, status in (
+        ("invalid JSON", b"{bad", 400),
+        ("an empty file", b"", 400),
+        ("extra data", b'{"a": 1} x', 400),
+        ("a list", b"[1, 2]", 400),
+        ("null", b"null", 400),
+        ("a missing field", json.dumps({k: v for k, v in GCP_KEY.items() if k != "universe_domain"}).encode(), 400),
+        ("wrong types", json.dumps({**GCP_KEY, "client_id": 123, "project_id": None}).encode(), 400),
+        ("NaN", b'{"type": NaN}', 400),
+        ("not UTF-8", b'{"type": "\xe9"}', 400),
+    ):
+        await p.same(f"GCP, {label}", "POST", G, t_analyst, expect=status, **upload(content))
+    await p.same("GCP, no file", "POST", G, t_analyst, data={"other": "x"}, expect=422)
+    await p.same("GCP, a text field for the file", "POST", G, t_analyst, data={"file": "text"}, expect=422)
+    await p.same("GCP, a JSON body", "POST", G, t_analyst, json=GCP_KEY, expect=422)
+    await p.same(
+        "GCP, a truncated multipart body",
+        "POST",
+        G,
+        t_analyst,
+        content=b'--x\r\nContent-Disposition: form-data; name="file"; filename="k"\r\n\r\nabc',
+        headers={"Content-Type": "multipart/form-data; boundary=x"},
+        expect=422,
+    )
+    await p.same(
+        "GCP, a multipart body without a boundary",
+        "POST",
+        G,
+        t_analyst,
+        content=b"--x--\r\n",
+        headers={"Content-Type": "multipart/form-data"},
+        expect=400,
+    )
+    check("ScoutSuite: no GCP scan started by a refused upload", no_scout_run() == [])
+    check("ScoutSuite: no credential left behind", os.listdir(SCOUT_TMP) == [], str(os.listdir(SCOUT_TMP)))
+
+    print("\n== ScoutSuite: the reports")
+    R = f"{SC}/available-reports"
+    await p.same("available reports", "GET", R, t_analyst, expect=200)
+    reports = os.path.join(SCOUT_WORK, "scoutsuite-report")
+    os.makedirs(os.path.join(reports, "folder.html"))
+    os.symlink(os.path.join(SCOUT_ROOT, "nowhere"), os.path.join(reports, "dangling.html"))
+    await p.same("available reports, a directory and a dangling link", "GET", R, t_admin, expect=200)
+    D = f"{SC}/delete-report"
+    await p.same(
+        "delete a report",
+        "DELETE",
+        f"{D}/del-parity.html",
+        t_analyst,
+        before=report_files("del-parity.html"),
+        table=report_tree,
+        expect=200,
+    )
+    await p.same("delete a report without its scripts", "DELETE", f"{D}/aws-parity.html", t_analyst, table=report_tree, expect=200)
+    await p.same("delete, nothing there", "DELETE", f"{D}/missing.html", t_analyst, table=report_tree, expect=200)
+    await p.same(
+        "delete, a quoted name",
+        "DELETE",
+        f"{D}/x%20y.tar.html",
+        t_analyst,
+        before=report_files("x y.tar.html"),
+        table=report_tree,
+        expect=200,
+    )
+    await p.same(
+        "delete, leading dots",
+        "DELETE",
+        f"{D}/..hidden",
+        t_analyst,
+        before=report_files("..hidden"),
+        table=report_tree,
+        expect=200,
+    )
+    await p.same("delete, a directory of that name", "DELETE", f"{D}/folder.html", t_analyst, table=report_tree, expect=500)
+    await p.same("delete, a dangling link", "DELETE", f"{D}/dangling.html", t_analyst, table=report_tree, expect=200)
+    shutil.rmtree(os.path.join(reports, "folder.html"))
+    os.remove(os.path.join(reports, "dangling.html"))
+    hidden = os.path.join(SCOUT_ROOT, "moved")
+    os.rename(reports, hidden)
+    await p.same("available reports, no directory", "GET", R, t_analyst, expect=404)
+    os.rename(hidden, reports)
+
+
 SAVED_LICENSES = []
 SAVED_SUBLIME = []
 
@@ -1305,6 +1632,7 @@ def cleanup():
     for name in USERS:
         sql("DELETE FROM log_entries WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
         sql("DELETE FROM `user` WHERE username = :n", n=name)
+    shutil.rmtree(SCOUT_ROOT, ignore_errors=True)
 
 
 async def main():
@@ -1315,6 +1643,7 @@ async def main():
     ]
     proc = None
     try:
+        install_scout_stub()
         seed()
         proc = start_rust()
     except BaseException:
@@ -1327,13 +1656,15 @@ async def main():
     p = Pair(recorders)
     t_admin, t_analyst, t_portal = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"]), token(PORTAL, ["customer_user"])
     try:
-        sections = os.environ.get("EXT_PARITY_SECTIONS", "patch,mcp,sublime").split(",")
+        sections = os.environ.get("EXT_PARITY_SECTIONS", "patch,mcp,sublime,scoutsuite").split(",")
         if "patch" in sections:
             await patch_tuesday_checks(p, t_admin, t_analyst, t_portal)
         if "mcp" in sections:
             await mcp_checks(p, t_admin, t_analyst, t_portal)
         if "sublime" in sections:
             await sublime_checks(p, t_admin, t_analyst, t_portal)
+        if "scoutsuite" in sections:
+            await scoutsuite_checks(p, t_admin, t_analyst, t_portal)
     finally:
         await p.close()
         proc.terminate()

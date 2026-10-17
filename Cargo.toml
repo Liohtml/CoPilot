@@ -66,6 +66,7 @@ copilot-status = { path = "crates/copilot-status" }
 copilot-patch-tuesday = { path = "crates/copilot-patch-tuesday" }
 copilot-mcp = { path = "crates/copilot-mcp" }
 copilot-sublime = { path = "crates/copilot-sublime" }
+copilot-scoutsuite = { path = "crates/copilot-scoutsuite" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

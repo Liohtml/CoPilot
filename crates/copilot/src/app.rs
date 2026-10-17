@@ -313,6 +313,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The Sublime connector (copilot-sublime): the alert webhook and the
     // stored alerts.
     "/api/sublime",
+    // ScoutSuite (copilot-scoutsuite): the scans and the reports on disk (the
+    // static `/scoutsuite-report` mount stays Python's).
+    "/api/scoutsuite",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -464,6 +467,8 @@ pub struct App {
     pub mcp: copilot_mcp::McpState,
     /// The Sublime connector (`/api/sublime`).
     pub sublime: copilot_sublime::SublimeState,
+    /// ScoutSuite (`/api/scoutsuite`).
+    pub scoutsuite: copilot_scoutsuite::ScoutState,
 }
 
 impl App {
@@ -657,6 +662,7 @@ impl App {
                 .context("building the Sublime client")?,
             legacy.clone(),
         );
+        let scoutsuite = copilot_scoutsuite::ScoutState::new(ctx.clone(), legacy.clone());
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -719,6 +725,7 @@ impl App {
             patch_tuesday,
             mcp,
             sublime,
+            scoutsuite,
         })
     }
 
@@ -1130,6 +1137,8 @@ impl App {
             .merge(copilot_mcp::router(self.mcp.clone()))
             // Full paths: `/api/sublime/*`.
             .merge(copilot_sublime::router(self.sublime.clone()))
+            // Full paths: `/api/scoutsuite/*`.
+            .merge(copilot_scoutsuite::router(self.scoutsuite.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())

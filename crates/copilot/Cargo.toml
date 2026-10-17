@@ -59,6 +59,7 @@ copilot-status = { workspace = true }
 copilot-patch-tuesday = { workspace = true }
 copilot-mcp = { workspace = true }
 copilot-sublime = { workspace = true }
+copilot-scoutsuite = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

@@ -167,6 +167,8 @@ async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
     copilot_status::sidebar::refresher::spawn(app.sidebar.clone(), cancel.clone());
     // This process's runtime-lag watchdog (`/api/performance`).
     copilot_status::performance::monitor::spawn(cancel.clone());
+    // ScoutSuite's report directory, as copilot.py creates it at startup.
+    copilot_scoutsuite::ensure_report_dir(&app.scoutsuite);
 
     let addr = SocketAddr::new(cfg.bind, cfg.port);
     let listener = tokio::net::TcpListener::bind(addr)

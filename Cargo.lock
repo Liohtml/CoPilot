@@ -496,6 +496,7 @@ dependencies = [
  "copilot-provisioning",
  "copilot-response",
  "copilot-scheduler",
+ "copilot-scoutsuite",
  "copilot-searches",
  "copilot-shuffle",
  "copilot-siem",
@@ -1293,6 +1294,27 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "copilot-scoutsuite"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "copilot-auth",
+ "copilot-gateway",
+ "copilot-objectstore",
+ "copilot-patch-tuesday",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "http",
+ "pretty_assertions",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
