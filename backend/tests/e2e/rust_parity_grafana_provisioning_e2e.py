@@ -884,9 +884,12 @@ def out_norm(requests, uuids):
 
 class Pair:
     def __init__(self):
-        self.py = httpx.AsyncClient(base_url=f"http://127.0.0.1:{PY_PORT}", timeout=120)
-        self.rs = httpx.AsyncClient(base_url=f"http://127.0.0.1:{RS_PORT}", timeout=120)
-        self.rs7 = httpx.AsyncClient(base_url=f"http://127.0.0.1:{RS7_PORT}", timeout=120)
+        # A connection per request: a bare 500 closes the server's side of a kept-alive
+        # connection, and the next request could be written onto it before the close arrives.
+        no_reuse = httpx.Limits(max_keepalive_connections=0)
+        self.py = httpx.AsyncClient(base_url=f"http://127.0.0.1:{PY_PORT}", timeout=120, limits=no_reuse)
+        self.rs = httpx.AsyncClient(base_url=f"http://127.0.0.1:{RS_PORT}", timeout=120, limits=no_reuse)
+        self.rs7 = httpx.AsyncClient(base_url=f"http://127.0.0.1:{RS7_PORT}", timeout=120, limits=no_reuse)
 
     async def call(self, client, method, path, tok, **kw):
         headers = dict(kw.pop("headers", {}))

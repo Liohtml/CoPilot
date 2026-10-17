@@ -1992,6 +1992,12 @@ async def main():
         (f"exact {SFX}", "wazuh-alerts-4.x-2026.10.15", 1, 1, 0, None, None, "daily"),
         (f"broken day {SFX}", "*", 1, 1, 0, None, 9, "scheduled"),
     ]
+    # An interrupted run leaves its schedules behind, and the jobs run every enabled one: the
+    # first backend's run would stamp them and the second skip them. Drop them first.
+    await sql(
+        "DELETE FROM index_snapshot_schedules WHERE repository = 'backup' "
+        "AND name REGEXP '^(nightly|Full|later|off|exact|broken day) [0-9a-f]{6}$'",
+    )
     sched_ids = []
     for name, pattern, enabled, skip, glob, hr, dow, prefix in SCHEDULES:
         r = await sql(

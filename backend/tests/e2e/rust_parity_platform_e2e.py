@@ -1422,16 +1422,24 @@ async def main():  # noqa: C901 - one scenario after the other
                 rec.take()
             mark = await max_log_id()
             r = await send(client, method, path, tok, body, raw, headers)
+            logged = await log_rows_after(mark)
             if tag == "rs":
-                # Rust writes its `log_entries` row after the answer (a task of its own).
-                await asyncio.sleep(0.3 if r.status_code >= 400 else 0.05)
+                # Rust writes its `log_entries` row after the answer (a task of its own): wait
+                # until it has written as many as Python did (bounded), then a little longer
+                # for a row Python did not write.
+                deadline = asyncio.get_running_loop().time() + 5
+                while len(logged) < len(got["py"]["logged"]) and asyncio.get_running_loop().time() < deadline:
+                    await asyncio.sleep(0.05)
+                    logged = await log_rows_after(mark)
+                await asyncio.sleep(0.1 if r.status_code >= 400 else 0.05)
+                logged = await log_rows_after(mark)
             upstream = {rec.name: normalised(rec.take()) for rec in RECS}
             got[tag] = {
                 "status": r.status_code,
                 "type": r.headers.get("content-type"),
                 "body": unaddress(body_of(r)),
                 "upstream": upstream,
-                "logged": await log_rows_after(mark),
+                "logged": logged,
                 "rows": await snapshot() if snapshot else None,
             }
         p, q = got["py"], got["rs"]
