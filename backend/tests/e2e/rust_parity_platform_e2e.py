@@ -669,17 +669,24 @@ def build_python_app():
     from app.middleware.exception_handlers import value_error_handler
     from app.routers import license as license_router
     from app.routers import logs
+    from app.routers import performance
     from app.routers import status
 
     api = APIRouter(prefix="/api")
     api.include_router(logs.router)
     api.include_router(license_router.router)
     api.include_router(status.router)
+    api.include_router(performance.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(ValueError, value_error_handler)
+    # The request timer, outermost as in copilot.py (its registry is this process's).
+    from app.middleware.performance import RequestTimingMiddleware
+    from app.middleware.performance import performance_registry
+
+    app.add_middleware(RequestTimingMiddleware, registry=performance_registry)
     return app
 
 
@@ -789,6 +796,9 @@ def mask_clocks(p, q):
 
 #: urllib3 prints the connection object's address, which differs between any two processes.
 ADDRESS = re.compile(r"object at 0x[0-9a-f]+")
+#: A stand-in's `Date` header, quoted back in an upstream error text (each backend asks at its
+#: own second).
+STANDIN_DATE = re.compile(r"'Date': '[^']*'")
 
 
 def body_of(r):
@@ -799,7 +809,8 @@ def body_of(r):
 
 
 def unaddress(value):
-    return json.loads(ADDRESS.sub("object at 0x…", json.dumps(value)))
+    text = ADDRESS.sub("object at 0x…", json.dumps(value))
+    return json.loads(STANDIN_DATE.sub("'Date': '<date>'", text))
 
 
 async def log_rows_after(mark):
@@ -1153,6 +1164,219 @@ async def sidebar_checks(both, procs, clients):  # noqa: C901 - one scenario aft
         scheduler_module.scheduler_instance = previous_scheduler
 
 
+#: The canned readings (`_verdict`, `summary()`), by their opening words.
+LAG_VERDICTS = (
+    "Monitoring is disabled",
+    "No samples yet",
+    "Event loop is healthy",
+    "Minor scheduling delay",
+    "Event loop was blocked",
+)
+DB_VERDICTS = (
+    "No queries recorded yet.",
+    "Every statement pays",
+    "The pool was fully",
+    "Baseline is healthy",
+    "Database is not a bottleneck",
+)
+
+
+def shape(value):
+    """A value's shape: its keys in order and the type of every leaf; a list is the set of its
+    elements' shapes (an empty one matches any, see `same_shape`)."""
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, str):
+        return "str"
+    if value is None:
+        return "null"
+    if isinstance(value, list):
+        return {"list": sorted({json.dumps(shape(v)) for v in value})}
+    return {"keys": list(value), "values": {k: shape(v) for k, v in value.items()}}
+
+
+def same_shape(a, b):
+    if isinstance(a, dict) and isinstance(b, dict) and "list" in a and "list" in b:
+        return not a["list"] or not b["list"] or a["list"] == b["list"]
+    if isinstance(a, dict) and isinstance(b, dict) and "keys" in a and "keys" in b:
+        return a["keys"] == b["keys"] and all(same_shape(a["values"][k], b["values"][k]) for k in a["keys"])
+    return a == b
+
+
+async def performance_checks(both, py, rs):  # noqa: C901 - one check after the other
+    """Each backend reports its own process: only the shapes, units, the ordering rules, the
+    guards and the reset are compared (RUST_MIGRATION.md §4). The counts that follow from a
+    reset and a known sequence of requests are compared exactly."""
+    PF = "/api/performance"
+    t_admin, t_analyst, t_portal = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"]), token(PORTAL, ["customer_user"])
+
+    for route in ("/summary", "/endpoints", "/stalls", "/requests", "/database"):
+        await both(f"performance {route}: no token", "GET", PF + route)
+        await both(f"performance {route}: analyst", "GET", PF + route, t_analyst)
+    await both("performance: portal user", "GET", PF + "/summary", t_portal)
+    await both("performance: a 2fa temp token", "GET", PF + "/summary", token(ADMIN, [], type="2fa_pending"))
+    await both("performance reset: analyst", "POST", PF + "/reset", t_analyst)
+    await both("performance reset: GET", "GET", PF + "/reset", t_admin)
+    await both("performance summary: POST", "POST", PF + "/summary", t_admin)
+    await both("performance: unknown route", "GET", PF + "/nothing", t_admin)
+    await both("performance: trailing slash", "GET", PF + "/summary/", t_admin)
+    for route, queries in (
+        ("/endpoints", ("limit=0", "limit=501", "limit=abc", "limit=1.5", "limit=", "limit=-1&sort_by=x", "limit=99999999999999999999")),
+        ("/stalls", ("limit=0", "limit=201", "limit=x")),
+        (
+            "/requests",
+            (
+                "limit=0",
+                "limit=501",
+                "min_duration_ms=-1",
+                "min_duration_ms=nan",
+                "min_duration_ms=abc",
+                "min_duration_ms=",
+                "limit=0&min_duration_ms=-0.5",
+                "limit=abc&min_duration_ms=x",
+            ),
+        ),
+    ):
+        for q in queries:
+            await both(f"performance {route}?{q}", "GET", f"{PF}{route}?{q}", t_admin)
+    await both("performance /requests: no token, invalid query", "GET", PF + "/requests?limit=0")
+
+    async def call(client, method, path, tok=t_admin):
+        r = await client.request(method, path, headers={"Authorization": f"Bearer {tok}"} if tok else {})
+        return r
+
+    async def pair(method, path, tok=t_admin):
+        return await call(py, method, path, tok), await call(rs, method, path, tok)
+
+    def shapes(name, p, q):
+        a, b = shape(body_of(p)), shape(body_of(q))
+        check(
+            f"{name}: status and shape [{p.status_code}]",
+            p.status_code == q.status_code and same_shape(a, b),
+            f"python {p.status_code} {json.dumps(a)[:2000]}\n        rust   {q.status_code} {json.dumps(b)[:2000]}",
+        )
+
+    def same(name, a, b):
+        check(name, a == b, f"python {a!r}\n        rust   {b!r}")
+
+    # The reset, then a known sequence of requests on each backend.
+    p, q = await pair("POST", PF + "/reset")
+    shapes("performance reset", p, q)
+    pb, qb = body_of(p), body_of(q)
+    same("performance reset: message", pb.get("message"), qb.get("message"))
+    same("performance reset: reset_at is ISO with +00:00", pb["reset_at"].endswith("+00:00"), qb["reset_at"].endswith("+00:00"))
+    same(
+        "performance timing headers",
+        sorted(k for k in p.headers if k.startswith("x-process") or k.startswith("x-request")),
+        sorted(k for k in q.headers if k.startswith("x-process") or k.startswith("x-request")),
+    )
+    same(
+        "performance X-Process-Time-Ms: one decimal",
+        bool(re.fullmatch(r"\d+\.\d", p.headers.get("x-process-time-ms", ""))),
+        bool(re.fullmatch(r"\d+\.\d", q.headers.get("x-process-time-ms", ""))),
+    )
+
+    p, q = await pair("GET", PF + "/summary")
+    shapes("performance summary", p, q)
+    pb, qb = body_of(p), body_of(q)
+    fixed = ("success", "message", "monitoring_enabled", "total_requests", "slow_requests", "slow_request_threshold_ms")
+    fixed += ("error_requests", "client_disconnects", "in_flight", "max_concurrency")
+    same("performance summary after a reset: the counts", {k: pb[k] for k in fixed}, {k: qb[k] for k in fixed})
+    same(
+        "performance summary: the lag settings",
+        (pb["loop_lag"]["sample_interval_seconds"], pb["loop_lag"]["stall_threshold_ms"]),
+        (qb["loop_lag"]["sample_interval_seconds"], qb["loop_lag"]["stall_threshold_ms"]),
+    )
+    check(
+        "performance summary: a canned verdict in both",
+        pb["verdict"].startswith(LAG_VERDICTS) and qb["verdict"].startswith(LAG_VERDICTS),
+        f"python {pb['verdict']!r}\n        rust   {qb['verdict']!r}",
+    )
+
+    for _ in range(2):
+        await pair("GET", "/api/logs")
+    await pair("GET", "/api/nowhere/42/x")
+    await pair("GET", "/api/logs/timerange/x")
+
+    def rows_of(body, fields):
+        return [{k: row[k] for k in fields} for row in body]
+
+    for sort_by in ("count", "avg_ms", "nonsense", ""):
+        p, q = await pair("GET", f"{PF}/endpoints?sort_by={sort_by}&limit=500")
+        shapes(f"performance endpoints sorted by {sort_by!r}", p, q)
+        pb, qb = body_of(p), body_of(q)
+        same(f"performance endpoints sorted by {sort_by!r}: message", pb["message"], qb["message"])
+        key = sort_by if sort_by in ("count", "avg_ms") else "stalled_ms"
+        for tag, body in (("python", pb), ("rust", qb)):
+            values = [row[key] for row in body["endpoints"]]
+            check(f"performance endpoints sorted by {sort_by!r}: descending ({tag})", values == sorted(values, reverse=True), str(values))
+    # By count: ties keep the order the routes were first seen in (a stable sort).
+    p, q = await pair("GET", f"{PF}/endpoints?sort_by=count")
+    fields = ("method", "path", "count", "slow_count", "error_count", "disconnects")
+    same(
+        "performance endpoints: the routes and their counts",
+        rows_of(body_of(p)["endpoints"], fields),
+        rows_of(body_of(q)["endpoints"], fields),
+    )
+    p, q = await pair("GET", f"{PF}/endpoints?sort_by=count&limit=2")
+    same("performance endpoints: the limit", len(body_of(p)["endpoints"]), len(body_of(q)["endpoints"]))
+
+    p, q = await pair("GET", f"{PF}/requests?limit=500")
+    shapes("performance requests", p, q)
+    pb, qb = body_of(p), body_of(q)
+    fields = ("method", "path", "status_code", "concurrency", "client_disconnected")
+    same("performance requests: newest first, as completed", rows_of(pb["requests"], fields), rows_of(qb["requests"], fields))
+    for tag, body in (("python", pb), ("rust", qb)):
+        ids = [row["request_id"] for row in body["requests"]]
+        check(f"performance requests: ids descending ({tag})", ids == sorted(ids, reverse=True), str(ids))
+    same("performance requests: in flight", rows_of(pb["in_flight"], ("method", "path")), rows_of(qb["in_flight"], ("method", "path")))
+    p, q = await pair("GET", f"{PF}/requests?limit=2&min_duration_ms=0")
+    same("performance requests: the limit", len(body_of(p)["requests"]), len(body_of(q)["requests"]))
+    p, q = await pair("GET", f"{PF}/requests?min_duration_ms=1e9")
+    same("performance requests: none that slow", body_of(p)["requests"], body_of(q)["requests"])
+    p, q = await pair("GET", f"{PF}/requests?min_duration_ms=inf")
+    same("performance requests: an infinite floor", body_of(p)["requests"], body_of(q)["requests"])
+
+    p, q = await pair("GET", f"{PF}/stalls?limit=200")
+    shapes("performance stalls", p, q)
+    same("performance stalls: message", body_of(p)["message"], body_of(q)["message"])
+
+    p, q = await pair("GET", f"{PF}/database")
+    shapes("performance database", p, q)
+    pb, qb = body_of(p), body_of(q)
+    same("performance database: message", pb["message"], qb["message"])
+    same("performance database: the slow threshold", pb["slow_query_threshold_ms"], qb["slow_query_threshold_ms"])
+    check(
+        "performance database: a canned verdict in both",
+        pb["verdict"].startswith(DB_VERDICTS) and qb["verdict"].startswith(DB_VERDICTS),
+        f"python {pb['verdict']!r}\n        rust   {qb['verdict']!r}",
+    )
+    check(
+        "performance database: statements measured in both",
+        pb["queries"] > 0 and qb["queries"] > 0 and pb["pool"]["samples"] >= 1 and qb["pool"]["samples"] >= 1,
+        f"python {pb['queries']} / {pb['pool']}\n        rust   {qb['queries']} / {qb['pool']}",
+    )
+
+    # A second reset: the previous window is reported, the counters start over.
+    p, q = await pair("POST", PF + "/reset")
+    pb, qb = body_of(p), body_of(q)
+    check(
+        "performance second reset: the previous window's requests",
+        pb["previous_total_requests"] > 10 and qb["previous_total_requests"] > 10,
+        f"python {pb['previous_total_requests']}, rust {qb['previous_total_requests']}",
+    )
+    p, q = await pair("GET", PF + "/database")
+    check(
+        "performance second reset: the query metrics start over too",
+        body_of(p)["queries"] < 20 and body_of(q)["queries"] < 20,
+        f"python {body_of(p)['queries']}, rust {body_of(q)['queries']}",
+    )
+
+
 async def main():  # noqa: C901 - one scenario after the other
     lic = Recorder(license_answer, LICENSE_PORT, "license")
     RECS[:] = [
@@ -1165,6 +1389,11 @@ async def main():  # noqa: C901 - one scenario after the other
     ]
     await seed()
     patch_python_clients()
+    from app.db.query_metrics import install as install_query_metrics
+    from app.middleware.performance import lag_monitor
+
+    install_query_metrics(async_engine)
+    lag_monitor.start()
     rust = start_rust(RS_PORT)
     procs = [rust]
     py = httpx.AsyncClient(transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False), base_url="http://py")
@@ -1681,7 +1910,12 @@ async def main():  # noqa: C901 - one scenario after the other
         # ==================================================================
         print("\n=== C. /api/status/sidebar ===")
         await sidebar_checks(both, procs, clients)
+
+        # ==================================================================
+        print("\n=== D. /api/performance ===")
+        await performance_checks(both, py, rs)
     finally:
+        await lag_monitor.stop()
         await cleanup()
         for rec in RECS:
             rec.stop()

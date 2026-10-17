@@ -770,13 +770,15 @@ async fn the_sidebar_serves_its_indicators_like_python() {
         indicator(&body, "my_open_cases")["detail"],
         json!("No open cases assigned to you.")
     );
-    for _ in 0..100 {
-        if sidebar.cache.has_shared() {
+    // The background refreshes the cold call started (the shared set, and
+    // the InfluxDB value its builder asked for) are let finish first.
+    for _ in 0..200 {
+        if sidebar.cache.has_shared() && sidebar.cache.has_influx() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    assert!(sidebar.cache.has_shared());
+    assert!(sidebar.cache.has_shared() && sidebar.cache.has_influx());
 
     // Warm: what the two jobs compute (the InfluxDB value first).
     copilot_status::sidebar::services::refresh_influx(&sidebar).await;
@@ -910,5 +912,278 @@ async fn the_sidebar_serves_its_indicators_like_python() {
     .await;
     restore_licences(&h, saved).await;
     borrowed.give_back(&h).await;
+    cleanup_users(&h).await;
+}
+
+// --- /api/performance ---------------------------------------------------------------------
+
+fn keys(v: &Value) -> Vec<String> {
+    v.as_object().unwrap().keys().cloned().collect()
+}
+
+#[tokio::test]
+async fn performance_reports_this_process_like_python_reports_its_own() {
+    use tower::ServiceExt;
+    use tracing_subscriber::layer::{Layer, SubscriberExt};
+
+    // sqlx's statement events feed the query metrics, as the binary's
+    // subscriber does (a test has none of its own).
+    let subscriber = tracing_subscriber::registry().with(
+        copilot_status::performance::QueryMetricsLayer.with_filter(
+            tracing_subscriber::filter::Targets::new().with_target(
+                copilot_status::performance::queries::SQLX_QUERY_TARGET,
+                tracing::Level::DEBUG,
+            ),
+        ),
+    );
+    let _guard = tracing::subscriber::set_default(subscriber);
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let admin = h.token(&format!("admin{}", h.suffix), "admin");
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    const P: &str = "/api/performance";
+
+    let (st, _) = h.call("GET", &format!("{P}/summary"), None, None).await;
+    assert_eq!(st, 401);
+    let (st, body) = h
+        .call("GET", &format!("{P}/summary"), Some(&analyst), None)
+        .await;
+    assert_eq!(st, 403, "{body}");
+
+    let (st, body) = h
+        .call("POST", &format!("{P}/reset"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        keys(&body),
+        [
+            "success",
+            "message",
+            "reset_at",
+            "previous_uptime_seconds",
+            "previous_total_requests",
+            "previous_max_lag_ms"
+        ]
+    );
+    assert_eq!(
+        body["message"],
+        json!("Performance counters reset successfully")
+    );
+    assert!(body["reset_at"].as_str().unwrap().ends_with("+00:00"));
+
+    // The reset itself completed after the reset; this request is in flight.
+    let (st, body) = h
+        .call("GET", &format!("{P}/summary"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        keys(&body),
+        [
+            "success",
+            "message",
+            "monitoring_enabled",
+            "uptime_seconds",
+            "total_requests",
+            "slow_requests",
+            "slow_request_threshold_ms",
+            "error_requests",
+            "client_disconnects",
+            "in_flight",
+            "max_concurrency",
+            "loop_lag",
+            "verdict"
+        ]
+    );
+    assert_eq!(body["total_requests"], json!(1));
+    assert_eq!(body["in_flight"], json!(1));
+    assert_eq!(body["max_concurrency"], json!(1));
+    assert_eq!(body["slow_request_threshold_ms"], json!(1000.0));
+    assert_eq!(body["loop_lag"]["samples"], json!(0));
+    assert_eq!(body["loop_lag"]["sample_interval_seconds"], json!(0.25));
+    assert_eq!(
+        body["verdict"],
+        json!("No samples yet - the watchdog has not completed its first interval.")
+    );
+
+    // Every answer carries its timing; an unmatched path is recorded under
+    // its normalised form.
+    let resp = h
+        .router
+        .clone()
+        .oneshot(
+            http::Request::builder()
+                .uri("/api/nowhere/42/x")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+    assert!(resp.headers().get("x-request-id").is_some());
+    let took = resp.headers()["x-process-time-ms"]
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(took.contains('.') && took.parse::<f64>().is_ok(), "{took}");
+    let _ = axum::body::to_bytes(resp.into_body(), 1 << 20).await;
+    for _ in 0..2 {
+        h.call("GET", "/api/logs/5", Some(&admin), None).await;
+    }
+
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("{P}/endpoints?sort_by=count&limit=3"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body["message"],
+        json!("Endpoint timings retrieved successfully, sorted by count")
+    );
+    let rows: Vec<(String, String, u64)> = body["endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            (
+                r["method"].as_str().unwrap().to_string(),
+                r["path"].as_str().unwrap().to_string(),
+                r["count"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("GET".into(), "/api/logs/{segment}".into(), 2),
+            ("POST".into(), "/api/performance/reset".into(), 1),
+            ("GET".into(), "/api/performance/summary".into(), 1),
+        ]
+    );
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("{P}/endpoints?sort_by=nonsense"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(
+        body["message"],
+        json!("Endpoint timings retrieved successfully, sorted by stalled_ms")
+    );
+    let unmatched = body["endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["path"] == json!("/api/nowhere/{id}/x"))
+        .unwrap()
+        .clone();
+    assert_eq!(unmatched["method"], json!("GET"));
+    assert_eq!(
+        keys(&unmatched),
+        [
+            "method",
+            "path",
+            "count",
+            "avg_ms",
+            "p50_ms",
+            "p95_ms",
+            "max_ms",
+            "slow_count",
+            "error_count",
+            "disconnects",
+            "stall_hits",
+            "stalled_ms"
+        ]
+    );
+
+    // Newest first, this request in flight under its own path.
+    let (st, body) = h
+        .call("GET", &format!("{P}/requests?limit=2"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    let recent = body["requests"].as_array().unwrap();
+    assert_eq!(recent.len(), 2);
+    assert!(recent[0]["request_id"].as_u64() > recent[1]["request_id"].as_u64());
+    assert_eq!(recent[0]["path"], json!("/api/performance/endpoints"));
+    assert_eq!(recent[0]["concurrency"], json!(1));
+    assert_eq!(recent[0]["client_disconnected"], json!(false));
+    let in_flight = body["in_flight"].as_array().unwrap();
+    assert_eq!(in_flight.len(), 1);
+    assert_eq!(in_flight[0]["path"], json!("/api/performance/requests"));
+    let (_, body) = h
+        .call(
+            "GET",
+            &format!("{P}/requests?min_duration_ms=1e9"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(body["requests"], json!([]));
+
+    // FastAPI's validation, every error collected.
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("{P}/requests?limit=0&min_duration_ms=nan"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 422, "{body}");
+    let (st, _) = h
+        .call("GET", &format!("{P}/stalls?limit=201"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 422);
+    let (st, body) = h
+        .call("GET", &format!("{P}/stalls"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 200);
+    assert_eq!(
+        keys(&body),
+        [
+            "success",
+            "message",
+            "stalls",
+            "total_stalls",
+            "total_stalled_ms"
+        ]
+    );
+
+    // The statements this process ran, the pool it ran them on.
+    let (st, body) = h
+        .call("GET", &format!("{P}/database"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert!(body["queries"].as_u64().unwrap() > 0, "{body}");
+    assert!(body["pool"]["size"].as_u64().unwrap() > 0, "{body}");
+    assert_eq!(body["pool"]["overflow"], json!(0));
+    assert!(body["pool"]["samples"].as_u64().unwrap() >= 1);
+    assert_eq!(body["slow_query_threshold_ms"], json!(250.0));
+    let statement = &body["top_statements"][0];
+    assert_eq!(
+        keys(statement),
+        [
+            "statement",
+            "count",
+            "total_ms",
+            "avg_ms",
+            "p95_ms",
+            "max_ms"
+        ]
+    );
+
+    // A reset zeroes the query metrics too.
+    h.call("POST", &format!("{P}/reset"), Some(&admin), None)
+        .await;
+    let (_, body) = h
+        .call("GET", &format!("{P}/database"), Some(&admin), None)
+        .await;
+    // The token check's own statements may land between the two.
+    assert!(body["queries"].as_u64().unwrap() < 10, "{body}");
     cleanup_users(&h).await;
 }

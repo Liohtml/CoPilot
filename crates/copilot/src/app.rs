@@ -275,6 +275,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/logs",
     // The sidebar's status panel (copilot-status).
     "/api/status",
+    // This process's request timing, runtime lag and query metrics
+    // (copilot-status).
+    "/api/performance",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -566,6 +569,12 @@ impl App {
             cfg.copilot_api_key.clone(),
         )
         .context("building the licence-server client")?;
+        // This process's instrumentation (`/api/performance`): the settings
+        // are read once, by the first App of the process.
+        copilot_status::performance::init(copilot_status::performance::PerfConfig::from_env(
+            &cfg.perf,
+        ))
+        .install_pool(ctx.db.pool().clone());
         let sidebar = copilot_status::sidebar::SidebarState {
             ctx: ctx.clone(),
             wazuh: wazuh.clone(),
@@ -999,6 +1008,13 @@ impl App {
                 copilot_status::sidebar::router(self.sidebar.clone()),
             )
             .nest(
+                "/api/performance",
+                copilot_status::performance::router(self.ctx.clone()).layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
+            .nest(
                 "/api/logs",
                 copilot_status::logs::router(self.ctx.clone()).layer(from_fn_with_state(
                     self.wazuh.legacy.clone(),
@@ -1017,7 +1033,7 @@ impl App {
                 legacy: self.legacy.is_some(),
             });
         let app = Router::new().merge(ported).merge(health);
-        match &self.legacy {
+        let app = match &self.legacy {
             // Unported paths *and* methods go to Python, which answers its
             // own 404/405 when it does not know them either.
             Some(proxy) => {
@@ -1055,7 +1071,11 @@ impl App {
                 app.method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
                     .fallback(root_or_404)
             }
-        }
+        };
+        // Last, so it wraps every route and the fallback (the proxy to
+        // Python included) after routing: the request timer of
+        // `/api/performance`, `X-Process-Time-Ms` and `X-Request-Id`.
+        app.layer(from_fn(copilot_status::performance::middleware::timing))
     }
 }
 

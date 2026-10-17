@@ -165,6 +165,8 @@ async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
     copilot_searches::refresher::spawn(app.searches.clone(), cancel.clone());
     // This process's sidebar indicators: warmed now, refreshed off-request.
     copilot_status::sidebar::refresher::spawn(app.sidebar.clone(), cancel.clone());
+    // This process's runtime-lag watchdog (`/api/performance`).
+    copilot_status::performance::monitor::spawn(cancel.clone());
 
     let addr = SocketAddr::new(cfg.bind, cfg.port);
     let listener = tokio::net::TcpListener::bind(addr)

@@ -36,6 +36,7 @@
 //! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
 //! | `COPILOT_SIDEBAR_REFRESH` | `COPILOT_CATALOG_REFRESH` | this process warms and refreshes its own sidebar indicators (`copilot-status`); unset, it follows the catalog switch |
 //! | `ENVIRONMENT` | `PRODUCTION` | the sidebar's `environment` field, as `os.getenv` reads it |
+//! | `PERF_MONITOR_ENABLED`, `PERF_LAG_SAMPLE_INTERVAL`, `PERF_LAG_STALL_THRESHOLD_MS`, `PERF_SLOW_REQUEST_MS`, `PERF_RECENT_REQUESTS`, `PERF_RECENT_STALLS`, `PERF_LAG_SAMPLES`, `PERF_DURATION_SAMPLES`, `PERF_MAX_ENDPOINTS`, `DB_SLOW_QUERY_MS`, `DB_QUERY_SAMPLES`, `DB_MAX_STATEMENTS` | `true`, `0.25`, `100`, `1000`, `500`, `200`, `2000`, `200`, `500`, `250`, `2000`, `300` | this process's request timing, runtime-lag watchdog and query metrics (`/api/performance`, `copilot-status`), read as `app/middleware/performance.py` and `app/db/query_metrics.py` read them |
 
 use std::fmt;
 use std::net::IpAddr;
@@ -173,6 +174,38 @@ pub struct CopilotConfig {
     pub sidebar_refresh: Option<String>,
     /// `ENVIRONMENT`, as set (`os.getenv` semantics).
     pub environment: Option<String>,
+    /// The `PERF_*` and `DB_*` instrumentation settings, as set.
+    pub perf: PerfEnv,
+}
+
+/// Raw instrumentation settings (`os.environ.get`; `None` = unset),
+/// interpreted by `copilot-status`'s performance module.
+#[derive(Clone, Debug, Default)]
+pub struct PerfEnv {
+    /// `PERF_MONITOR_ENABLED`.
+    pub monitor_enabled: Option<String>,
+    /// `PERF_LAG_SAMPLE_INTERVAL` (seconds).
+    pub lag_sample_interval: Option<String>,
+    /// `PERF_LAG_STALL_THRESHOLD_MS`.
+    pub lag_stall_threshold_ms: Option<String>,
+    /// `PERF_SLOW_REQUEST_MS`.
+    pub slow_request_ms: Option<String>,
+    /// `PERF_RECENT_REQUESTS`.
+    pub recent_requests: Option<String>,
+    /// `PERF_RECENT_STALLS`.
+    pub recent_stalls: Option<String>,
+    /// `PERF_LAG_SAMPLES`.
+    pub lag_samples: Option<String>,
+    /// `PERF_DURATION_SAMPLES`.
+    pub duration_samples: Option<String>,
+    /// `PERF_MAX_ENDPOINTS`.
+    pub max_endpoints: Option<String>,
+    /// `DB_SLOW_QUERY_MS`.
+    pub db_slow_query_ms: Option<String>,
+    /// `DB_QUERY_SAMPLES`.
+    pub db_query_samples: Option<String>,
+    /// `DB_MAX_STATEMENTS`.
+    pub db_max_statements: Option<String>,
 }
 
 /// Raw values the WAF and provisioning modules read per call in Python
@@ -400,6 +433,20 @@ impl CopilotConfig {
             catalog: crate::catalog_env::CatalogEnv::from_env(env),
             sidebar_refresh: env.get_raw("COPILOT_SIDEBAR_REFRESH"),
             environment: env.get_raw("ENVIRONMENT"),
+            perf: PerfEnv {
+                monitor_enabled: env.get_raw("PERF_MONITOR_ENABLED"),
+                lag_sample_interval: env.get_raw("PERF_LAG_SAMPLE_INTERVAL"),
+                lag_stall_threshold_ms: env.get_raw("PERF_LAG_STALL_THRESHOLD_MS"),
+                slow_request_ms: env.get_raw("PERF_SLOW_REQUEST_MS"),
+                recent_requests: env.get_raw("PERF_RECENT_REQUESTS"),
+                recent_stalls: env.get_raw("PERF_RECENT_STALLS"),
+                lag_samples: env.get_raw("PERF_LAG_SAMPLES"),
+                duration_samples: env.get_raw("PERF_DURATION_SAMPLES"),
+                max_endpoints: env.get_raw("PERF_MAX_ENDPOINTS"),
+                db_slow_query_ms: env.get_raw("DB_SLOW_QUERY_MS"),
+                db_query_samples: env.get_raw("DB_QUERY_SAMPLES"),
+                db_max_statements: env.get_raw("DB_MAX_STATEMENTS"),
+            },
         })
     }
 }

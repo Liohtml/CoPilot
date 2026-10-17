@@ -70,10 +70,9 @@ const ROUTE_COLUMN: usize = 256;
 /// `log_entries.message` is a `VARCHAR(5024)`.
 const MESSAGE_COLUMN: usize = 5024;
 
-/// `str(request.url)`: Starlette joins the scheme, the `Host` header, the
-/// path uvicorn percent-decoded (UTF-8, errors replaced) and the raw query
-/// string.
-fn starlette_url(host: &str, uri: &http::Uri) -> String {
+/// `scope["path"]`: the path uvicorn percent-decoded (UTF-8, errors
+/// replaced).
+pub fn decoded_path(uri: &http::Uri) -> String {
     let raw = uri.path().as_bytes();
     let mut bytes = Vec::with_capacity(raw.len());
     let mut i = 0;
@@ -89,7 +88,14 @@ fn starlette_url(host: &str, uri: &http::Uri) -> String {
         bytes.push(raw[i]);
         i += 1;
     }
-    let path = String::from_utf8_lossy(&bytes);
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// `str(request.url)`: Starlette joins the scheme, the `Host` header, the
+/// path uvicorn percent-decoded (UTF-8, errors replaced) and the raw query
+/// string.
+fn starlette_url(host: &str, uri: &http::Uri) -> String {
+    let path = decoded_path(uri);
     match uri.query().filter(|q| !q.is_empty()) {
         Some(q) => format!("http://{host}{path}?{q}"),
         None => format!("http://{host}{path}"),

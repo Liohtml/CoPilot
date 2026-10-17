@@ -160,6 +160,11 @@ impl SidebarCache {
     pub fn has_shared(&self) -> bool {
         read(&self.shared).is_some()
     }
+
+    /// Whether the InfluxDB value has been computed at least once.
+    pub fn has_influx(&self) -> bool {
+        read(&self.influx).is_some()
+    }
 }
 
 // --- the shared set -------------------------------------------------------------------------

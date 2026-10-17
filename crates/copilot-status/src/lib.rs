@@ -5,10 +5,14 @@
 //! - [`sidebar`] — `/api/status/sidebar` (`app/status/`): the sidebar's
 //!   version fields and health indicators, the deployment-wide ones held
 //!   and refreshed by this process.
+//! - [`performance`] — `/api/performance` (`app/performance/`): this
+//!   process's request timing, runtime-lag watchdog and query metrics,
+//!   admin only.
 
 #![warn(missing_docs)]
 
 pub mod logs;
+pub mod performance;
 pub mod sidebar;
 
 use copilot_db::schema::TableRequirement;

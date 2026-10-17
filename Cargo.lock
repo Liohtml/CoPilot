@@ -1307,6 +1307,7 @@ dependencies = [
  "copilot-web",
  "futures",
  "http",
+ "http-body",
  "regex",
  "serde",
  "serde_json",
@@ -1314,6 +1315,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

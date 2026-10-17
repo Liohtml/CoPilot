@@ -8,8 +8,12 @@ use std::io::{self, Write};
 use std::sync::Arc;
 
 use regex::Regex;
+use tracing::Level;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::filter::Targets;
 use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::layer::{Layer, SubscriberExt};
+use tracing_subscriber::util::SubscriberInitExt;
 
 /// Replaces secrets in log text.
 #[derive(Debug)]
@@ -118,6 +122,11 @@ fn default_filter(log_level: Option<&str>) -> String {
 }
 
 /// Install the global subscriber. A second call is a no-op.
+///
+/// Besides the log lines (their own filter), sqlx's `sqlx::query` events
+/// feed `/api/performance`'s query metrics
+/// ([`copilot_status::performance::QueryMetricsLayer`], enabled for that
+/// target alone): the log filter still decides what is written.
 pub fn init(json: bool, log_level: Option<&str>, redactor: Redactor) {
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new(default_filter(log_level)))
@@ -125,18 +134,31 @@ pub fn init(json: bool, log_level: Option<&str>, redactor: Redactor) {
     let writer = RedactingMakeWriter {
         redactor: Arc::new(redactor),
     };
-    let builder = tracing_subscriber::fmt()
-        .with_env_filter(filter)
+    let queries = || {
+        Targets::new().with_target(
+            copilot_status::performance::queries::SQLX_QUERY_TARGET,
+            Level::DEBUG,
+        )
+    };
+    let lines = tracing_subscriber::fmt::layer()
         .with_writer(writer)
         .with_target(true);
     let result = if json {
-        builder
-            .json()
-            .flatten_event(true)
-            .with_current_span(false)
+        tracing_subscriber::registry()
+            .with(
+                lines
+                    .json()
+                    .flatten_event(true)
+                    .with_current_span(false)
+                    .with_filter(filter),
+            )
+            .with(copilot_status::performance::QueryMetricsLayer.with_filter(queries()))
             .try_init()
     } else {
-        builder.with_ansi(false).try_init()
+        tracing_subscriber::registry()
+            .with(lines.with_ansi(false).with_filter(filter))
+            .with(copilot_status::performance::QueryMetricsLayer.with_filter(queries()))
+            .try_init()
     };
     if result.is_err() {
         eprintln!("logging already initialised");
