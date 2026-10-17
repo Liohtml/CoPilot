@@ -22,8 +22,16 @@ manager's configuration and Graylog's objects. Deliberate differences are assert
 Ports (all overridable): REMAINING_PROV_PARITY_RUST_PORT (6841), REMAINING_PROV_PARITY_RUST7_PORT
 (6842), REMAINING_PROV_PARITY_PY_PORT (6843, the uvicorn legacy backend), REMAINING_PROV_STUB_PORT
 (6844, manager, Graylog and Grafana), REMAINING_PROV_INDEXER_STUB_PORT (6845), REMAINING_PROV_AWS_STUB_PORT
-(6846). Seeded ids are seven digits in 7860000-7869999. `REMAINING_PROV_PARITY_SECTIONS=office365,aws`
-picks the sections.
+(6846). Seeded ids are seven digits in 7860000-7869999. `REMAINING_PROV_PARITY_SECTIONS=office365,aws,
+collectors` picks the sections.
+
+The `collectors` section (`POST /api/{crowdstrike,defender_for_endpoint,bitdefender}/provision`,
+`copilot-integration-provisioning`) points both backends at one temporary data directory (Python's
+`UPLOAD_FOLDER` of the three modules patched, Rust's `COPILOT_BACKEND_DATA_DIR`), emptied before
+each side, and compares every file and directory written there — and next to it, where a `..`
+customer name reaches — byte for byte; GravityZone is a stand-in under `/gravityzone` on the tools'
+port (Python's `httpx.AsyncClient` re-pointed, Rust's `COPILOT_BITDEFENDER_URL`). The content packs'
+`uuid4()`s are numbered by first appearance on each side.
 """
 
 import asyncio
@@ -33,10 +41,13 @@ import fnmatch
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import types
 import uuid
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
@@ -95,6 +106,11 @@ GRAFANA_URL = f"http://127.0.0.1:{STUB_PORT}/grafana"
 INDEXER_URL = f"http://127.0.0.1:{INDEXER_PORT}"
 TENANT_A, TENANT_A2, TENANT_B, TENANT_D = (f"ten-a-{SFX}", f"ten-a2-{SFX}", f"ten-b-{SFX}", f"ten-d-{SFX}")
 ACCT_A = "210987654321"
+#: The backends' shared data directory (the parent catches what a `..` name writes next to it).
+DATA_PARENT = tempfile.mkdtemp(prefix="rp-collectors-")
+DATA_DIR = os.path.join(DATA_PARENT, "data")
+GRAVITYZONE = "https://cloud.gravityzone.bitdefender.com"
+GRAVITYZONE_STUB = f"http://127.0.0.1:{STUB_PORT}/gravityzone"
 BUCKET_A, BUCKET_B = f"rp-{SFX}-trail", f"rp-{SFX}-prod"
 results = []
 
@@ -279,8 +295,10 @@ class Graylog:
         self.prefix = prefix
         self.reset()
 
-    def reset(self, version=6, rules=None, pipelines=None, overrides=None):
+    def reset(self, version=6, rules=None, pipelines=None, overrides=None, inputs=None):
         self.version = version
+        self.content_packs = []
+        self.inputs = copy.deepcopy(inputs or [{"id": "in-other", "title": "Other input"}])
         self.rules = copy.deepcopy(rules if rules is not None else [pipeline_rule("r-other", "Other rule", 'rule "Other rule"\nend')])
         self.pipelines = copy.deepcopy(pipelines if pipelines is not None else [pipeline("pl-wazuh", "WAZUH", "Wazuh processing")])
         self.index_sets = []
@@ -302,6 +320,8 @@ class Graylog:
             "streams": self.streams,
             "connections": self.connections,
             "deleted": self.deleted,
+            "packs": [p["name"] for p in self.content_packs],
+            "inputs": self.inputs,
         }
 
     def answer(self, method, target, body):
@@ -312,6 +332,50 @@ class Graylog:
         j = "application/json"
         if method == "GET" and path == "/api/system":
             return 200, j, _json(samples.GRAYLOG_SYSTEM_7 if self.version == 7 else samples.GRAYLOG_SYSTEM_6)
+        if method == "GET" and path == "/api/system/content_packs":
+            return 200, j, _json({"total": len(self.content_packs), "content_packs": self.content_packs, "content_packs_metadata": {}})
+        if method == "POST" and path == "/api/system/content_packs":
+            pack = json.loads(body)
+            for known in self.content_packs:
+                if known["id"] == pack.get("id") and known["rev"] == pack.get("rev"):
+                    message = f"Content pack {pack.get('id')} with this revision {pack.get('rev')} already found!"
+                    return 400, j, _json({"type": "ApiError", "message": message})
+            listed = {**copy.deepcopy(pack), "created_at": "2026-10-01T00:00:00.000Z", "server_version": "6.1.4"}
+            listed["v"] = str(listed.get("v"))
+            for entity in listed.get("entities") or []:
+                entity["v"] = str(entity.get("v"))
+            self.content_packs.append(listed)
+            return 201, j, _json({"id": pack.get("id"), "rev": pack.get("rev")})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)/([^/]+)/installations", path)
+        if method == "POST" and m:
+            entity = json.loads(body)
+            if self.version >= 7:
+                if "entity" not in entity:
+                    return 400, j, _json({"type": "ApiError", "message": "entity cannot be null"})
+            elif "entity" in entity:
+                return 400, j, _json({"type": "ApiError", "message": "Unable to map property entity"})
+            pack = next((p for p in self.content_packs if p["id"] == m.group(1)), None)
+            if pack is None:
+                return 404, j, _json({"type": "ApiError", "message": f"Content pack {m.group(1)} not found"})
+
+            def value(e, key):
+                v = (e.get("data") or {}).get(key)
+                return v.get("@value") if isinstance(v, dict) else v
+
+            for e in pack.get("entities") or []:
+                kind = e.get("type", {}).get("name")
+                if kind == "stream":
+                    self.streams.append({"id": self._id("st"), "title": value(e, "title"), "running": True})
+                elif kind == "input":
+                    self.inputs.append({"id": self._id("in"), "title": value(e, "title")})
+                elif kind == "pipeline":
+                    new = pipeline(self._id("pl"), value(e, "title"), value(e, "description"))
+                    self.pipelines.append(new)
+            return 200, j, _json({"installation": {"_id": self._id("inst"), "content_pack_id": m.group(1)}, "entities_excluded": []})
+        if method == "GET" and path == "/api/streams":
+            return 200, j, _json({"streams": self.streams, "total": len(self.streams)})
+        if method == "GET" and path == "/api/system/inputs":
+            return 200, j, _json({"inputs": self.inputs, "total": len(self.inputs)})
         if method == "GET" and path == "/api/system/pipelines/rule":
             return 200, j, _json(self.rules)
         if method == "POST" and path == "/api/system/pipelines/rule":
@@ -370,6 +434,12 @@ class Graylog:
                     st["running"] = True
             return 204, None, b""
         m = re.fullmatch(r"/api/streams/([^/]+)", path)
+        if method == "PUT" and m:
+            stream = next((st for st in self.streams if st["id"] == m.group(1)), None)
+            if stream is None:
+                return 404, j, _json({"type": "ApiError", "message": f"Stream <{m.group(1)}> not found!"})
+            stream.update(json.loads(body))
+            return 200, j, _json(stream)
         if method == "DELETE" and m:
             self.streams = [s for s in self.streams if s["id"] != m.group(1)]
             self.deleted.append(("stream", m.group(1)))
@@ -625,6 +695,18 @@ class Aws:
         return 405, "application/xml", _s3_error("MethodNotAllowed", "no")
 
 
+class GravityZone:
+    """GravityZone's JSON-RPC push endpoint: a JSON answer, or a text that is not JSON."""
+
+    def reset(self, text=False):
+        self.text = text
+
+    def answer(self, method, target, body):
+        if self.text:
+            return 200, "text/plain", b"accepted"
+        return 200, "application/json", _json({"id": "1", "jsonrpc": "2.0", "result": True})
+
+
 class Recorder:
     """Every request a stand-in was sent: (method, target, every header sorted, body)."""
 
@@ -648,6 +730,8 @@ GRAFANA = Grafana()
 INDEXER = Indexer()
 AWS = Aws()
 RECORDER = Recorder()
+GRAVITYZONE_TOOL = GravityZone()
+GRAVITYZONE_TOOL.reset()
 
 
 class ByPrefix:
@@ -661,7 +745,7 @@ class ByPrefix:
         return 404, "application/json", _json({"message": "no such stand-in route"})
 
 
-TOOLS = ByPrefix((("/grafanaapi", GRAFANA), ("/graylog", GRAYLOG), ("/wazuh", MANAGER)))
+TOOLS = ByPrefix((("/grafanaapi", GRAFANA), ("/graylog", GRAYLOG), ("/wazuh", MANAGER), ("/gravityzone", GRAVITYZONE_TOOL)))
 
 
 def start_stub(port, tool):
@@ -763,7 +847,13 @@ def point_tools():
 
 # The integrations: (id, customer, service, instance, keys); subscriptions take id + 100, keys ids
 # from 7860700.
-INT_SERVICES = {"Office365": 7_860_001, "AWS": 7_860_002}
+INT_SERVICES = {
+    "Office365": 7_860_001,
+    "AWS": 7_860_002,
+    "Crowdstrike": 7_860_003,
+    "DefenderForEndpoint": 7_860_004,
+    "BitDefender": 7_860_005,
+}
 O365_KEYS_A = [("TENANT_ID", TENANT_A), ("CLIENT_ID", "c-a"), ("CLIENT_SECRET", "s<a>&"), ("API_TYPE", "commercial")]
 O365_KEYS_A2 = [("TENANT_ID", TENANT_A2), ("CLIENT_ID", "c-a2"), ("CLIENT_SECRET", "s-a2"), ("API_TYPE", "gcc-high")]
 INT_ROWS = [
@@ -808,6 +898,44 @@ AWS_B_NOKEYS = (7_860_024, CUST_B, "AWS", "nokeys", [])
 AWS_B_CLAIM = (7_860_025, CUST_B, "AWS", None, [("AWS_ACCOUNT_ID", f" {ACCT_A} "), ("BUCKET_NAME", "other-bucket")])
 AWS_ROWS = [AWS_A, AWS_A_PROD, AWS_B_BAD, AWS_B_NOKEYS, AWS_B_CLAIM]
 INT_IDS = [r[0] for r in INT_ROWS] + [SECOND_TENANT[0]] + [r[0] for r in AWS_ROWS]
+#: The collectors' integrations: A holds all three, B a port `int()` refuses and Bitdefender keys
+#: Pydantic refuses, C (no Grafana organization) CrowdStrike.
+CS_KEYS = [
+    ("CLIENT_ID", "cs-client"),
+    ("CLIENT_SECRET", "cs-s3cr3t é"),
+    ("BASE_URL", "https://api.crowdstrike.com"),
+    ("SYSLOG_PORT", "5556"),
+]
+COLLECTOR_ROWS = [
+    (7_860_031, CUST_A, "Crowdstrike", None, CS_KEYS),
+    (
+        7_860_032,
+        CUST_A,
+        "DefenderForEndpoint",
+        None,
+        [("CLIENT_ID", "dfe-client"), ("CLIENT_SECRET", "dfe-secret"), ("TENANT_ID", "dfe-tenant"), ("SYSLOG_PORT", " 50_44 ")],
+    ),
+    (
+        7_860_033,
+        CUST_A,
+        "BitDefender",
+        None,
+        [
+            ("BASIC_AUTH_USERNAME", "gz-user"),
+            ("BASIC_AUTH_PASSWORD", "gz-pässword"),
+            ("WEBSERVER_HOSTNAME", "firehose.parity.example"),
+            ("WEBSERVER_PORT", "3200"),
+            ("GRAYLOG_PORT", "10514"),
+            ("API_KEY", "gz-api-key"),
+        ],
+    ),
+    (7_860_034, CUST_B, "Crowdstrike", None, CS_KEYS[:3] + [("SYSLOG_PORT", "55x")]),
+    (7_860_035, CUST_B, "BitDefender", None, [("BASIC_AUTH_USERNAME", "u"), ("WEBSERVER_PORT", "1")]),
+    (7_860_036, CUST_C, "Crowdstrike", None, CS_KEYS),
+]
+COLLECTOR_IDS = [r[0] for r in COLLECTOR_ROWS]
+#: Connector id 3 (the collectors' syslog target), inserted when the database has none.
+SYSLOG_CONNECTOR = ("Parity-Syslog", "https://graylog-syslog.parity.example:9000")
 
 
 def insert_integration(cid, code, service, instance, keys):
@@ -863,8 +991,18 @@ def seed():
         )
     for name, sid in INT_SERVICES.items():
         sql("INSERT INTO integration_services (id, service_name, auth_type) VALUES (:i, :n, 'OAuth')", i=sid, n=name)
-    for row in INT_ROWS:
+    for row in INT_ROWS + COLLECTOR_ROWS:
         insert_integration(*row)
+    if not rows("SELECT id FROM connectors WHERE id = 3"):
+        sql(
+            "INSERT INTO connectors (id, connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
+            "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
+            "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
+            "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES (3, :n, '3', "
+            ":u, UTC_TIMESTAMP(), NULL, NULL, NULL, 'parity', 'parity', 1, 1, 0, 0, 1, 0, 0, NULL, 1)",
+            n=SYSLOG_CONNECTOR[0],
+            u=SYSLOG_CONNECTOR[1],
+        )
     for code, name, org in ((CUST_A, NAME_A, "7"), (CUST_B, NAME_B, "8")):
         sql(
             "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, customer_meta_graylog_stream, "
@@ -892,7 +1030,10 @@ def cleanup():
     sql("DELETE FROM integration_services WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
     codes = list(CUSTOMERS) + [CUST_D]
     sql("DELETE FROM customer_integrations_meta WHERE customer_code IN :c", c=codes)
+    sql("DELETE FROM customer_network_connectors_meta WHERE customer_code IN :c", c=codes)
     sql("DELETE FROM customersmeta WHERE customer_code IN :c", c=codes)
+    sql("DELETE FROM connectors WHERE id = 3 AND connector_name = :n", n=SYSLOG_CONNECTOR[0])
+    shutil.rmtree(DATA_PARENT, ignore_errors=True)
     for name in USERS:
         sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
         sql("DELETE FROM log_entries WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
@@ -912,11 +1053,14 @@ def build_python_app():
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
     from app.routers import aws
+    from app.routers import bitdefender
+    from app.routers import crowdstrike
+    from app.routers import defenderforendpoint
     from app.routers import integrations
     from app.routers import office365
 
     api = APIRouter(prefix="/api")
-    for module in (office365, aws, integrations):
+    for module in (office365, aws, integrations, crowdstrike, defenderforendpoint, bitdefender):
         api.include_router(module.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
@@ -924,6 +1068,23 @@ def build_python_app():
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(ValueError, value_error_handler)
     return app
+
+
+def point_collectors():
+    """The three collectors' `UPLOAD_FOLDER` at the shared data directory, and Bitdefender's
+    `httpx.AsyncClient` at the GravityZone stand-in (everything else httpx does unchanged)."""
+    from app.integrations.bitdefender.services import provision as bitdefender
+    from app.integrations.crowdstrike.services import provision as crowdstrike
+    from app.integrations.defender_for_endpoint.services import provision as defender
+
+    for module in (crowdstrike, defender, bitdefender):
+        module.UPLOAD_FOLDER = DATA_DIR
+
+    class Client(httpx.AsyncClient):
+        async def post(self, url, *args, **kwargs):
+            return await super().post(str(url).replace(GRAVITYZONE, GRAVITYZONE_STUB), *args, **kwargs)
+
+    bitdefender.httpx = types.SimpleNamespace(AsyncClient=Client)
 
 
 def start_python(port):
@@ -952,6 +1113,8 @@ def start_rust(port):
         "CONNECTOR_CACHE_TTL_SECONDS": "0",
         "AWS_ENDPOINT_URL": os.environ["AWS_ENDPOINT_URL"],
         "COPILOT_AWS_PROFILE_CHECK_SECONDS": f"{PROFILE_CHECK[0]},{PROFILE_CHECK[1]}",
+        "COPILOT_BACKEND_DATA_DIR": DATA_DIR,
+        "COPILOT_BITDEFENDER_URL": GRAVITYZONE_STUB,
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
     }
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
@@ -974,6 +1137,26 @@ ES_AGENT = re.compile(r"\(Python 3\.11(?:\.\d+)?\)")
 
 def norm_body(raw):
     return ADDRESS.sub(b"object at 0x...", raw)
+
+
+UUID = re.compile(rb"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+class UuidMap:
+    """UUIDs (the content packs' `uuid4()`s) as `<uuid#n>` in order of first appearance, one map
+    for a side's outbound requests and state."""
+
+    def __init__(self):
+        self.seen = {}
+
+    def sub(self, raw):
+        def repl(m):
+            return self.seen.setdefault(m.group(0), f"<uuid#{len(self.seen)}>".encode())
+
+        return UUID.sub(repl, raw)
+
+    def out(self, requests):
+        return [(m, self.sub(t.encode()).decode(), h, self.sub(b)) for m, t, h, b in requests]
 
 
 def aws_header(name, value):
@@ -1036,8 +1219,9 @@ class Pair:
             if before:
                 before()
             r, out = await self.call(client, method, path, tok, **kw)
-            out = out_norm(out)
-            st = json.dumps(state(), default=str) if state else None
+            uuids = UuidMap()
+            out = uuids.out(out_norm(out))
+            st = uuids.sub(json.dumps(state(), default=str).encode()).decode() if state else None
             sides.append((r, out, st))
         (r1, o1, s1), (r2, o2, s2) = sides
         if expect:
@@ -2071,6 +2255,235 @@ async def aws_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
     )
 
 
+# --- CrowdStrike, Defender for Endpoint, Bitdefender -----------------------------------------------------
+
+
+def collectors(version=6, graylog=None, grafana=None, gravityzone_text=False, setup=None):
+    """A fresh world: the collectors' integrations re-seeded, no network-connector metadata,
+    nothing deployed, the data directory empty, the stand-ins reset."""
+
+    def before():
+        point_tools()
+        codes = list(CUSTOMERS) + [CUST_D]
+        sql("DELETE FROM customer_network_connectors_meta WHERE customer_code IN :c", c=codes)
+        for row in COLLECTOR_ROWS:
+            delete_integration(row[0])
+            insert_integration(*row)
+        sql("UPDATE customersmeta SET customer_meta_grafana_org_id = '7' WHERE customer_code = :c", c=CUST_A)
+        shutil.rmtree(DATA_PARENT, ignore_errors=True)
+        os.makedirs(DATA_DIR)
+        GRAYLOG.reset(version, **(graylog or {}))
+        GRAFANA.reset(grafana)
+        INDEXER.reset()
+        GRAVITYZONE_TOOL.reset(gravityzone_text)
+        pin_graylog_version("Graylog", version)
+        if setup:
+            setup()
+
+    return before
+
+
+def files_under(root):
+    """Every directory and file under `root`, its bytes as text."""
+    out = {}
+    for base, dirs, names in sorted(os.walk(root)):
+        dirs.sort()
+        rel = os.path.relpath(base, root)
+        out[rel + "/"] = None
+        for name in sorted(names):
+            with open(os.path.join(base, name), "rb") as f:
+                out[os.path.join(rel, name)] = f.read().decode("utf-8", "replace")
+    return out
+
+
+def collector_state():
+    codes = list(CUSTOMERS) + [CUST_D]
+    return {
+        "meta": rows(
+            "SELECT customer_code, network_connector_name, graylog_input_id, graylog_index_id, graylog_stream_id, "
+            "graylog_pipeline_id, graylog_content_pack_input_id, graylog_content_pack_stream_id, grafana_org_id, "
+            "grafana_dashboard_folder_id, grafana_datasource_uid FROM customer_network_connectors_meta "
+            "WHERE customer_code IN :c ORDER BY id",
+            c=codes,
+        ),
+        "integrations": rows("SELECT id, deployed FROM customer_integrations WHERE id IN :i ORDER BY id", i=COLLECTOR_IDS),
+        "files": files_under(DATA_PARENT),
+        "graylog": GRAYLOG.state(),
+        "grafana": GRAFANA.state(),
+    }
+
+
+def set_collector_name(cid, name):
+    def setup():
+        sql("UPDATE customer_integrations SET customer_name = :n WHERE id = :i", n=name, i=cid)
+
+    return setup
+
+
+async def collector_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
+    st = collector_state
+    cs, dfe, bd = "/api/crowdstrike/provision", "/api/defender_for_endpoint/provision", "/api/bitdefender/provision"
+    a = {"customer_code": CUST_A}
+    await p.same("crowdstrike: no token", "POST", cs, json=a)
+    await p.same("crowdstrike: malformed JSON, no token", "POST", cs, content=b"{", headers={"Content-Type": "application/json"})
+    await p.same("crowdstrike: a customer_user token", "POST", cs, token(ANALYST, ["customer_user"]), json=a)
+    await p.same("crowdstrike: a list body (the before-validator's TypeError)", "POST", cs, t_admin, json=[a])
+    await p.same("defender: a string body", "POST", dfe, t_admin, json="x")
+    await p.same("bitdefender: no customer_code", "POST", bd, t_admin, json={"hot_data_retention": 3})
+    await p.same("bitdefender: a retention Pydantic refuses", "POST", bd, t_admin, json={**a, "hot_data_retention": "x"})
+    await p.same(
+        "crowdstrike: a customer without integrations",
+        "POST",
+        cs,
+        t_admin,
+        before=collectors(),
+        state=st,
+        json={"customer_code": f"RPX{SFX}"},
+    )
+    await p.same(
+        "crowdstrike: only another integration (the AttributeError of None)",
+        "POST",
+        cs,
+        t_admin,
+        before=collectors(),
+        state=st,
+        json={"customer_code": CUST_D},
+    )
+    await p.same("crowdstrike: a port int() refuses", "POST", cs, t_admin, before=collectors(), state=st, json={"customer_code": CUST_B})
+    await p.same("bitdefender: keys Pydantic refuses", "POST", bd, t_admin, before=collectors(), state=st, json={"customer_code": CUST_B})
+    await p.same(
+        "defender: no keys under the service",
+        "POST",
+        dfe,
+        t_admin,
+        before=collectors(setup=lambda: sql("DELETE FROM integration_auth_keys WHERE subscription_id = :s", s=7_860_132)),
+        state=st,
+        json=a,
+    )
+    await p.same("crowdstrike: no Grafana organization", "POST", cs, t_admin, before=collectors(), state=st, json={"customer_code": CUST_C})
+    await p.same(
+        "crowdstrike: a null retention (the details' model)",
+        "POST",
+        cs,
+        t_admin,
+        before=collectors(),
+        state=st,
+        json={**a, "hot_data_retention": None},
+    )
+    await p.same(
+        "crowdstrike: another tenant's customer [Python provisions it]",
+        "POST",
+        cs,
+        t_analyst,
+        before=collectors(),
+        state=st,
+        expect=(400, 403),
+        json={"customer_code": CUST_B},
+    )
+    await p.same(
+        "defender: an analyst without customers",
+        "POST",
+        dfe,
+        t_unassigned,
+        before=collectors(),
+        state=st,
+        expect=(200, 403),
+        json=a,
+    )
+    for version, rust in ((6, None), (7, p.rs7)):
+        await p.same(
+            f"crowdstrike: provisioned (Graylog {version})",
+            "POST",
+            cs,
+            t_analyst,
+            before=collectors(version),
+            state=st,
+            rust=rust,
+            json={**a, "hot_data_retention": 7, "index_replicas": "1", "integration_name": "ignored"},
+        )
+        await p.same(
+            f"defender: provisioned (Graylog {version})",
+            "POST",
+            dfe,
+            t_admin,
+            before=collectors(version),
+            state=st,
+            rust=rust,
+            json=a,
+        )
+        await p.same(
+            f"bitdefender: provisioned (Graylog {version})",
+            "POST",
+            bd,
+            t_admin,
+            before=collectors(version),
+            state=st,
+            rust=rust,
+            json=a,
+        )
+    await p.same(
+        "crowdstrike: a name with spaces and quotes",
+        "POST",
+        cs,
+        t_admin,
+        before=collectors(setup=set_collector_name(7_860_031, 'Ä "Big" Co')),
+        state=st,
+        json=a,
+    )
+    await p.same(
+        "bitdefender: GravityZone answers a text (the JSONDecodeError, after everything)",
+        "POST",
+        bd,
+        t_admin,
+        before=collectors(gravityzone_text=True),
+        state=st,
+        json=a,
+    )
+    await p.same(
+        "bitdefender: a webserver port int() refuses (after the docker-compose file)",
+        "POST",
+        bd,
+        t_admin,
+        before=collectors(
+            setup=lambda: sql(
+                "UPDATE integration_auth_keys SET auth_value = 'PORT' WHERE subscription_id = :s AND auth_key_name = 'WEBSERVER_PORT'",
+                s=7_860_133,
+            ),
+        ),
+        state=st,
+        json=a,
+    )
+    await p.same(
+        "crowdstrike: the stream missing (Graylog's 404 after the content packs)",
+        "POST",
+        cs,
+        t_admin,
+        before=collectors(graylog={"overrides": {("GET", "/api/streams"): (200, "application/json", _json({"streams": [], "total": 0}))}}),
+        state=st,
+        json=a,
+    )
+    await p.same(
+        "crowdstrike: a name with '/' [Python: Graylog and Grafana provisioned, then FileNotFoundError]",
+        "POST",
+        cs,
+        t_admin,
+        before=collectors(setup=set_collector_name(7_860_031, "A/S name")),
+        state=st,
+        expect=(500, 400),
+        json=a,
+    )
+    await p.same(
+        "defender: the name '..' [Python writes next to the data directory]",
+        "POST",
+        dfe,
+        t_admin,
+        before=collectors(setup=set_collector_name(7_860_032, "..")),
+        state=st,
+        expect=(200, 400),
+        json=a,
+    )
+
+
 # --- Main ------------------------------------------------------------------------------------------------
 
 
@@ -2083,6 +2496,7 @@ async def main():
     python = None
     try:
         seed()
+        point_collectors()
         python = start_python(PY_PORT)
         procs.append(start_rust(RS_PORT))
         procs.append(start_rust(RS7_PORT))
@@ -2090,11 +2504,13 @@ async def main():
         t_admin, t_analyst = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"])
         t_analyst_b, t_unassigned = token(ANALYST_B, ["analyst"]), token(UNASSIGNED, ["analyst"])
         try:
-            sections = os.environ.get("REMAINING_PROV_PARITY_SECTIONS", "office365,aws").split(",")
+            sections = os.environ.get("REMAINING_PROV_PARITY_SECTIONS", "office365,aws,collectors").split(",")
             if "office365" in sections:
                 await office365_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned)
             if "aws" in sections:
                 await aws_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned)
+            if "collectors" in sections:
+                await collector_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned)
         finally:
             await p.close()
     finally:

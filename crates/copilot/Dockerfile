@@ -21,8 +21,12 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock rustfmt.toml clippy.toml ./
 COPY crates ./crates
 # copilot-grafana-dashboards' build.rs embeds the templates from the Python
-# backend's tree (one source until Python is retired).
+# backend's tree (one source until Python is retired), as
+# copilot-integration-provisioning embeds the collectors' file templates.
 COPY backend/app/connectors/grafana/dashboards ./backend/app/connectors/grafana/dashboards
+COPY backend/app/integrations/crowdstrike/templates ./backend/app/integrations/crowdstrike/templates
+COPY backend/app/integrations/defender_for_endpoint/templates ./backend/app/integrations/defender_for_endpoint/templates
+COPY backend/app/integrations/bitdefender/templates ./backend/app/integrations/bitdefender/templates
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
     set -eux; \

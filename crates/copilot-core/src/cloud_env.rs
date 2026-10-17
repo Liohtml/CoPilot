@@ -1,5 +1,6 @@
-//! What the remaining provisioning (`copilot-cloud-provisioning`) reads from
-//! the environment, raw as the Python libraries see it.
+//! What the remaining provisioning (`copilot-cloud-provisioning`, the
+//! collectors of `copilot-integration-provisioning`) reads from the
+//! environment, raw as the Python libraries see it.
 
 use crate::env::EnvFile;
 
@@ -17,9 +18,30 @@ pub struct CloudEnv {
     /// only: how long the AWS provisioning watches the manager's log after a
     /// restart instead of 10 s / 60 s.
     pub aws_profile_check_seconds: Option<String>,
+    /// `COPILOT_BACKEND_DATA_DIR`: the Python backend's `data/` directory
+    /// (its `UPLOAD_FOLDER`), where the CrowdStrike, Defender for Endpoint
+    /// and Bitdefender provisioning write their collectors' files —
+    /// [`CloudEnv::DEFAULT_BACKEND_DATA_DIR`] when unset, the path the
+    /// backend's image uses and `docker-compose.rust.yml` mounts.
+    pub backend_data_dir: Option<String>,
+    /// `COPILOT_BITDEFENDER_URL` — parity harness only, never production:
+    /// replaces `https://cloud.gravityzone.bitdefender.com` in the
+    /// Bitdefender provisioning's GravityZone call.
+    pub bitdefender_url: Option<String>,
 }
 
 impl CloudEnv {
+    /// The backend's `UPLOAD_FOLDER` in its image (`/opt/copilot/backend` +
+    /// `data`).
+    pub const DEFAULT_BACKEND_DATA_DIR: &'static str = "/opt/copilot/backend/data";
+
+    /// The directory the collectors' files are written under.
+    pub fn backend_data_dir(&self) -> &str {
+        self.backend_data_dir
+            .as_deref()
+            .unwrap_or(Self::DEFAULT_BACKEND_DATA_DIR)
+    }
+
     /// Read the values the way `os.getenv` would see them.
     pub fn from_env(env: &EnvFile) -> Self {
         let read = |k: &str| env.get(k).filter(|v| !v.is_empty());
@@ -28,6 +50,8 @@ impl CloudEnv {
             aws_endpoint_url_sts: read("AWS_ENDPOINT_URL_STS"),
             aws_endpoint_url_s3: read("AWS_ENDPOINT_URL_S3"),
             aws_profile_check_seconds: read("COPILOT_AWS_PROFILE_CHECK_SECONDS"),
+            backend_data_dir: read("COPILOT_BACKEND_DATA_DIR"),
+            bitdefender_url: read("COPILOT_BITDEFENDER_URL"),
         }
     }
 }

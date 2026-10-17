@@ -67,6 +67,8 @@ struct Seen {
     method: String,
     target: String,
     body: Vec<u8>,
+    /// The `authorization` header.
+    auth: Option<String>,
 }
 
 /// The tools' state.
@@ -88,6 +90,11 @@ struct World {
     fail: Vec<(String, String, u16, Value)>,
     /// The account STS answers for (AWS).
     aws_account: String,
+    /// Graylog's content packs (as inserted) and inputs.
+    content_packs: Vec<Value>,
+    inputs: Vec<Value>,
+    /// Whether GravityZone answers with a text that is not JSON.
+    gravityzone_text: bool,
 }
 
 #[derive(Clone)]
@@ -110,6 +117,10 @@ impl Respond for Tools {
             method: method.clone(),
             target,
             body: req.body.clone(),
+            auth: req
+                .headers
+                .get("authorization")
+                .map(|v| v.to_str().unwrap().to_string()),
         });
         for (m, prefix, status, body) in &w.fail {
             if *m == method && path.starts_with(prefix.as_str()) {
@@ -229,6 +240,78 @@ impl Respond for Tools {
             ),
             ("POST", p) if p.starts_with("/graylog/api/streams/") && p.ends_with("/resume") => {
                 ResponseTemplate::new(204)
+            }
+            ("GET", "/graylog/api/streams") => reply(
+                200,
+                json!({"total": w.streams.len(), "streams": w.streams.clone()}),
+            ),
+            ("PUT", p) if p.starts_with("/graylog/api/streams/") => reply(
+                200,
+                json!({"id": p.trim_start_matches("/graylog/api/streams/")}),
+            ),
+            ("GET", "/graylog/api/system/content_packs") => {
+                let listed: Vec<Value> = w
+                    .content_packs
+                    .iter()
+                    .map(|p| {
+                        json!({"v": "1", "id": p["id"], "rev": p["rev"], "name": p["name"],
+                            "summary": "s", "description": "d", "vendor": "v",
+                            "url": "https://example.com", "created_at": "2026-10-01T00:00:00.000Z",
+                            "server_version": "6.1.4", "parameters": [], "entities": []})
+                    })
+                    .collect();
+                reply(
+                    200,
+                    json!({"total": listed.len(), "content_packs": listed,
+                        "content_packs_metadata": {}}),
+                )
+            }
+            ("POST", "/graylog/api/system/content_packs") => {
+                w.content_packs.push(body.clone());
+                reply(201, json!({"id": body["id"], "rev": body["rev"]}))
+            }
+            ("POST", p)
+                if p.starts_with("/graylog/api/system/content_packs/")
+                    && p.ends_with("/installations") =>
+            {
+                // The pack's streams, inputs and pipelines appear.
+                let id = p.split('/').nth(5).unwrap_or_default().to_string();
+                let entities: Vec<Value> = w
+                    .content_packs
+                    .iter()
+                    .filter(|p| p["id"] == json!(id))
+                    .flat_map(|p| p["entities"].as_array().cloned().unwrap_or_default())
+                    .collect();
+                for (i, e) in entities.iter().enumerate() {
+                    let title = e["data"]["title"]["@value"].clone();
+                    match e["type"]["name"].as_str() {
+                        Some("stream") => w
+                            .streams
+                            .push(json!({"id": format!("st-{n}-{i}"), "title": title})),
+                        Some("input") => w
+                            .inputs
+                            .push(json!({"id": format!("in-{n}-{i}"), "title": title})),
+                        Some("pipeline") => w.pipelines.push(json!({
+                            "id": format!("pl-{n}-{i}"), "title": title,
+                            "description": e["data"]["description"]["@value"],
+                            "source": "s", "stages": [],
+                            "created_at": "2026-10-17T00:00:00.000Z"})),
+                        _ => {}
+                    }
+                }
+                reply(200, json!({"installation": {}}))
+            }
+            ("GET", "/graylog/api/system/inputs") => reply(
+                200,
+                json!({"inputs": w.inputs.clone(), "total": w.inputs.len()}),
+            ),
+            // GravityZone.
+            ("POST", "/api/v1.0/jsonrpc/push") => {
+                if w.gravityzone_text {
+                    ResponseTemplate::new(200).set_body_string("accepted")
+                } else {
+                    reply(200, json!({"id": "1", "jsonrpc": "2.0", "result": true}))
+                }
             }
             ("DELETE", p) if p.starts_with("/graylog/api/streams/") => {
                 let id = p.trim_start_matches("/graylog/api/streams/");
@@ -1253,4 +1336,403 @@ async fn aws_accounts_are_validated_provisioned_resynced_and_deleted() {
     unseed(&h, &code).await;
     unseed(&h, &beta).await;
     leave(&h, e).await;
+}
+
+// --- step 3: CrowdStrike, Defender for Endpoint, Bitdefender ------------------------
+
+/// The data directory the collectors' files are written under.
+fn collector_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("e2e-collectors-{}", std::process::id()))
+}
+
+fn backend_template(path: &str) -> String {
+    std::fs::read_to_string(format!(
+        "{}/../../backend/app/integrations/{path}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap()
+}
+
+/// The requests to Graylog, in order, with the content packs' ids masked.
+fn graylog_lines(seen: &[Seen]) -> Vec<String> {
+    lines(seen)
+        .into_iter()
+        .filter(|l| l.contains(" /graylog/"))
+        .map(|l| {
+            if l.ends_with("/installations") {
+                "POST /graylog/api/system/content_packs/<id>/1/installations".to_string()
+            } else if l.starts_with("PUT /graylog/api/streams/") {
+                "PUT /graylog/api/streams/<id>".to_string()
+            } else {
+                l
+            }
+        })
+        .collect()
+}
+
+async fn network_meta(h: &Harness, code: &str, name: &str) -> Vec<(String, String, String)> {
+    sqlx::query_as(
+        "SELECT graylog_pipeline_id, grafana_dashboard_folder_id, grafana_datasource_uid FROM \
+         customer_network_connectors_meta WHERE customer_code = ? AND network_connector_name = ? \
+         ORDER BY id",
+    )
+    .bind(code)
+    .bind(name)
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap()
+}
+
+async fn deployed(h: &Harness, id: i64) -> i64 {
+    h.scalar_i64(&format!(
+        "SELECT CAST(COALESCE(deployed, 0) AS SIGNED) FROM customer_integrations WHERE id = {id}"
+    ))
+    .await
+}
+
+#[tokio::test]
+async fn collectors_provision_graylog_grafana_and_write_their_files() {
+    if !configured() {
+        return;
+    }
+    let data = collector_dir();
+    let _ = std::fs::remove_dir_all(&data);
+    std::fs::create_dir_all(&data).unwrap();
+    let extra = format!(
+        "COPILOT_BACKEND_DATA_DIR={}\nCOPILOT_BITDEFENDER_URL=http://127.0.0.1:{}\n",
+        data.display(),
+        port(0)
+    );
+    let h = harness_or_skip!(None, &extra);
+    let e = env(&h).await;
+    h.seed().await;
+    let code = h.code("acme");
+    let beta = h.code("beta");
+    unseed(&h, &code).await;
+    unseed(&h, &beta).await;
+    let admin = h.token(&h.code("admin"), "admin");
+    let analyst = h.token(&h.code("analyst"), "analyst");
+    // Connector id 3's URL is the collectors' syslog target.
+    let url3: Option<String> =
+        sqlx::query_scalar("SELECT connector_url FROM connectors WHERE id = 3")
+            .fetch_optional(h.db.pool())
+            .await
+            .unwrap();
+    let host = url3
+        .as_deref()
+        .unwrap_or("None")
+        .replace("https://", "")
+        .replace("http://", "")
+        .replace(":9000", "");
+    let provision = |route: &'static str, who: &str, body: Value| {
+        let who = who.to_string();
+        let h = &h;
+        async move {
+            h.call(
+                "POST",
+                &format!("/api/{route}/provision"),
+                Some(&who),
+                Some(body),
+            )
+            .await
+        }
+    };
+
+    // No token; another tenant's customer (Python checked none); no
+    // integration at all; another integration only (Python's
+    // `AttributeError`, a bare 500).
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/crowdstrike/provision",
+            None,
+            Some(json!({"customer_code": code})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _) = provision("crowdstrike", &analyst, json!({"customer_code": beta})).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, body) = provision("crowdstrike", &analyst, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(
+        body["message"],
+        json!("Customer integration settings not found.")
+    );
+    seed_integration(
+        &h,
+        &code,
+        7_850_020,
+        7_850_920,
+        "Huntress",
+        None,
+        &[("API_KEY", "k")],
+    )
+    .await;
+    let (st, _) = provision("crowdstrike", &admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
+
+    // CrowdStrike: a port `int()` refuses, a `null` retention, no Grafana
+    // organization — each before anything is sent.
+    seed_integration(
+        &h,
+        &code,
+        7_850_021,
+        7_850_921,
+        "Crowdstrike",
+        None,
+        &[
+            ("CLIENT_ID", "cid"),
+            ("CLIENT_SECRET", "secret"),
+            ("BASE_URL", "https://api.crowdstrike.com"),
+            ("SYSLOG_PORT", "x"),
+        ],
+    )
+    .await;
+    let (st, body) = provision("crowdstrike", &admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        body["message"],
+        json!("invalid literal for int() with base 10: 'x'")
+    );
+    set_key(&h, 78_500_213, "5556").await;
+    let (st, body) = provision(
+        "crowdstrike",
+        &admin,
+        json!({"customer_code": code, "hot_data_retention": null}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["message"].as_str().unwrap().starts_with(
+            "1 validation error for CrowdstrikeCustomerDetails\nhot_data_retention\n  Input \
+             should be a valid integer"
+        ),
+        "{body}"
+    );
+    let (st, body) = provision("crowdstrike", &admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(
+        body["message"],
+        json!(
+            "Grafana organization ID not found. Please provision Grafana for the customer first."
+        )
+    );
+    assert!(lines(&e.tools.take()).is_empty());
+    seed_meta(&h, &code, "7").await;
+
+    // A name that would leave the data directory: refused before anything.
+    h.exec("UPDATE customer_integrations SET customer_name = 'A/S Corp' WHERE id = 7850021")
+        .await;
+    let (st, body) = provision("crowdstrike", &admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        body["message"],
+        json!(
+            "Customer name 'A/S_Corp' cannot name a directory under the backend's data directory."
+        )
+    );
+    assert!(lines(&e.tools.take()).is_empty());
+    assert_eq!(std::fs::read_dir(&data).unwrap().count(), 0);
+    h.exec("UPDATE customer_integrations SET customer_name = 'Acme Corp' WHERE id = 7850021")
+        .await;
+
+    // Provisioned: Graylog in Python's order, the stream connected to the
+    // pipeline, the meta row, the files, `deployed`.
+    let (st, body) = provision(
+        "crowdstrike",
+        &analyst,
+        json!({"customer_code": code, "hot_data_retention": 7, "index_replicas": 1}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true, "message": "Crowdstrike customer provisioned successfully"})
+    );
+    let seen = e.tools.take();
+    let pack = [
+        "GET /graylog/api/system/content_packs",
+        "POST /graylog/api/system/content_packs",
+    ];
+    let install = "POST /graylog/api/system/content_packs/<id>/1/installations";
+    let mut want: Vec<&str> = Vec::new();
+    for i in 0..3 {
+        want.extend(pack);
+        if i == 0 {
+            want.push("GET /graylog/api/system");
+        }
+        want.push(install);
+    }
+    want.extend([
+        "GET /graylog/api/streams",
+        "POST /graylog/api/system/indices/index_sets",
+        "GET /graylog/api/system/content_packs",
+        "GET /graylog/api/system/content_packs",
+        "GET /graylog/api/system/inputs",
+        "GET /graylog/api/system/pipelines/pipeline",
+        "PUT /graylog/api/streams/<id>",
+        "GET /graylog/api/system/pipelines/pipeline",
+        "POST /graylog/api/system/pipelines/connections/to_stream",
+    ]);
+    assert_eq!(graylog_lines(&seen), want);
+    let index_set: Value = serde_json::from_slice(
+        &seen
+            .iter()
+            .find(|s| s.target == "/graylog/api/system/indices/index_sets")
+            .unwrap()
+            .body,
+    )
+    .unwrap();
+    assert_eq!(index_set["title"], json!("Acme_Corp - CROWDSTRIKE EVENTS"));
+    assert_eq!(
+        index_set["index_prefix"],
+        json!(format!("crowdstrike-{code}"))
+    );
+    assert_eq!(
+        index_set["retention_strategy"]["max_number_of_indices"],
+        json!(7)
+    );
+    assert_eq!(index_set["replicas"], json!(1));
+    assert_eq!(index_set["shards"], json!(2));
+    let ls = lines(&seen);
+    assert!(
+        ls.contains(&"POST /grafanaapi/datasources".to_string()),
+        "{ls:?}"
+    );
+    assert!(
+        ls.contains(&"POST /grafanaapi/folders".to_string()),
+        "{ls:?}"
+    );
+    let meta = network_meta(&h, &code, "CROWDSTRIKE").await;
+    assert_eq!(meta.len(), 1);
+    assert!(meta[0].0.starts_with("pl-"), "{meta:?}");
+    assert!(meta[0].1.starts_with("f-"), "{meta:?}");
+    assert!(meta[0].2.starts_with("ds-"), "{meta:?}");
+    assert_eq!(deployed(&h, 7_850_021).await, 1);
+    let folder = data.join("Acme_Corp");
+    assert_eq!(
+        std::fs::read_to_string(folder.join("Acme_Corp_docker-compose.yml")).unwrap(),
+        backend_template("crowdstrike/templates/docker-compose.yml")
+            .replace("CUSTOMER_NAME", "Acme_Corp")
+    );
+    let cfg = std::fs::read_to_string(folder.join("cs.falconhoseclient.cfg")).unwrap();
+    assert!(cfg.contains("client_id = cid\n"), "{cfg}");
+    assert!(cfg.contains("api_url = https://api.crowdstrike.com/sensors/entities/datafeed/v2\n"));
+    assert!(cfg.contains(&format!("host = {host}\nport = 5556\n")));
+
+    // Defender for Endpoint: no pipeline, the folder's numeric id, the
+    // filebeat configuration and its `data/` directory.
+    seed_integration(
+        &h,
+        &code,
+        7_850_022,
+        7_850_922,
+        "DefenderForEndpoint",
+        None,
+        &[
+            ("CLIENT_ID", "dc"),
+            ("CLIENT_SECRET", "ds"),
+            ("TENANT_ID", "tenant-1"),
+            ("SYSLOG_PORT", "5044"),
+        ],
+    )
+    .await;
+    let (st, body) = provision(
+        "defender_for_endpoint",
+        &admin,
+        json!({"customer_code": code}),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["message"],
+        json!("Defender For Endpoint for customer provisioned successfully")
+    );
+    let gl = graylog_lines(&e.tools.take());
+    assert!(
+        !gl.iter()
+            .any(|l| l.contains("to_stream") || l.contains("pipelines")),
+        "{gl:?}"
+    );
+    let meta = network_meta(&h, &code, "DefenderForEndpoint").await;
+    assert_eq!(meta[0].0, "not_set");
+    assert!(meta[0].1.parse::<i64>().is_ok(), "{meta:?}");
+    assert_eq!(deployed(&h, 7_850_022).await, 1);
+    assert!(folder.join("data").is_dir());
+    let filebeat = std::fs::read_to_string(folder.join("filebeat.yml")).unwrap();
+    assert!(filebeat.contains("https://login.microsoftonline.com/tenant-1/oauth2/token"));
+    assert!(filebeat.contains(&format!("hosts: [\"{host}:5044\"]")));
+    assert!(
+        folder
+            .join("Acme_Corp_docker-compose-defender-for-endpoint.yml")
+            .is_file()
+    );
+
+    // Bitdefender: the files, then GravityZone; an answer that is not JSON
+    // is the `JSONDecodeError`'s 400 after everything else was done.
+    seed_integration(
+        &h,
+        &code,
+        7_850_023,
+        7_850_923,
+        "BitDefender",
+        None,
+        &[
+            ("BASIC_AUTH_USERNAME", "u"),
+            ("BASIC_AUTH_PASSWORD", "p"),
+            ("WEBSERVER_HOSTNAME", "firehose.example.com"),
+            ("WEBSERVER_PORT", "3200"),
+            ("GRAYLOG_PORT", "10514"),
+            ("API_KEY", "key-1"),
+        ],
+    )
+    .await;
+    let (st, body) = provision("bitdefender", &admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["message"],
+        json!("Bitdefender customer provisioned successfully")
+    );
+    let seen = e.tools.take();
+    let push = seen
+        .iter()
+        .find(|s| s.target == "/api/v1.0/jsonrpc/push")
+        .unwrap();
+    assert_eq!(push.auth.as_deref(), Some("Basic a2V5LTE6"));
+    let sent: Value = serde_json::from_slice(&push.body).unwrap();
+    assert_eq!(
+        sent["params"]["serviceSettings"],
+        json!({"requireValidSslCertificate": false, "authorization": "Basic dTpw",
+            "url": "https://firehose.example.com:3200/api"})
+    );
+    assert_eq!(network_meta(&h, &code, "BITDEFENDER").await[0].0, "NONE");
+    assert_eq!(deployed(&h, 7_850_023).await, 1);
+    assert_eq!(
+        std::fs::read_to_string(folder.join("Acme_Corp_bitdefender_docker-compose.yml")).unwrap(),
+        backend_template("bitdefender/templates/docker-compose.yml")
+            .replace("CUSTOMER_NAME", "Acme_Corp")
+            .replace("PORT", "3200")
+    );
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string(folder.join("config.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        config,
+        json!({"port": 3200, "syslog_port": 10514, "transport": "Tcp", "target": host,
+            "authentication_string": "Basic dTpw",
+            "secure": {"enabled": true, "key": "api/config/server.key",
+                "cert": "api/config/server.crt"}})
+    );
+    e.tools.with(|w| w.gravityzone_text = true);
+    let (st, body) = provision("bitdefender", &admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        body["message"],
+        json!("Expecting value: line 1 column 1 (char 0)")
+    );
+    assert_eq!(network_meta(&h, &code, "BITDEFENDER").await.len(), 2);
+
+    unseed(&h, &code).await;
+    leave(&h, e).await;
+    std::fs::remove_dir_all(&data).unwrap();
 }

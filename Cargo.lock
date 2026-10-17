@@ -991,6 +991,7 @@ name = "copilot-integration-provisioning"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "chrono",
  "copilot-auth",
  "copilot-core",
@@ -1002,6 +1003,7 @@ dependencies = [
  "copilot-integrations",
  "copilot-monitoring-alerts",
  "copilot-provisioning",
+ "copilot-threat-intel",
  "copilot-upstream",
  "copilot-wazuh",
  "copilot-web",

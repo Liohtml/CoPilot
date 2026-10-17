@@ -20,6 +20,7 @@ use copilot_upstream::respond::model_response;
 use copilot_web::{AdminOrAnalyst, ApiError, ApiResult, Authorized};
 
 use crate::ProvisioningState;
+use crate::collectors::{self, COLLECTORS, Collector};
 use crate::integrations::{self, INTEGRATIONS, Integration, PROVISION_MDR_REQUEST};
 use crate::network::{self, NETWORKS, Network, Tools};
 
@@ -49,6 +50,17 @@ pub fn router(state: ProvisioningState) -> Router {
             post(
                 move |st: State<ProvisioningState>, body: WithPyJson<Reader>| {
                     provision_integration(st, body, integration)
+                },
+            ),
+        );
+    }
+    for collector in COLLECTORS {
+        let path = format!("/api/{}/provision", collector.route);
+        router = router.route(
+            &path,
+            post(
+                move |st: State<ProvisioningState>, body: WithPyJson<Reader>| {
+                    provision_collector(st, body, collector)
                 },
             ),
         );
@@ -139,6 +151,25 @@ async fn provision_integration(
         ("success", PyValue::Bool(true)),
         ("message", PyValue::Str(integration.message.into())),
     ])))
+}
+
+async fn provision_collector(
+    State(st): State<ProvisioningState>,
+    WithPyJson(auth, body): WithPyJson<Reader>,
+    collector: &'static Collector,
+) -> ApiResult {
+    let request = read_forced(
+        &body,
+        collector.request,
+        "integration_name",
+        collector.service,
+    )?;
+    auth.enforce_customer(&st.ctx, &field(&request, "customer_code").py_str())
+        .await?;
+    collectors::provision(&st.ctx, tools(&st), &st.env, collector, &request)
+        .await
+        .map(|dump| model_response(&dump))
+        .map_err(PyExc::unhandled)
 }
 
 async fn provision_mdr(

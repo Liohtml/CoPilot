@@ -19,10 +19,17 @@ Writes:
   `verify_only_instance_changed`), `ProvisionAwsAuthKeys` and `parse_services`, and the pipeline
   rule sources.
 
+* `crates/copilot-integration-provisioning/src/collector_vectors.json` — the CrowdStrike, Defender
+  for Endpoint and Bitdefender provisioning: the request bodies as FastAPI reads them, the auth
+  keys' and customer details' models, every file the services write under `UPLOAD_FOLDER` (the
+  docker-compose files, `cs.falconhoseclient.cfg` by its SHA-256, `filebeat.yml`, `config.json`
+  or its `int()` failure) and GravityZone's request body and `authorization` header.
+
 Re-run after a Python upgrade (expat and ElementTree ship with CPython) or a change to the modules
 these pin.
 """
 
+import hashlib
 import json
 import pathlib
 import xml.etree.ElementTree as ET
@@ -582,7 +589,15 @@ def aws_call_vectors():
             {},
             [(503, {"Date": "Sat, 17 Oct 2026 11:59:00 UTC"}, b""), EndpointConnectionError(endpoint_url=E + "/"), _sts_ok()],
         ),
-        ("sts 503 with a date that does not parse", "sts", "us-east-1", E, "get_caller_identity", {}, [(503, {"Date": "yesterday"}, b""), _sts_ok()]),
+        (
+            "sts 503 with a date that does not parse",
+            "sts",
+            "us-east-1",
+            E,
+            "get_caller_identity",
+            {},
+            [(503, {"Date": "yesterday"}, b""), _sts_ok()],
+        ),
         ("sts 403 not xml", "sts", "us-east-1", E, "get_caller_identity", {}, [(403, {}, b"nope")]),
         (
             "sts 400 error as text",
@@ -1507,6 +1522,274 @@ def aws_misc_vectors():
     }
 
 
+# --- CrowdStrike, Defender for Endpoint, Bitdefender ---------------------------------------------
+
+COLLECTOR_OUT = ROOT / "crates" / "copilot-integration-provisioning" / "src" / "collector_vectors.json"
+
+COLLECTORS = {
+    "crowdstrike": ("ProvisionCrowdstrikeRequest", "ProvisionCrowdstrikeAuthKeys", "CrowdstrikeCustomerDetails"),
+    "defender_for_endpoint": (
+        "ProvisionDefenderForEndpointRequest",
+        "ProvisionDefenderForEndpointAuthKeys",
+        "DefenderForEndpointCustomerDetails",
+    ),
+    "bitdefender": ("ProvisionBitdefenderRequest", "ProvisionBitdefenderAuthKeys", "BitdefenderCustomerDetails"),
+}
+
+COLLECTOR_BODIES = [
+    {"customer_code": "c1"},
+    {"customer_code": "c1", "integration_name": "Other", "hot_data_retention": "7", "index_replicas": 2},
+    {"customer_code": "c1", "hot_data_retention": None, "index_replicas": None},
+    {"customer_code": "c1", "hot_data_retention": 1.5},
+    {"customer_code": "c1", "hot_data_retention": True, "index_replicas": "x"},
+    {"customer_code": 5},
+    {"hot_data_retention": 100000000000000000000},
+    {},
+    None,
+    [],
+    "x",
+    3,
+]
+
+COLLECTOR_KEYS = {
+    "crowdstrike": [
+        {"CLIENT_ID": "cid", "CLIENT_SECRET": "s3cr3t", "BASE_URL": "https://api.crowdstrike.com", "SYSLOG_PORT": "5556"},
+        {
+            "CLIENT_ID": "REPLACE_CLIENT_SECRET",
+            "CLIENT_SECRET": 'é "q" \\ REPLACE_SYSLOG_HOST',
+            "BASE_URL": "REPLACE_BASE_URL/x",
+            "SYSLOG_PORT": " 0_514 ",
+            "EXTRA": "ignored",
+        },
+        {"CLIENT_ID": "a", "CLIENT_SECRET": "b", "BASE_URL": "c"},
+        {"CLIENT_ID": "x", "CLIENT_SECRET": "y", "BASE_URL": "z", "SYSLOG_PORT": "1"},
+        {},
+    ],
+    "defender_for_endpoint": [
+        {"CLIENT_ID": "cid", "CLIENT_SECRET": "sec", "TENANT_ID": "tenant-guid", "SYSLOG_PORT": "5044"},
+        {"CLIENT_ID": "REPLACE_TENANT_ID", "CLIENT_SECRET": "ü\nline", "TENANT_ID": "REPLACE_CLIENT_ID", "SYSLOG_PORT": "x"},
+        {"TENANT_ID": "t"},
+        {"CLIENT_ID": "c", "CLIENT_SECRET": "s", "TENANT_ID": "t", "SYSLOG_PORT": "9"},
+    ],
+    "bitdefender": [
+        {
+            "BASIC_AUTH_USERNAME": "admin",
+            "BASIC_AUTH_PASSWORD": "pässword:x",
+            "WEBSERVER_HOSTNAME": "firehose.example.com",
+            "WEBSERVER_PORT": "3200",
+            "GRAYLOG_PORT": "10514",
+            "API_KEY": "key-1",
+        },
+        {
+            "BASIC_AUTH_USERNAME": 'u "1"',
+            "BASIC_AUTH_PASSWORD": "",
+            "WEBSERVER_HOSTNAME": "h",
+            "WEBSERVER_PORT": " +0_80 ",
+            "GRAYLOG_PORT": "1_0514",
+            "API_KEY": "ü",
+        },
+        {
+            "BASIC_AUTH_USERNAME": "a",
+            "BASIC_AUTH_PASSWORD": "b",
+            "WEBSERVER_HOSTNAME": "h",
+            "WEBSERVER_PORT": "PORT",
+            "GRAYLOG_PORT": "514",
+            "API_KEY": "k",
+        },
+        {"API_KEY": "k"},
+        {
+            "BASIC_AUTH_USERNAME": "a",
+            "BASIC_AUTH_PASSWORD": "b",
+            "WEBSERVER_HOSTNAME": "h",
+            "WEBSERVER_PORT": "443",
+            "GRAYLOG_PORT": "x",
+            "API_KEY": "k",
+        },
+        {
+            "BASIC_AUTH_USERNAME": "a",
+            "BASIC_AUTH_PASSWORD": "b",
+            "WEBSERVER_HOSTNAME": "h",
+            "WEBSERVER_PORT": "8443",
+            "GRAYLOG_PORT": "514",
+            "API_KEY": "k",
+        },
+    ],
+}
+
+# The names as `provision_<x>` passes them on: spaces already replaced (one with a `/` is refused in
+# Rust: Python fails writing its docker-compose file, or writes outside `UPLOAD_FOLDER`).
+COLLECTOR_NAMES = ["Acme_Corp", "CUSTOMER_NAME_PORT", 'É_"x"', "."]
+
+COLLECTOR_URLS = ["http://graylog.example.com:9000", "https://10.0.0.5:9000/x", None, "graylog"]
+
+COLLECTOR_DETAILS = [
+    {
+        "customer_code": "c1",
+        "customer_name": "Acme",
+        "protocal_type": "TCP",
+        "syslog_port": 514,
+        "hot_data_retention": 30,
+        "index_replicas": 0,
+    },
+    {
+        "customer_code": "c1",
+        "customer_name": "Acme",
+        "protocal_type": "TCP",
+        "syslog_port": 514,
+        "hot_data_retention": None,
+        "index_replicas": None,
+    },
+    {
+        "customer_code": "c1",
+        "customer_name": "Acme",
+        "protocal_type": "Tcp",
+        "syslog_port": 514,
+        "hot_data_retention": 7,
+        "index_replicas": None,
+    },
+]
+
+
+def _gen_module(name):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), ROOT / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+async def _collector_files(route, services, schema, names):
+    """Every file `provision_<route>` writes for each key set, by the services' own functions."""
+    import tempfile
+
+    auth_model = getattr(schema, COLLECTORS[route][1])
+    out = []
+    for raw in COLLECTOR_KEYS[route]:
+        try:
+            keys = auth_model(**raw)
+        except Exception:
+            continue
+        name = names[len(out) % len(names)]
+        url = COLLECTOR_URLS[len(out) % len(COLLECTOR_URLS)]
+
+        async def connector_attribute(column_name, connector_id=None, connector_name=None, session=None, _url=url):
+            assert connector_id == 3 and column_name == "connector_url"
+            return _url
+
+        services.get_connector_attribute = connector_attribute
+        with tempfile.TemporaryDirectory() as tmp:
+            services.UPLOAD_FOLDER = tmp
+            details = type("Details", (), {"customer_name": name, "protocal_type": "Tcp" if route == "bitdefender" else "TCP"})()
+            entry = {"name": name, "keys": raw, "url": url}
+            await services.create_customer_directory_if_needed(customer_name=name)
+            if route == "defender_for_endpoint":
+                await services.create_customer_data_directory(customer_name=name)
+            if route == "bitdefender":
+                text = await services.load_and_replace_docker_compose(customer_name=name, port=keys.WEBSERVER_PORT)
+                file_name = f"{name}_bitdefender_docker-compose.yml"
+            elif route == "crowdstrike":
+                text = await services.load_and_replace_docker_compose(customer_name=name)
+                file_name = f"{name}_docker-compose.yml"
+            else:
+                text = await services.load_and_replace_docker_compose(customer_name=name)
+                file_name = f"{name}_docker-compose-defender-for-endpoint.yml"
+            await services.save_uploaded_file(file=text, filename=file_name, customer_name=name)
+            try:
+                if route == "crowdstrike":
+                    await services.load_and_replace_falconhose_cfg(customer_details=details, keys=keys, session=None)
+                elif route == "defender_for_endpoint":
+                    await services.load_and_replace_filebeat_cfg(customer_details=details, keys=keys, session=None)
+                else:
+                    await services.load_and_replace_config_json(customer_details=details, keys=keys, session=None)
+            except ValueError as e:
+                entry["exception"] = [type(e).__name__, str(e)]
+            folder = pathlib.Path(tmp) / name
+            files = {}
+            for path in sorted(folder.rglob("*")):
+                rel = str(path.relative_to(folder))
+                if path.is_dir():
+                    files[rel] = None
+                else:
+                    data = path.read_bytes()
+                    files[rel] = (
+                        {"sha256": hashlib.sha256(data).hexdigest(), "len": len(data)}
+                        if rel == "cs.falconhoseclient.cfg"
+                        else data.decode("utf-8")
+                    )
+            entry["files"] = files
+        out.append(entry)
+    return out
+
+
+async def _gravityzone(services, schema):
+    """What `send_configuration_to_bitdefender` sends, through httpx's own encoder."""
+    import httpx
+
+    sent = []
+
+    def handler(request):
+        sent.append(request)
+        return httpx.Response(200, json={"id": "1", "jsonrpc": "2.0", "result": True})
+
+    class Shim:
+        Response = httpx.Response
+
+        @staticmethod
+        def AsyncClient(**kwargs):
+            return httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+
+    services.httpx = Shim
+    out = []
+    try:
+        for raw in COLLECTOR_KEYS["bitdefender"]:
+            try:
+                keys = schema.ProvisionBitdefenderAuthKeys(**raw)
+            except Exception:
+                continue
+            sent.clear()
+            await services.send_configuration_to_bitdefender(keys)
+            request = sent[0]
+            out.append(
+                {
+                    "keys": raw,
+                    "url": str(request.url),
+                    "headers": [[k.decode(), v.decode()] for k, v in request.headers.raw],
+                    "body": request.content.decode("utf-8"),
+                },
+            )
+    finally:
+        services.httpx = httpx
+    return out
+
+
+async def collector_vectors():
+    import importlib
+
+    gen = _gen_module("gen-integration-provisioning-vectors")
+    out = {}
+    for route, (request_name, auth_name, details_name) in COLLECTORS.items():
+        services = importlib.import_module(f"app.integrations.{route}.services.provision")
+        schema = importlib.import_module(f"app.integrations.{route}.schema.provision")
+        request = getattr(schema, request_name)
+        auth_model = getattr(schema, auth_name)
+        details_model = getattr(schema, details_name)
+        saved = (services.UPLOAD_FOLDER, services.get_connector_attribute)
+        try:
+            entry = {
+                "requests": [{"input": json.dumps(b), **gen.body_outcome(request, json.loads(json.dumps(b)))} for b in COLLECTOR_BODIES],
+                "auth_keys": [{"input": json.dumps(k), **gen.construct_outcome(auth_model, k)} for k in COLLECTOR_KEYS[route]],
+                "details": [{"input": json.dumps(d), **gen.construct_outcome(details_model, d)} for d in COLLECTOR_DETAILS],
+                "files": await _collector_files(route, services, schema, COLLECTOR_NAMES),
+            }
+            if route == "bitdefender":
+                entry["gravityzone"] = await _gravityzone(services, schema)
+        finally:
+            services.UPLOAD_FOLDER, services.get_connector_attribute = saved
+        out[route] = entry
+    return out
+
+
 def write(path, value):
     path.write_text(json.dumps(value, indent=1, ensure_ascii=False) + "\n")
     print(f"wrote {path.relative_to(ROOT)}")
@@ -1529,6 +1812,9 @@ def main():
         )
     finally:
         _aws_unpatch(saved)
+    import asyncio
+
+    write(COLLECTOR_OUT, asyncio.run(collector_vectors()))
 
 
 if __name__ == "__main__":

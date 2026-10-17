@@ -246,8 +246,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/api/v1/alert_settings",
     "/api/network_connectors",
     // The integrations' provisioning (copilot-integration-provisioning; the
-    // scheduler jobs handed to Python) but CrowdStrike, Defender for Endpoint
-    // and Bitdefender (collector files on the Python host).
+    // scheduler jobs handed to Python), CrowdStrike, Defender for Endpoint and
+    // Bitdefender included (their collectors' files written under the
+    // backend's data directory).
     "POST /api/huntress/provision",
     "POST /api/darktrace/provision",
     "POST /api/duo/provision",
@@ -256,6 +257,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/mimecast/provision",
     "POST /api/sap_siem/provision",
     "POST /api/socfortress_mdr/provision",
+    "POST /api/crowdstrike/provision",
+    "POST /api/defender_for_endpoint/provision",
+    "POST /api/bitdefender/provision",
     // Office 365 and AWS (copilot-cloud-provisioning): the tenant's or the
     // account's ossec.conf entries, Graylog and Grafana objects, rolled back
     // on failure.
@@ -892,7 +896,8 @@ impl App {
                 },
             ))
             // Full paths: `POST /api/stack_provisioning/graylog/provision/
-            // {fortinet,sonicwall,sentinelone}` and `POST /api/<integration>/provision`.
+            // {fortinet,sonicwall,sentinelone}` and `POST /api/<integration>/provision`
+            // (CrowdStrike, Defender for Endpoint and Bitdefender included).
             .merge(copilot_integration_provisioning::router(
                 copilot_integration_provisioning::ProvisioningState {
                     ctx: self.ctx.clone(),
@@ -900,6 +905,7 @@ impl App {
                     grafana: self.grafana.clone(),
                     wazuh: self.wazuh.clone(),
                     legacy: self.legacy.clone(),
+                    env: self.cloud.clone(),
                 },
             ))
             // Full paths: `POST /api/office365/provision` and

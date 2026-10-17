@@ -4,11 +4,11 @@
 //! routes (`app/integrations/{huntress,darktrace,duo,cato,carbonblack,
 //! mimecast,sap_siem,socfortress_mdr}/`, [`integrations`]).
 //!
-//! Still Python: the CrowdStrike, Defender for Endpoint and Bitdefender
-//! provisioning (each writes its collector's docker-compose and configuration
-//! files under the backend's `data/` directory, on the Python host — and
-//! Bitdefender pushes its configuration to GravityZone) and AWS. Office365 is
-//! `copilot-cloud-provisioning`'s.
+//! The CrowdStrike, Defender for Endpoint and Bitdefender provisioning
+//! ([`collectors`]) also write their collectors' docker-compose and
+//! configuration files under the Python backend's `data/` directory
+//! (`COPILOT_BACKEND_DATA_DIR`), and Bitdefender pushes its settings to
+//! GravityZone. Office 365 and AWS are `copilot-cloud-provisioning`'s.
 //!
 //! - [`schema`]  — the Pydantic models the flows build and read
 //! - [`graylog`] — index sets, streams, pipelines, the id lookups, the
@@ -19,6 +19,8 @@
 //! - [`network`] — Fortinet, SonicWall and SentinelOne, one data table
 //! - [`integrations`] — the seven Graylog-and-Grafana integrations, one data
 //!   table, the scheduler jobs handed to Python; SOCFortress MDR
+//! - [`collectors`] — CrowdStrike, Defender for Endpoint and Bitdefender, one
+//!   data table: the Graylog and Grafana objects, then the collector's files
 //! - [`routes`]  — the handlers
 //!
 //! The dashboards themselves are `copilot-grafana-dashboards`'
@@ -27,6 +29,7 @@
 
 #![warn(missing_docs)]
 
+pub mod collectors;
 pub mod grafana;
 pub mod graylog;
 pub mod integrations;
@@ -36,6 +39,7 @@ pub mod schema;
 pub mod store;
 
 use axum::extract::FromRef;
+use copilot_core::cloud_env::CloudEnv;
 use copilot_db::schema::TableRequirement;
 use copilot_gateway::LegacyProxy;
 use copilot_grafana::GrafanaClient;
@@ -58,6 +62,9 @@ pub struct ProvisioningState {
     pub wazuh: WazuhState,
     /// The Python backend, which registers the integrations' scheduler jobs.
     pub legacy: Option<LegacyProxy>,
+    /// What the collectors read from the environment (the backend's data
+    /// directory, the GravityZone URL of the tests).
+    pub env: CloudEnv,
 }
 
 impl FromRef<ProvisioningState> for AppContext {
