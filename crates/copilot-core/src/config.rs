@@ -34,6 +34,8 @@
 //! | `GITHUB_TOKEN` | *(unset)* | the Detections Catalog's GitHub bearer token when a custom repository has none (secret), read as `os.getenv` reads it |
 //! | `COPILOT_CATALOG_REFRESH` | `true` | this process warms and refreshes its own catalog caches (`false`: they load on demand only — the parity suites, an air-gapped deployment) |
 //! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
+//! | `COPILOT_SIDEBAR_REFRESH` | `COPILOT_CATALOG_REFRESH` | this process warms and refreshes its own sidebar indicators (`copilot-status`); unset, it follows the catalog switch |
+//! | `ENVIRONMENT` | `PRODUCTION` | the sidebar's `environment` field, as `os.getenv` reads it |
 
 use std::fmt;
 use std::net::IpAddr;
@@ -167,6 +169,10 @@ pub struct CopilotConfig {
     pub response: crate::response_env::ResponseEnv,
     /// The Detections Catalog's settings (`copilot-searches`).
     pub catalog: crate::catalog_env::CatalogEnv,
+    /// `COPILOT_SIDEBAR_REFRESH`, as set (`copilot-status`'s refresher).
+    pub sidebar_refresh: Option<String>,
+    /// `ENVIRONMENT`, as set (`os.getenv` semantics).
+    pub environment: Option<String>,
 }
 
 /// Raw values the WAF and provisioning modules read per call in Python
@@ -392,6 +398,8 @@ impl CopilotConfig {
             copilot_api_key: env.get_raw("COPILOT_API_KEY").map(Secret::new),
             response: crate::response_env::ResponseEnv::from_env(env),
             catalog: crate::catalog_env::CatalogEnv::from_env(env),
+            sidebar_refresh: env.get_raw("COPILOT_SIDEBAR_REFRESH"),
+            environment: env.get_raw("ENVIRONMENT"),
         })
     }
 }

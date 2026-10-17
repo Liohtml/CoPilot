@@ -1,9 +1,12 @@
 //! The platform-status modules against a real MySQL at the Alembic head:
-//! `/api/logs` (`copilot-status`), `/api/license` (`copilot-license`, its
-//! licence server a wiremock stand-in).
+//! `/api/logs` and `/api/status/sidebar` (`copilot-status`), `/api/license`
+//! (`copilot-license`, its licence server a wiremock stand-in). The sidebar's
+//! upstreams — the Wazuh indexer and manager, InfluxDB, MinIO and the
+//! release check — are wiremock stand-ins too.
 //!
-//! `log_entries` and `license` are deployment-wide: each test puts the rows
-//! it finds aside and restores them, so the suites can share one database.
+//! `log_entries`, `license`, the tag-access settings and the connector rows
+//! are deployment-wide: each test puts the rows it finds aside and restores
+//! them, so the suites can share one database.
 //!
 //! `COPILOT_TEST_DATABASE_URL=mysql://… cargo test -p copilot --test
 //! e2e_platform -- --test-threads=1`
@@ -13,8 +16,10 @@
 #[macro_use]
 mod common;
 
+use std::sync::Arc;
+
 use serde_json::{Value, json};
-use wiremock::matchers::{body_json, header, method, path};
+use wiremock::matchers::{body_json, body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use common::{Harness, harness_env};
@@ -80,21 +85,29 @@ async fn user_id(h: &Harness, name: &str) -> i64 {
 
 async fn cleanup_users(h: &Harness) {
     let s = &h.suffix;
+    let contexts: Vec<i32> = sqlx::query_scalar(&format!(
+        "SELECT alert_context_id FROM incident_management_asset WHERE customer_code LIKE '%{s}'"
+    ))
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap_or_default();
     for sql in [
         format!(
             "DELETE FROM user_customer_access WHERE user_id IN \
              (SELECT id FROM `user` WHERE username LIKE '%{s}')"
         ),
         format!("DELETE FROM `user` WHERE username LIKE '%{s}'"),
-        format!(
-            "DELETE c FROM incident_management_alertcontext c JOIN incident_management_asset a \
-             ON a.alert_context_id = c.id WHERE a.customer_code LIKE '%{s}'"
-        ),
         format!("DELETE FROM incident_management_asset WHERE customer_code LIKE '%{s}'"),
         format!("DELETE FROM incident_management_alert WHERE customer_code LIKE '%{s}'"),
         format!("DELETE FROM customers WHERE customer_code LIKE '%{s}'"),
     ] {
         let _ = sqlx::query(&sql).execute(h.db.pool()).await;
+    }
+    for id in contexts {
+        let _ = sqlx::query("DELETE FROM incident_management_alertcontext WHERE id = ?")
+            .bind(id)
+            .execute(h.db.pool())
+            .await;
     }
 }
 
@@ -478,5 +491,424 @@ async fn the_licence_routes_call_the_licence_server_like_python() {
     ))
     .await;
     restore_licences(&h, saved).await;
+    cleanup_users(&h).await;
+}
+
+// --- /api/status/sidebar -----------------------------------------------------------------
+
+/// The connector rows a sidebar test points at its stand-ins: the rows it
+/// finds are copied aside first and put back after.
+struct BorrowedConnectors {
+    backup: String,
+    names: Vec<&'static str>,
+}
+
+impl BorrowedConnectors {
+    async fn take(h: &Harness, names: &[&'static str]) -> Self {
+        let backup = format!("connectors_e2e_platform_{}", h.suffix);
+        h.exec(&format!(
+            "CREATE TABLE {backup} AS SELECT * FROM connectors WHERE connector_name IN ({})",
+            quoted(names)
+        ))
+        .await;
+        Self {
+            backup,
+            names: names.to_vec(),
+        }
+    }
+
+    /// Point `name` at `url` (an existing row keeps its id).
+    async fn point(
+        &self,
+        h: &Harness,
+        name: &str,
+        url: &str,
+        api_key: Option<&str>,
+        extra: Option<&str>,
+    ) {
+        let updated = sqlx::query(
+            "UPDATE connectors SET connector_url = ?, connector_username = 'u', \
+             connector_password = 'p', connector_api_key = ?, connector_extra_data = ?, \
+             connector_configured = 1, connector_verified = 1, connector_enabled = 1 \
+             WHERE connector_name = ?",
+        )
+        .bind(url)
+        .bind(api_key)
+        .bind(extra)
+        .bind(name)
+        .execute(h.db.pool())
+        .await
+        .unwrap()
+        .rows_affected();
+        if updated == 0 {
+            sqlx::query(
+                "INSERT INTO connectors (connector_name, connector_type, connector_url, \
+                 connector_last_updated, connector_username, connector_password, \
+                 connector_api_key, connector_description, connector_supports, \
+                 connector_configured, connector_verified, connector_accepts_host_only, \
+                 connector_accepts_api_key, connector_accepts_username_password, \
+                 connector_accepts_file, connector_accepts_extra_data, connector_extra_data, \
+                 connector_enabled) VALUES (?, '4.8', ?, '2026-01-02 03:04:05', 'u', 'p', ?, \
+                 'e2e', 'e2e', 1, 1, 0, 0, 1, 0, 1, ?, 1)",
+            )
+            .bind(name)
+            .bind(url)
+            .bind(api_key)
+            .bind(extra)
+            .execute(h.db.pool())
+            .await
+            .unwrap();
+        }
+    }
+
+    async fn give_back(self, h: &Harness) {
+        let b = &self.backup;
+        h.exec(&format!(
+            "DELETE FROM connectors WHERE connector_name IN ({}) AND id NOT IN \
+             (SELECT id FROM {b})",
+            quoted(&self.names)
+        ))
+        .await;
+        h.exec(&format!(
+            "UPDATE connectors c JOIN {b} o ON o.id = c.id SET c.connector_url = o.connector_url, \
+             c.connector_username = o.connector_username, c.connector_password = \
+             o.connector_password, c.connector_api_key = o.connector_api_key, \
+             c.connector_extra_data = o.connector_extra_data, c.connector_configured = \
+             o.connector_configured, c.connector_verified = o.connector_verified, \
+             c.connector_enabled = o.connector_enabled"
+        ))
+        .await;
+        h.exec(&format!("DROP TABLE {b}")).await;
+    }
+}
+
+fn quoted(names: &[&str]) -> String {
+    names
+        .iter()
+        .map(|n| format!("'{n}'"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// `last()` per series: one critical check still failing, one recovered.
+const INFLUX_STATES: &str = "#group,false,false,false,false,true,true,true,true,true\r\n\
+    #datatype,string,long,dateTime:RFC3339,string,string,string,string,string,string\r\n\
+    #default,_result,,,,,,,,\r\n\
+    ,result,table,_time,_value,_check_id,_check_name,_level,host,active\r\n\
+    ,,0,2026-10-15T10:00:00Z,wazuh failed,c1,CRITICAL SERVICES CHECK,crit,h1,failed\r\n\
+    ,,1,2026-10-15T10:05:00Z,wazuh running,c1,CRITICAL SERVICES CHECK,ok,h1,active\r\n\
+    ,,2,2026-10-15T10:04:00.5Z,graylog failed,c1,CRITICAL SERVICES CHECK,crit,h2,failed\r\n\r\n";
+
+const BUCKETS: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListAllMyBucketsResult \
+    xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Owner><ID>02d6176db174dc93cb1b899f7c6078f0\
+    8654445fe8cf1b6ce98d8855f66bdbf4</ID><DisplayName>minio</DisplayName></Owner><Buckets><Bucket>\
+    <Name>copilot-cases</Name><CreationDate>2026-01-02T03:04:05.678Z</CreationDate></Bucket>\
+    </Buckets></ListAllMyBucketsResult>";
+
+fn ids(body: &Value) -> Vec<String> {
+    body["indicators"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+fn indicator<'a>(body: &'a Value, id: &str) -> &'a Value {
+    body["indicators"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["id"] == json!(id))
+        .unwrap_or_else(|| panic!("no {id} in {body}"))
+}
+
+const SHARED_IDS: [&str; 14] = [
+    "tag_rbac",
+    "ai_analyst_jobs",
+    "mem_palace",
+    "notification_dispatch",
+    "scheduler",
+    "agent_sync",
+    "talon",
+    "core_soc_tools",
+    "wazuh_indexer",
+    "wazuh_catalog",
+    "influx_health",
+    "connectors",
+    "license",
+    "platform_storage",
+];
+
+#[tokio::test]
+async fn the_sidebar_serves_its_indicators_like_python() {
+    let release = MockServer::start().await;
+    let s3 = MockServer::start().await;
+    let extra = format!(
+        "COPILOT_VERSION_CHECK_URL={}/latest\nCOPILOT_MINIO_ENDPOINT={}\nENVIRONMENT=E2E\n\
+         COPILOT_SIDEBAR_REFRESH=false\n",
+        release.uri(),
+        s3.address()
+    );
+    let mut h = harness_or_skip!(None, &extra);
+    h.seed().await;
+    let s = h.suffix.clone();
+    let saved = save_licences(&h).await;
+    let borrowed =
+        BorrowedConnectors::take(&h, &["Wazuh-Indexer", "Wazuh-Manager", "InfluxDB"]).await;
+    let indexer = MockServer::start().await;
+    let manager = MockServer::start().await;
+    let influx = MockServer::start().await;
+    borrowed
+        .point(&h, "Wazuh-Indexer", &indexer.uri(), None, None)
+        .await;
+    borrowed
+        .point(&h, "Wazuh-Manager", &manager.uri(), None, None)
+        .await;
+    borrowed
+        .point(
+            &h,
+            "InfluxDB",
+            &influx.uri(),
+            Some("tok"),
+            Some("SOC FORTRESS,telegraf"),
+        )
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/latest"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "tag_name": "v99.0.0", "html_url": "https://example.com/release", "name": "v99.0.0"
+        })))
+        .expect(1)
+        .mount(&release)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(BUCKETS))
+        .mount(&s3)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/_cluster/health"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "cluster_name": "e2e-cluster", "status": "yellow", "timed_out": false,
+            "number_of_nodes": 1, "number_of_data_nodes": 1, "discovered_master": true,
+            "discovered_cluster_manager": true, "active_primary_shards": 10, "active_shards": 10,
+            "relocating_shards": 0, "initializing_shards": 0, "unassigned_shards": 5,
+            "delayed_unassigned_shards": 0, "number_of_pending_tasks": 0,
+            "number_of_in_flight_fetch": 0, "task_max_waiting_in_queue_millis": 0,
+            "active_shards_percent_as_number": 66.6
+        })))
+        .mount(&indexer)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v2/query"))
+        .and(header("authorization", "Token tok"))
+        .and(body_string_contains("|> last()"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(INFLUX_STATES))
+        .mount(&influx)
+        .await;
+
+    // A licence whose cached answer expires in ten days and an hour.
+    let key = format!("E2E-SIDEBAR-{s}");
+    sqlx::query(
+        "INSERT INTO license (license_key, customer_name, customer_email, company_name) \
+         VALUES (?, 'n', 'e', 'c')",
+    )
+    .bind(&key)
+    .execute(h.db.pool())
+    .await
+    .unwrap();
+    let expires = (chrono::Utc::now().naive_utc() + chrono::Duration::hours(10 * 24 + 1))
+        .format("%Y-%m-%dT%H:%M:%S")
+        .to_string();
+    sqlx::query(
+        "INSERT INTO license_cache (license_key, feature_name, is_enabled, cached_at, \
+         expires_at, license_data) VALUES (?, 'THREAT INTEL', 1, UTC_TIMESTAMP(), \
+         UTC_TIMESTAMP() + INTERVAL 1 HOUR, ?)",
+    )
+    .bind(&key)
+    .bind(json!({"data": {"license": {"expires": format!("{expires}Z")}}}).to_string())
+    .execute(h.db.pool())
+    .await
+    .unwrap();
+
+    let sidebar = copilot_status::sidebar::SidebarState {
+        cache: Arc::default(),
+        ..h.app.sidebar.clone()
+    };
+    h.router = copilot_status::sidebar::router(sidebar.clone());
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+
+    let (st, _) = h.call("GET", "/sidebar", None, None).await;
+    assert_eq!(st, 401);
+
+    // Cold: the per-user indicators only; the shared set is computed for
+    // the next caller.
+    let (st, body) = h.call("GET", "/sidebar", Some(&analyst), None).await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["success"], json!(true));
+    assert_eq!(body["message"], json!("Sidebar context loaded"));
+    assert_eq!(
+        body["current_version"],
+        json!(copilot_platform::version::CURRENT_VERSION)
+    );
+    assert_eq!(body["latest_version"], json!("99.0.0"));
+    assert_eq!(body["is_outdated"], json!(true));
+    assert_eq!(body["release_url"], json!("https://example.com/release"));
+    assert_eq!(body["environment"], json!("E2E"));
+    assert_eq!(ids(&body), ["open_alerts", "my_open_cases"]);
+    // The analyst sees acme's alert only.
+    assert_eq!(
+        indicator(&body, "open_alerts"),
+        &json!({"id": "open_alerts", "status": "warning", "label": "Open alerts",
+                "detail": "1 unassigned \u{2014} other: 1", "count": 1, "category": "triage"})
+    );
+    assert_eq!(
+        indicator(&body, "my_open_cases")["detail"],
+        json!("No open cases assigned to you.")
+    );
+    for _ in 0..100 {
+        if sidebar.cache.has_shared() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(sidebar.cache.has_shared());
+
+    // Warm: what the two jobs compute (the InfluxDB value first).
+    copilot_status::sidebar::services::refresh_influx(&sidebar).await;
+    copilot_status::sidebar::services::refresh_shared(&sidebar).await;
+    let (st, body) = h.call("GET", "/sidebar", Some(&admin), None).await;
+    assert_eq!(st, 200, "{body}");
+    let mut want = vec!["open_alerts".to_string(), "my_open_cases".to_string()];
+    want.extend(SHARED_IDS.iter().map(|i| i.to_string()));
+    assert_eq!(ids(&body), want);
+    assert_eq!(
+        indicator(&body, "wazuh_indexer"),
+        &json!({"id": "wazuh_indexer", "status": "warning", "label": "Wazuh indexer",
+                "detail": "Cluster e2e-cluster is yellow.", "count": 1,
+                "category": "infrastructure"})
+    );
+    assert_eq!(
+        indicator(&body, "influx_health"),
+        &json!({"id": "influx_health", "status": "error", "label": "Healthchecks",
+                "detail": "Active alerts: 1 critical/error.", "count": 1,
+                "category": "infrastructure"})
+    );
+    assert_eq!(
+        indicator(&body, "license"),
+        &json!({"id": "license", "status": "warning", "label": "License",
+                "detail": "Expires in 10 days.", "count": 10, "category": "platform"})
+    );
+    assert_eq!(
+        indicator(&body, "platform_storage"),
+        &json!({"id": "platform_storage", "status": "ok", "label": "Platform storage",
+                "detail": "Database and MinIO are reachable.", "count": 0,
+                "category": "platform"})
+    );
+    // The audiences: an analyst gets no admin indicator, a portal user only
+    // the catalog.
+    let (_, body) = h.call("GET", "/sidebar", Some(&analyst), None).await;
+    assert_eq!(ids(&body)[2..], SHARED_IDS[..11]);
+    let (_, body) = h.call("GET", "/sidebar", Some(&portal), None).await;
+    assert_eq!(
+        ids(&body),
+        ["open_alerts", "my_open_cases", "wazuh_catalog"]
+    );
+
+    // The catalog indicator reads the Detections Catalog's own cache.
+    Mock::given(path("/security/user/authenticate"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"data": {"token": "tok"}, "error": 0})),
+        )
+        .mount(&manager)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/rules"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "affected_items": [
+                {"filename": "0095-sshd_rules.xml", "relative_dirname": "ruleset/rules",
+                 "id": 5710, "level": 5, "status": "enabled", "description": "sshd",
+                 "groups": ["sshd"], "details": {}},
+                {"filename": "0095-sshd_rules.xml", "relative_dirname": "ruleset/rules",
+                 "id": 5712, "level": 10, "status": "enabled", "description": "brute",
+                 "groups": ["sshd"], "details": {}}],
+            "total_affected_items": 2}, "error": 0})))
+        .up_to_n_times(1)
+        .mount(&manager)
+        .await;
+    copilot_searches::caches::refresh_wazuh(&sidebar.searches).await;
+    copilot_status::sidebar::services::refresh_shared(&sidebar).await;
+    let (_, body) = h.call("GET", "/sidebar", Some(&portal), None).await;
+    assert_eq!(
+        indicator(&body, "wazuh_catalog"),
+        &json!({"id": "wazuh_catalog", "status": "ok", "label": "Wazuh catalog",
+                "detail": "2 rules loaded.", "count": 0, "category": "infrastructure"})
+    );
+    Mock::given(method("GET"))
+        .and(path("/rules"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("boom"))
+        .mount(&manager)
+        .await;
+    copilot_searches::caches::refresh_wazuh(&sidebar.searches).await;
+    copilot_status::sidebar::services::refresh_shared(&sidebar).await;
+    let (_, body) = h.call("GET", "/sidebar", Some(&portal), None).await;
+    let catalog = indicator(&body, "wazuh_catalog");
+    assert_eq!(catalog["status"], json!("error"), "{catalog}");
+    assert_eq!(catalog["count"], json!(1));
+
+    // Tag RBAC hides the untagged alert from the analyst (Python counted it:
+    // its indicator applied customer scoping only).
+    let settings = h
+        .exec(
+            "INSERT INTO incident_management_tag_access_settings (enabled, \
+             untagged_alert_behavior, updated_at) VALUES (1, 'admin_only', UTC_TIMESTAMP())",
+        )
+        .await;
+    let (_, body) = h.call("GET", "/sidebar", Some(&analyst), None).await;
+    assert_eq!(
+        indicator(&body, "open_alerts")["detail"],
+        json!("No unassigned open alerts.")
+    );
+    copilot_status::sidebar::services::refresh_shared(&sidebar).await;
+    let (_, body) = h.call("GET", "/sidebar", Some(&analyst), None).await;
+    assert_eq!(
+        indicator(&body, "tag_rbac")["detail"],
+        json!("Active \u{2014} untagged alerts: admin only.")
+    );
+    h.exec(&format!(
+        "DELETE FROM incident_management_tag_access_settings WHERE id = {settings}"
+    ))
+    .await;
+
+    // MinIO refusing the credentials: S3Error.
+    s3.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(403).set_body_raw(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>AccessDenied</Code>\
+                 <Message>Access Denied.</Message><Resource>/</Resource><RequestId>1\
+                 </RequestId><HostId>2</HostId></Error>",
+            "application/xml",
+        ))
+        .mount(&s3)
+        .await;
+    copilot_status::sidebar::services::refresh_shared(&sidebar).await;
+    let (_, body) = h.call("GET", "/sidebar", Some(&admin), None).await;
+    assert_eq!(
+        indicator(&body, "platform_storage"),
+        &json!({"id": "platform_storage", "status": "error", "label": "Platform storage",
+                "detail": "MinIO unreachable (S3Error)", "count": 1, "category": "platform"})
+    );
+
+    h.exec(&format!(
+        "DELETE FROM license_cache WHERE license_key = '{key}'"
+    ))
+    .await;
+    restore_licences(&h, saved).await;
+    borrowed.give_back(&h).await;
     cleanup_users(&h).await;
 }

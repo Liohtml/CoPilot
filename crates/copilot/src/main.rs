@@ -163,6 +163,8 @@ async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
     let jobs = app.scheduler.spawn(cancel.clone());
     // This process's catalog caches: warmed now, refreshed off-request.
     copilot_searches::refresher::spawn(app.searches.clone(), cancel.clone());
+    // This process's sidebar indicators: warmed now, refreshed off-request.
+    copilot_status::sidebar::refresher::spawn(app.sidebar.clone(), cancel.clone());
 
     let addr = SocketAddr::new(cfg.bind, cfg.port);
     let listener = tokio::net::TcpListener::bind(addr)

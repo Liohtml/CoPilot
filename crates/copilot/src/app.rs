@@ -273,6 +273,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The licence (copilot-license) and the error log (copilot-status).
     "/api/license",
     "/api/logs",
+    // The sidebar's status panel (copilot-status).
+    "/api/status",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -406,6 +408,9 @@ pub struct App {
     pub searches: copilot_searches::SearchesState,
     /// The licence server (`/api/license`).
     pub license: copilot_license::LicenseClient,
+    /// The sidebar's status panel (`/api/status/sidebar`) and its process
+    /// state.
+    pub sidebar: copilot_status::sidebar::SidebarState,
 }
 
 impl App {
@@ -561,6 +566,20 @@ impl App {
             cfg.copilot_api_key.clone(),
         )
         .context("building the licence-server client")?;
+        let sidebar = copilot_status::sidebar::SidebarState {
+            ctx: ctx.clone(),
+            wazuh: wazuh.clone(),
+            influx: influxdb.clone(),
+            store: objectstore.clone(),
+            searches: searches.clone(),
+            env: Arc::new(copilot_status::sidebar::SidebarEnv::new(
+                cfg.environment.clone(),
+                cfg.sidebar_refresh.as_deref(),
+                cfg.catalog.refresh_enabled(),
+                cfg.version_check_url.clone(),
+            )),
+            cache: Arc::default(),
+        };
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -616,6 +635,7 @@ impl App {
             intel,
             searches,
             license,
+            sidebar,
         })
     }
 
@@ -973,6 +993,10 @@ impl App {
                     self.wazuh.legacy.clone(),
                     copilot_wazuh::decoded_slash_to_legacy,
                 )),
+            )
+            .nest(
+                "/api/status",
+                copilot_status::sidebar::router(self.sidebar.clone()),
             )
             .nest(
                 "/api/logs",
