@@ -481,6 +481,7 @@ dependencies = [
  "copilot-influxdb",
  "copilot-ingest",
  "copilot-integrations",
+ "copilot-intel-connectors",
  "copilot-notifications",
  "copilot-objectstore",
  "copilot-platform",
@@ -903,6 +904,30 @@ dependencies = [
  "pretty_assertions",
  "serde_json",
  "sqlx",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-intel-connectors"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "copilot-auth",
+ "copilot-connectors",
+ "copilot-core",
+ "copilot-db",
+ "copilot-jinja",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-web",
+ "copilot-webauthn",
+ "http",
+ "pretty_assertions",
+ "regex",
+ "reqwest",
+ "serde_json",
+ "tokio",
  "tracing",
 ]
 

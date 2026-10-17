@@ -53,6 +53,7 @@ copilot-threat-intel = { path = "crates/copilot-threat-intel" }
 copilot-response = { path = "crates/copilot-response" }
 copilot-shuffle = { path = "crates/copilot-shuffle" }
 copilot-agent-reports = { path = "crates/copilot-agent-reports" }
+copilot-intel-connectors = { path = "crates/copilot-intel-connectors" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

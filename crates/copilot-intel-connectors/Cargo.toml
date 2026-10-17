@@ -1,0 +1,32 @@
+[package]
+name = "copilot-intel-connectors"
+description = "The OpenCTI and Cortex connectors: /api/opencti (GraphQL over httpx) and /api/analyzers (cortex4py over requests), and their verifiers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-connectors = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-webauthn = { workspace = true }
+copilot-jinja = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true
