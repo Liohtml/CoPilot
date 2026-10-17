@@ -270,6 +270,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The Detections Catalog and CoPilot Searches (copilot-searches): every
     // route of the module.
     "/api/copilot_searches",
+    // The licence (copilot-license) and the error log (copilot-status).
+    "/api/license",
+    "/api/logs",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -309,6 +312,8 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_searches::REQUIREMENTS);
     all.extend(copilot_agent_reports::requirements());
     all.extend_from_slice(copilot_uba::REQUIREMENTS);
+    all.extend_from_slice(copilot_license::REQUIREMENTS);
+    all.extend_from_slice(copilot_status::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -399,6 +404,8 @@ pub struct App {
     pub intel: copilot_intel_connectors::IntelState,
     /// The Detections Catalog (`/api/copilot_searches`) and its caches.
     pub searches: copilot_searches::SearchesState,
+    /// The licence server (`/api/license`).
+    pub license: copilot_license::LicenseClient,
 }
 
 impl App {
@@ -549,6 +556,11 @@ impl App {
             legacy.clone(),
         )
         .context("building the catalog clients")?;
+        let license = copilot_license::LicenseClient::new(
+            copilot_license::client::license_url_from_env(),
+            cfg.copilot_api_key.clone(),
+        )
+        .context("building the licence-server client")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -603,6 +615,7 @@ impl App {
             agent_reports,
             intel,
             searches,
+            license,
         })
     }
 
@@ -946,6 +959,24 @@ impl App {
                     self.wazuh.clone(),
                 ))
                 .layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
+            .nest(
+                "/api/license",
+                copilot_license::router(copilot_license::LicenseState {
+                    ctx: self.ctx.clone(),
+                    client: self.license.clone(),
+                })
+                .layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
+            .nest(
+                "/api/logs",
+                copilot_status::logs::router(self.ctx.clone()).layer(from_fn_with_state(
                     self.wazuh.legacy.clone(),
                     copilot_wazuh::decoded_slash_to_legacy,
                 )),

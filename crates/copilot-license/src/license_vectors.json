@@ -1,0 +1,440 @@
+{
+ "models": [
+  {
+   "model": "VerifyLicenseResponse",
+   "kwargs": {
+    "license": {
+     "productId": 1,
+     "id": "7",
+     "key": "K",
+     "created": "2026-01-02T03:04:05.123",
+     "expires": 1767323045,
+     "period": 365.0,
+     "f1": true,
+     "f2": "no",
+     "f3": 1,
+     "f4": "true",
+     "f5": false,
+     "f6": false,
+     "f7": false,
+     "f8": false,
+     "notes": "",
+     "block": false,
+     "globalId": 9,
+     "customer": {
+      "id": 3,
+      "name": "N",
+      "email": "e",
+      "companyName": "C",
+      "created": "2025-06-01T00:00:00Z"
+     },
+     "activatedMachines": [
+      1,
+      "x"
+     ],
+     "trialActivation": false,
+     "maxNoOfMachines": 0,
+     "dataObjects": [],
+     "signDate": "2026-01-02T03:04:05+02:00"
+    },
+    "success": true,
+    "message": "m"
+   },
+   "json": {
+    "license": {
+     "productId": 1,
+     "id": 7,
+     "key": "K",
+     "created": "2026-01-02T03:04:05.123000",
+     "expires": "2026-01-02T03:04:05Z",
+     "period": 365,
+     "f1": true,
+     "f2": false,
+     "f3": true,
+     "f4": true,
+     "f5": false,
+     "f6": false,
+     "f7": false,
+     "f8": false,
+     "notes": "",
+     "block": false,
+     "globalId": 9,
+     "customer": {
+      "id": 3,
+      "name": "N",
+      "email": "e",
+      "companyName": "C",
+      "created": "2025-06-01T00:00:00Z"
+     },
+     "activatedMachines": [
+      1,
+      "x"
+     ],
+     "trialActivation": false,
+     "maxNoOfMachines": 0,
+     "allowedMachines": null,
+     "dataObjects": [],
+     "signDate": "2026-01-02T03:04:05+02:00",
+     "reseller": null
+    },
+    "success": true,
+    "message": "m"
+   }
+  },
+  {
+   "model": "VerifyLicenseResponse",
+   "kwargs": {
+    "license": {
+     "productId": 1,
+     "id": "7",
+     "key": "K",
+     "created": "soon",
+     "expires": 1767323045,
+     "period": 365.0,
+     "f1": true,
+     "f2": "no",
+     "f3": 1,
+     "f4": "true",
+     "f5": false,
+     "f6": false,
+     "f7": false,
+     "f8": false,
+     "notes": "",
+     "block": false,
+     "globalId": 9,
+     "customer": null,
+     "activatedMachines": [
+      1,
+      "x"
+     ],
+     "trialActivation": false,
+     "maxNoOfMachines": 0,
+     "dataObjects": [],
+     "signDate": "2026-01-02T03:04:05+02:00"
+    },
+    "success": "x",
+    "message": 5
+   },
+   "error": "4 validation errors for VerifyLicenseResponse\nlicense.created\n  Input should be a valid datetime or date, input is too short [type=datetime_from_date_parsing, input_value='soon', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/datetime_from_date_parsing\nlicense.customer\n  Input should be a valid dictionary or instance of Customer [type=model_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/model_type\nsuccess\n  Input should be a valid boolean, unable to interpret input [type=bool_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/bool_parsing\nmessage\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+  },
+  {
+   "model": "VerifyLicenseResponse",
+   "kwargs": {
+    "license": [],
+    "success": true,
+    "message": "m"
+   },
+   "error": "1 validation error for VerifyLicenseResponse\nlicense\n  Input should be a valid dictionary or instance of LicenseResponse [type=model_type, input_value=[], input_type=list]\n    For further information visit https://errors.pydantic.dev/2.13/v/model_type"
+  },
+  {
+   "model": "GetLicenseResponse",
+   "kwargs": {
+    "license_key": "k",
+    "success": 1,
+    "message": "m"
+   },
+   "json": {
+    "license_key": "k",
+    "success": true,
+    "message": "m"
+   }
+  },
+  {
+   "model": "GetLicenseResponse",
+   "kwargs": {
+    "license_key": 5,
+    "success": "maybe"
+   },
+   "error": "3 validation errors for GetLicenseResponse\nlicense_key\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nsuccess\n  Input should be a valid boolean, unable to interpret input [type=bool_parsing, input_value='maybe', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/bool_parsing\nmessage\n  Field required [type=missing, input_value={'license_key': 5, 'success': 'maybe'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  },
+  {
+   "model": "GetLicenseFeaturesResponse",
+   "kwargs": {
+    "features": [
+     "a",
+     1,
+     null
+    ],
+    "success": true,
+    "message": "m"
+   },
+   "error": "2 validation errors for GetLicenseFeaturesResponse\nfeatures.1\n  Input should be a valid string [type=string_type, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nfeatures.2\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+  },
+  {
+   "model": "GetLicenseFeaturesResponse",
+   "kwargs": {
+    "features": {
+     "a": 1
+    },
+    "success": true,
+    "message": "m"
+   },
+   "error": "1 validation error for GetLicenseFeaturesResponse\nfeatures\n  Input should be a valid list [type=list_type, input_value={'a': 1}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/list_type"
+  },
+  {
+   "model": "IsFeatureEnabledResponse",
+   "kwargs": {
+    "status_code": 400,
+    "message": "Feature is not enabled. You must purchase the X license to use this feature."
+   },
+   "error": "2 validation errors for IsFeatureEnabledResponse\nenabled\n  Field required [type=missing, input_value={'status_code': 400, 'mes...e to use this feature.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsuccess\n  Field required [type=missing, input_value={'status_code': 400, 'mes...e to use this feature.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  },
+  {
+   "model": "GetSubscriptionCatalogFeaturesResponse",
+   "kwargs": {
+    "features": [
+     {
+      "id": "1",
+      "subscription_price_id": "p",
+      "name": "n",
+      "price": 10.0,
+      "currency": "usd",
+      "info": "i",
+      "short_description": "s",
+      "full_description": "f"
+     },
+     {
+      "id": 2.5
+     }
+    ],
+    "success": true,
+    "message": "m"
+   },
+   "error": "8 validation errors for GetSubscriptionCatalogFeaturesResponse\nfeatures.1.id\n  Input should be a valid integer, got a number with a fractional part [type=int_from_float, input_value=2.5, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_from_float\nfeatures.1.subscription_price_id\n  Field required [type=missing, input_value={'id': 2.5}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nfeatures.1.name\n  Field required [type=missing, input_value={'id': 2.5}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nfeatures.1.price\n  Field required [type=missing, input_value={'id': 2.5}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nfeatures.1.currency\n  Field required [type=missing, input_value={'id': 2.5}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nfeatures.1.info\n  Field required [type=missing, input_value={'id': 2.5}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nfeatures.1.short_description\n  Field required [type=missing, input_value={'id': 2.5}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nfeatures.1.full_description\n  Field required [type=missing, input_value={'id': 2.5}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  },
+  {
+   "model": "TrialLicenseResponse",
+   "kwargs": {
+    "license_key": null,
+    "success": true,
+    "message": "m"
+   },
+   "error": "1 validation error for TrialLicenseResponse\nlicense_key\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+  },
+  {
+   "model": "CancelSubscriptionResponse",
+   "kwargs": {
+    "success": "yes",
+    "message": "m"
+   },
+   "json": {
+    "success": true,
+    "message": "m"
+   }
+  },
+  {
+   "model": "RetrieveDockerCompose",
+   "kwargs": {
+    "docker_compose": 5,
+    "success": true,
+    "message": "m"
+   },
+   "error": "1 validation error for RetrieveDockerCompose\ndocker_compose\n  Input should be a valid string [type=string_type, input_value=5, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+  },
+  {
+   "model": "AddLicenseToDB",
+   "kwargs": {
+    "customer_email": 1,
+    "customer_name": null
+   },
+   "error": "3 validation errors for AddLicenseToDB\ncustomer_name\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\ncustomer_email\n  Input should be a valid string [type=string_type, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\ncompany_name\n  Field required [type=missing, input_value={'customer_email': 1, 'customer_name': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  },
+  {
+   "model": "TrialLicenseRequest",
+   "kwargs": {
+    "email": "e",
+    "feature_name": "f",
+    "customer_name": "c",
+    "company_name": "co"
+   },
+   "json": {
+    "period": 7,
+    "email": "e",
+    "feature_name": "f",
+    "customer_name": "c",
+    "company_name": "co"
+   }
+  },
+  {
+   "model": "TrialLicenseRequest",
+   "kwargs": {
+    "period": "3",
+    "email": "e",
+    "feature_name": "f",
+    "customer_name": "c",
+    "company_name": "co"
+   },
+   "json": {
+    "period": 3,
+    "email": "e",
+    "feature_name": "f",
+    "customer_name": "c",
+    "company_name": "co"
+   }
+  },
+  {
+   "model": "FeatureSubscriptionRequest",
+   "kwargs": {
+    "feature_id": "x",
+    "cancel_url": 1
+   },
+   "error": "5 validation errors for FeatureSubscriptionRequest\nfeature_id\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing\ncancel_url\n  Input should be a valid string [type=string_type, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nsuccess_url\n  Field required [type=missing, input_value={'feature_id': 'x', 'cancel_url': 1}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncustomer_email\n  Field required [type=missing, input_value={'feature_id': 'x', 'cancel_url': 1}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncompany_name\n  Field required [type=missing, input_value={'feature_id': 'x', 'cancel_url': 1}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  },
+  {
+   "model": "CheckoutSessionResponse",
+   "kwargs": {
+    "session": {
+     "amount_subtotal": 1,
+     "amount_total": 1,
+     "automatic_tax": {
+      "enabled": false
+     },
+     "cancel_url": "c",
+     "created": 1,
+     "currency": "usd",
+     "custom_text": {},
+     "expires_at": 2,
+     "id": "i",
+     "livemode": false,
+     "metadata": {},
+     "mode": "m",
+     "object": "o",
+     "payment_method_collection": "always",
+     "payment_method_options": {
+      "card": {
+       "request_three_d_secure": "automatic"
+      }
+     },
+     "payment_method_types": [
+      "card"
+     ],
+     "payment_status": "unpaid",
+     "phone_number_collection": {
+      "enabled": false
+     },
+     "status": "open",
+     "success_url": "s",
+     "total_details": {
+      "amount_discount": 0,
+      "amount_shipping": 0,
+      "amount_tax": 0
+     },
+     "ui_mode": "hosted",
+     "url": "u",
+     "customer_details": {
+      "email": "e"
+     },
+     "invoice_creation": {
+      "enabled": true,
+      "invoice_data": {}
+     }
+    }
+   },
+   "json": {
+    "success": true,
+    "message": "Checkout session created successfully",
+    "session": {
+     "after_expiration": null,
+     "allow_promotion_codes": null,
+     "amount_subtotal": 1,
+     "amount_total": 1,
+     "automatic_tax": {
+      "enabled": false,
+      "liability": null,
+      "status": null
+     },
+     "billing_address_collection": null,
+     "cancel_url": "c",
+     "client_reference_id": null,
+     "client_secret": null,
+     "consent": null,
+     "consent_collection": null,
+     "created": 1,
+     "currency": "usd",
+     "currency_conversion": null,
+     "custom_fields": [],
+     "custom_text": {
+      "after_submit": null,
+      "shipping_address": null,
+      "submit": null,
+      "terms_of_service_acceptance": null
+     },
+     "customer": null,
+     "customer_creation": null,
+     "customer_details": {
+      "address": null,
+      "email": "e",
+      "name": null,
+      "phone": null,
+      "tax_exempt": null,
+      "tax_ids": null
+     },
+     "customer_email": null,
+     "expires_at": 2,
+     "id": "i",
+     "invoice": null,
+     "invoice_creation": {
+      "enabled": true,
+      "invoice_data": {
+       "account_tax_ids": null,
+       "custom_fields": null,
+       "description": null,
+       "footer": null,
+       "issuer": null,
+       "metadata": {},
+       "rendering_options": null
+      }
+     },
+     "livemode": false,
+     "locale": null,
+     "metadata": {},
+     "mode": "m",
+     "object": "o",
+     "payment_intent": null,
+     "payment_link": null,
+     "payment_method_collection": "always",
+     "payment_method_configuration_details": null,
+     "payment_method_options": {
+      "card": {
+       "request_three_d_secure": "automatic"
+      }
+     },
+     "payment_method_types": [
+      "card"
+     ],
+     "payment_status": "unpaid",
+     "phone_number_collection": {
+      "enabled": false
+     },
+     "recovered_from": null,
+     "setup_intent": null,
+     "shipping_address_collection": null,
+     "shipping_cost": null,
+     "shipping_details": null,
+     "shipping_options": [],
+     "status": "open",
+     "submit_type": null,
+     "subscription": null,
+     "success_url": "s",
+     "total_details": {
+      "amount_discount": 0,
+      "amount_shipping": 0,
+      "amount_tax": 0
+     },
+     "ui_mode": "hosted",
+     "url": "u"
+    }
+   }
+  },
+  {
+   "model": "CheckoutSessionResponse",
+   "kwargs": {
+    "session": {
+     "created": "x"
+    },
+    "success": "no"
+   },
+   "error": "23 validation errors for CheckoutSessionResponse\nsession.amount_subtotal\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.amount_total\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.automatic_tax\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.cancel_url\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.created\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing\nsession.currency\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.custom_text\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.expires_at\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.id\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.livemode\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.metadata\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.mode\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.object\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.payment_method_collection\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.payment_method_options\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.payment_method_types\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.payment_status\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.phone_number_collection\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.status\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.success_url\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.total_details\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.ui_mode\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsession.url\n  Field required [type=missing, input_value={'created': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  }
+ ]
+}

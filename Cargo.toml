@@ -58,6 +58,8 @@ copilot-intel-connectors = { path = "crates/copilot-intel-connectors" }
 copilot-uba = { path = "crates/copilot-uba" }
 copilot-yaml = { path = "crates/copilot-yaml" }
 copilot-searches = { path = "crates/copilot-searches" }
+copilot-license = { path = "crates/copilot-license" }
+copilot-status = { path = "crates/copilot-status" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

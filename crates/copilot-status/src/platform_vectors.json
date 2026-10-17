@@ -1,0 +1,369 @@
+{
+ "time_range": [
+  {
+   "body": {},
+   "ok": "1d"
+  },
+  {
+   "body": {
+    "time_range": "1d"
+   },
+   "ok": "1d"
+  },
+  {
+   "body": {
+    "time_range": "7d"
+   },
+   "ok": "7d"
+  },
+  {
+   "body": {
+    "time_range": "24h"
+   },
+   "ok": "24h"
+  },
+  {
+   "body": {
+    "time_range": "1w"
+   },
+   "ok": "1w"
+  },
+  {
+   "body": {
+    "time_range": "2w"
+   },
+   "invalid": "The maximum allowed time range is 1 week."
+  },
+  {
+   "body": {
+    "time_range": "0d"
+   },
+   "invalid": "The integer part should be greater than 0."
+  },
+  {
+   "body": {
+    "time_range": "-1h"
+   },
+   "invalid": "The integer part should be greater than 0."
+  },
+  {
+   "body": {
+    "time_range": "+3d"
+   },
+   "ok": "+3d"
+  },
+  {
+   "body": {
+    "time_range": " 3d"
+   },
+   "ok": " 3d"
+  },
+  {
+   "body": {
+    "time_range": "3 d"
+   },
+   "ok": "3 d"
+  },
+  {
+   "body": {
+    "time_range": "1_0d"
+   },
+   "ok": "1_0d"
+  },
+  {
+   "body": {
+    "time_range": "1__0d"
+   },
+   "invalid": "Invalid format. Time range should be an integer followed by a unit (h, d, w)."
+  },
+  {
+   "body": {
+    "time_range": "_1d"
+   },
+   "invalid": "Invalid format. Time range should be an integer followed by a unit (h, d, w)."
+  },
+  {
+   "body": {
+    "time_range": "٣d"
+   },
+   "ok": "٣d"
+  },
+  {
+   "body": {
+    "time_range": " 3d"
+   },
+   "ok": " 3d"
+  },
+  {
+   "body": {
+    "time_range": "3m"
+   },
+   "invalid": "Invalid unit. Use 'h' for hours, 'd' for days, and 'w' for weeks."
+  },
+  {
+   "body": {
+    "time_range": "3D"
+   },
+   "invalid": "Invalid unit. Use 'h' for hours, 'd' for days, and 'w' for weeks."
+  },
+  {
+   "body": {
+    "time_range": "d"
+   },
+   "invalid": "Invalid format. Time range should be an integer followed by a unit (h, d, w)."
+  },
+  {
+   "body": {
+    "time_range": "5"
+   },
+   "invalid": "Invalid format. Time range should be an integer followed by a unit (h, d, w)."
+  },
+  {
+   "body": {
+    "time_range": ""
+   },
+   "crash": "IndexError"
+  },
+  {
+   "body": {
+    "time_range": "abc"
+   },
+   "invalid": "Invalid format. Time range should be an integer followed by a unit (h, d, w)."
+  },
+  {
+   "body": {
+    "time_range": "99999999999999999999999999999999999999999d"
+   },
+   "ok": "99999999999999999999999999999999999999999d"
+  },
+  {
+   "body": {
+    "time_range": "99999999999999999999999999999999999999999w"
+   },
+   "invalid": "The maximum allowed time range is 1 week."
+  },
+  {
+   "body": {
+    "time_range": "-99999999999999999999999999999999999999999d"
+   },
+   "invalid": "The integer part should be greater than 0."
+  },
+  {
+   "body": {
+    "time_range": 1
+   },
+   "ok": "1d"
+  },
+  {
+   "body": {
+    "time_range": 7
+   },
+   "ok": "7d"
+  },
+  {
+   "body": {
+    "time_range": 8
+   },
+   "invalid": "The integer part should be between 1 and 7."
+  },
+  {
+   "body": {
+    "time_range": 0
+   },
+   "invalid": "The integer part should be between 1 and 7."
+  },
+  {
+   "body": {
+    "time_range": -2
+   },
+   "invalid": "The integer part should be between 1 and 7."
+  },
+  {
+   "body": {
+    "time_range": 3.0
+   },
+   "ok": "3d"
+  },
+  {
+   "body": {
+    "time_range": 1.5
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "time_range",
+      "str"
+     ],
+     "msg": "Input should be a valid string"
+    },
+    {
+     "type": "int_from_float",
+     "loc": [
+      "time_range",
+      "int"
+     ],
+     "msg": "Input should be a valid integer, got a number with a fractional part"
+    }
+   ]
+  },
+  {
+   "body": {
+    "time_range": true
+   },
+   "ok": "1d"
+  },
+  {
+   "body": {
+    "time_range": false
+   },
+   "invalid": "The integer part should be between 1 and 7."
+  },
+  {
+   "body": {
+    "time_range": null
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "time_range",
+      "str"
+     ],
+     "msg": "Input should be a valid string"
+    },
+    {
+     "type": "int_type",
+     "loc": [
+      "time_range",
+      "int"
+     ],
+     "msg": "Input should be a valid integer"
+    }
+   ]
+  },
+  {
+   "body": {
+    "time_range": []
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "time_range",
+      "str"
+     ],
+     "msg": "Input should be a valid string"
+    },
+    {
+     "type": "int_type",
+     "loc": [
+      "time_range",
+      "int"
+     ],
+     "msg": "Input should be a valid integer"
+    }
+   ]
+  },
+  {
+   "body": {
+    "time_range": {}
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "time_range",
+      "str"
+     ],
+     "msg": "Input should be a valid string"
+    },
+    {
+     "type": "int_type",
+     "loc": [
+      "time_range",
+      "int"
+     ],
+     "msg": "Input should be a valid integer"
+    }
+   ]
+  },
+  {
+   "body": {
+    "time_range": 1000000000000000000000000000000
+   },
+   "invalid": "The integer part should be between 1 and 7."
+  },
+  {
+   "body": {
+    "time_range": "1d",
+    "extra": 1
+   },
+   "ok": "1d"
+  }
+ ],
+ "license_expiry": [
+  {
+   "input": "2027-01-02T03:04:05.123456",
+   "parsed": "2027-01-02T03:04:05.123456"
+  },
+  {
+   "input": "2027-01-02T03:04:05",
+   "parsed": "2027-01-02T03:04:05"
+  },
+  {
+   "input": "2027-01-02T03:04:05Z",
+   "parsed": "2027-01-02T03:04:05"
+  },
+  {
+   "input": "2027-01-02T03:04:05.5Z",
+   "parsed": "2027-01-02T03:04:05.500000"
+  },
+  {
+   "input": "2027-01-02T03:04:05+02:00",
+   "parsed": "2027-01-02T03:04:05"
+  },
+  {
+   "input": "2027-01-02T03:04:05.123+02:00",
+   "parsed": "2027-01-02T03:04:05.123000"
+  },
+  {
+   "input": "2027-01-02",
+   "parsed": "2027-01-02T00:00:00"
+  },
+  {
+   "input": "2027-01-02 03:04:05",
+   "parsed": "2027-01-02T03:04:05"
+  },
+  {
+   "input": "2027-01-02T03:04",
+   "parsed": "2027-01-02T03:04:00"
+  },
+  {
+   "input": "20270102T030405",
+   "parsed": "2027-01-02T03:04:05"
+  },
+  {
+   "input": "not a date",
+   "parsed": null
+  },
+  {
+   "input": "",
+   "parsed": null
+  },
+  {
+   "input": 5,
+   "parsed": null
+  },
+  {
+   "input": null,
+   "parsed": null
+  },
+  {
+   "input": [
+    "2027-01-02"
+   ],
+   "parsed": null
+  }
+ ]
+}
