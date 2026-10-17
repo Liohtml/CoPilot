@@ -873,8 +873,7 @@ Still Python, each for a reason: `POST
 DOCX/PDF case reports and the customer report generation (docxtpl,
 wkhtmltopdf), the Sysmon config upload (`copilot-response` serves the rest
 of `/api/sysmon_config`: ElementTree's XML validation), the
-`file_analysis` state store, the Copilot Searches custom
-repositories, the sidebar's MinIO indicator and the startup
+`file_analysis` state store, the sidebar's MinIO indicator and the startup
 `create_buckets()`. The parity suite (`rust_parity_objectstore_e2e.py`)
 points both backends at one recording S3 stand-in, verifies every
 request's signature with the shared secret and compares the canonical
