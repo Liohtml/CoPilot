@@ -16,7 +16,7 @@ copilot-wazuh = { workspace = true }
 copilot-graylog = { workspace = true }
 copilot-objectstore = { workspace = true }
 copilot-threat-intel = { workspace = true }
-copilot-provisioning = { workspace = true }
+copilot-monitoring-alerts = { workspace = true }
 copilot-ingest = { workspace = true }
 copilot-gateway = { workspace = true }
 copilot-yaml = { workspace = true }

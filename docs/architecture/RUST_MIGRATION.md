@@ -1161,9 +1161,11 @@ are reached as the Python libraries reach them: GitHub and the bundle over
 httpx 0.28 (`copilot_threat_intel::httpx`), the indexer through
 AsyncElasticsearch (`copilot_wazuh::es`), the manager through its
 `requests` port (logtest as `send_put` of a `json.dumps` string), Graylog
-through `GraylogClient` (the event definition is the one `create_entity`,
-wrapped for 7.x; the version compared with `"5.2"` as a string, as Python
-does) and the backtest's search API as its own `requests.post` (`X-Requested-By`,
+through `GraylogClient` (the event definition goes through
+`copilot_monitoring_alerts::services::provision_alert_definition`, the
+function Python's catalog imports from the monitoring alerts: the version
+compared with `"5.2"` as a string, then the one `create_entity`, wrapped
+for 7.x) and the backtest's search API as its own `requests.post` (`X-Requested-By`,
 `Accept: application/json`, Basic, 60 s, TLS unverified), MinIO through
 `copilot-objectstore`. The linter runs Python's fallback schema check,
 since `jsonschema` is not a backend requirement (were it added, its

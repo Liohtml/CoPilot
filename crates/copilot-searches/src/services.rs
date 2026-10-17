@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use base64::Engine;
 use copilot_auth::pyvalue::PyValue;
-use copilot_graylog::client::{DEFAULT_CONNECTOR, EntityKind};
+use copilot_graylog::client::DEFAULT_CONNECTOR;
 use copilot_threat_intel::httpx::{self, Request};
 use copilot_upstream::json::{Dumps, py_dumps};
 use copilot_upstream::py::{PyExc, PyResult};
@@ -712,7 +712,7 @@ pub async fn provision_from_rule(st: &SearchesState, req: &ProvisionRequest) -> 
             ("alert", Value::Bool(true)),
         ]),
     )?;
-    let mut config = vec![
+    let config = vec![
         (
             "query".to_string(),
             py::to_py(&graylog_query).unwrap_or(PyValue::None),
@@ -739,11 +739,6 @@ pub async fn provision_from_rule(st: &SearchesState, req: &ProvisionRequest) -> 
             PyValue::Int(req.event_limit.to_string()),
         ),
     ];
-    let version = copilot_provisioning::graylog::graylog_version(&st.graylog).await?;
-    tracing::info!("Graylog version: {version}");
-    if version.as_str() < "5.2" {
-        config.retain(|(k, _)| k != "event_limit");
-    }
     let entity = p_dict(vec![
         ("title", p_str(&title)),
         (
@@ -773,18 +768,14 @@ pub async fn provision_from_rule(st: &SearchesState, req: &ProvisionRequest) -> 
         ("notifications", PyValue::List(Vec::new())),
         ("alert", PyValue::Bool(true)),
     ]);
-    let reply = st
-        .graylog
-        .create_entity(
-            DEFAULT_CONNECTOR,
-            &EntityKind::EventDefinition,
-            entity,
-            None,
-        )
-        .await?;
-    if !reply.success {
-        return Err(PyExc::http(500, "Failed to provision alert definition"));
-    }
+    // `provision_alert_definition(alert_model)`, the monitoring alerts' own:
+    // `event_limit` dropped below Graylog 5.2, then the one `create_entity`.
+    copilot_monitoring_alerts::services::provision_alert_definition(
+        &st.graylog,
+        DEFAULT_CONNECTOR,
+        entity,
+    )
+    .await?;
     tracing::info!(
         "Successfully provisioned Graylog alert '{title}' for rule '{}'",
         req.rule_id
