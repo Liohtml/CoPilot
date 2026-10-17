@@ -69,8 +69,8 @@ pub struct SearchesState {
     pub graylog_search: PyHttp,
     /// MinIO (the custom-repo pointers).
     pub store: ObjectStore,
-    /// The upstream URLs.
-    pub urls: Arc<caches::Urls>,
+    /// The upstream URLs, `GITHUB_TOKEN`, the refresher switch.
+    pub settings: Arc<caches::Settings>,
     /// The four caches.
     pub caches: Arc<caches::Caches>,
     /// The Python backend, for the requests these routes do not answer.
@@ -80,15 +80,16 @@ pub struct SearchesState {
 impl std::fmt::Debug for SearchesState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SearchesState")
-            .field("urls", &self.urls)
+            .field("settings", &self.settings)
             .finish_non_exhaustive()
     }
 }
 
 impl SearchesState {
-    /// The state, with the upstream URLs read from the environment and the
-    /// caches empty.
+    /// The state, with the settings from the configuration and the caches
+    /// empty.
     pub fn new(
+        env: &copilot_core::catalog_env::CatalogEnv,
         ctx: AppContext,
         wazuh: WazuhState,
         graylog: GraylogClient,
@@ -101,7 +102,7 @@ impl SearchesState {
             graylog,
             graylog_search: PyHttp::new(Duration::from_secs(60), false)?,
             store,
-            urls: Arc::new(caches::Urls::from_env()),
+            settings: Arc::new(caches::Settings::from_config(env)),
             caches: Arc::default(),
             legacy,
         })

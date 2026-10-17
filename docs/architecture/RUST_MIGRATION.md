@@ -1041,7 +1041,12 @@ minutes (TTL-aware, so the bundle is fetched once a day) and the Wazuh
 ruleset every 30 — a process-local task, not a hand-over job: each backend
 serves from its own caches (the Python sidebar's `status/context.py` reads
 Python's), and both refreshing read-only upstream data is what Python's
-per-worker caches already did. Rule values are `copilot-yaml`'s, and every
+per-worker caches already did. `COPILOT_CATALOG_REFRESH=false` turns that
+off (the caches then load on demand, as Python's would without its warm-up
+and jobs): every parity suite but the catalog's starts its Rust instance so,
+because their Python side never warms its caches, and a Rust process that
+did would hold a Wazuh token or send requests the comparisons do not
+expect. Rule values are `copilot-yaml`'s, and every
 operation the services make on them is Python's (`py.rs`: `.get` on a
 non-dict, iteration, `join`, hashing as dict keys, `int()`/`float()`,
 `round`), so a rule of an odd shape fails where Python fails — an
@@ -1062,8 +1067,9 @@ since `jsonschema` is not a backend requirement (were it added, its
 customer check it (`verify_customer_code_access`, the optional customer of
 `/catalog/wazuh-rules`), and four routes differ by design (§4). Kept as in
 Python and flagged: every tenant's custom rules show in every rule list,
-count and coverage for any analyst or portal user. `GITHUB_TOKEN` is read
-per call as `os.getenv` does. `COPILOT_GITHUB_API_URL`,
+count and coverage for any analyst or portal user. `GITHUB_TOKEN` and the
+switches are `copilot_core::catalog_env`'s (the `.env` file included, as
+`os.getenv` sees it after environs' `read_env`). `COPILOT_GITHUB_API_URL`,
 `COPILOT_GITHUB_RAW_URL` and `COPILOT_MITRE_STIX_URL` point the three public
 URLs at stand-ins — parity harness only, never production.
 `rust_parity_catalog_e2e.py` compares both backends after each loaded the

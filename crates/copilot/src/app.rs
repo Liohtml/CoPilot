@@ -528,6 +528,7 @@ impl App {
                 .context("building the CoPilot-SCA client")?,
         };
         let searches = copilot_searches::SearchesState::new(
+            &cfg.catalog,
             ctx.clone(),
             wazuh.clone(),
             graylog.clone(),

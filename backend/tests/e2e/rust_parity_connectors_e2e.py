@@ -1942,6 +1942,8 @@ async def main():
         "COPILOT_DATABASE_URL": f"mysql://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@{os.environ['MYSQL_URL']}/copilot",
         "JWT_SECRET": os.environ["JWT_SECRET"],
         "COPILOT_BIND": "127.0.0.1",
+        # The catalog caches load on demand, as this Python side never warms them.
+        "COPILOT_CATALOG_REFRESH": "false",
         "COPILOT_PORT": str(rs2_port),
         "COPILOT_RS_JOBS": f"{SNAP},{RESIZE}",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),

@@ -31,7 +31,7 @@ use wiremock::matchers::{method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use copilot_searches::SearchesState;
-use copilot_searches::caches::{Kind, Urls};
+use copilot_searches::caches::{Kind, Settings};
 
 #[macro_use]
 mod common;
@@ -519,10 +519,12 @@ fn env_for_minio() -> String {
 /// The crate's router, its GitHub URLs on the stand-in and its caches empty.
 fn catalog(h: &Harness, github: &MockServer) -> (Router, SearchesState) {
     let st = SearchesState {
-        urls: Arc::new(Urls {
+        settings: Arc::new(Settings {
             github_api: github.uri(),
             github_raw: github.uri(),
             mitre_stix: format!("{}/mitre.json", github.uri()),
+            github_token: None,
+            refresh: false,
         }),
         caches: Arc::default(),
         ..h.app.searches.clone()

@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use chrono::NaiveDateTime;
 use copilot_auth::pyvalue::PyValue;
+use copilot_core::catalog_env::CatalogEnv;
 use copilot_threat_intel::httpx::{self, Client, Request};
 use copilot_upstream::py::{PyExc, PyResult};
 use copilot_wazuh::es::{Es, Flavor, flag, make_path};
@@ -35,37 +36,60 @@ use crate::mitre::Matrix;
 use crate::py::{self, dict_set, s};
 use crate::rules::{self, RuleSet, SourceStatus};
 
-/// The upstream URLs (the parity harness points them at stand-ins; never
-/// in production).
-#[derive(Debug, Clone)]
-pub struct Urls {
+/// The catalog's settings: the upstream URLs (the parity harness points
+/// them at stand-ins; never in production), the shared `GITHUB_TOKEN` and
+/// whether this process refreshes its caches itself.
+#[derive(Clone)]
+pub struct Settings {
     /// `GITHUB_API_BASE` (`COPILOT_GITHUB_API_URL`).
     pub github_api: String,
     /// `GITHUB_RAW_BASE` (`COPILOT_GITHUB_RAW_URL`).
     pub github_raw: String,
     /// `MITRE_STIX_URL` (`COPILOT_MITRE_STIX_URL`).
     pub mitre_stix: String,
+    /// `os.getenv("GITHUB_TOKEN")`, when set and not empty.
+    pub github_token: Option<String>,
+    /// `COPILOT_CATALOG_REFRESH` (see [`crate::refresher`]).
+    pub refresh: bool,
 }
 
-impl Urls {
-    /// Python's constants, or the overrides.
-    pub fn from_env() -> Self {
-        let var = |k: &str, default: &str| {
-            std::env::var(k).ok().filter(|v| !v.is_empty()).map_or_else(
-                || default.to_string(),
-                |v| v.trim_end_matches('/').to_string(),
+impl std::fmt::Debug for Settings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Settings")
+            .field("github_api", &self.github_api)
+            .field("github_raw", &self.github_raw)
+            .field("mitre_stix", &self.mitre_stix)
+            .field(
+                "github_token",
+                &self.github_token.as_ref().map(|_| "<redacted>"),
             )
-        };
+            .field("refresh", &self.refresh)
+            .finish()
+    }
+}
+
+impl Settings {
+    /// Python's constants, or the overrides.
+    pub fn from_config(env: &CatalogEnv) -> Self {
         Self {
-            github_api: var("COPILOT_GITHUB_API_URL", "https://api.github.com"),
-            github_raw: var(
-                "COPILOT_GITHUB_RAW_URL",
-                "https://raw.githubusercontent.com",
-            ),
-            mitre_stix: std::env::var("COPILOT_MITRE_STIX_URL")
-                .ok()
-                .filter(|v| !v.is_empty())
+            github_api: env
+                .github_api_url
+                .clone()
+                .unwrap_or_else(|| "https://api.github.com".into()),
+            github_raw: env
+                .github_raw_url
+                .clone()
+                .unwrap_or_else(|| "https://raw.githubusercontent.com".into()),
+            mitre_stix: env
+                .mitre_stix_url
+                .clone()
                 .unwrap_or_else(|| crate::mitre::MITRE_STIX_URL.to_string()),
+            github_token: env
+                .github_token
+                .as_ref()
+                .map(|t| t.expose().to_string())
+                .filter(|t| !t.is_empty()),
+            refresh: env.refresh_enabled(),
         }
     }
 }
@@ -241,11 +265,6 @@ pub async fn refresh(st: &SearchesState, kind: Kind) -> PyResult<usize> {
 
 // --- CoPilot Searches rules ---------------------------------------------------------------
 
-/// The `Authorization` of the shared `GITHUB_TOKEN` (`os.getenv`).
-pub fn github_token() -> Option<String> {
-    std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty())
-}
-
 /// One repository to pull.
 #[derive(Debug, Clone)]
 pub struct Source {
@@ -275,7 +294,7 @@ async fn build_sources(st: &SearchesState) -> Vec<Source> {
     let mut sources = vec![Source {
         repo: rules::GITHUB_REPO.into(),
         branch: rules::GITHUB_BRANCH.into(),
-        token: github_token(),
+        token: st.settings.github_token.clone(),
         provenance: "catalog",
         owner: None,
     }];
@@ -284,7 +303,9 @@ async fn build_sources(st: &SearchesState) -> Vec<Source> {
             for cfg in configs {
                 if cfg.enabled && !cfg.repo.is_empty() {
                     sources.push(Source {
-                        token: cfg.token_text().or_else(github_token),
+                        token: cfg
+                            .token_text()
+                            .or_else(|| st.settings.github_token.clone()),
                         branch: if cfg.branch.is_empty() {
                             "main".into()
                         } else {
@@ -340,7 +361,7 @@ async fn fetch_repo_rules(st: &SearchesState, src: &Source) -> Result<Vec<Value>
     let client = Client::new(Duration::from_secs(30)).map_err(httpx_text)?;
     let tree_url = format!(
         "{}/repos/{}/git/trees/{}?recursive=1",
-        st.urls.github_api, src.repo, src.branch
+        st.settings.github_api, src.repo, src.branch
     );
     let resp = httpx::send_on(
         &client,
@@ -373,7 +394,7 @@ async fn fetch_yaml_file(
 ) -> Option<Value> {
     let raw_url = format!(
         "{}/{}/{}/{}",
-        st.urls.github_raw, src.repo, src.branch, file_path
+        st.settings.github_raw, src.repo, src.branch, file_path
     );
     let outcome: Result<Option<Value>, String> = async {
         let resp = httpx::send_on(
@@ -531,8 +552,8 @@ pub async fn refresh_mitre(st: &SearchesState) -> PyResult<()> {
         crate::mitre::MITRE_STIX_URL
     );
     let mut req =
-        Request::new(Method::GET, st.urls.mitre_stix.clone()).timeout(Duration::from_secs(120));
-    if let Some(t) = github_token() {
+        Request::new(Method::GET, st.settings.mitre_stix.clone()).timeout(Duration::from_secs(120));
+    if let Some(t) = &st.settings.github_token {
         req = req.header("Authorization", Some(&format!("Bearer {t}")));
     }
     let resp = httpx::send(req).await.map_err(|e| e.into_py())?;

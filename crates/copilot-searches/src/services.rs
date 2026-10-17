@@ -932,12 +932,12 @@ pub async fn test_repo_fetch(
 ) -> PyResult<Value> {
     let token = token
         .filter(|t| !t.is_empty())
-        .or_else(caches::github_token);
+        .or_else(|| st.settings.github_token.clone());
     let req = caches::github_request(
         Method::GET,
         format!(
             "{}/repos/{repo}/git/trees/{branch}?recursive=1",
-            st.urls.github_api
+            st.settings.github_api
         ),
         token.as_deref(),
     )
@@ -1209,7 +1209,7 @@ pub async fn publish_rule(
             .header("X-GitHub-Api-Version", Some("2022-11-28"))
             .timeout(Duration::from_secs(30))
     };
-    let url = format!("{}/repos/{repo}/contents/{target}", st.urls.github_api);
+    let url = format!("{}/repos/{repo}/contents/{target}", st.settings.github_api);
     let client = httpx::Client::new(Duration::from_secs(30)).map_err(|e| e.into_py())?;
     let transport = |e: httpx::HttpxError| -> PyResult<Value> {
         if e.is_http_error() {

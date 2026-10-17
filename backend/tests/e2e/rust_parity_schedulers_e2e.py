@@ -199,6 +199,8 @@ def start_rust(port, legacy_port):
         "COPILOT_DATABASE_URL": f"mysql://{user}:{password}@{host}/copilot",
         "JWT_SECRET": os.environ["JWT_SECRET"],
         "COPILOT_BIND": "127.0.0.1",
+        # The catalog caches load on demand, as this Python side never warms them.
+        "COPILOT_CATALOG_REFRESH": "false",
         "COPILOT_PORT": str(port),
         "COPILOT_LEGACY_URL": f"http://127.0.0.1:{legacy_port}",
         "COPILOT_RS_JOBS": PRUNE,

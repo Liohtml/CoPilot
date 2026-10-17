@@ -61,8 +61,16 @@ pub async fn refresh_wazuh_rules_cache(st: &SearchesState) {
     }
 }
 
-/// Start the warm-up and the two loops (until `cancel`).
+/// Start the warm-up and the two loops (until `cancel`), unless
+/// `COPILOT_CATALOG_REFRESH` is off: then the caches load on demand only, as
+/// Python's would without its startup warm-up and its two jobs (the parity
+/// suites start the binary so, since their Python side never runs those; an
+/// air-gapped deployment may).
 pub fn spawn(st: SearchesState, cancel: CancellationToken) {
+    if !st.settings.refresh {
+        tracing::info!("COPILOT_CATALOG_REFRESH is off: the catalog caches load on demand");
+        return;
+    }
     let warm = st.clone();
     let stop = cancel.clone();
     tokio::spawn(async move {
