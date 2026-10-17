@@ -17,15 +17,21 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use copilot_auth::pyvalue::PyValue;
+use copilot_core::audit::AuditRecord;
 use copilot_upstream::json::pydantic_json;
+use copilot_upstream::model::construct;
+use copilot_upstream::py::PyExc;
 use copilot_web::body::JsonBody;
 use copilot_web::validate::{Loc, Validator, body_loc};
-use copilot_web::{AdminOnly, AdminOrAnalyst, ApiResult, Authorized, QueryPairs, WithJson};
+use copilot_web::{
+    AdminOnly, AdminOrAnalyst, ApiError, ApiResult, Authorized, QueryPairs, WithJson,
+};
 use http::{Method, StatusCode};
 use serde_json::{Map, Value};
 
 use crate::UbaState;
 use crate::client::{Call, UbaError, UbaResult, path_segment};
+use crate::ops::Ops;
 use crate::params::{
     NumSpec, StrSpec, path_int, q_bool_or, q_float_or, q_int_or, q_opt_str, q_req_str, q_str_or,
 };
@@ -106,6 +112,18 @@ pub fn router(state: UbaState) -> Router {
         .route(
             "/{customer_code}/native-overrides/{rule_id}",
             put(set_native_override).delete(delete_native_override),
+        )
+        .route("/{customer_code}/provisioning", get(provisioning))
+        .route("/{customer_code}/provision", post(provision))
+        .route("/{customer_code}/mode", put(set_mode))
+        .route(
+            "/{customer_code}/rollback",
+            get(rollback_plan).post(roll_back),
+        )
+        .route("/{customer_code}/rollbacks", get(list_rollbacks))
+        .route(
+            "/{customer_code}/rollbacks/{rollback_id}",
+            get(get_rollback),
         )
         .with_state(state)
 }
@@ -984,4 +1002,241 @@ async fn delete_native_override(
             )
             .await,
     ))
+}
+
+// --- provisioning, mode and rollback (admin) -------------------------------------------
+
+impl UbaState {
+    fn ops(&self) -> Ops<'_> {
+        Ops {
+            graylog: &self.graylog,
+            uba: &self.client,
+            wazuh: &self.wazuh,
+        }
+    }
+}
+
+fn db_failure(e: sqlx::Error) -> ApiError {
+    ApiError::internal(format!("database: {e}"))
+}
+
+fn py_value_to_json(v: &PyValue) -> Value {
+    match v {
+        PyValue::None => Value::Null,
+        PyValue::Bool(b) => Value::Bool(*b),
+        PyValue::Int(i) => i
+            .parse::<i64>()
+            .map(Value::from)
+            .unwrap_or_else(|_| Value::String(i.clone())),
+        PyValue::Float(f) => serde_json::Number::from_f64(*f).map_or(Value::Null, Value::Number),
+        PyValue::Str(s) => Value::String(s.clone()),
+        PyValue::List(items) => Value::Array(items.iter().map(py_value_to_json).collect()),
+        PyValue::Dict(items) => Value::Object(
+            items
+                .iter()
+                .map(|(k, v)| (k.clone(), py_value_to_json(v)))
+                .collect(),
+        ),
+    }
+}
+
+/// `GET …/provisioning`: whether UBA is set up, its onboarding progress,
+/// and the streams setup would use.
+async fn provisioning(
+    auth: Admin,
+    State(st): State<UbaState>,
+    Path(code): Path<String>,
+) -> ApiResult {
+    auth.enforce_customer(&st.ctx, &code).await?;
+    let facts = crate::provision::load_facts(&st.ctx.db, &code)
+        .await
+        .map_err(db_failure)?;
+    Ok(answer(
+        crate::provision::status(st.ops(), &code, &facts).await,
+    ))
+}
+
+/// `POST …/provision`: set UBA up (safe to run again).
+async fn provision(
+    State(st): State<UbaState>,
+    Path(code): Path<String>,
+    WithJson(auth, body): WithJson<Admin>,
+) -> ApiResult {
+    auth.enforce_customer(&st.ctx, &code).await?;
+    let mut v = Validator::new();
+    let request = read_body(&mut v, &body, schema::ProvisionRequest::read);
+    v.finish()?;
+    let Some(request) = request else {
+        return Err(ApiError::internal("no body"));
+    };
+    let facts = crate::provision::load_facts(&st.ctx.db, &code)
+        .await
+        .map_err(db_failure)?;
+    Ok(answer(
+        crate::provision::provision(st.ops(), &st.ctx.db, &code, &request, &facts).await,
+    ))
+}
+
+/// `PUT …/mode`: active or learning, audited as `uba.mode_change`.
+async fn set_mode(
+    State(st): State<UbaState>,
+    Path(code): Path<String>,
+    WithJson(auth, body): WithJson<Admin>,
+) -> ApiResult {
+    auth.enforce_customer(&st.ctx, &code).await?;
+    let mut v = Validator::new();
+    let mode = read_body(&mut v, &body, schema::mode);
+    v.finish()?;
+    let Some(mode) = mode else {
+        return Err(ApiError::internal("no body"));
+    };
+    let result = match crate::provision::set_mode(&st.client, &code, &mode).await {
+        Ok(r) => r,
+        Err(e) => return Ok(answer(Err(e))),
+    };
+    let record = AuditRecord::new("uba.mode_change")
+        .actor(Some(auth.id), Some(&auth.username))
+        .customer(Some(&code))
+        .entity("uba_tenant", &code)
+        .values(None, Some(serde_json::json!({ "mode": mode })))
+        .source_ip(auth.source_ip.clone());
+    if let Err(e) = copilot_db::audit::insert_audit_record(&st.ctx.db, record).await {
+        tracing::error!("Failed to record audit event 'uba.mode_change': {e}");
+    }
+    Ok(respond(StatusCode::OK, &result))
+}
+
+/// `GET …/rollback`: the preview — what would be removed, kept, left alone.
+async fn rollback_plan(
+    auth: Admin,
+    State(st): State<UbaState>,
+    Path(code): Path<String>,
+) -> ApiResult {
+    auth.enforce_customer(&st.ctx, &code).await?;
+    let facts = crate::rollback::load_facts(&st.ctx.db, &code)
+        .await
+        .map_err(db_failure)?;
+    let plan = crate::rollback::build_plan(st.ops(), &code, &facts).await?;
+    let (preview, _) = crate::rollback::plan_response(&plan)?;
+    Ok(respond(StatusCode::OK, &preview))
+}
+
+/// `POST …/rollback`: roll UBA back, audited as `uba.rollback`.
+async fn roll_back(auth: Admin, State(st): State<UbaState>, Path(code): Path<String>) -> ApiResult {
+    auth.enforce_customer(&st.ctx, &code).await?;
+    let report = match crate::rollback::roll_back(
+        st.ops(),
+        &st.ctx.db,
+        &code,
+        auth.id,
+        &auth.username,
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(PyExc::Http(status, detail)) => {
+            return Err(ApiError::http(
+                StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                detail,
+            ));
+        }
+        Err(e) => {
+            tracing::error!("UBA rollback of {code} failed: {e:?}");
+            return Err(ApiError::http(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to roll UBA back",
+            ));
+        }
+    };
+    let field = |k: &str| report.get(k).cloned().unwrap_or(PyValue::None);
+    let status = field("status").py_str();
+    let message = field("message");
+    let completed = status == "completed";
+    let mut record = AuditRecord::new("uba.rollback")
+        .actor(Some(auth.id), Some(&auth.username))
+        .customer(Some(&code))
+        .entity("uba_rollback", field("id").py_str())
+        .values(
+            None,
+            Some(serde_json::json!({
+                "status": status,
+                "steps": py_value_to_json(&field("steps")),
+                "verification": py_value_to_json(&field("verification")),
+            })),
+        )
+        .source_ip(auth.source_ip.clone());
+    if let PyValue::Str(m) = &message {
+        record = record.details(m.clone());
+    }
+    if !completed {
+        record = record.failed();
+    }
+    if let Err(e) = copilot_db::audit::insert_audit_record(&st.ctx.db, record).await {
+        tracing::error!("Failed to record audit event 'uba.rollback': {e}");
+    }
+    let message = match message {
+        PyValue::Str(m) if !m.is_empty() => m,
+        _ => String::new(),
+    };
+    let response = construct(
+        &schema::ROLLBACK_RESPONSE,
+        &PyValue::Dict(vec![
+            ("success".into(), PyValue::Bool(completed)),
+            ("message".into(), PyValue::Str(message)),
+            ("report".into(), report),
+        ]),
+    )?;
+    Ok(respond(StatusCode::OK, &response))
+}
+
+/// `GET …/rollbacks`: this customer's rollbacks, newest first.
+async fn list_rollbacks(
+    auth: Admin,
+    State(st): State<UbaState>,
+    Path(code): Path<String>,
+) -> ApiResult {
+    auth.enforce_customer(&st.ctx, &code).await?;
+    let rows = crate::rollback::list_rollbacks(&st.ctx.db, &code)
+        .await
+        .map_err(db_failure)?;
+    let mut summaries = Vec::with_capacity(rows.len());
+    for row in &rows {
+        summaries.push(crate::rollback::summary(row)?);
+    }
+    let response = construct(
+        &schema::ROLLBACK_LIST,
+        &PyValue::Dict(vec![("rollbacks".into(), PyValue::List(summaries))]),
+    )?;
+    Ok(respond(StatusCode::OK, &response))
+}
+
+/// `GET …/rollbacks/{rollback_id}`: one report (404 for another
+/// customer's, so ids cannot be probed across tenants).
+async fn get_rollback(
+    auth: Admin,
+    State(st): State<UbaState>,
+    Path((code, raw)): Path<(String, String)>,
+) -> ApiResult {
+    auth.enforce_customer(&st.ctx, &code).await?;
+    let mut v = Validator::new();
+    let id = path_int(&mut v, "rollback_id", &raw);
+    v.finish()?;
+    let row = match id.parse::<i64>() {
+        Ok(id) => crate::rollback::get_rollback_row(&st.ctx.db, id)
+            .await
+            .map_err(db_failure)?,
+        Err(_) => None,
+    };
+    let Some(row) = row.filter(|r| r.customer_code == code) else {
+        return Err(ApiError::http(
+            StatusCode::NOT_FOUND,
+            "UBA rollback not found",
+        ));
+    };
+    let report = crate::rollback::report(&row)?;
+    let response = construct(
+        &schema::ROLLBACK_REPORT_RESPONSE,
+        &PyValue::Dict(vec![("report".into(), report)]),
+    )?;
+    Ok(respond(StatusCode::OK, &response))
 }

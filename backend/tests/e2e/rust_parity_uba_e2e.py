@@ -20,15 +20,18 @@ as such (RUST_MIGRATION.md §4).
     PARITY_SUITES=tests/e2e/rust_parity_uba_e2e.py scripts/rust-parity.sh
 
 Ports: UBA_PARITY_RUST_PORT (6380), UBA_PARITY_PY_PORT (6381, the uvicorn legacy backend),
-UBA_STUB_PORT (6382), UBA_TLS_STUB_PORT (6383), UBA_CLOSED_PORT (6384, nothing listens). Seeded
-incident alert ids are seven digits in 7682000-7682999.
+UBA_STUB_PORT (6382), UBA_TLS_STUB_PORT (6383), UBA_CLOSED_PORT (6384, nothing listens),
+UBA_PARITY_RUST7_PORT (6385, a second Rust instance whose first Graylog version probe meets Graylog 7:
+the version is cached per process for five minutes). Seeded ids are seven digits in 7682000-7682999.
 """
 
 import asyncio
+import copy
 import datetime
 import fnmatch
 import json
 import os
+import re
 import socket
 import ssl
 import subprocess
@@ -71,6 +74,7 @@ PY_PORT = int(os.environ.get("UBA_PARITY_PY_PORT", "6381"))
 STUB_PORT = int(os.environ.get("UBA_STUB_PORT", "6382"))
 TLS_PORT = int(os.environ.get("UBA_TLS_STUB_PORT", "6383"))
 CLOSED_PORT = int(os.environ.get("UBA_CLOSED_PORT", "6384"))
+RS7_PORT = int(os.environ.get("UBA_PARITY_RUST7_PORT", "6385"))
 SEED_LO, SEED_HI = 7_682_000, 7_682_999
 
 CUST_A, CUST_B = f"UA{SFX}", f"UB{SFX}"
@@ -124,6 +128,239 @@ def jbody(value):
     return json.dumps(value).encode()
 
 
+# Which Graylog the connector row points at (`/graylog` = 6.x, `/graylog7` = 7.x).
+GRAYLOG = ["/graylog"]
+
+
+class Graylog:
+    """A stateful Graylog: streams (with their rules and outputs), pipelines (stages parsed from the
+    source), rules, connections, outputs, inputs, index sets and event definitions. 7.x takes entity
+    creation wrapped in a CreateEntityRequest and refuses the flat body, 6.x the reverse; ids are
+    a counter, so both backends meet the same ids."""
+
+    def __init__(self, major):
+        self.major = major
+        self.streams, self.pipelines, self.rules, self.outputs, self.inputs, self.index_sets = {}, {}, {}, {}, {}, {}
+        self.connections = {}  # stream id -> pipeline ids
+        self.definitions = []
+        self.next = 0
+
+    def new_id(self):
+        self.next += 1
+        return f"{self.major:x}{self.next:023x}"
+
+    def dump(self):
+        return {
+            k: copy.deepcopy(getattr(self, k))
+            for k in ("streams", "pipelines", "rules", "outputs", "inputs", "connections", "definitions", "next")
+        }
+
+    @staticmethod
+    def stages(source):
+        stages, current = [], None
+        for line in source.splitlines():
+            m = re.match(r"\s*stage\s+(\d+)\s+match\s+(\w+)", line)
+            if m:
+                current = {"stage": int(m.group(1)), "match": m.group(2).upper(), "rules": []}
+                stages.append(current)
+                continue
+            m = re.match(r'\s*rule\s+"([^"]+)"', line)
+            if m and current is not None:
+                current["rules"].append(m.group(1))
+        return stages
+
+    def answer(self, method, p, query, body):
+        j = "application/json"
+        try:
+            sent = json.loads(body) if body else None
+        except ValueError:
+            sent = None
+
+        def ok(value, status=200):
+            return status, j, jbody(value)
+
+        def missing(what):
+            return 404, j, jbody({"type": "ApiError", "message": f"{what} not found"})
+
+        def empty(status=204):
+            return status, None, b""
+
+        stores = {
+            "/api/system/pipelines/pipeline/": (self.pipelines, "Pipeline"),
+            "/api/system/pipelines/rule/": (self.rules, "Rule"),
+            "/api/system/outputs/": (self.outputs, "Output"),
+            "/api/system/inputs/": (self.inputs, "Input"),
+            "/api/system/indices/index_sets/": (self.index_sets, "Index set"),
+        }
+        if method == "GET":
+            if p == "/api/system":
+                return ok({"cluster_id": "parity", "version": "6.1.4+0c8f6b3" if self.major == 6 else "7.0.2+5a5e0d4"})
+            if p == "/api/streams":
+                return ok({"total": len(self.streams), "streams": list(self.streams.values())})
+            if p == "/api/system/pipelines/pipeline":
+                return ok(list(self.pipelines.values()))
+            if p == "/api/system/pipelines/rule":
+                return ok(list(self.rules.values()))
+            if p == "/api/system/pipelines/connections":
+                return ok([{"id": f"c{s}", "stream_id": s, "pipeline_ids": ids} for s, ids in self.connections.items()])
+            if p == "/api/system/outputs":
+                return ok({"total": len(self.outputs), "outputs": list(self.outputs.values())})
+            if p == "/api/system/inputs":
+                return ok({"inputs": list(self.inputs.values()), "total": len(self.inputs)})
+            if p == "/api/events/definitions":
+                q = dict(parse_qsl(query))
+                per_page, page = int(q.get("per_page", 50)), int(q.get("page", 1))
+                batch = self.definitions[(page - 1) * per_page : page * per_page]
+                return ok({"event_definitions": batch, "total": len(self.definitions), "page": page})
+            if p.startswith("/api/streams/") and p.count("/") == 3:
+                sid = p.rsplit("/", 1)[1]
+                return ok(self.streams[sid]) if sid in self.streams else missing(f"Stream <{sid}>")
+            for prefix, (store, what) in stores.items():
+                if p.startswith(prefix):
+                    key = p[len(prefix) :]
+                    return ok(store[key]) if key in store else missing(f"{what} <{key}>")
+        if method == "POST":
+            if p == "/api/streams":
+                if self.major >= 7:
+                    if not isinstance(sent, dict) or sent.get("entity") is None:
+                        return 400, j, jbody({"type": "ApiError", "message": "entity cannot be null"})
+                    if set(sent) - {"entity", "share_request"}:
+                        return 400, j, jbody({"type": "ApiError", "message": "Unrecognized field"})
+                    entity = sent["entity"]
+                else:
+                    if "entity" in sent:
+                        return 400, j, jbody({"type": "ApiError", "message": 'Unrecognized field "entity"'})
+                    entity = sent
+                sid = self.new_id()
+                rules = [{"id": self.new_id(), **r, "stream_id": sid} for r in entity.get("rules") or []]
+                self.streams[sid] = {
+                    "id": sid,
+                    "title": entity["title"],
+                    "description": entity.get("description"),
+                    "rules": rules,
+                    "outputs": [],
+                    "matching_type": entity.get("matching_type"),
+                    "remove_matches_from_default_stream": entity.get("remove_matches_from_default_stream"),
+                    "index_set_id": entity.get("index_set_id"),
+                    "disabled": True,
+                    "is_default": False,
+                }
+                return ok({"stream_id": sid}, 201)
+            m = re.fullmatch(r"/api/streams/([^/]+)/(resume|outputs)", p)
+            if m:
+                stream = self.streams.get(m.group(1))
+                if stream is None:
+                    return missing(f"Stream <{m.group(1)}>")
+                if m.group(2) == "resume":
+                    stream["disabled"] = False
+                    return empty()
+                for oid in sent["outputs"]:
+                    if oid not in [o["id"] for o in stream["outputs"]] and oid in self.outputs:
+                        stream["outputs"].append({"id": oid, "title": self.outputs[oid]["title"]})
+                return empty(202 if self.major >= 7 else 204)
+            if p in ("/api/system/pipelines/rule", "/api/system/pipelines/pipeline"):
+                rid = self.new_id()
+                obj = {"id": rid, "title": sent["title"], "description": sent.get("description"), "source": sent["source"]}
+                if p.endswith("pipeline"):
+                    obj["stages"] = self.stages(sent["source"])
+                    self.pipelines[rid] = obj
+                else:
+                    self.rules[rid] = obj
+                return ok(obj)
+            if p == "/api/system/pipelines/connections/to_pipeline":
+                pid = sent["pipeline_id"]
+                for ids in self.connections.values():
+                    if pid in ids:
+                        ids.remove(pid)
+                for sid in sent["stream_ids"]:
+                    self.connections.setdefault(sid, []).append(pid)
+                return ok([{"id": f"c{sid}", "stream_id": sid, "pipeline_ids": self.connections[sid]} for sid in sent["stream_ids"]])
+            if p == "/api/system/outputs":
+                oid = self.new_id()
+                self.outputs[oid] = {"id": oid, "title": sent["title"], "type": sent["type"], "configuration": sent["configuration"]}
+                return ok(self.outputs[oid], 201)
+            if p == "/api/system/inputs":
+                iid = self.new_id()
+                self.inputs[iid] = {
+                    "id": iid,
+                    "title": sent["title"],
+                    "type": sent["type"],
+                    "global": sent.get("global"),
+                    "attributes": sent["configuration"],
+                }
+                return ok({"id": iid}, 201)
+        if method == "PUT":
+            for prefix in ("/api/system/pipelines/rule/", "/api/system/pipelines/pipeline/", "/api/system/outputs/"):
+                if p.startswith(prefix):
+                    store, what = stores[prefix]
+                    key = p[len(prefix) :]
+                    if key not in store:
+                        return missing(f"{what} <{key}>")
+                    store[key].update(sent)
+                    if prefix.endswith("pipeline/"):
+                        store[key]["stages"] = self.stages(sent["source"])
+                    return ok(store[key])
+        if method == "DELETE":
+            m = re.fullmatch(r"/api/streams/([^/]+)/outputs/([^/]+)", p)
+            if m:
+                stream = self.streams.get(m.group(1))
+                if stream is None:
+                    return missing(f"Stream <{m.group(1)}>")
+                stream["outputs"] = [o for o in stream["outputs"] if o["id"] != m.group(2)]
+                return empty()
+            if p.startswith("/api/streams/"):
+                sid = p.rsplit("/", 1)[1]
+                if sid not in self.streams:
+                    return missing(f"Stream <{sid}>")
+                del self.streams[sid]
+                self.connections.pop(sid, None)
+                return empty()
+            for prefix, (store, what) in stores.items():
+                if p.startswith(prefix):
+                    key = p[len(prefix) :]
+                    if key not in store:
+                        return missing(f"{what} <{key}>")
+                    if prefix.endswith("pipeline/") and any(key in ids for ids in self.connections.values()):
+                        return 400, j, jbody({"type": "ApiError", "message": "The pipeline is still connected to streams"})
+                    del store[key]
+                    if prefix == "/api/system/outputs/":
+                        for stream in self.streams.values():
+                            stream["outputs"] = [o for o in stream["outputs"] if o["id"] != key]
+                    return empty()
+        return 404, j, jbody({"type": "ApiError", "message": f"HTTP 404 Not Found: {method} {p}"})
+
+
+def uba_provisioning(protocol="udp", feed=True, alerts=True, files=True):
+    """UBA's `GET /v1/provisioning`."""
+    return {
+        "graylog": {
+            "sources": {"WAZUH": "wazuh", "O365": "office365"},
+            "feed_stream": "UBA FEED - {source} - {tenant}",
+            "routing_pipeline": "UBA ROUTING - {source} - {tenant}",
+            "pipeline_stage": 10,
+            "output": "UBA GELF - {tenant}",
+            "alerts_input": "UBA ALERTS",
+            "alerts_stream": "UBA ALERTS - {tenant}",
+            "alerts_stream_rules": {"syslog_type": "uba", "agent_labels_customer": "{tenant}"},
+        },
+        "feed_output": {"host": "10.20.30.40", "port": 12203, "protocol": protocol} if feed else None,
+        "alerts_input": {"bind_address": "0.0.0.0", "port": 12204} if alerts else None,
+        "wazuh_rules": [{"filename": "0950-uba_windows_account_rules.xml", "content": '<group name="uba">é</group>\n'}] if files else [],
+    }
+
+
+def graylog_rules(integration, stream):
+    """UBA's routing rules for one source's feed stream."""
+    selectors = {"wazuh": ["WINDOWS AUTH", "PROCESS"], "office365": ["OFFICE365"]}.get(integration, [])
+    return {
+        "rules": [
+            f'rule "{stream} - {selector}"\nwhen\n  has_field("data_win_system_eventID")\nthen\n'
+            f'  set_field("uba_feed", "behavior");\n  route_to_stream(name: "{stream}");\nend'
+            for selector in selectors
+        ],
+    }
+
+
 class Stub:
     """UBA, Graylog 6 and 7 and the Wazuh manager on one port, by path prefix."""
 
@@ -132,11 +369,20 @@ class Stub:
         self.captured = []
         self.reset()
 
-    def reset(self, overrides=None, uba_info=None):
+    def reset(self, overrides=None, uba_info=None, graylog=None, tenants=None):
         # (method, glob on the path after the prefix, query included) -> (status, content type, body)
         # or a callable(method, path, query, body) returning that triple.
         self.overrides = dict(overrides or {})
         self.uba_info = uba_info
+        # Graylog 6 under /graylog, 7 under /graylog7: `graylog()` builds the state a request starts from.
+        built = graylog() if graylog else {}
+        self.graylog = {"/graylog": built.get(6) or Graylog(6), "/graylog7": built.get(7) or Graylog(7)}
+        # UBA's tenants: code -> {"active": bool, "mode": str}.
+        self.tenants = copy.deepcopy(tenants or {})
+
+    def snapshot(self):
+        """What the stand-ins hold after a request (compared between the backends)."""
+        return {"graylog": {k: g.dump() for k, g in self.graylog.items()}, "tenants": self.tenants}
 
     def take(self):
         with self.lock:
@@ -154,6 +400,10 @@ class Stub:
         j = "application/json"
         if path.startswith("/uba/"):
             return self.uba(method, path[len("/uba") :], query, body)
+        for prefix in ("/graylog7", "/graylog"):
+            if path.startswith(prefix + "/"):
+                with self.lock:
+                    return self.graylog[prefix].answer(method, path[len(prefix) :], query, body)
         if path.startswith("/wazuh/"):
             p = path[len("/wazuh") :]
             if p.startswith("/security/user/authenticate"):
@@ -193,6 +443,27 @@ class Stub:
             return 200, j, jbody({"policy": {"alert_threshold": 60, "decay": 0.5}, "categories": ["auth", "é"], "message": "about"})
         if p == "/v1/rules":
             return 200, j, jbody([{"id": "r1", "score": 10}, {"id": "r2", "mitre": ["T1110"]}])
+        # Setup, mode and rollback.
+        if p == "/v1/provisioning":
+            return 200, j, jbody(self.uba_info if self.uba_info is not None else uba_provisioning())
+        match = re.fullmatch(r"/v1/integrations/([^/]+)/graylog-rules", p)
+        if match:
+            stream = dict(parse_qsl(query, keep_blank_values=True)).get("stream", "")
+            return 200, j, jbody(graylog_rules(match.group(1), stream))
+        match = re.fullmatch(r"/v1/tenants/([^/]+)/onboarding", p)
+        if match:
+            tenant = self.tenants.get(match.group(1))
+            if tenant is None:
+                return 404, j, jbody({"detail": "Unknown tenant"})
+            return 200, j, jbody({"tenant": match.group(1), "status": "live" if tenant["active"] else "inactive", **tenant})
+        match = re.fullmatch(r"/v1/tenants/([^/]+)", p)
+        if match and method == "PUT":
+            sent = json.loads(body) if body else {}
+            tenant = self.tenants.setdefault(match.group(1), {"active": True, "mode": "active"})
+            tenant["active"] = sent.get("active", True)
+            if "mode" in sent:
+                tenant["mode"] = sent["mode"]
+            return 200, j, jbody({"tenant": match.group(1), "status": "bootstrapping", **tenant, "received": sorted(sent)})
         parsed = None
         if body:
             try:
@@ -302,9 +573,13 @@ def start_tls_stub():
     return server
 
 
+VERSION_PROBE = re.compile(r"^/graylog7?/api/system(\?.*)?$")
+
+
 def outbound(requests):
-    """What a backend sent, the Wazuh token fetch left out (each process caches its own)."""
-    return [r for r in requests if not r[1].startswith("/wazuh/security/user/authenticate")]
+    """What a backend sent, the Wazuh token fetch and Graylog's version probe left out (each process
+    caches its own: a Rust process probes once per five minutes, the Python side once per request)."""
+    return [r for r in requests if not r[1].startswith("/wazuh/security/user/authenticate") and not VERSION_PROBE.match(r[1])]
 
 
 # --- Seed ------------------------------------------------------------------------------------------
@@ -346,15 +621,25 @@ TAG_SEEN, TAG_HIDDEN = 7_682_501, 7_682_502
 
 def wipe_incidents():
     ids = [i[0] for i in INCIDENTS]
-    sql("DELETE FROM soc_sla_alert_tracking WHERE alert_id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    sql("DELETE FROM soc_sla_alert_tracking WHERE alert_id IN :i", i=ids)
     sql("DELETE FROM incident_management_alert_to_tag WHERE alert_id IN :i", i=ids)
-    sql("DELETE FROM incident_management_alert WHERE id BETWEEN :lo AND :hi", lo=SEED_LO, hi=SEED_HI)
+    # Only the seeded ids: explicit ids move AUTO_INCREMENT, so other suites' alerts land in the range.
+    sql("DELETE FROM incident_management_alert WHERE id IN :i", i=ids)
 
 
 def seed_rows(extra=None):
     """The rows every request starts from; `extra()` adjusts them."""
+    from app.connectors.graylog.utils import universal as graylog_universal
+
+    graylog_universal._GRAYLOG_VERSION_CACHE.clear()
     uba_connector()
-    set_connector("Graylog", f"http://127.0.0.1:{STUB_PORT}/graylog", "admin", "gl-pass")
+    set_connector("Graylog", f"http://127.0.0.1:{STUB_PORT}{GRAYLOG[0]}", "admin", "gl-pass")
+    sql("DELETE FROM uba_provisioned_resource WHERE customer_code IN :c", c=list(CUSTOMERS))
+    sql(
+        "DELETE FROM uba_rollback WHERE customer_code IN :c AND id NOT IN :keep",
+        c=list(CUSTOMERS),
+        keep=SEEDED_ROLLBACKS or [0],
+    )
     set_connector("Wazuh-Manager", f"http://127.0.0.1:{STUB_PORT}/wazuh", "wazuh-wui", "wazuh-pass")
     sql("DELETE FROM audit_log WHERE actor_username IN :u", u=list(USERS))
     wipe_incidents()
@@ -390,6 +675,7 @@ def seed():
         )
         SAVED_CONNECTORS.extend(dict(r._mapping) for r in found)
     SAVED_TAG_SETTINGS.extend(rows("SELECT * FROM incident_management_tag_access_settings"))
+    SEEDED[0] = True
     for code in CUSTOMERS:
         sql("INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :n, UTC_TIMESTAMP())", c=code, n=f"Name {code}")
     for name, role in ((ADMIN, 1), (ANALYST, 2), (ANALYST_B, 2), (PORTAL, 4), (UNICODE, 2)):
@@ -411,10 +697,12 @@ def seed():
         t=TAG_SEEN,
         n=ANALYST,
     )
+    seed_setup_rows()
     seed_rows()
 
 
 SAVED_TAG_SETTINGS = []
+SEEDED = [False]  # the tag settings were saved: they may be restored
 
 
 def restrict_tags():
@@ -435,17 +723,7 @@ def unrestrict_tags():
         )
 
 
-def cleanup():
-    wipe_incidents()
-    unrestrict_tags()
-    sql("DELETE FROM user_tag_access WHERE tag_id IN :t", t=[TAG_SEEN, TAG_HIDDEN])
-    sql("DELETE FROM incident_management_alerttag WHERE id IN :t", t=[TAG_SEEN, TAG_HIDDEN])
-    sql("DELETE FROM audit_log WHERE actor_username IN :u", u=list(USERS))
-    for name in USERS:
-        sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
-        sql("DELETE FROM log_entries WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
-        sql("DELETE FROM `user` WHERE username = :n", n=name)
-    sql("DELETE FROM customers WHERE customer_code IN :c", c=list(CUSTOMERS))
+def restore_connectors():
     for name in OUR_CONNECTORS:
         sql("DELETE FROM connectors WHERE connector_name = :n", n=name)
     for row in SAVED_CONNECTORS:
@@ -453,11 +731,41 @@ def cleanup():
         sql(f"INSERT INTO connectors ({cols}) VALUES ({', '.join(':' + c for c in row)})", **row)
 
 
+def remove_users():
+    sql("DELETE FROM user_tag_access WHERE tag_id IN :t", t=[TAG_SEEN, TAG_HIDDEN])
+    sql("DELETE FROM incident_management_alerttag WHERE id IN :t", t=[TAG_SEEN, TAG_HIDDEN])
+    sql("DELETE FROM audit_log WHERE actor_username IN :u", u=list(USERS))
+    for name in USERS:
+        sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
+        sql("DELETE FROM log_entries WHERE user_id IN (SELECT id FROM `user` WHERE username = :n)", n=name)
+        sql("DELETE FROM `user` WHERE username = :n", n=name)
+
+
+def cleanup():
+    """Every step runs whatever an earlier one raised (the connectors first: they are not ours)."""
+    steps = [restore_connectors, cleanup_setup_rows, wipe_incidents]
+    if SEEDED[0]:
+        steps.append(unrestrict_tags)
+    steps += [remove_users, lambda: sql("DELETE FROM customers WHERE customer_code IN :c", c=list(CUSTOMERS))]
+    failures = []
+    for step in steps:
+        try:
+            step()
+        except Exception as e:  # noqa: BLE001 - report every failed step, run the rest
+            failures.append(f"{getattr(step, '__name__', step)}: {e}")
+    for failure in failures:
+        print(f"  cleanup failed: {failure}")
+
+
 def state():
     """The rows a request may have changed (ids and times masked)."""
     return {
         "audit": [
-            {k: v for k, v in r.items() if k not in ("id", "timestamp")}
+            {
+                k: (v if not (k == "entity_id" and r["action"] == "uba.rollback") else "<rollback id>")
+                for k, v in r.items()
+                if k not in ("id", "timestamp")
+            }
             for r in rows(
                 "SELECT * FROM audit_log WHERE actor_username IN :u ORDER BY id",
                 u=list(USERS),
@@ -468,21 +776,180 @@ def state():
             {**r, "verdict_at": r["verdict_at"] is not None}
             for r in rows(
                 "SELECT id, verdict, verdict_reason, verdict_note, verdict_by, verdict_at FROM incident_management_alert "
-                "WHERE id BETWEEN :lo AND :hi ORDER BY id",
-                lo=SEED_LO,
-                hi=SEED_HI,
+                "WHERE id IN :i ORDER BY id",
+                i=[i[0] for i in INCIDENTS],
             )
         ],
+        "uba_resources": [
+            {**r, "removed_at": r["removed_at"] is not None, "removed_by_rollback_id": r["removed_by_rollback_id"] is not None}
+            for r in rows(
+                "SELECT customer_code, kind, graylog_id, title, source, shared, origin, removed_at, removed_by_rollback_id "
+                "FROM uba_provisioned_resource WHERE customer_code IN :c ORDER BY customer_code, kind, graylog_id",
+                c=list(CUSTOMERS),
+            )
+        ],
+        "uba_rollbacks": [
+            r
+            if r["id"] in SEEDED_ROLLBACKS
+            else {
+                **r,
+                "id": "<new>",
+                "started_at": r["started_at"] is not None,
+                "finished_at": r["finished_at"] is not None,
+                "snapshot": mask(json.loads(r["snapshot"]), {"taken_at"}) if r["snapshot"] else r["snapshot"],
+            }
+            for r in rows("SELECT * FROM uba_rollback WHERE customer_code IN :c ORDER BY id", c=list(CUSTOMERS))
+        ],
+        "stand_ins": copy.deepcopy(STUB.snapshot()),
         "sla": [
             {**r, "first_ack_at": r["first_ack_at"] is not None}
             for r in rows(
                 "SELECT alert_id, first_ack_at, first_ack_by, first_ack_action FROM soc_sla_alert_tracking "
-                "WHERE alert_id BETWEEN :lo AND :hi ORDER BY alert_id",
-                lo=SEED_LO,
-                hi=SEED_HI,
+                "WHERE alert_id IN :i ORDER BY alert_id",
+                i=[i[0] for i in INCIDENTS],
             )
         ],
     }
+
+
+# --- What setup reads: the customer's streams, its Microsoft 365 tenant, past rollbacks ----------------
+
+WAZUH_STREAM_A, O365_STREAM_A, O365_STREAM_A2 = "6aaa00000000000000000a01", "6aaa00000000000000000a02", "6aaa00000000000000000a03"
+WAZUH_SET_A, O365_SET_A, OTHER_SET = "6aaa00000000000000000b01", "6aaa00000000000000000b02", "6aaa00000000000000000b03"
+PROC_PIPELINE, DEF_WAZUH = "6aaa00000000000000000c01", "6aaa00000000000000000d01"
+O365_ROWS = {}
+SEEDED_ROLLBACKS = []
+
+
+def seed_setup_rows():
+    sql(
+        "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, customer_meta_graylog_stream, "
+        "customer_meta_grafana_org_id, customer_meta_wazuh_group) VALUES (:c, :n, 'stale-index-set', :s, '1', 'group')",
+        c=CUST_A,
+        n=f"Acme é {SFX}",
+        s=WAZUH_STREAM_A,
+    )
+    sql(
+        "INSERT INTO customer_integrations_meta (customer_code, integration_name, graylog_index_id, graylog_stream_id, "
+        "grafana_org_id, grafana_dashboard_folder_id, instance_name) VALUES (:c, 'Office365', :i, :s, '1', 'f', 'main')",
+        c=CUST_A,
+        i=O365_SET_A,
+        s=O365_STREAM_A,
+    )
+    # The Office 365 tenant: auto ids (an explicit id moves AUTO_INCREMENT under other suites' rows).
+    service = sql("INSERT INTO integration_services (service_name, auth_type) VALUES ('Office365', 'API_KEY')").lastrowid
+    integration = sql(
+        "INSERT INTO customer_integrations (customer_code, customer_name, integration_service_id, integration_service_name, "
+        "deployed, instance_name) VALUES (:c, 'A', :s, 'Office365', 1, 'main')",
+        c=CUST_A,
+        s=service,
+    ).lastrowid
+    subscription = sql(
+        "INSERT INTO integration_subscriptions (customer_id, integration_service_id) VALUES (:c, :s)",
+        c=integration,
+        s=service,
+    ).lastrowid
+    O365_ROWS.update(service=service, integration=integration, subscription=subscription)
+    for name, value in (("TENANT_ID", " AAAA-Tenant-One "), ("CLIENT_ID", "client")):
+        sql(
+            "INSERT INTO integration_auth_keys (subscription_id, auth_key_name, auth_value) VALUES (:s, :n, :v)",
+            s=subscription,
+            n=name,
+            v=value,
+        )
+    snapshot = json.dumps({"taken_at": "2026-10-10T10:00:00.123456+00:00", "names": {"output": "UBA GELF - {tenant}"}, "x": 1.5})
+    steps = json.dumps(
+        [{"step": "pipeline UBA ROUTING", "status": "removed", "detail": ""}, {"step": "UBA tenant", "status": "failed", "detail": "é"}],
+    )
+    checks = json.dumps([{"check": "event definitions", "ok": True, "detail": "1 unchanged"}, {"check": "UBA tenant", "ok": None}])
+    for code, status, started, finished, steps_, checks_ in (
+        (CUST_A, "partial", "2026-10-10 10:00:00", "2026-10-10 10:00:05", steps, checks),
+        (CUST_A, "running", "2026-10-01 00:00:00", None, "null", "null"),
+        (CUST_B, "completed", "2026-10-11 10:00:00", "2026-10-11 10:00:01", "[]", "[]"),
+    ):
+        result = sql(
+            "INSERT INTO uba_rollback (customer_code, status, started_at, finished_at, actor_user_id, actor_username, message, "
+            "snapshot, steps, verification) VALUES (:c, :st, :s, :f, 1, 'seeded', :m, :snap, :steps, :checks)",
+            c=code,
+            st=status,
+            s=started,
+            f=finished,
+            m=f"UBA rolled back for {code}" if finished else None,
+            snap=snapshot,
+            steps=steps_,
+            checks=checks_,
+        )
+        SEEDED_ROLLBACKS.append(result.lastrowid)
+
+
+def cleanup_setup_rows():
+    sql("DELETE FROM uba_provisioned_resource WHERE customer_code IN :c", c=list(CUSTOMERS))
+    sql("DELETE FROM uba_rollback WHERE customer_code IN :c", c=list(CUSTOMERS))
+    if O365_ROWS:
+        sql("DELETE FROM integration_auth_keys WHERE subscription_id = :s", s=O365_ROWS["subscription"])
+        sql("DELETE FROM integration_subscriptions WHERE id = :s", s=O365_ROWS["subscription"])
+        sql("DELETE FROM customer_integrations WHERE id = :i", i=O365_ROWS["integration"])
+        sql("DELETE FROM integration_services WHERE id = :i", i=O365_ROWS["service"])
+    sql("DELETE FROM customer_integrations_meta WHERE customer_code IN :c", c=list(CUSTOMERS))
+    sql("DELETE FROM customersmeta WHERE customer_code IN :c", c=list(CUSTOMERS))
+
+
+def fresh_graylog(major=6, wazuh_prefix=None):
+    """The customer's streams before setup: Wazuh (with its processing pipeline and an event
+    definition) and Office 365, each in its index set."""
+    g = Graylog(major)
+    low = CUST_A.lower()
+    g.index_sets[WAZUH_SET_A] = {"id": WAZUH_SET_A, "title": "Wazuh A", "index_prefix": wazuh_prefix or f"wazuh-{low}"}
+    g.index_sets[O365_SET_A] = {"id": O365_SET_A, "title": "Office 365 A", "index_prefix": f"office365-{low}"}
+    g.index_sets[OTHER_SET] = {"id": OTHER_SET, "title": "Other", "index_prefix": "other"}
+    for sid, title, index_set in (
+        (WAZUH_STREAM_A, f"{CUST_A} - Wazuh", WAZUH_SET_A),
+        (O365_STREAM_A, f"{CUST_A} - Office365", O365_SET_A),
+        (O365_STREAM_A2, f"{CUST_A} - Office365 second", OTHER_SET),
+    ):
+        g.streams[sid] = {
+            "id": sid,
+            "title": title,
+            "description": "the customer's own",
+            "rules": [{"id": f"r{sid}", "field": "agent_labels_customer", "type": 1, "value": CUST_A, "inverted": False}],
+            "outputs": [],
+            "index_set_id": index_set,
+            "disabled": False,
+            "is_default": False,
+        }
+    g.pipelines[PROC_PIPELINE] = {
+        "id": PROC_PIPELINE,
+        "title": "WAZUH PROCESSING",
+        "description": None,
+        "source": 'pipeline "WAZUH PROCESSING"\nstage 0 match either\nrule "WAZUH ENRICH"\nend',
+        "stages": [{"stage": 0, "match": "EITHER", "rules": ["WAZUH ENRICH"]}],
+    }
+    g.connections[WAZUH_STREAM_A] = [PROC_PIPELINE]
+    g.definitions = [{"id": DEF_WAZUH, "title": "WAZUH - HIGH", "state": "ENABLED", "config": {"streams": [WAZUH_STREAM_A]}}]
+    return g
+
+
+def own(owned):
+    """`uba_provisioned_resource` rows as setup recorded them."""
+    for r in owned:
+        sql(
+            "INSERT INTO uba_provisioned_resource (customer_code, kind, graylog_id, title, source, shared, origin, created_at, "
+            "updated_at) VALUES (:customer_code, :kind, :graylog_id, :title, :source, :shared, :origin, '2026-10-01 00:00:00', "
+            "'2026-10-01 00:00:00')",
+            **r,
+        )
+
+
+def report_view(body):
+    """A rollback's answer: its row id and times are the database's."""
+    report = body.get("report") if isinstance(body, dict) else None
+    if isinstance(report, dict):
+        for key in ("id", "started_at", "finished_at"):
+            if key in report:
+                report[key] = "<masked>"
+        if isinstance(report.get("snapshot"), dict) and "taken_at" in report["snapshot"]:
+            report["snapshot"]["taken_at"] = "<masked>"
+    return body
 
 
 # --- The backends ------------------------------------------------------------------------------------
@@ -530,7 +997,7 @@ def start_python_legacy():
     return proc
 
 
-def start_rust():
+def start_rust(port=RS_PORT):
     binary = os.environ.get("COPILOT_BIN", os.path.join(REPO, "target", "debug", "copilot"))
     user, password, host = os.environ["MYSQL_USER"], os.environ["MYSQL_PASSWORD"], os.environ["MYSQL_URL"]
     env = {
@@ -539,7 +1006,7 @@ def start_rust():
         "COPILOT_DATABASE_URL": f"mysql://{user}:{password}@{host}/copilot",
         "JWT_SECRET": os.environ["JWT_SECRET"],
         "COPILOT_BIND": "127.0.0.1",
-        "COPILOT_PORT": str(RS_PORT),
+        "COPILOT_PORT": str(port),
         "COPILOT_LEGACY_URL": f"http://127.0.0.1:{PY_PORT}",
         "CONNECTOR_CACHE_TTL_SECONDS": "0",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
@@ -547,7 +1014,7 @@ def start_rust():
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
     for _ in range(100):
         try:
-            if httpx.get(f"http://127.0.0.1:{RS_PORT}/_copilot/health", timeout=1).status_code == 200:
+            if httpx.get(f"http://127.0.0.1:{port}/_copilot/health", timeout=1).status_code == 200:
                 return proc
         except httpx.HTTPError:
             pass
@@ -565,13 +1032,13 @@ def mask(value, keys):
 
 
 class Pair:
-    def __init__(self):
+    def __init__(self, rs_port=RS_PORT):
         self.py = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False),
             base_url="http://py",
             timeout=120,
         )
-        self.rs = httpx.AsyncClient(base_url=f"http://127.0.0.1:{RS_PORT}", timeout=120)
+        self.rs = httpx.AsyncClient(base_url=f"http://127.0.0.1:{rs_port}", timeout=120)
 
     async def call(self, client, method, path, tok, **kw):
         headers = {**FORWARDED, **dict(kw.pop("headers", {}))}
@@ -582,7 +1049,21 @@ class Pair:
         await asyncio.sleep(0)
         return r, outbound(STUB.take())
 
-    async def same(self, name, method, path, tok=None, seed=True, before=None, stub=None, masked=(), view=None, expect=None, **kw):
+    async def same(
+        self,
+        name,
+        method,
+        path,
+        tok=None,
+        seed=True,
+        before=None,
+        stub=None,
+        masked=(),
+        view=None,
+        expect=None,
+        normalize=None,
+        **kw,
+    ):
         """Python, then Rust, each from the same rows (`seed`, then `before()`) and the same
         stand-in (`stub`: the keyword arguments of `Stub.reset`). `view` turns either side's state
         into what is compared; `expect=(python, rust)` statuses of a deliberate difference."""
@@ -608,12 +1089,13 @@ class Pair:
 
         def norm(r):
             raw = r.content
-            if not masked:
+            if not masked and not normalize:
                 return raw
             try:
-                return json.dumps(mask(json.loads(raw), set(masked))).encode()
+                value = mask(json.loads(raw), set(masked))
             except ValueError:
                 return raw
+            return json.dumps(normalize(value) if normalize else value).encode()
 
         b1, b2 = norm(r1), norm(r2)
         ok = r1.status_code == r2.status_code and b1 == b2
@@ -1113,6 +1595,682 @@ async def verdict_checks(p, t):
     await p.same("verdict without a token", "POST", fb("u1"), json=tp)
 
 
+# --- C: setup, mode and rollback ---------------------------------------------------------------------
+
+
+SETUP = {}
+
+
+def capture(major):
+    """Graylog, UBA and the ownership rows as the setup just compared left them."""
+    SETUP[major] = {
+        "graylog": copy.deepcopy(STUB.graylog["/graylog" if major == 6 else "/graylog7"]),
+        "tenants": copy.deepcopy(STUB.tenants),
+        "owned": rows(
+            "SELECT customer_code, kind, graylog_id, title, source, shared, origin FROM uba_provisioned_resource "
+            "WHERE customer_code = :c ORDER BY id",
+            c=CUST_A,
+        ),
+    }
+
+
+def set_up(major=6, change=None):
+    """The stand-ins as setup leaves them; `change(graylog)` edits Graylog."""
+
+    def build():
+        g = copy.deepcopy(SETUP[major]["graylog"])
+        if change:
+            change(g)
+        return {major: g}
+
+    return build
+
+
+def find(store, title):
+    return next(o for o in store.values() if o.get("title") == title)
+
+
+def add_customer_b(g):
+    """Customer B's UBA next to A's: its feed stream and its UBA ALERTS stream."""
+    for sid, title, rules in (
+        ("6bbb00000000000000000a01", f"UBA FEED - WAZUH - {CUST_B}", []),
+        (
+            "6bbb00000000000000000a02",
+            f"UBA ALERTS - {CUST_B}",
+            [{"id": "rb", "field": "agent_labels_customer", "type": 1, "value": CUST_B, "inverted": False}],
+        ),
+    ):
+        g.streams[sid] = {"id": sid, "title": title, "rules": rules, "outputs": [], "index_set_id": OTHER_SET, "disabled": False}
+
+
+async def setup_checks(p, t, major=6):
+    a, b = f"{U}/{CUST_A}", f"{U}/{CUST_B}"
+    v = "" if major == 6 else "Graylog 7: "
+    fresh = lambda: {major: fresh_graylog(major)}  # noqa: E731 - a factory per request
+    active = {CUST_A: {"active": True, "mode": "active"}}
+
+    if major == 6:
+        # Admin only, the tenant before anything else.
+        for m, path in (
+            ("GET", "/provisioning"),
+            ("POST", "/provision"),
+            ("PUT", "/mode"),
+            ("GET", "/rollback"),
+            ("POST", "/rollback"),
+            ("GET", "/rollbacks"),
+            ("GET", f"/rollbacks/{SEEDED_ROLLBACKS[0]}"),
+        ):
+            await p.same(f"{m} {path} for an analyst", m, f"{a}{path}", t["analyst"], json={"mode": "active"})
+            await p.same(f"{m} {path} for another tenant's analyst", m, f"{a}{path}", t["analyst_b"], json={})
+            await p.same(f"{m} {path} without a token", m, f"{a}{path}", json={})
+        await p.same("a rollback report, an invalid id for an analyst", "GET", f"{a}/rollbacks/x", t["analyst"])
+
+    # What setup would use.
+    await p.same(f"{v}provisioning, not set up", "GET", f"{a}/provisioning", t["admin"], stub={"graylog": fresh})
+    await p.same(
+        f"{v}provisioning, set up",
+        "GET",
+        f"{a}/provisioning",
+        t["admin"],
+        stub={"graylog": fresh, "tenants": active},
+    )
+    if major == 6:
+        await p.same("provisioning of a customer never provisioned", "GET", f"{b}/provisioning", t["admin"], stub={"graylog": fresh})
+        await p.same(
+            "provisioning, a source stream gone from Graylog",
+            "GET",
+            f"{a}/provisioning",
+            t["admin"],
+            stub={"graylog": fresh, "overrides": {("GET", f"/graylog/api/streams/{O365_STREAM_A}"): reply(404, {"message": "gone"})}},
+        )
+        await p.same(
+            "provisioning, Graylog fails reading a stream",
+            "GET",
+            f"{a}/provisioning",
+            t["admin"],
+            stub={"graylog": fresh, "overrides": {("GET", f"/graylog/api/streams/{WAZUH_STREAM_A}"): reply(500, b"<html>")}},
+        )
+        await p.same(
+            "provisioning, two Office 365 streams in different index sets",
+            "GET",
+            f"{a}/provisioning",
+            t["admin"],
+            stub={"graylog": fresh},
+            before=lambda: (
+                sql("DELETE FROM customer_integrations_meta WHERE customer_code = :c AND instance_name IS NULL", c=CUST_A),
+                sql(
+                    "INSERT INTO customer_integrations_meta (customer_code, integration_name, graylog_index_id, graylog_stream_id, "
+                    "grafana_org_id, grafana_dashboard_folder_id, instance_name) VALUES (:c, 'Office365', 'x', :s, '1', 'f', NULL)",
+                    c=CUST_A,
+                    s=O365_STREAM_A2,
+                ),
+            ),
+        )
+        sql("DELETE FROM customer_integrations_meta WHERE customer_code = :c AND instance_name IS NULL", c=CUST_A)
+        await p.same(
+            "provisioning, UBA unreachable",
+            "GET",
+            f"{a}/provisioning",
+            t["admin"],
+            stub={"graylog": fresh},
+            before=lambda: uba_connector(f"http://127.0.0.1:{CLOSED_PORT}/v1"),
+        )
+        await p.same(
+            "provisioning, UBA's onboarding a list",
+            "GET",
+            f"{a}/provisioning",
+            t["admin"],
+            stub={"graylog": fresh, "overrides": {("GET", f"/uba/v1/tenants/{CUST_A}/onboarding"): reply(200, [1])}},
+        )
+        await p.same(
+            "provisioning, UBA's onboarding an empty list",
+            "GET",
+            f"{a}/provisioning",
+            t["admin"],
+            stub={"graylog": fresh, "overrides": {("GET", f"/uba/v1/tenants/{CUST_A}/onboarding"): reply(200, [])}},
+        )
+
+    # Setup.
+    await p.same(f"{v}setup", "POST", f"{a}/provision", t["admin"], json={}, stub={"graylog": fresh})
+    capture(major)
+    await p.same(
+        f"{v}setup again: nothing to change",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={"bootstrap_days": 0},
+        stub={"graylog": set_up(major), "tenants": SETUP[major]["tenants"]},
+        before=lambda: own(SETUP[major]["owned"]),
+    )
+
+    def edited(g):
+        pipeline = find(g.pipelines, f"UBA ROUTING - O365 - {CUST_A}")
+        pipeline["source"] = pipeline["source"].replace("stage 10", "stage 5")
+        rule = find(g.rules, f"UBA FEED - WAZUH - {CUST_A} - PROCESS")
+        rule["source"] = rule["source"] + "\n"
+        rule2 = find(g.rules, f"UBA FEED - WAZUH - {CUST_A} - WINDOWS AUTH")
+        rule2["source"] = rule2["source"].replace("behavior", "edited")
+        find(g.outputs, f"UBA GELF - {CUST_A}")["configuration"]["protocol"] = "TCP"
+
+    await p.same(
+        f"{v}setup again: edits put back, the output moved to UDP",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={"bootstrap_days": "7", "deploy_wazuh_rules": False, "extra": 1},
+        stub={"graylog": set_up(major, edited), "tenants": SETUP[major]["tenants"]},
+    )
+    if major != 6:
+        await p.same(
+            f"{v}rollback",
+            "POST",
+            f"{a}/rollback",
+            t["admin"],
+            stub={"graylog": set_up(major), "tenants": SETUP[major]["tenants"]},
+            before=lambda: own(SETUP[major]["owned"]),
+            normalize=report_view,
+        )
+        return
+
+    await p.same(
+        "setup, UBA moved and its old receiver on TCP",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={},
+        stub={
+            "graylog": set_up(major),
+            "uba_info": {**uba_provisioning(protocol=None), "feed_output": {"host": "10.9.9.9", "port": "12203"}},
+        },
+    )
+    await p.same(
+        "setup with UBA's Wazuh rules",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={"deploy_wazuh_rules": True, "bootstrap_days": 30},
+        stub={"graylog": fresh},
+    )
+    await p.same(
+        "setup with no Wazuh rules to deploy",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={"deploy_wazuh_rules": True},
+        stub={"graylog": fresh, "uba_info": uba_provisioning(files=False)},
+    )
+    await p.same(
+        "setup, index sets that differ from UBA's defaults",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={},
+        stub={"graylog": lambda: {6: fresh_graylog(6, wazuh_prefix="acme-wazuh-2026")}},
+    )
+    await p.same(
+        "setup, UBA without its GELF endpoints",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={},
+        stub={"graylog": fresh, "uba_info": uba_provisioning(feed=False, alerts=False)},
+    )
+    await p.same(
+        "setup, UBA without its alerts input",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={},
+        stub={"graylog": fresh, "uba_info": uba_provisioning(alerts=False)},
+    )
+    await p.same("setup of a customer never provisioned", "POST", f"{b}/provision", t["admin"], json={}, stub={"graylog": fresh})
+
+    def stray_feed(g):
+        g.streams["6ccc00000000000000000a01"] = {
+            "id": "6ccc00000000000000000a01",
+            "title": f"UBA FEED - WAZUH - {CUST_A}",
+            "index_set_id": OTHER_SET,
+        }
+
+    await p.same(
+        "setup, a feed stream in another index set",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={},
+        stub={"graylog": lambda: {6: (lambda g: (stray_feed(g), g)[1])(fresh_graylog(6))}},
+    )
+    await p.same(
+        "setup, Graylog refuses the output",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={},
+        stub={"graylog": fresh, "overrides": {("POST", "/graylog/api/system/outputs"): reply(400, {"message": "bad output"})}},
+    )
+    await p.same(
+        "setup, Graylog refuses a PUT",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={},
+        stub={
+            "graylog": set_up(major, edited),
+            "overrides": {("PUT", "/graylog/api/system/pipelines/rule/*"): reply(500, {"message": "rule locked"})},
+        },
+    )
+    await p.same(
+        "setup, UBA refuses the registration",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={},
+        stub={
+            "graylog": fresh,
+            "overrides": {
+                ("PUT", f"/uba/v1/tenants/{CUST_A}"): reply(422, {"detail": [{"loc": ["body", "indices"], "msg": "bad pattern"}]}),
+            },
+        },
+    )
+    await p.same(
+        "setup, UBA's routing rules unavailable after the first stream",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        json={},
+        stub={"graylog": fresh, "overrides": {("GET", "/uba/v1/integrations/office365/graylog-rules*"): reply(503, b"")}},
+    )
+    names = uba_provisioning()["graylog"]
+    for label, changed in (
+        ("a source UBA names no integration for", {**names, "sources": {"WAZUH": "wazuh"}}),
+        ("an integration UBA has no default index for", {**names, "sources": {"WAZUH": "linux", "O365": "office365"}}),
+        ("a template naming an unknown field", {**names, "feed_stream": "UBA FEED - {nope}"}),
+        ("a template with a lone brace", {**names, "routing_pipeline": "UBA ROUTING }"}),
+        ("a stage that is not a number", {**names, "pipeline_stage": "ten"}),
+        ("no alerts stream rules", {k: x for k, x in names.items() if k != "alerts_stream_rules"}),
+    ):
+        await p.same(
+            f"setup, {label}",
+            "POST",
+            f"{a}/provision",
+            t["admin"],
+            json={},
+            stub={"graylog": fresh, "uba_info": {**uba_provisioning(), "graylog": changed}},
+        )
+    for label, body in (
+        ("31 days", {"bootstrap_days": 31}),
+        ("negative days", {"bootstrap_days": -1}),
+        ("days as text", {"bootstrap_days": "x"}),
+        ("days as a float", {"bootstrap_days": 2.5}),
+        ("days as true", {"bootstrap_days": True}),
+        ("rules as yes", {"deploy_wazuh_rules": "yes", "bootstrap_days": None}),
+        ("a list", [1]),
+    ):
+        await p.same(f"setup, {label}", "POST", f"{a}/provision", t["admin"], json=body, stub={"graylog": fresh})
+    await p.same("setup without a body", "POST", f"{a}/provision", t["admin"], stub={"graylog": fresh})
+    await p.same(
+        "setup, malformed JSON",
+        "POST",
+        f"{a}/provision",
+        t["admin"],
+        content=b"{",
+        headers={"Content-Type": "application/json"},
+        stub={"graylog": fresh},
+    )
+
+    # Mode.
+    await p.same("mode: learning", "PUT", f"{a}/mode", t["admin"], json={"mode": "learning"}, stub={"tenants": active})
+    await p.same("mode: active", "PUT", f"{a}/mode", t["admin"], json={"mode": "active"}, stub={"tenants": active})
+    await p.same("mode, UBA not set up", "PUT", f"{a}/mode", t["admin"], json={"mode": "learning"})
+    await p.same(
+        "mode, rolled back",
+        "PUT",
+        f"{a}/mode",
+        t["admin"],
+        json={"mode": "learning"},
+        stub={"tenants": {CUST_A: {"active": False, "mode": "active"}}},
+    )
+    await p.same(
+        "mode, a UBA without modes",
+        "PUT",
+        f"{a}/mode",
+        t["admin"],
+        json={"mode": "learning"},
+        stub={"tenants": active, "overrides": {("PUT", f"/uba/v1/tenants/{CUST_A}"): reply(200, {"tenant": CUST_A, "active": True})}},
+    )
+    await p.same(
+        "mode, UBA answers a list",
+        "PUT",
+        f"{a}/mode",
+        t["admin"],
+        json={"mode": "learning"},
+        stub={"tenants": active, "overrides": {("PUT", f"/uba/v1/tenants/{CUST_A}"): reply(200, ["x"])}},
+    )
+    await p.same(
+        "mode, UBA unreachable",
+        "PUT",
+        f"{a}/mode",
+        t["admin"],
+        json={"mode": "learning"},
+        before=lambda: uba_connector(f"http://127.0.0.1:{CLOSED_PORT}/v1"),
+    )
+    await p.same("mode, invalid", "PUT", f"{a}/mode", t["admin"], json={"mode": "paused"}, stub={"tenants": active})
+    await p.same("mode, no body", "PUT", f"{a}/mode", t["admin"], stub={"tenants": active})
+    await p.same("mode of a customer UBA does not know", "PUT", f"{b}/mode", t["admin"], json={"mode": "active"})
+
+    # The rollback preview.
+    owned = lambda: own(SETUP[6]["owned"])  # noqa: E731
+    tenants = SETUP[6]["tenants"]
+    await p.same(
+        "rollback preview",
+        "GET",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants},
+        before=owned,
+    )
+    await p.same(
+        "rollback preview, set up before the table",
+        "GET",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants},
+    )
+
+    def b_too():
+        own(SETUP[6]["owned"])
+        own(
+            [
+                {
+                    "customer_code": CUST_B,
+                    "kind": "alerts_stream",
+                    "graylog_id": "6bbb00000000000000000a02",
+                    "title": f"UBA ALERTS - {CUST_B}",
+                    "source": None,
+                    "shared": 0,
+                    "origin": "created",
+                },
+            ],
+        )
+
+    await p.same(
+        "rollback preview, another customer still has UBA",
+        "GET",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(6, add_customer_b), "tenants": tenants},
+        before=b_too,
+    )
+
+    def watched(g):
+        alerts = find(g.streams, f"UBA ALERTS - {CUST_A}")
+        g.definitions.append(
+            {"id": "6ddd0000000000000000ed02", "title": "UBA HIGH RISK", "state": "ENABLED", "config": {"streams": [alerts["id"]]}},
+        )
+        routing = find(g.pipelines, f"UBA ROUTING - WAZUH - {CUST_A}")
+        routing["stages"][0]["rules"].append("HAND MADE ENRICHMENT")
+        feed = find(g.streams, f"UBA FEED - O365 - {CUST_A}")
+        g.connections.setdefault(feed["id"], []).append(PROC_PIPELINE)
+
+    await p.same(
+        "rollback preview, conflicts",
+        "GET",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(6, watched), "tenants": tenants},
+        before=owned,
+    )
+    await p.same(
+        "rollback preview, UBA unreachable",
+        "GET",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up()},
+        before=lambda: (owned(), uba_connector(f"http://127.0.0.1:{CLOSED_PORT}/v1")),
+    )
+    await p.same(
+        "rollback preview, UBA's names unavailable",
+        "GET",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants, "overrides": {("GET", "/uba/v1/provisioning"): reply(503, b"down")}},
+        before=owned,
+    )
+    await p.same(
+        "rollback preview, UBA's names a list",
+        "GET",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants, "overrides": {("GET", "/uba/v1/provisioning"): reply(200, {"graylog": [1]})}},
+        before=owned,
+    )
+    await p.same(
+        "rollback preview, a template with a lone brace",
+        "GET",
+        f"{a}/rollback",
+        t["admin"],
+        stub={
+            "graylog": set_up(),
+            "tenants": tenants,
+            "overrides": {("GET", "/uba/v1/provisioning"): reply(200, {"graylog": {"output": "UBA GELF {"}})},
+        },
+        before=owned,
+    )
+    await p.same(
+        "rollback preview, onboarding a list",
+        "GET",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "overrides": {("GET", f"/uba/v1/tenants/{CUST_A}/onboarding"): reply(200, ["x"])}},
+        before=owned,
+    )
+    await p.same("rollback preview, nothing set up", "GET", f"{a}/rollback", t["admin"], stub={"graylog": fresh})
+
+    # The rollback.
+    await p.same(
+        "rollback",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants},
+        before=owned,
+        normalize=report_view,
+    )
+    await p.same(
+        "rollback of objects found by title",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants},
+        normalize=report_view,
+    )
+    await p.same(
+        "rollback, another customer still has UBA",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(6, add_customer_b), "tenants": tenants},
+        before=b_too,
+        normalize=report_view,
+    )
+    await p.same(
+        "rollback with conflicts",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(6, watched), "tenants": tenants},
+        before=owned,
+        normalize=report_view,
+    )
+    await p.same(
+        "rollback, UBA unreachable",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up()},
+        before=lambda: (owned(), uba_connector(f"http://127.0.0.1:{CLOSED_PORT}/v1")),
+        normalize=report_view,
+    )
+    await p.same(
+        "rollback, a pipeline that cannot be disconnected",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={
+            "graylog": set_up(),
+            "tenants": tenants,
+            "overrides": {("POST", "/graylog/api/system/pipelines/connections/to_pipeline"): reply(500, {"message": "locked"})},
+        },
+        before=owned,
+        normalize=report_view,
+    )
+    await p.same(
+        "rollback, Graylog refuses a delete",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={
+            "graylog": set_up(),
+            "tenants": tenants,
+            "overrides": {("DELETE", "/graylog/api/system/outputs/*"): reply(400, {"message": "output busy"})},
+        },
+        before=owned,
+        normalize=report_view,
+    )
+    await p.same(
+        "rollback, Graylog's event definitions unreadable",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={
+            "graylog": set_up(),
+            "tenants": tenants,
+            "overrides": {("GET", "/graylog/api/events/definitions*"): reply(404, {"message": "no events"})},
+        },
+        before=owned,
+        normalize=report_view,
+    )
+
+    def gone():
+        own(SETUP[6]["owned"])
+        own(
+            [
+                {
+                    "customer_code": CUST_A,
+                    "kind": "routing_rule",
+                    "graylog_id": "6eee00000000000000000001",
+                    "title": f"UBA FEED - WAZUH - {CUST_A} - OLD",
+                    "source": "WAZUH",
+                    "shared": 0,
+                    "origin": "created",
+                },
+            ],
+        )
+
+    await p.same(
+        "rollback, a recorded object already gone",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants},
+        before=gone,
+        normalize=report_view,
+    )
+    await p.same(
+        "rollback, UBA's deactivation refused",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants, "overrides": {("PUT", f"/uba/v1/tenants/{CUST_A}"): reply(404, {"detail": "gone"})}},
+        before=owned,
+        normalize=report_view,
+    )
+    await p.same(
+        "rollback, UBA's state unreadable afterwards",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={
+            "graylog": set_up(),
+            "tenants": tenants,
+            "overrides": {
+                ("GET", f"/uba/v1/tenants/{CUST_A}/onboarding"): lambda m, path, body: reply(200, {"active": True})
+                if STUB.tenants[CUST_A]["active"]
+                else reply(500, b""),
+            },
+        },
+        before=owned,
+        normalize=report_view,
+    )
+    await p.same("rollback, nothing to roll back", "POST", f"{a}/rollback", t["admin"], stub={"graylog": fresh})
+    await p.same(
+        "rollback, one already running",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants},
+        before=lambda: (
+            owned(),
+            sql(
+                "INSERT INTO uba_rollback (customer_code, status, started_at, snapshot, steps, verification) VALUES "
+                "(:c, 'running', UTC_TIMESTAMP(), '{}', 'null', 'null')",
+                c=CUST_A,
+            ),
+        ),
+    )
+    await p.same(
+        "rollback, Graylog's streams unreadable",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={"graylog": set_up(), "tenants": tenants, "overrides": {("GET", "/graylog/api/streams"): reply(404, {"message": "no"})}},
+        before=owned,
+    )
+    await p.same(
+        "rollback, a template with a lone brace",
+        "POST",
+        f"{a}/rollback",
+        t["admin"],
+        stub={
+            "graylog": set_up(),
+            "tenants": tenants,
+            "overrides": {("GET", "/uba/v1/provisioning"): reply(200, {"graylog": {"output": "UBA GELF }"}})},
+        },
+        before=owned,
+    )
+
+    # The reports.
+    await p.same("rollbacks", "GET", f"{a}/rollbacks", t["admin"])
+    await p.same("rollbacks of another customer", "GET", f"{b}/rollbacks", t["admin"])
+    await p.same("rollbacks under another case", "GET", f"{U}/{CUST_A.lower()}/rollbacks", t["admin"])
+    done, running, other = SEEDED_ROLLBACKS
+    await p.same("a rollback report", "GET", f"{a}/rollbacks/{done}", t["admin"])
+    await p.same("a rollback report still running", "GET", f"{a}/rollbacks/{running}", t["admin"])
+    await p.same("another customer's rollback report", "GET", f"{a}/rollbacks/{other}", t["admin"])
+    await p.same("a rollback report under another case", "GET", f"{U}/{CUST_A.lower()}/rollbacks/{done}", t["admin"])
+    for label, raw in (("text", "x"), ("huge", "99999999999999999999"), ("negative", "-1"), ("zero-padded", f"0{done}")):
+        await p.same(f"a rollback report, a {label} id", "GET", f"{a}/rollbacks/{raw}", t["admin"])
+
+
+async def graylog7_checks(t):
+    """Setup and rollback against Graylog 7 (entity creation wrapped), on a Rust instance whose
+    first version probe meets Graylog 7."""
+    GRAYLOG[0] = "/graylog7"
+    seed_rows()
+    proc = start_rust(RS7_PORT)
+    p7 = Pair(RS7_PORT)
+    try:
+        await setup_checks(p7, t, major=7)
+    finally:
+        await p7.close()
+        GRAYLOG[0] = "/graylog"
+        proc.terminate()
+        try:
+            proc.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
 async def main():
     server = start_stub()
     tls = start_tls_stub()
@@ -1130,11 +2288,14 @@ async def main():
             "unicode": token(UNICODE, ["analyst"]),
         }
         try:
-            sections = os.environ.get("UBA_PARITY_SECTIONS", "proxy,verdict").split(",")
+            sections = os.environ.get("UBA_PARITY_SECTIONS", "proxy,verdict,setup").split(",")
             if "proxy" in sections:
                 await proxy_checks(p, t)
             if "verdict" in sections:
                 await verdict_checks(p, t)
+            if "setup" in sections:
+                await setup_checks(p, t)
+                await graylog7_checks(t)
         finally:
             await p.close()
             from app.db.db_session import async_engine

@@ -169,6 +169,26 @@ impl Call {
         self.timeout = seconds;
         self
     }
+
+    /// The method.
+    pub fn method(&self) -> &Method {
+        &self.method
+    }
+
+    /// The path (before the base URL is prepended).
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// The `params=`.
+    pub fn query(&self) -> &[(String, PyValue)] {
+        &self.params
+    }
+
+    /// The `json=` body.
+    pub fn body(&self) -> Option<&PyValue> {
+        self.json.as_ref()
+    }
 }
 
 /// The transport: the connector row through the cache, a client per call.

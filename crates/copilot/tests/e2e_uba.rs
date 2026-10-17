@@ -676,3 +676,592 @@ async fn a_uba_verdict_is_written_back_to_its_incident_alert() {
     }
     restore(&h, saved).await;
 }
+
+// --- setup, mode and rollback ---------------------------------------------------------------
+
+/// A stateful Graylog 6 (streams, pipelines, rules, connections, outputs,
+/// inputs, event definitions) answering the way the parity suite's does.
+#[derive(Default)]
+struct Graylog {
+    streams: Vec<Value>,
+    pipelines: Vec<Value>,
+    rules: Vec<Value>,
+    outputs: Vec<Value>,
+    inputs: Vec<Value>,
+    connections: Vec<(String, Vec<String>)>,
+    index_sets: Vec<(String, String)>,
+    next: u32,
+}
+
+impl Graylog {
+    fn id(&mut self) -> String {
+        self.next += 1;
+        format!("gl{:06}", self.next)
+    }
+
+    fn store(&mut self, kind: &str) -> &mut Vec<Value> {
+        match kind {
+            "streams" => &mut self.streams,
+            "pipeline" => &mut self.pipelines,
+            "rule" => &mut self.rules,
+            "outputs" => &mut self.outputs,
+            _ => &mut self.inputs,
+        }
+    }
+
+    fn answer(&mut self, method: &str, path: &str, body: &Value) -> (u16, Value) {
+        let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+        let not_found = || (404, json!({"type": "ApiError", "message": "not found"}));
+        let created = |id: String| (200, json!({"id": id}));
+        match (method, parts.as_slice()) {
+            ("GET", ["api", "system"]) => (200, json!({"version": "6.1.4+abc"})),
+            ("GET", ["api", "system", "indices", "index_sets", id]) => {
+                match self.index_sets.iter().find(|(i, _)| i == id) {
+                    Some((_, p)) => (200, json!({"id": id, "index_prefix": p})),
+                    None => not_found(),
+                }
+            }
+            ("GET", ["api", "streams"]) => (200, json!({"streams": self.streams})),
+            ("GET", ["api", "system", "outputs"]) => (200, json!({"outputs": self.outputs})),
+            ("GET", ["api", "system", "inputs"]) => (200, json!({"inputs": self.inputs})),
+            ("GET", ["api", "system", "pipelines", "pipeline"]) => (200, json!(self.pipelines)),
+            ("GET", ["api", "system", "pipelines", "rule"]) => (200, json!(self.rules)),
+            ("GET", ["api", "system", "pipelines", "connections"]) => (
+                200,
+                Value::Array(
+                    self.connections
+                        .iter()
+                        .map(|(s, p)| json!({"stream_id": s, "pipeline_ids": p}))
+                        .collect(),
+                ),
+            ),
+            ("GET", ["api", "events", "definitions"]) => {
+                (200, json!({"event_definitions": [], "total": 0}))
+            }
+            ("GET", ["api", "streams", id]) => {
+                match self.streams.iter().find(|s| s["id"] == json!(id)) {
+                    Some(s) => (200, s.clone()),
+                    None => not_found(),
+                }
+            }
+            ("POST", ["api", "streams"]) => {
+                let id = self.id();
+                let mut entity = body.clone();
+                entity["id"] = json!(id);
+                entity["outputs"] = json!([]);
+                entity["disabled"] = json!(true);
+                self.streams.push(entity);
+                (201, json!({"stream_id": id}))
+            }
+            ("POST", ["api", "streams", id, "resume"]) => {
+                for s in &mut self.streams {
+                    if s["id"] == json!(id) {
+                        s["disabled"] = json!(false);
+                    }
+                }
+                (204, Value::Null)
+            }
+            ("POST", ["api", "streams", id, "outputs"]) => {
+                for s in &mut self.streams {
+                    if s["id"] == json!(id) {
+                        for o in body["outputs"].as_array().unwrap() {
+                            s["outputs"].as_array_mut().unwrap().push(json!({"id": o}));
+                        }
+                    }
+                }
+                (202, Value::Null)
+            }
+            ("DELETE", ["api", "streams", id, "outputs", out]) => {
+                for s in &mut self.streams {
+                    if s["id"] == json!(id) {
+                        s["outputs"]
+                            .as_array_mut()
+                            .unwrap()
+                            .retain(|o| o["id"] != json!(out));
+                    }
+                }
+                (204, Value::Null)
+            }
+            ("POST", ["api", "system", "pipelines", "connections", "to_pipeline"]) => {
+                let pid = body["pipeline_id"].as_str().unwrap().to_string();
+                for (_, p) in &mut self.connections {
+                    p.retain(|x| *x != pid);
+                }
+                for s in body["stream_ids"].as_array().unwrap() {
+                    let s = s.as_str().unwrap().to_string();
+                    match self.connections.iter_mut().find(|(k, _)| *k == s) {
+                        Some((_, p)) => p.push(pid.clone()),
+                        None => self.connections.push((s, vec![pid.clone()])),
+                    }
+                }
+                (200, json!([]))
+            }
+            ("POST", ["api", "system", "pipelines", kind @ ("rule" | "pipeline")]) => {
+                let id = self.id();
+                let mut obj = body.clone();
+                obj["id"] = json!(id);
+                self.store(kind).push(obj.clone());
+                (200, obj)
+            }
+            ("POST", ["api", "system", kind @ ("outputs" | "inputs")]) => {
+                let id = self.id();
+                let mut obj = body.clone();
+                obj["id"] = json!(id);
+                if *kind == "inputs" {
+                    obj["attributes"] = body["configuration"].clone();
+                }
+                self.store(kind).push(obj);
+                created(id)
+            }
+            ("PUT", ["api", "system", "pipelines", kind, id])
+            | ("PUT", ["api", "system", kind, id]) => {
+                let store = self.store(kind);
+                match store.iter_mut().find(|o| o["id"] == json!(id)) {
+                    Some(o) => {
+                        for (k, v) in body.as_object().unwrap() {
+                            o[k] = v.clone();
+                        }
+                        (200, o.clone())
+                    }
+                    None => not_found(),
+                }
+            }
+            ("DELETE", ["api", "system", "pipelines", kind, id])
+            | ("DELETE", ["api", "system", kind, id])
+            | ("DELETE", ["api", kind @ "streams", id]) => {
+                let store = self.store(kind);
+                let before = store.len();
+                store.retain(|o| o["id"] != json!(id));
+                if store.len() == before {
+                    return not_found();
+                }
+                if *kind == "streams" {
+                    self.connections.retain(|(s, _)| s != id);
+                }
+                (204, Value::Null)
+            }
+            _ => (
+                500,
+                json!({"message": format!("unexpected {method} {path}")}),
+            ),
+        }
+    }
+}
+
+type Shared<T> = std::sync::Arc<std::sync::Mutex<T>>;
+
+async fn graylog_stand_in(offset: u16, state: Shared<Graylog>) -> MockServer {
+    let server = stand_in(offset).await;
+    Mock::given(wiremock::matchers::any())
+        .respond_with(move |req: &wiremock::Request| {
+            let body: Value = serde_json::from_slice(&req.body).unwrap_or(Value::Null);
+            let (status, value) =
+                state
+                    .lock()
+                    .unwrap()
+                    .answer(req.method.as_str(), req.url.path(), &body);
+            if value.is_null() {
+                ResponseTemplate::new(status)
+            } else {
+                ResponseTemplate::new(status).set_body_json(value)
+            }
+        })
+        .mount(&server)
+        .await;
+    server
+}
+
+/// UBA: provisioning info, routing rules, a tenant that registration and
+/// rollback switch on and off.
+async fn uba_stand_in(offset: u16, code: &str, active: Shared<Option<bool>>) -> MockServer {
+    let server = stand_in(offset).await;
+    let tenant = format!("/v1/tenants/{code}");
+    Mock::given(wiremock::matchers::any())
+        .respond_with(move |req: &wiremock::Request| {
+            let p = req.url.path();
+            let m = req.method.as_str();
+            let mut state = active.lock().unwrap();
+            let json = |v: Value| ResponseTemplate::new(200).set_body_json(v);
+            if p == "/v1/provisioning" {
+                return json(json!({
+                    "graylog": {
+                        "sources": {"WAZUH": "wazuh", "O365": "office365"},
+                        "feed_stream": "UBA FEED - {source} - {tenant}",
+                        "routing_pipeline": "UBA ROUTING - {source} - {tenant}",
+                        "pipeline_stage": 10,
+                        "output": "UBA GELF - {tenant}",
+                        "alerts_input": "UBA ALERTS",
+                        "alerts_stream": "UBA ALERTS - {tenant}",
+                        "alerts_stream_rules": {"syslog_type": "uba", "agent_labels_customer": "{tenant}"},
+                    },
+                    "feed_output": {"host": "10.1.2.3", "port": 12203, "protocol": "udp"},
+                    "alerts_input": {"bind_address": "0.0.0.0", "port": 12204},
+                }));
+            }
+            if p.ends_with("/graylog-rules") {
+                let stream = req
+                    .url
+                    .query_pairs()
+                    .find(|(k, _)| k == "stream")
+                    .map(|(_, v)| v.into_owned())
+                    .unwrap();
+                return json(json!({"rules": [format!(
+                    "rule \"{stream} - WINDOWS AUTH\"\nwhen true\nthen\n  route_to_stream(name: \"{stream}\");\nend"
+                )]}));
+            }
+            if p == format!("{tenant}/onboarding") {
+                return match *state {
+                    None => ResponseTemplate::new(404).set_body_json(json!({"detail": "unknown tenant"})),
+                    Some(a) => json(json!({"tenant": "x", "active": a, "status": "live"})),
+                };
+            }
+            if p.ends_with("/onboarding") {
+                return ResponseTemplate::new(404).set_body_json(json!({"detail": "unknown tenant"}));
+            }
+            if m == "PUT" && p == tenant {
+                let body: Value = serde_json::from_slice(&req.body).unwrap();
+                *state = Some(body["active"].as_bool().unwrap_or(true));
+                let mode = body.get("mode").cloned().unwrap_or(json!("active"));
+                return json(json!({"tenant": "x", "status": "pending", "active": *state, "mode": mode}));
+            }
+            ResponseTemplate::new(500).set_body_json(json!({"detail": format!("unexpected {m} {p}")}))
+        })
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn setup_mode_and_rollback_run_end_to_end() {
+    if std::env::var("COPILOT_TEST_DATABASE_URL").is_err() {
+        return;
+    }
+    let h = harness_or_skip!(None);
+    let acme = h.code("acme");
+    let beta = h.code("beta");
+    let state: Shared<Graylog> = Shared::default();
+    let active: Shared<Option<bool>> = Shared::default();
+    let uba = uba_stand_in(4, &acme, active.clone()).await;
+    let graylog = graylog_stand_in(5, state.clone()).await;
+    h.seed().await;
+    let saved_uba = uba_connector(&h, &uba).await;
+    let saved_graylog = set_connector(
+        &h,
+        "Graylog",
+        &graylog.uri(),
+        Some("gl-user"),
+        Some("gl-pass"),
+        None,
+        true,
+    )
+    .await;
+    let lower = acme.to_lowercase();
+    {
+        let mut g = state.lock().unwrap();
+        g.streams.push(json!({"id": "src-acme", "title": "ACME - Wazuh", "index_set_id": "set-acme",
+                              "rules": [{"field": "agent_labels_customer"}], "outputs": [], "disabled": false}));
+        g.pipelines.push(json!({"id": "proc", "title": "WAZUH PROCESSING", "source": "pipeline \"WAZUH PROCESSING\"\nstage 0 match either\nrule \"WAZUH ENRICH\"\nend",
+                                "stages": [{"stage": 0, "rules": ["WAZUH ENRICH"]}]}));
+        g.connections.push(("src-acme".into(), vec!["proc".into()]));
+        g.index_sets
+            .push(("set-acme".into(), format!("wazuh-{lower}")));
+    }
+    h.exec(&format!(
+        "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, \
+         customer_meta_graylog_stream, customer_meta_grafana_org_id, customer_meta_wazuh_group) \
+         VALUES ('{acme}', 'Acme Corp', 'set-acme', 'src-acme', '1', 'g')"
+    ))
+    .await;
+    let (admin, analyst) = tokens(&h);
+    let base = format!("/api/uba/{acme}");
+
+    // Admin only, and the tenant first.
+    for (m, p) in [
+        ("GET", "/provisioning"),
+        ("POST", "/provision"),
+        ("PUT", "/mode"),
+        ("GET", "/rollback"),
+        ("POST", "/rollback"),
+        ("GET", "/rollbacks"),
+        ("GET", "/rollbacks/1"),
+    ] {
+        let (status, _) = h
+            .call(m, &format!("{base}{p}"), Some(&analyst), Some(json!({})))
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{m} {p}");
+    }
+
+    // Before setup.
+    let (status, body) = h
+        .call("GET", &format!("{base}/provisioning"), Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": true, "message": "UBA is not set up", "sources": {"WAZUH": 1},
+               "office365_tenants": [], "problem": null, "onboarding": null})
+    );
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("/api/uba/{beta}/provisioning"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["problem"],
+        format!("Customer {beta} has no Wazuh stream on record: provision the customer first")
+    );
+    let (status, body) = h
+        .call(
+            "PUT",
+            &format!("{base}/mode"),
+            Some(&admin),
+            Some(json!({"mode": "learning"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["reason"], "not_active");
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{base}/provision"),
+            Some(&admin),
+            Some(json!({"bootstrap_days": 31})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+
+    // Setup.
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{base}/provision"),
+            Some(&admin),
+            Some(json!({"bootstrap_days": 3})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let steps: Vec<(String, String)> = body["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| {
+            (
+                s["step"].as_str().unwrap().to_string(),
+                s["status"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    let feed = format!("UBA FEED - WAZUH - {acme}");
+    assert_eq!(steps[0], ("UBA tenant".into(), "registered".into()));
+    assert!(
+        steps.contains(&(format!("stream {feed}"), "created".into())),
+        "{body}"
+    );
+    assert!(steps.contains(&(format!("output UBA GELF - {acme}"), "attached".into())));
+    assert_eq!(
+        steps.last().unwrap(),
+        &("Wazuh rules".to_string(), "skipped".to_string())
+    );
+    let recorded: Vec<(String, String)> = sqlx::query_as(
+        "SELECT kind, origin FROM uba_provisioned_resource WHERE customer_code = ? ORDER BY id",
+    )
+    .bind(&acme)
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        recorded.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(),
+        vec![
+            "feed_stream",
+            "routing_rule",
+            "routing_pipeline",
+            "output",
+            "alerts_input",
+            "alerts_stream"
+        ]
+    );
+    assert!(recorded.iter().all(|r| r.1 == "created"));
+    {
+        let g = state.lock().unwrap();
+        let feed_stream = g
+            .streams
+            .iter()
+            .find(|s| s["title"] == json!(feed))
+            .unwrap();
+        assert_eq!(feed_stream["index_set_id"], "set-acme");
+        assert_eq!(g.outputs[0]["configuration"]["protocol"], "UDP");
+    }
+    // Running it again repairs, never duplicates.
+    let (status, body) = h
+        .call(
+            "POST",
+            &format!("{base}/provision"),
+            Some(&admin),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(state.lock().unwrap().streams.len(), 3);
+
+    // Mode, audited.
+    let (status, body) = h
+        .call(
+            "PUT",
+            &format!("{base}/mode"),
+            Some(&admin),
+            Some(json!({"mode": "learning"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["message"],
+        format!("{acme}: UBA keeps learning; its alerts stay in UBA")
+    );
+    let audit: i64 = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'uba.mode_change' AND customer_code = '{acme}'"
+        ))
+        .await;
+    assert_eq!(audit, 1);
+
+    // The preview, then the rollback.
+    let (status, preview) = h
+        .call("GET", &format!("{base}/rollback"), Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    let kinds: Vec<&str> = preview["remove"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            "routing_pipeline",
+            "output",
+            "routing_rule",
+            "feed_stream",
+            "alerts_stream",
+            "alerts_input",
+            "uba_tenant"
+        ],
+        "{preview}"
+    );
+    let (status, body) = h
+        .call("POST", &format!("{base}/rollback"), Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["success"], true, "{body}");
+    assert_eq!(body["report"]["status"], "completed");
+    let id = body["report"]["id"].as_i64().unwrap();
+    assert_eq!(
+        body["report"]["snapshot"]["connections"]
+            .as_object()
+            .unwrap()
+            .len(),
+        1
+    );
+    {
+        let g = state.lock().unwrap();
+        assert_eq!(g.streams.len(), 1, "only the customer's own stream is left");
+        assert_eq!(
+            g.connections,
+            vec![("src-acme".to_string(), vec!["proc".to_string()])]
+        );
+        assert!(g.outputs.is_empty() && g.inputs.is_empty() && g.rules.is_empty());
+    }
+    assert_eq!(*active.lock().unwrap(), Some(false));
+    let left: i64 = h
+        .scalar_i64(&format!(
+            "SELECT COUNT(*) FROM uba_provisioned_resource WHERE customer_code = '{acme}' \
+             AND (removed_at IS NULL OR removed_by_rollback_id <> {id})"
+        ))
+        .await;
+    assert_eq!(left, 0);
+    let audit: (String, String) = sqlx::query_as(
+        "SELECT entity_id, result FROM audit_log WHERE action = 'uba.rollback' AND customer_code = ?",
+    )
+    .bind(&acme)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(audit, (id.to_string(), "success".to_string()));
+
+    // Nothing left: 409, from the preview's message.
+    let (status, body) = h
+        .call("POST", &format!("{base}/rollback"), Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(
+        body,
+        json!({"success": false, "message": format!("UBA is not set up for {acme}: nothing to roll back")})
+    );
+
+    // The reports.
+    let (status, body) = h
+        .call("GET", &format!("{base}/rollbacks"), Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["rollbacks"][0]["id"], id);
+    assert_eq!(body["message"], "UBA rollbacks");
+    let (status, body) = h
+        .call("GET", &format!("{base}/rollbacks/{id}"), Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["report"]["steps"][0]["step"],
+        format!("pipeline UBA ROUTING - WAZUH - {acme}")
+    );
+    let (status, _) = h
+        .call(
+            "GET",
+            &format!("/api/uba/{beta}/rollbacks/{id}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = h
+        .call("GET", &format!("{base}/rollbacks/x1"), Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // A rollback still running: its report fails validation, a new one is refused.
+    let running = h
+        .exec(&format!(
+            "INSERT INTO uba_rollback (customer_code, status, started_at, snapshot, steps, \
+             verification) VALUES ('{acme}', 'running', UTC_TIMESTAMP(), '{{}}', 'null', 'null')"
+        ))
+        .await;
+    let (status, body) = h
+        .call(
+            "GET",
+            &format!("{base}/rollbacks/{running}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["message"].as_str().unwrap().starts_with(
+            "2 validation errors for UbaRollbackReport\nsteps\n  Input should be a valid list"
+        ),
+        "{body}"
+    );
+    let (status, body) = h
+        .call("POST", &format!("{base}/rollback"), Some(&admin), None)
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(
+        body["message"],
+        format!("A UBA rollback of {acme} is already running")
+    );
+
+    restore(&h, saved_graylog).await;
+    restore(&h, saved_uba).await;
+}

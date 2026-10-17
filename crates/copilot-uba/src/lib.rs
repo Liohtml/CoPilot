@@ -18,17 +18,33 @@
 //! - [`verdict`]  — a UBA verdict written back onto the linked incident
 //!   alert (#1239), audited and on its SLA clock
 //! - [`verify`]   — the `SOCFortress UBA` connector verifier
+//! - [`provision`] — setup (`GET …/provisioning`, `POST …/provision`) and
+//!   the mode (`PUT …/mode`), through [`ops`]
+//! - [`rollback`] — the rollback (#1241): plan, steps, checks and the
+//!   `uba_rollback` report
+//! - [`ownership`] — `uba_provisioned_resource`, what setup made for a
+//!   customer
 
 #![warn(missing_docs)]
 
 pub mod client;
+pub mod ops;
+pub mod ownership;
 pub mod params;
+pub mod provision;
+pub mod pyfmt;
+pub mod pyops;
+pub mod rollback;
 pub mod routes;
 pub mod schema;
 pub mod services;
 pub mod verdict;
 pub mod verify;
 
+#[cfg(test)]
+mod provision_tests;
+#[cfg(test)]
+mod rollback_tests;
 #[cfg(test)]
 mod vectors;
 
@@ -73,5 +89,44 @@ impl FromRef<UbaState> for AppContext {
     }
 }
 
-/// The columns this crate reads or writes itself.
-pub const REQUIREMENTS: &[TableRequirement] = &[];
+/// The columns this crate reads or writes itself (the incident alerts it
+/// writes verdicts on are `copilot-incidents`').
+pub const REQUIREMENTS: &[TableRequirement] = &[
+    ownership::TABLE,
+    rollback::TABLE,
+    TableRequirement {
+        table: "customersmeta",
+        columns: &[
+            "customer_code",
+            "customer_name",
+            "customer_meta_graylog_index",
+            "customer_meta_graylog_stream",
+        ],
+    },
+    TableRequirement {
+        table: "customer_integrations_meta",
+        columns: &[
+            "customer_code",
+            "integration_name",
+            "instance_name",
+            "graylog_index_id",
+            "graylog_stream_id",
+        ],
+    },
+    TableRequirement {
+        table: "customer_integrations",
+        columns: &["id", "customer_code"],
+    },
+    TableRequirement {
+        table: "integration_subscriptions",
+        columns: &["id", "customer_id", "integration_service_id"],
+    },
+    TableRequirement {
+        table: "integration_services",
+        columns: &["id", "service_name"],
+    },
+    TableRequirement {
+        table: "integration_auth_keys",
+        columns: &["subscription_id", "auth_key_name", "auth_value"],
+    },
+];
