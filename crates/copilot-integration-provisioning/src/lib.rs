@@ -114,11 +114,40 @@ pub const REQUIREMENTS: &[TableRequirement] = &[
     },
     TableRequirement {
         table: "customersmeta",
-        columns: &["customer_code", "customer_meta_grafana_org_id"],
+        columns: &[
+            "id",
+            "customer_code",
+            "customer_name",
+            "customer_meta_graylog_index",
+            "customer_meta_graylog_stream",
+            "customer_meta_grafana_org_id",
+            "customer_meta_wazuh_group",
+            "customer_meta_index_retention",
+            "customer_meta_wazuh_registration_port",
+            "customer_meta_wazuh_log_ingestion_port",
+            "customer_meta_wazuh_api_port",
+            "customer_meta_wazuh_auth_password",
+            "customer_meta_iris_customer_id",
+            "customer_meta_portainer_stack_id",
+        ],
     },
     TableRequirement {
         table: "customer_integrations",
         columns: &["customer_code", "integration_service_name", "deployed"],
+    },
+    TableRequirement {
+        table: "custom_alert_creation_settings",
+        columns: &[
+            "customer_code",
+            "customer_name",
+            "timefield",
+            "iris_customer_id",
+            "iris_customer_name",
+            "iris_index",
+            "grafana_url",
+            "custom_message",
+            "nvd_url",
+        ],
     },
 ];
 
