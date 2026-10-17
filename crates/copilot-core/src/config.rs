@@ -34,6 +34,7 @@
 //! | `GITHUB_TOKEN` | *(unset)* | the Detections Catalog's GitHub bearer token when a custom repository has none (secret), read as `os.getenv` reads it |
 //! | `COPILOT_CATALOG_REFRESH` | `true` | this process warms and refreshes its own catalog caches (`false`: they load on demand only — the parity suites, an air-gapped deployment) |
 //! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
+//! | `COPILOT_INTEGRATION_MODULES_URL` | *(unset)* | tests only: every request to an integration module container (`http://copilot-<name>-module/…`) and to Mimecast's region discovery goes to `{url}/{host}{path}` (the parity harness's stand-in); never set in production |
 
 use std::fmt;
 use std::net::IpAddr;
@@ -167,6 +168,9 @@ pub struct CopilotConfig {
     pub response: crate::response_env::ResponseEnv,
     /// The Detections Catalog's settings (`copilot-searches`).
     pub catalog: crate::catalog_env::CatalogEnv,
+    /// `COPILOT_INTEGRATION_MODULES_URL` — tests only: the stand-in the
+    /// integration modules and Mimecast's discovery are reached at.
+    pub integration_modules_url: Option<String>,
 }
 
 /// Raw values the WAF and provisioning modules read per call in Python
@@ -392,6 +396,10 @@ impl CopilotConfig {
             copilot_api_key: env.get_raw("COPILOT_API_KEY").map(Secret::new),
             response: crate::response_env::ResponseEnv::from_env(env),
             catalog: crate::catalog_env::CatalogEnv::from_env(env),
+            integration_modules_url: env
+                .get("COPILOT_INTEGRATION_MODULES_URL")
+                .map(|v| v.trim().trim_end_matches('/').to_string())
+                .filter(|v| !v.is_empty()),
         })
     }
 }

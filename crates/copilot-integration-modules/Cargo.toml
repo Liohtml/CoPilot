@@ -1,0 +1,32 @@
+[package]
+name = "copilot-integration-modules"
+description = "The integration modules: /api/integrations/modules/* (Huntress, Mimecast, SAP SIEM, Duo, Cato collections and the SAP SIEM analyses), the Mimecast invoke and TTP routes, and the integrations' collection jobs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-integrations = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-scheduler = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+sqlx = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

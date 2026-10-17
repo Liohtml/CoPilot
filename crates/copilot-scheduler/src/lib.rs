@@ -63,6 +63,26 @@ mod tests {
             .collect()
     }
 
+    /// `copilot_integration_modules::jobs::job_ids()`.
+    const INTEGRATION_MODULE_JOBS: &[&str] = &[
+        "invoke_huntress_integration_collect",
+        "invoke_duo_integration_collect",
+        "invoke_darktrace_integration_collect",
+        "invoke_carbonblack_integration_collection",
+        "invoke_mimecast_integration",
+        "invoke_mimecast_integration_ttp",
+        "invoke_sap_siem_integration_collection",
+        "invoke_sap_siem_integration_suspicious_logins_analysis",
+        "invoke_sap_siem_integration_multiple_logins_same_ip_analysis",
+        "invoke_sap_siem_integration_successful_user_login_with_different_ip",
+        "invoke_sap_siem_integration_same_user_failed_login_from_different_ip",
+        "invoke_sap_siem_integration_same_user_failed_login_from_different_geo_location",
+        "invoke_sap_siem_integration_same_user_successful_login_from_different_geo_location",
+        "invoke_sap_siem_integration_brute_force_failed_logins",
+        "invoke_sap_siem_integration_brute_force_failed_logins_same_ip",
+        "invoke_sap_siem_integration_successful_login_after_multiple_failed_logins",
+    ];
+
     #[test]
     fn python_guards_exactly_the_jobs_this_crate_can_run() {
         let mut python = python_rust_capable_jobs();
@@ -70,7 +90,9 @@ mod tests {
         // `notify_sla_transitions` registers from `copilot-soc-management`,
         // `invoke_snapshot_schedules` and `resize_wazuh_index_fields` from
         // `copilot-wazuh`, `invoke_alert_creation_collect` from
-        // `copilot-ingest`, `agent_sync` from `copilot-agents`.
+        // `copilot-ingest`, `agent_sync` from `copilot-agents`, the
+        // integrations' collection jobs from `copilot-integration-modules`
+        // (its own test pins `job_ids()` to this list).
         let mut rust: Vec<String> = crate::job::PALACE_JOB_IDS
             .iter()
             .chain(
@@ -84,6 +106,7 @@ mod tests {
                 ]
                 .iter(),
             )
+            .chain(INTEGRATION_MODULE_JOBS.iter())
             .map(|s| (*s).to_string())
             .collect();
         rust.sort();
