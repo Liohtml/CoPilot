@@ -610,7 +610,8 @@ impl App {
         let modules = copilot_integration_modules::ModulesState::new(
             ctx.clone(),
             cfg.integration_modules_url.clone(),
-        );
+        )
+        .with_mimecast_dir(cfg.mimecast_dir.clone());
         let scheduler = Scheduler::new(
             ctx.db.clone(),
             OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),

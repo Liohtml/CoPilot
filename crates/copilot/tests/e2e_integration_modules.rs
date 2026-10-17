@@ -664,7 +664,8 @@ async fn sap_siem_collection_and_analyses() {
         );
     }
 
-    // A single key reaches Python's `Depends` default: uvicorn's bare 500.
+    // A single key is POSTed as one of several would be (Python's
+    // `Depends` default stopped it with a bare 500: RUST_MIGRATION.md §4).
     let (st, _) = h
         .call(
             "POST",
@@ -673,7 +674,11 @@ async fn sap_siem_collection_and_analyses() {
             Some(json!({"customer_code": beta})),
         )
         .await;
-    assert_eq!(st, 500);
+    assert_eq!(st, 200);
+    let reqs = sent(&stub, &format!("{SAP}/collect")).await;
+    assert_eq!(reqs.len(), 3);
+    let posted: Value = serde_json::from_slice(&reqs[2].body).unwrap();
+    assert_eq!(posted["auth_keys"]["API_KEY"], "single");
 
     // The analyses: the tenant is the IRIS id's customer (§4).
     let route = format!("{MODULES}/sap_siem/brute_force_failed_logins_multiple_ips");
@@ -749,9 +754,16 @@ fn region(api: &str) -> Value {
 }
 
 #[tokio::test]
-async fn mimecast_routes_stop_where_python_stops() {
+async fn mimecast_routes_discover_then_collect() {
     let stub = MockServer::start().await;
-    let h = harness_or_skip!(None, &upstream(&stub.uri(), ""));
+    let files = tempfile::tempdir().unwrap();
+    let h = harness_or_skip!(
+        None,
+        &upstream(
+            &stub.uri(),
+            &format!("COPILOT_MIMECAST_DIR={}\n", files.path().display())
+        )
+    );
     let (_admin, analyst, wrote) = setup(&h).await;
     let (acme, beta) = (h.code("acme"), h.code("beta"));
     integration(
@@ -786,16 +798,37 @@ async fn mimecast_routes_stop_where_python_stops() {
     let (st, _) = invoke(json!({"customer_code": beta})).await;
     assert_eq!(st, 403);
 
-    // A region: `HttpUrl + str` is the TypeError — caught by /invoke into
-    // its 400, uncaught by /ttp/urls.
-    answer(&stub, DISCOVER, 200, region("https://eu-api.mimecast.com")).await;
+    // A region: Python's `HttpUrl + str` is a TypeError; here the region's
+    // URL is the string Mimecast sent and both routes collect
+    // (`e2e_fix_sweep` follows the files and the events).
+    answer(
+        &stub,
+        DISCOVER,
+        200,
+        region(&format!("{}/eu-api", stub.uri())),
+    )
+    .await;
+    answer(
+        &stub,
+        "/eu-api/api/audit/get-siem-logs",
+        200,
+        json!({"meta": {"status": 200}, "data": [], "fail": []}),
+    )
+    .await;
+    answer(
+        &stub,
+        "/eu-api/api/ttp/url/get-logs",
+        200,
+        json!({"meta": {"pagination": {"pageSize": 0, "totalCount": 0}, "status": 200},
+               "data": [{"clickLogs": []}], "fail": []}),
+    )
+    .await;
     let (st, body) = invoke(json!({"customer_code": acme})).await;
     assert_eq!(
         (st.as_u16(), body),
         (
-            400,
-            json!({"success": false,
-                   "message": "Unable to retrieve MTA SIEM logs from Mimecast integration."})
+            200,
+            json!({"success": true, "message": "Successfully invoked Mimecast integration."})
         )
     );
     let reqs = sent(&stub, DISCOVER).await;
@@ -819,7 +852,7 @@ async fn mimecast_routes_stop_where_python_stops() {
         r#"{"data":[{"emailAddress":"admin@acme.example"}]}"#
     );
     let (st, _) = ttp(json!({"customer_code": acme, "time_range": "1h"})).await;
-    assert_eq!(st, 500);
+    assert_eq!(st, 200);
     let (st, _) = ttp(json!({"customer_code": acme, "time_range": "1x"})).await;
     assert_eq!(st, 422);
 

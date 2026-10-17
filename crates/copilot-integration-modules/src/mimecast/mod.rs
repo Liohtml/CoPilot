@@ -8,16 +8,25 @@
 //! answer must validate as `MimecastAPIEndpointResponse`; any failure there
 //! is one 400.
 //!
-//! Neither gets further. The region's `api` is a Pydantic `HttpUrl`, and
+//! Python gets no further. The region's `api` is a Pydantic `HttpUrl`, and
 //! both services add a `str` to it (`base_url + auth_keys.URI`,
-//! `BaseURL + "/api/ttp/url/get-logs"`): a `TypeError`. `/invoke` catches it
-//! into its own 400 (after decoding the secret key, whose `binascii.Error`
-//! comes first); `/ttp/urls` does not — uvicorn's bare 500, once the TTP
-//! request body (`DataItem`) has validated. The SIEM log download, its
-//! checkpoint file, the zip handling and the event shipping behind them are
-//! therefore unreachable, and not ported: Python creates an empty checkpoint
-//! file and log directory next to its module before failing; Rust writes
-//! nothing (§4).
+//! `BaseURL + "/api/ttp/url/get-logs"`): a `TypeError` on every run, so
+//! Mimecast never collects. Here the region's `api` is used as the string
+//! Mimecast sent (it still has to validate as an `HttpUrl`), and both
+//! routes do what Python's code does past that line — [`siem`] (the SIEM
+//! download, its checkpoint file and log directory in [`files`], the zip in
+//! [`zip`]) and [`ttp`] (the TTP URL pages), every event shipped through
+//! the Event Shipper (RUST_MIGRATION.md §4, "Python fails, Rust works").
+//! The region URL is Mimecast's answer, so `COPILOT_INTEGRATION_MODULES_URL`
+//! does not rewrite it (the parity harness's discovery stand-in answers
+//! with its own address).
+
+pub mod files;
+pub mod siem;
+pub mod ttp;
+#[cfg(test)]
+mod vectors;
+pub mod zip;
 
 use std::time::Duration;
 
@@ -37,7 +46,6 @@ use crate::schema;
 use crate::upstream::MIMECAST_DISCOVER_URL;
 
 const BASE_URL_FAILED: &str = "Unable to retrieve base URL for Mimecast integration.";
-const SIEM_LOGS_FAILED: &str = "Unable to retrieve MTA SIEM logs from Mimecast integration.";
 
 /// The customer's `MimecastAuthKeys` (the route's first three steps).
 async fn auth_keys(st: &ModulesState, code: &str, name: &str) -> FailResult<PyValue> {
@@ -72,7 +80,7 @@ pub fn is_http_url(s: &str) -> bool {
 }
 
 /// `datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S UTC")`.
-fn hdr_date() -> String {
+pub(crate) fn hdr_date() -> String {
     Utc::now().format("%a, %d %b %Y %H:%M:%S UTC").to_string()
 }
 
@@ -142,10 +150,14 @@ async fn send_post_request(
     }
 }
 
-/// `get_base_url(keys)`: whether the answer carries a region
-/// (`mimecast_base_url.data.data[0]`, which each caller reads in its own
-/// way).
-async fn discover(st: &ModulesState, app_id: &PyValue, email: &PyValue) -> FailResult<bool> {
+/// `get_base_url(keys)`: the first region's `api` as Mimecast sent it
+/// (`mimecast_base_url.data.data[0].region.api`, which each caller reads in
+/// its own way), `None` when the answer lists no region.
+async fn discover(
+    st: &ModulesState,
+    app_id: &PyValue,
+    email: &PyValue,
+) -> FailResult<Option<String>> {
     let fail = || Fail::Py(PyExc::http(400, BASE_URL_FAILED));
     let headers = [
         (
@@ -190,26 +202,32 @@ async fn discover(st: &ModulesState, app_id: &PyValue, email: &PyValue) -> FailR
     if !urls_ok {
         return Err(fail());
     }
-    Ok(!items.is_empty())
+    Ok(items.first().map(|item| {
+        field(field(item, "region"), "api")
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    }))
 }
 
-/// `invoke_mimecast_route` after its body: the keys, the discovery, then
-/// `get_mta_siem_logs`' secret-key decode and the `TypeError` its `try`
-/// turns into the 400.
+/// `invoke_mimecast_route` after its body: the keys, the discovery (an
+/// empty region list is the route's `try`'s 400), then the collection
+/// ([`siem::collect`]).
 pub async fn invoke(st: &ModulesState, code: &str, integration_name: &str) -> FailResult<()> {
     let keys = auth_keys(st, code, integration_name).await?;
-    // The region is read inside the route's `try`: an empty list is its 400.
-    if !discover(st, field(&keys, "APP_ID"), field(&keys, "EMAIL_ADDRESS")).await? {
+    let Some(base_url) =
+        discover(st, field(&keys, "APP_ID"), field(&keys, "EMAIL_ADDRESS")).await?
+    else {
         return Err(PyExc::http(400, BASE_URL_FAILED).into());
-    }
-    b64decode(field(&keys, "SECRET_KEY").as_str().unwrap_or_default())?;
-    Err(PyExc::http(400, SIEM_LOGS_FAILED).into())
+    };
+    tracing::info!(target: "copilot::integration_modules", "mimecast_base_url: {base_url}");
+    siem::collect(st, code, &keys, &base_url).await
 }
 
 /// `mimecast_ttp_url_route` after its body: the keys, the
 /// `MimecastTTPURLSRequest` (its model validator, then the `__init__`'s
-/// header signature over the decoded secret key), the discovery, the first
-/// page's `DataItem`, then the uncaught `TypeError`.
+/// header signature over the decoded secret key), the discovery (no region
+/// is the `IndexError`, outside any `try`), then the pages ([`ttp::pages`]).
 pub async fn ttp_urls(
     st: &ModulesState,
     code: &str,
@@ -229,31 +247,19 @@ pub async fn ttp_urls(
         ]),
         utcnow(),
     )?;
-    b64decode(field(&request, "SecretKey").as_str().unwrap_or_default())?;
+    let secret = b64decode(field(&request, "SecretKey").as_str().unwrap_or_default())?;
+    let signed = ttp::headers(&request, &secret);
     // `mimecast_request.BaseURL = …data[0].region.api`, outside any `try`.
-    if !discover(
+    let Some(base_url) = discover(
         st,
         field(&request, "ApplicationID"),
         field(&request, "EmailAddress"),
     )
     .await?
-    {
+    else {
         return Err(Fail::other("IndexError", "list index out of range"));
-    }
-    construct(
-        &schema::DATA_ITEM,
-        &kwargs(vec![
-            ("oldestFirst", PyValue::Bool(false)),
-            ("from_", field(&request, "lower_bound").clone()),
-            ("route", PyValue::Str("all".into())),
-            ("to", field(&request, "upper_bound").clone()),
-            ("scanResult", PyValue::Str("all".into())),
-        ]),
-    )?;
-    Err(Fail::other(
-        "TypeError",
-        "unsupported operand type(s) for +: 'HttpUrl' and 'str'",
-    ))
+    };
+    ttp::pages(st, code, &request, &signed, &base_url).await
 }
 
 #[cfg(test)]
