@@ -22,7 +22,7 @@
 use std::time::Duration;
 
 use bytes::Bytes;
-use copilot_auth::pyvalue::{PyValue, loads_bytes, str_repr};
+use copilot_auth::pyvalue::{PyValue, bytes_repr, loads_bytes, str_repr};
 use copilot_upstream::http::urlencode;
 use copilot_upstream::json::{Dumps, py_dumps, py_loads};
 use copilot_upstream::py::PyExc;
@@ -130,6 +130,7 @@ pub struct Request {
     headers: Vec<(String, Option<String>)>,
     body: Body,
     timeout: Duration,
+    verify: bool,
 }
 
 impl Request {
@@ -142,6 +143,7 @@ impl Request {
             headers: Vec::new(),
             body: Body::Empty,
             timeout: DEFAULT_TIMEOUT,
+            verify: true,
         }
     }
 
@@ -167,6 +169,12 @@ impl Request {
     /// `data=` and `files=`.
     pub fn multipart(mut self, data: Vec<(String, String)>, files: Vec<FileField>) -> Self {
         self.body = Body::Multipart { data, files };
+        self
+    }
+
+    /// `AsyncClient(verify=…)`: `false` accepts any certificate and host name.
+    pub fn verify(mut self, verify: bool) -> Self {
+        self.verify = verify;
         self
     }
 
@@ -633,26 +641,10 @@ fn merged_headers(
         if let Some(message) = header_ascii_error(value) {
             return Err(HttpxError::new("UnicodeEncodeError", message));
         }
-        // `Headers.update`: every existing entry of that name is replaced
-        // by the one new value, at the first one's place.
-        let lower = name.to_ascii_lowercase();
-        match headers
-            .iter()
-            .position(|(k, _)| k.to_ascii_lowercase() == lower)
-        {
-            Some(i) => {
-                headers[i] = (name.clone(), value.clone());
-                let mut j = i + 1;
-                while j < headers.len() {
-                    if headers[j].0.to_ascii_lowercase() == lower {
-                        headers.remove(j);
-                    } else {
-                        j += 1;
-                    }
-                }
-            }
-            None => headers.push((name.clone(), value.clone())),
-        }
+        // `Headers.update`: every existing entry of that name is popped and
+        // the new one appended (`self.pop(key)`, then `_list.extend`).
+        headers.retain(|(k, _)| !k.eq_ignore_ascii_case(name));
+        headers.push((name.clone(), value.clone()));
     }
     for (name, value) in content {
         if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(name)) {
@@ -822,6 +814,63 @@ fn decode(headers: &HeaderMap, raw: Bytes) -> Result<Bytes, HttpxError> {
     Ok(data)
 }
 
+/// `name` is what hyper's title case writes for it (`Content-Type`).
+fn is_title_case(name: &str) -> bool {
+    let mut prev = b'-';
+    name.bytes().all(|b| {
+        let ok = if prev == b'-' {
+            !b.is_ascii_lowercase()
+        } else {
+            !b.is_ascii_uppercase()
+        };
+        prev = b;
+        ok
+    })
+}
+
+/// h11's `field_value` (`_abnf.py`): empty, or visible characters with
+/// single runs of spaces and tabs between them.
+fn h11_field_value(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let vchar = |b: u8| (0x21..=0x7e).contains(&b) || b >= 0x80;
+    match (bytes.first(), bytes.last()) {
+        (None, _) | (_, None) => true,
+        (Some(&first), Some(&last)) => {
+            vchar(first)
+                && vchar(last)
+                && bytes.iter().all(|&b| vchar(b) || b == b' ' || b == b'\t')
+        }
+    }
+}
+
+/// The TCP connection httpcore opens before h11 writes the request, with
+/// httpx's texts for a failure.
+async fn probe_connect(url: &Url, timeout: Duration) -> Result<(), HttpxError> {
+    let port = url.port.map_or_else(
+        || if url.scheme == "https" { 443 } else { 80 },
+        |p| u16::try_from(p).unwrap_or(0),
+    );
+    let host = url.host.clone();
+    let attempt = async {
+        let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
+            .await
+            .map_err(|_| HttpxError::new("ConnectError", "[Errno -2] Name or service not known"))?
+            .collect();
+        for addr in addrs {
+            if tokio::net::TcpStream::connect(addr).await.is_ok() {
+                return Ok(());
+            }
+        }
+        Err(HttpxError::new(
+            "ConnectError",
+            "All connection attempts failed",
+        ))
+    };
+    tokio::time::timeout(timeout, attempt)
+        .await
+        .unwrap_or_else(|_| Err(HttpxError::new("ConnectTimeout", "")))
+}
+
 /// Send `req` the way `httpx.AsyncClient(timeout=…).request(…)` does.
 pub async fn send(req: Request) -> Result<Response, HttpxError> {
     let mut url = parse_url(&req.url)?;
@@ -858,7 +907,14 @@ pub async fn send(req: Request) -> Result<Response, HttpxError> {
         }
     };
     let headers = merged_headers(&req.headers, &content, &req.method)?;
-    match url.scheme.as_str() {
+    // `Client._merge_url`: a URL without a scheme *or* without a host is
+    // relative, joined to the (empty) `base_url`, so it has no scheme left.
+    let scheme = if url.host.is_empty() {
+        ""
+    } else {
+        url.scheme.as_str()
+    };
+    match scheme {
         "http" | "https" => {}
         "" => {
             return Err(HttpxError::new(
@@ -873,17 +929,39 @@ pub async fn send(req: Request) -> Result<Response, HttpxError> {
             ));
         }
     }
+    // h11 refuses a header value with leading or trailing whitespace or a
+    // control character — once the connection is open, so a host that
+    // cannot be reached fails as such first.
+    if let Some((_, bad)) = headers.iter().find(|(_, v)| !h11_field_value(v)) {
+        probe_connect(&url, req.timeout).await?;
+        return Err(HttpxError::new(
+            "LocalProtocolError",
+            format!("Illegal header value {}", bytes_repr(bad.as_bytes())),
+        ));
+    }
     let rendered = url.render();
     let target = reqwest::Url::parse(&url.target()).map_err(|e| invalid(e.to_string()))?;
-    let client = reqwest::Client::builder()
+    // hyper writes header names lower-cased, or title-cased; httpx writes
+    // them as given: title case reproduces them when every name is so.
+    let title_case = headers.iter().all(|(k, _)| is_title_case(k));
+    let mut builder = reqwest::Client::builder();
+    if title_case {
+        builder = builder.http1_title_case_headers();
+    }
+    let client = builder
         .http1_only()
         .redirect(reqwest::redirect::Policy::none())
+        .danger_accept_invalid_certs(!req.verify)
         .connect_timeout(req.timeout)
         .read_timeout(req.timeout)
         .pool_max_idle_per_host(0)
         .build()
         .map_err(|e| HttpxError::new("ConnectError", error_chain(&e)))?;
+    // `Request._prepare`: `Host` (the URL's netloc) comes first.
     let mut map = HeaderMap::new();
+    if let Ok(host) = HeaderValue::from_str(&url.netloc()) {
+        map.append(http::header::HOST, host);
+    }
     for (name, value) in &headers {
         let name = HeaderName::from_bytes(name.as_bytes())
             .map_err(|_| HttpxError::new("LocalProtocolError", "Illegal header name"))?;
@@ -967,15 +1045,42 @@ mod tests {
             &Method::POST,
         )
         .unwrap();
+        // Recorded with httpx 0.28.1 (`build_request(...).headers.raw`, less
+        // `Host`): an overriding header is popped and appended.
         assert_eq!(
             got,
             vec![
-                ("accept".to_string(), "application/json".to_string()),
-                ("Accept-Encoding".into(), "gzip, deflate".into()),
+                ("Accept-Encoding".to_string(), "gzip, deflate".to_string()),
                 ("Connection".into(), "keep-alive".into()),
                 ("User-Agent".into(), USER_AGENT.into()),
+                ("accept".into(), "application/json".into()),
                 ("x-apikey".into(), "k".into()),
                 ("Content-Length".into(), "3".into()),
+            ]
+        );
+        let json = merged_headers(
+            &[
+                ("ACCEPT-encoding".into(), Some("br".into())),
+                ("X".into(), Some("y".into())),
+            ],
+            &[
+                ("Content-Length", "7".into()),
+                ("Content-Type", "application/json".into()),
+            ],
+            &Method::POST,
+        )
+        .unwrap();
+        let names: Vec<&str> = json.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "Accept",
+                "Connection",
+                "User-Agent",
+                "ACCEPT-encoding",
+                "X",
+                "Content-Length",
+                "Content-Type"
             ]
         );
         let empty = merged_headers(&[], &[], &Method::POST).unwrap();
@@ -987,6 +1092,18 @@ mod tests {
             "'ascii' codec can't encode character '\\xe9' in position 0: ordinal not in \
              range(128)"
         );
+    }
+
+    #[test]
+    fn header_names_and_values_like_hyper_and_h11() {
+        assert!(
+            is_title_case("Content-Type") && is_title_case("Host") && is_title_case("X-Api-Key")
+        );
+        assert!(!is_title_case("x-apikey") && !is_title_case("ACCEPT-encoding"));
+        assert!(
+            h11_field_value("") && h11_field_value("Bearer a\tb") && h11_field_value("Bearer  x")
+        );
+        assert!(!h11_field_value("Bearer ") && !h11_field_value(" x") && !h11_field_value("a\nb"));
     }
 
     #[test]

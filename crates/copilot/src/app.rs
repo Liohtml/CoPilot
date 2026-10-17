@@ -260,6 +260,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/vulnerabilities",
     "/api/sca",
     "/api/syscollector",
+    // The OpenCTI and Cortex connectors (copilot-intel-connectors); Sublime
+    // stays in Python (its tables are not created by Alembic).
+    "/api/opencti",
+    "/api/analyzers",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -383,6 +387,8 @@ pub struct App {
     /// The agents' report routers (`/api/vulnerabilities`, `/api/sca`,
     /// `/api/syscollector`).
     pub agent_reports: AgentReportsState,
+    /// The OpenCTI and Cortex connectors (`/api/opencti`, `/api/analyzers`).
+    pub intel: copilot_intel_connectors::IntelState,
 }
 
 impl App {
@@ -522,6 +528,8 @@ impl App {
             sca_repo: copilot_agent_reports::sca::policies::ScaRepo::from_env()
                 .context("building the CoPilot-SCA client")?,
         };
+        let intel = copilot_intel_connectors::IntelState::new(ctx.clone())
+            .context("building the Cortex client")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -555,7 +563,8 @@ impl App {
                     .chain(copilot_velociraptor::verify::verifiers(
                         agents.velociraptor.timeouts(),
                     ))
-                    .chain(copilot_shuffle::verifiers(&shuffle)),
+                    .chain(copilot_shuffle::verifiers(&shuffle))
+                    .chain(copilot_intel_connectors::verify::verifiers()),
             ),
             wazuh,
             ingest,
@@ -572,6 +581,7 @@ impl App {
             response,
             shuffle,
             agent_reports,
+            intel,
         })
     }
 
@@ -897,6 +907,13 @@ impl App {
             .merge(copilot_shuffle::case_notification_router(
                 self.shuffle_state(),
             ))
+            // Full paths: `/api/opencti/*` and `/api/analyzers*`.
+            .merge(
+                copilot_intel_connectors::router(self.intel.clone()).layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
