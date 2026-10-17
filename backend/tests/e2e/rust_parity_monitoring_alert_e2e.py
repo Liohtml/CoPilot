@@ -366,6 +366,8 @@ def start_rust():
         "COPILOT_DATABASE_URL": f"mysql://{user}:{password}@{host}/copilot",
         "JWT_SECRET": os.environ["JWT_SECRET"],
         "COPILOT_BIND": "127.0.0.1",
+        # The catalog caches load on demand, as this Python side never warms them.
+        "COPILOT_CATALOG_REFRESH": "false",
         "COPILOT_PORT": str(RS_PORT),
         "CONNECTOR_CACHE_TTL_SECONDS": "0",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),

@@ -1766,6 +1766,8 @@ async def main():  # noqa: C901 - one scenario after the other
             "COPILOT_DATABASE_URL": f"mysql://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@{os.environ['MYSQL_URL']}/copilot",
             "JWT_SECRET": os.environ["JWT_SECRET"],
             "COPILOT_BIND": "127.0.0.1",
+            # The catalog caches load on demand, as this Python side never warms them.
+            "COPILOT_CATALOG_REFRESH": "false",
             "COPILOT_PORT": str(JOBS_PORT),
             "COPILOT_RS_JOBS": "agent_sync",
             # #913's override, for the quarantine check below.

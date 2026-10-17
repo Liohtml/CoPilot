@@ -56,6 +56,8 @@ copilot-agent-reports = { path = "crates/copilot-agent-reports" }
 copilot-monitoring-alerts = { path = "crates/copilot-monitoring-alerts" }
 copilot-intel-connectors = { path = "crates/copilot-intel-connectors" }
 copilot-uba = { path = "crates/copilot-uba" }
+copilot-yaml = { path = "crates/copilot-yaml" }
+copilot-searches = { path = "crates/copilot-searches" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

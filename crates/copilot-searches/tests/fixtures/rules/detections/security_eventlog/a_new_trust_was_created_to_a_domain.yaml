@@ -1,0 +1,128 @@
+name: A New Trust Was Created To A Domain
+id: 0255a820-e564-4e40-af2b-6ac61160335c
+version: 1
+schema_version: "1.0"
+date: "2024-01-16"
+author: Thomas Patzke
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 0255a820-e564-4e40-af2b-6ac61160335c
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: production
+type: TTP
+
+description: >
+  Addition of domains is seldom and should be verified for legitimacy. MITRE
+  ATT&CK: T1098.
+
+data_source:
+  - Windows Security Event Log
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        
+        - term:
+            data_win_system_eventID: "4706"
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_eventdata_subjectUserName
+    - data_win_eventdata_subjectLogonId
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires the Windows Security event log collected by the Wazuh agent
+  (eventchannel localfile entry in ossec.conf) with the relevant audit policy
+  subcategories enabled via GPO. The detection looks for events where
+  data_win_system_eventID equals '4706'.
+
+known_false_positives: >
+  Legitimate extension of domain structure. Baseline expected activity in your
+  environment and tune this detection before relying on it for automated
+  response.
+
+references:
+  - https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4706
+  - https://attack.mitre.org/techniques/T1098/
+
+response:
+  message: >
+    A New Trust Was Created To A Domain detected on host $agent_name$. Matched
+    data_win_eventdata_subjectUserName: $data_win_eventdata_subjectUserName$.
+    Matched data_win_eventdata_subjectLogonId:
+    $data_win_eventdata_subjectLogonId$. MITRE ATT&CK: T1098
+  risk_score: 50
+  severity: medium
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 50
+  threat_objects:
+    - field: data_win_eventdata_subjectUserName
+      type: user
+    - field: data_win_eventdata_subjectLogonId
+      type: other
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1098
+  custom_tags:
+    - trust
+    - domain
+    - windows_security
+    - privilege_escalation
+    - persistence
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_win_system_eventID:"4706"

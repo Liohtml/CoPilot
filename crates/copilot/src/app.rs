@@ -32,6 +32,7 @@
 //!                      │ /api/syscollector/* → copilot-agent-reports          │
 //!                      │ /api/monitoring_alert/*                              │
 //!                      │                    → copilot-monitoring-alerts ──────► Graylog, Event Shipper
+//!                      │ /api/copilot_searches/* → copilot-searches ──────────► GitHub, Wazuh, Graylog
 //! Talon (MCP tools) ──►│ /api/talon/*       → copilot-talon ───────────────────► Talon :3100
 //!                      │ /_copilot/health                                     │
 //!                      │ anything else      → copilot-gateway ─────────────────► Python backend
@@ -266,6 +267,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/analyzers",
     // The SOCFortress UBA connector (copilot-uba).
     "/api/uba",
+    // The Detections Catalog and CoPilot Searches (copilot-searches): every
+    // route of the module.
+    "/api/copilot_searches",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -302,6 +306,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_integrations::REQUIREMENTS);
     all.extend_from_slice(copilot_siem::REQUIREMENTS);
     all.extend_from_slice(copilot_threat_intel::REQUIREMENTS);
+    all.extend_from_slice(copilot_searches::REQUIREMENTS);
     all.extend(copilot_agent_reports::requirements());
     all.extend_from_slice(copilot_uba::REQUIREMENTS);
     all.push(TableRequirement {
@@ -392,6 +397,8 @@ pub struct App {
     pub agent_reports: AgentReportsState,
     /// The OpenCTI and Cortex connectors (`/api/opencti`, `/api/analyzers`).
     pub intel: copilot_intel_connectors::IntelState,
+    /// The Detections Catalog (`/api/copilot_searches`) and its caches.
+    pub searches: copilot_searches::SearchesState,
 }
 
 impl App {
@@ -533,6 +540,15 @@ impl App {
         };
         let intel = copilot_intel_connectors::IntelState::new(ctx.clone())
             .context("building the Cortex client")?;
+        let searches = copilot_searches::SearchesState::new(
+            &cfg.catalog,
+            ctx.clone(),
+            wazuh.clone(),
+            graylog.clone(),
+            objectstore.clone(),
+            legacy.clone(),
+        )
+        .context("building the catalog clients")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -586,6 +602,7 @@ impl App {
             shuffle,
             agent_reports,
             intel,
+            searches,
         })
     }
 
@@ -868,6 +885,9 @@ impl App {
             }))
             // Full paths: `/api/threat_intel/*`.
             .merge(copilot_threat_intel::router(self.threat_intel.clone()))
+            // Full paths: `/api/copilot_searches/*`, dispatched on the decoded
+            // path as Starlette routes it.
+            .merge(copilot_searches::router(self.searches.clone()))
             .nest(
                 "/api/active_response",
                 copilot_response::active_response_router(self.response.clone()).layer(

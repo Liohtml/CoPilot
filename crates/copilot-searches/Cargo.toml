@@ -1,0 +1,40 @@
+[package]
+name = "copilot-searches"
+description = "The Detections Catalog: /api/copilot_searches (CoPilot Searches rules from GitHub and the per-tenant repositories, MITRE ATT&CK coverage, the Wazuh ruleset and its firing counts, Graylog provisioning, the rule editor's linter, backtest and publish)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-graylog = { workspace = true }
+copilot-objectstore = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-provisioning = { workspace = true }
+copilot-ingest = { workspace = true }
+copilot-gateway = { workspace = true }
+copilot-yaml = { workspace = true }
+copilot-jinja = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+reqwest = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+regex = { workspace = true }
+base64 = { workspace = true }
+num-bigint-dig = { workspace = true }
+num-traits = { workspace = true }
+
+[lints]
+workspace = true

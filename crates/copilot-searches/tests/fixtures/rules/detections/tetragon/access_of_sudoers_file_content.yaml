@@ -1,0 +1,184 @@
+name: Access of Sudoers File Content
+id: 0f79c4d2-4e1f-4683-9c36-b5469a665e06
+version: 1
+schema_version: "1.0"
+date: "2025-06-04"
+author: Florian Roth (Nextron Systems)
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 0f79c4d2-4e1f-4683-9c36-b5469a665e06
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detects the execution of a text-based file access or inspection utilities to
+  read the content of /etc/sudoers in order to potentially list all users that
+  have sudo rights. MITRE ATT&CK: T1592.004.
+
+data_source:
+  - Tetragon process_exec via Wazuh agent
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        
+        - bool:
+            should:
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/cat"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/ed"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/egrep"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/emacs"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/fgrep"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/grep"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/head"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/less"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/more"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/nano"
+                    case_insensitive: true
+              - wildcard:
+                  data_process_exec_process_binary:
+                    value: "*/tail"
+                    case_insensitive: true
+            minimum_should_match: 1
+        - wildcard:
+            data_process_exec_process_arguments:
+              value: "* /etc/sudoers*"
+              case_insensitive: true
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_process_exec_process_binary
+    - data_process_exec_process_arguments
+    - data_process_exec_parent_binary
+    - data_process_exec_process_uid
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires Tetragon deployed on the Linux endpoint emitting process_exec events
+  (rule_groups "tetragon, process_exec"), shipped by the Wazuh agent and
+  ingested into the wazuh-* indices. Tetragon records the executable in
+  data_process_exec_process_binary and its arguments separately in
+  data_process_exec_process_arguments. The detection looks for events where
+  data_process_exec_process_binary matches '*/cat';
+  data_process_exec_process_binary matches '*/ed';
+  data_process_exec_process_binary matches '*/egrep', among other conditions.
+
+known_false_positives: >
+  Legitimate administration activities. Baseline expected activity in your
+  environment and tune this detection before relying on it for automated
+  response.
+
+references:
+  - https://github.com/sleventyeleven/linuxprivchecker/
+  - https://attack.mitre.org/techniques/T1592/004/
+
+response:
+  message: >
+    Access of Sudoers File Content detected on host $agent_name$. Matched
+    data_process_exec_process_binary: $data_process_exec_process_binary$.
+    Matched data_process_exec_process_arguments:
+    $data_process_exec_process_arguments$. MITRE ATT&CK: T1592.004
+  risk_score: 50
+  severity: medium
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 50
+  threat_objects:
+    - field: data_process_exec_process_binary
+      type: other
+    - field: data_process_exec_process_arguments
+      type: other
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1592.004
+  custom_tags:
+    - sudoers
+    - content
+    - linux
+    - tetragon
+    - process_creation
+    - reconnaissance
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: (data_process_exec_process_binary:/.*\/[Cc][Aa][Tt]/ OR data_process_exec_process_binary:/.*\/[Ee][Dd]/ OR data_process_exec_process_binary:/.*\/[Ee][Gg][Rr][Ee][Pp]/ OR data_process_exec_process_binary:/.*\/[Ee][Mm][Aa][Cc][Ss]/ OR data_process_exec_process_binary:/.*\/[Ff][Gg][Rr][Ee][Pp]/ OR data_process_exec_process_binary:/.*\/[Gg][Rr][Ee][Pp]/ OR data_process_exec_process_binary:/.*\/[Hh][Ee][Aa][Dd]/ OR data_process_exec_process_binary:/.*\/[Ll][Ee][Ss][Ss]/ OR data_process_exec_process_binary:/.*\/[Mm][Oo][Rr][Ee]/ OR data_process_exec_process_binary:/.*\/[Nn][Aa][Nn][Oo]/ OR data_process_exec_process_binary:/.*\/[Tt][Aa][Ii][Ll]/) AND data_process_exec_process_arguments:/.* \/[Ee][Tt][Cc]\/[Ss][Uu][Dd][Oo][Ee][Rr][Ss].*/

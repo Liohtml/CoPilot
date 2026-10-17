@@ -1,0 +1,140 @@
+name: CMSTP Execution Process Access
+id: 3b4b232a-af90-427c-a22f-30b0c0837b95
+version: 1
+schema_version: "1.0"
+date: "2021-06-27"
+author: Nik Seetharaman
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 3b4b232a-af90-427c-a22f-30b0c0837b95
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: production
+type: TTP
+
+description: >
+  Detects various indicators of Microsoft Connection Manager Profile Installer
+  execution. MITRE ATT&CK: T1218.003, T1559.001.
+
+data_source:
+  - Sysmon EventID 10 - Process Access
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        - term:
+            data_win_system_eventID: "10"
+        
+        - wildcard:
+            data_win_eventdata_callTrace:
+              value: "*cmlua.dll*"
+              case_insensitive: true
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_eventdata_callTrace
+    - data_win_eventdata_sourceImage
+    - data_win_eventdata_targetImage
+    - data_win_eventdata_grantedAccess
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires Sysmon EventID 10 (process access) enabled in the Sysmon
+  configuration for the monitored target processes and the
+  Microsoft-Windows-Sysmon/Operational channel collected by the Wazuh agent. The
+  detection looks for events where data_win_eventdata_callTrace matches
+  '*cmlua.dll*'.
+
+known_false_positives: >
+  Legitimate CMSTP use (unlikely in modern enterprise environments). Baseline
+  expected activity in your environment and tune this detection before relying
+  on it for automated response.
+
+references:
+  - https://web.archive.org/web/20190720093911/http://www.endurant.io/cmstp/detecting-cmstp-enabled-code-execution-and-uac-bypass-with-sysmon/
+  - https://attack.mitre.org/techniques/T1218/003/
+  - https://attack.mitre.org/techniques/T1559/001/
+
+response:
+  message: >
+    CMSTP Execution Process Access detected on host $agent_name$. Matched
+    data_win_eventdata_callTrace: $data_win_eventdata_callTrace$. Matched
+    data_win_eventdata_sourceImage: $data_win_eventdata_sourceImage$. MITRE
+    ATT&CK: T1218.003, T1559.001
+  risk_score: 75
+  severity: high
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 75
+  threat_objects:
+    - field: data_win_eventdata_callTrace
+      type: other
+    - field: data_win_eventdata_sourceImage
+      type: process
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1218.003
+    - T1559.001
+  custom_tags:
+    - cmstp
+    - process_access
+    - sysmon
+    - stealth
+    - execution
+    - g0069
+    - g0080
+    - car_2019_04_001
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_win_system_eventID:"10" AND data_win_eventdata_callTrace:/.*[Cc][Mm][Ll][Uu][Aa]\.[Dd][Ll][Ll].*/

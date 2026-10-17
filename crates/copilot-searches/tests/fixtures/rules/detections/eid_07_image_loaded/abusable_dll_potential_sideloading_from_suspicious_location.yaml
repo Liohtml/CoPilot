@@ -1,0 +1,215 @@
+name: Abusable DLL Potential Sideloading From Suspicious Location
+id: 799a5f48-0ac1-4e0f-9152-71d137d48c2a
+version: 1
+schema_version: "1.0"
+date: "2023-07-11"
+author: X__Junior (Nextron Systems)
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 799a5f48-0ac1-4e0f-9152-71d137d48c2a
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detects potential DLL sideloading of DLLs that are known to be abused from
+  suspicious locations. MITRE ATT&CK: T1059.
+
+data_source:
+  - Sysmon EventID 7 - Image Loaded
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        - term:
+            data_win_system_eventID: "7"
+        
+        - bool:
+            should:
+              - wildcard:
+                  data_win_eventdata_imageLoaded:
+                    value: "*\\\\coreclr.dll"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_imageLoaded:
+                    value: "*\\\\facesdk.dll"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_imageLoaded:
+                    value: "*\\\\HPCustPartUI.dll"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_imageLoaded:
+                    value: "*\\\\libcef.dll"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_imageLoaded:
+                    value: "*\\\\ZIPDLL.dll"
+                    case_insensitive: true
+            minimum_should_match: 1
+        - bool:
+            should:
+              - wildcard:
+                  data_win_eventdata_imageLoaded:
+                    value: "*:\\\\Perflogs\\\\*"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_imageLoaded:
+                    value: "*:\\\\Users\\\\Public\\\\*"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_imageLoaded:
+                    value: "*\\\\Temporary Internet*"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_imageLoaded:
+                    value: "*\\\\Windows\\\\Temp\\\\*"
+                    case_insensitive: true
+              - bool:
+                  must:
+                    - wildcard:
+                        data_win_eventdata_imageLoaded:
+                          value: "*:\\\\Users\\\\*"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_imageLoaded:
+                          value: "*\\\\Favorites\\\\*"
+                          case_insensitive: true
+              - bool:
+                  must:
+                    - wildcard:
+                        data_win_eventdata_imageLoaded:
+                          value: "*:\\\\Users\\\\*"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_imageLoaded:
+                          value: "*\\\\Favourites\\\\*"
+                          case_insensitive: true
+              - bool:
+                  must:
+                    - wildcard:
+                        data_win_eventdata_imageLoaded:
+                          value: "*:\\\\Users\\\\*"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_imageLoaded:
+                          value: "*\\\\Contacts\\\\*"
+                          case_insensitive: true
+              - bool:
+                  must:
+                    - wildcard:
+                        data_win_eventdata_imageLoaded:
+                          value: "*:\\\\Users\\\\*"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_imageLoaded:
+                          value: "*\\\\Pictures\\\\*"
+                          case_insensitive: true
+            minimum_should_match: 1
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_eventdata_imageLoaded
+    - data_win_eventdata_image
+    - data_win_eventdata_signed
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires Sysmon EventID 7 (image loaded) enabled in the Sysmon configuration
+  (image load logging is high-volume and off in many baselines) and the
+  Microsoft-Windows-Sysmon/Operational channel collected by the Wazuh agent. The
+  detection looks for events where data_win_eventdata_imageLoaded matches
+  '*\coreclr.dll'; data_win_eventdata_imageLoaded matches '*\facesdk.dll';
+  data_win_eventdata_imageLoaded matches '*\HPCustPartUI.dll', among other
+  conditions.
+
+known_false_positives: >
+  Unknown. Baseline expected activity in your environment and tune this
+  detection before relying on it for automated response.
+
+references:
+  - https://www.trendmicro.com/en_us/research/23/f/behind-the-scenes-unveiling-the-hidden-workings-of-earth-preta.html
+  - https://research.checkpoint.com/2023/beyond-the-horizon-traveling-the-world-on-camaro-dragons-usb-flash-drives/
+  - https://attack.mitre.org/techniques/T1059/
+
+response:
+  message: >
+    Abusable DLL Potential Sideloading From Suspicious Location detected on host
+    $agent_name$. Matched data_win_eventdata_imageLoaded:
+    $data_win_eventdata_imageLoaded$. Matched data_win_eventdata_image:
+    $data_win_eventdata_image$. MITRE ATT&CK: T1059
+  risk_score: 75
+  severity: high
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 75
+  threat_objects:
+    - field: data_win_eventdata_imageLoaded
+      type: process
+    - field: data_win_eventdata_image
+      type: process
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1059
+  custom_tags:
+    - abusable
+    - sideloading
+    - location
+    - image_load
+    - sysmon
+    - execution
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_win_system_eventID:"7" AND (data_win_eventdata_imageLoaded:/.*\\[Cc][Oo][Rr][Ee][Cc][Ll][Rr]\.[Dd][Ll][Ll]/ OR data_win_eventdata_imageLoaded:/.*\\[Ff][Aa][Cc][Ee][Ss][Dd][Kk]\.[Dd][Ll][Ll]/ OR data_win_eventdata_imageLoaded:/.*\\[Hh][Pp][Cc][Uu][Ss][Tt][Pp][Aa][Rr][Tt][Uu][Ii]\.[Dd][Ll][Ll]/ OR data_win_eventdata_imageLoaded:/.*\\[Ll][Ii][Bb][Cc][Ee][Ff]\.[Dd][Ll][Ll]/ OR data_win_eventdata_imageLoaded:/.*\\[Zz][Ii][Pp][Dd][Ll][Ll]\.[Dd][Ll][Ll]/) AND (data_win_eventdata_imageLoaded:/.*:\\[Pp][Ee][Rr][Ff][Ll][Oo][Gg][Ss]\\.*/ OR data_win_eventdata_imageLoaded:/.*:\\[Uu][Ss][Ee][Rr][Ss]\\[Pp][Uu][Bb][Ll][Ii][Cc]\\.*/ OR data_win_eventdata_imageLoaded:/.*\\[Tt][Ee][Mm][Pp][Oo][Rr][Aa][Rr][Yy] [Ii][Nn][Tt][Ee][Rr][Nn][Ee][Tt].*/ OR data_win_eventdata_imageLoaded:/.*\\[Ww][Ii][Nn][Dd][Oo][Ww][Ss]\\[Tt][Ee][Mm][Pp]\\.*/ OR (data_win_eventdata_imageLoaded:/.*:\\[Uu][Ss][Ee][Rr][Ss]\\.*/ AND data_win_eventdata_imageLoaded:/.*\\[Ff][Aa][Vv][Oo][Rr][Ii][Tt][Ee][Ss]\\.*/) OR (data_win_eventdata_imageLoaded:/.*:\\[Uu][Ss][Ee][Rr][Ss]\\.*/ AND data_win_eventdata_imageLoaded:/.*\\[Ff][Aa][Vv][Oo][Uu][Rr][Ii][Tt][Ee][Ss]\\.*/) OR (data_win_eventdata_imageLoaded:/.*:\\[Uu][Ss][Ee][Rr][Ss]\\.*/ AND data_win_eventdata_imageLoaded:/.*\\[Cc][Oo][Nn][Tt][Aa][Cc][Tt][Ss]\\.*/) OR (data_win_eventdata_imageLoaded:/.*:\\[Uu][Ss][Ee][Rr][Ss]\\.*/ AND data_win_eventdata_imageLoaded:/.*\\[Pp][Ii][Cc][Tt][Uu][Rr][Ee][Ss]\\.*/))

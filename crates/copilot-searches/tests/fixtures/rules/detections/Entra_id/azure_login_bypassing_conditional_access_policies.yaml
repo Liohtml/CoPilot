@@ -1,0 +1,72 @@
+name: Azure Login Bypassing Conditional Access Policies
+id: 13f2d3f5-6497-44a7-bf5f-dc13ffafe5dc
+version: 1
+schema_version: "1.0"
+date: "2025-01-08"
+author: Josh Nickels, Marius Rothenbücher
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 13f2d3f5-6497-44a7-bf5f-dc13ffafe5dc
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: match
+description: >
+  Detects a successful login to the Microsoft Intune Company Portal which could
+  allow bypassing Conditional Access Policies and InTune device trust using a
+  tool like TokenSmith. MITRE ATT&CK: T1078.
+data_source:
+  - Office 365 Management Activity API
+  - "Workload: AzureActiveDirectory"
+workload: AzureActiveDirectory
+how_to_implement: >
+  Requires the Wazuh office365 module configured with an Azure AD application
+  subscribed to the Office 365 Management Activity API for the relevant
+  workload, ingested into the wazuh-* indices. The detection looks for events
+  where data_office365_Operation equals 'UserLoggedIn';
+  data_office365_ApplicationId equals '9ba1a5c7-f17a-4de9-a1f1-6178c8d51223';
+  data_office365_ResultStatus equals 'Success', among other conditions.
+known_false_positives: >
+  Unknown. Baseline expected activity in your environment and tune this
+  detection before relying on it for automated response.
+references:
+  - https://labs.jumpsec.com/tokensmith-bypassing-intune-compliant-device-conditional-access/
+  - https://github.com/JumpsecLabs/TokenSmith
+  - https://attack.mitre.org/techniques/T1078/
+response:
+  message: >
+    Azure Login Bypassing Conditional Access Policies detected for user
+    $data_office365_UserId$. Matched data_office365_Operation:
+    $data_office365_Operation$. Matched data_office365_ApplicationId:
+    $data_office365_ApplicationId$. MITRE ATT&CK: T1078
+  risk_score: 75
+  severity: high
+  risk_objects:
+    - field: data_office365_UserId
+      type: user
+      score: 75
+  threat_objects:
+    - field: data_office365_Operation
+      type: operation
+    - field: data_office365_ApplicationId
+      type: other
+tags:
+  asset_type: Cloud Identity
+  mitre_attack_id:
+    - T1078
+  custom_tags:
+    - azure
+    - login
+    - bypassing
+    - o365
+    - audit
+    - privilege_escalation
+    - persistence
+    - initial_access
+  product:
+    - Office 365
+  security_domain: cloud
+graylog:
+  query: data_office365_Operation:/[Uu][Ss][Ee][Rr][Ll][Oo][Gg][Gg][Ee][Dd][Ii][Nn]/ AND data_office365_ApplicationId:/9[Bb][Aa]1[Aa]5[Cc]7-[Ff]17[Aa]-4[Dd][Ee]9-[Aa]1[Ff]1-6178[Cc]8[Dd]51223/ AND data_office365_ResultStatus:/[Ss][Uu][Cc][Cc][Ee][Ss][Ss]/ AND data_office365_RequestType:/[Cc][Mm][Ss][Ii]:[Cc][Mm][Ss][Ii]/ AND _exists_:data_office365_ObjectId AND NOT (data_office365_ObjectId:/0000000[Aa]-0000-0000-[Cc]000-000000000000/)

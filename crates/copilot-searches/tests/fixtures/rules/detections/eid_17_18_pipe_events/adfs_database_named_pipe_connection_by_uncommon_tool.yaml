@@ -1,0 +1,199 @@
+name: ADFS Database Named Pipe Connection By Uncommon Tool
+id: 1ea13e8c-03ea-409b-877d-ce5c3d2c1cb3
+version: 1
+schema_version: "1.0"
+date: "2023-11-30"
+author: Roberto Rodriguez @Cyb3rWard0g
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 1ea13e8c-03ea-409b-877d-ce5c3d2c1cb3
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detects suspicious local connections via a named pipe to the AD FS
+  configuration database (Windows Internal Database). Used to access information
+  such as the AD FS configuration settings which contains sensitive information
+  used to sign SAML tokens. MITRE ATT&CK: T1005.
+
+data_source:
+  - Sysmon EventID 17/18 - Named Pipe
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        - bool:
+            should:
+              - term:
+                  data_win_system_eventID: "17"
+              - term:
+                  data_win_system_eventID: "18"
+            minimum_should_match: 1
+        
+        - term:
+            data_win_eventdata_pipeName:
+              value: "\\MICROSOFT##WID\\tsql\\query"
+              case_insensitive: true
+        - exists:
+            field: "data_win_eventdata_image"
+        - bool:
+            must_not:
+              - bool:
+                  should:
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*:\\\\Windows\\\\System32\\\\mmc.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*:\\\\Windows\\\\system32\\\\svchost.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*:\\\\Windows\\\\System32\\\\wsmprovhost.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*:\\\\Windows\\\\SysWOW64\\\\mmc.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*:\\\\Windows\\\\SysWOW64\\\\wsmprovhost.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*:\\\\Windows\\\\WID\\\\Binn\\\\sqlwriter.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*\\\\AzureADConnect.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*\\\\Microsoft.Identity.Health.Adfs.PshSurrogate.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*\\\\Microsoft.IdentityServer.ServiceHost.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*\\\\Microsoft.Tri.Sensor.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*\\\\sqlservr.exe"
+                          case_insensitive: true
+                    - wildcard:
+                        data_win_eventdata_image:
+                          value: "*\\\\tssdis.exe"
+                          case_insensitive: true
+                  minimum_should_match: 1
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_eventdata_pipeName
+    - data_win_eventdata_image
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires Sysmon named pipe logging (EventIDs 17/18) enabled in the Sysmon
+  configuration and the Microsoft-Windows-Sysmon/Operational channel collected
+  by the Wazuh agent. The detection looks for events where
+  data_win_eventdata_pipeName equals '\MICROSOFT##WID\tsql\query';
+  data_win_eventdata_image matches '*:\Windows\System32\mmc.exe';
+  data_win_eventdata_image matches '*:\Windows\system32\svchost.exe', among
+  other conditions.
+
+known_false_positives: >
+  Unknown. Baseline expected activity in your environment and tune this
+  detection before relying on it for automated response.
+
+references:
+  - https://github.com/Azure/Azure-Sentinel/blob/f99542b94afe0ad2f19a82cc08262e7ac8e1428e/Detections/SecurityEvent/ADFSDBNamedPipeConnection.yaml
+  - https://o365blog.com/post/adfs/
+  - https://github.com/Azure/SimuLand
+  - https://attack.mitre.org/techniques/T1005/
+
+response:
+  message: >
+    ADFS Database Named Pipe Connection By Uncommon Tool detected on host
+    $agent_name$. Matched data_win_eventdata_pipeName:
+    $data_win_eventdata_pipeName$. Matched data_win_eventdata_image:
+    $data_win_eventdata_image$. MITRE ATT&CK: T1005
+  risk_score: 50
+  severity: medium
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 50
+  threat_objects:
+    - field: data_win_eventdata_pipeName
+      type: pipe
+    - field: data_win_eventdata_image
+      type: process
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1005
+  custom_tags:
+    - database
+    - named
+    - connection
+    - pipe_created
+    - sysmon
+    - collection
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: (data_win_system_eventID:"17" OR data_win_system_eventID:"18") AND data_win_eventdata_pipeName:/\\[Mm][Ii][Cc][Rr][Oo][Ss][Oo][Ff][Tt]\#\#[Ww][Ii][Dd]\\[Tt][Ss][Qq][Ll]\\[Qq][Uu][Ee][Rr][Yy]/ AND _exists_:data_win_eventdata_image AND NOT (data_win_eventdata_image:/.*:\\[Ww][Ii][Nn][Dd][Oo][Ww][Ss]\\[Ss][Yy][Ss][Tt][Ee][Mm]32\\[Mm][Mm][Cc]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*:\\[Ww][Ii][Nn][Dd][Oo][Ww][Ss]\\[Ss][Yy][Ss][Tt][Ee][Mm]32\\[Ss][Vv][Cc][Hh][Oo][Ss][Tt]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*:\\[Ww][Ii][Nn][Dd][Oo][Ww][Ss]\\[Ss][Yy][Ss][Tt][Ee][Mm]32\\[Ww][Ss][Mm][Pp][Rr][Oo][Vv][Hh][Oo][Ss][Tt]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*:\\[Ww][Ii][Nn][Dd][Oo][Ww][Ss]\\[Ss][Yy][Ss][Ww][Oo][Ww]64\\[Mm][Mm][Cc]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*:\\[Ww][Ii][Nn][Dd][Oo][Ww][Ss]\\[Ss][Yy][Ss][Ww][Oo][Ww]64\\[Ww][Ss][Mm][Pp][Rr][Oo][Vv][Hh][Oo][Ss][Tt]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*:\\[Ww][Ii][Nn][Dd][Oo][Ww][Ss]\\[Ww][Ii][Dd]\\[Bb][Ii][Nn][Nn]\\[Ss][Qq][Ll][Ww][Rr][Ii][Tt][Ee][Rr]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*\\[Aa][Zz][Uu][Rr][Ee][Aa][Dd][Cc][Oo][Nn][Nn][Ee][Cc][Tt]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*\\[Mm][Ii][Cc][Rr][Oo][Ss][Oo][Ff][Tt]\.[Ii][Dd][Ee][Nn][Tt][Ii][Tt][Yy]\.[Hh][Ee][Aa][Ll][Tt][Hh]\.[Aa][Dd][Ff][Ss]\.[Pp][Ss][Hh][Ss][Uu][Rr][Rr][Oo][Gg][Aa][Tt][Ee]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*\\[Mm][Ii][Cc][Rr][Oo][Ss][Oo][Ff][Tt]\.[Ii][Dd][Ee][Nn][Tt][Ii][Tt][Yy][Ss][Ee][Rr][Vv][Ee][Rr]\.[Ss][Ee][Rr][Vv][Ii][Cc][Ee][Hh][Oo][Ss][Tt]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*\\[Mm][Ii][Cc][Rr][Oo][Ss][Oo][Ff][Tt]\.[Tt][Rr][Ii]\.[Ss][Ee][Nn][Ss][Oo][Rr]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*\\[Ss][Qq][Ll][Ss][Ee][Rr][Vv][Rr]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*\\[Tt][Ss][Ss][Dd][Ii][Ss]\.[Ee][Xx][Ee]/)

@@ -490,6 +490,7 @@ dependencies = [
  "copilot-provisioning",
  "copilot-response",
  "copilot-scheduler",
+ "copilot-searches",
  "copilot-shuffle",
  "copilot-siem",
  "copilot-sla",
@@ -1147,6 +1148,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-searches"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-graylog",
+ "copilot-ingest",
+ "copilot-jinja",
+ "copilot-objectstore",
+ "copilot-provisioning",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "copilot-yaml",
+ "futures",
+ "http",
+ "num-bigint-dig",
+ "num-traits",
+ "regex",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "copilot-shuffle"
 version = "0.2.0"
 dependencies = [
@@ -1479,6 +1514,20 @@ dependencies = [
  "thiserror",
  "unicode-normalization",
  "x509-cert",
+]
+
+[[package]]
+name = "copilot-yaml"
+version = "0.2.0"
+dependencies = [
+ "copilot-auth",
+ "copilot-jinja",
+ "hex",
+ "num-bigint-dig",
+ "num-traits",
+ "regex",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

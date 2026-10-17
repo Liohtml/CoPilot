@@ -871,8 +871,51 @@ async fn probe_connect(url: &Url, timeout: Duration) -> Result<(), HttpxError> {
         .unwrap_or_else(|_| Err(HttpxError::new("ConnectTimeout", "")))
 }
 
+/// One `httpx.AsyncClient`, reused across requests (its connection pool):
+/// what `async with httpx.AsyncClient(timeout=…) as client:` holds for
+/// several calls. The timeout is the client's; a request's own is ignored.
+/// hyper writes header names lower-cased or title-cased, so the pool is
+/// kept twice, once per spelling (see [`send_on`]).
+#[derive(Debug, Clone)]
+pub struct Client {
+    lower: reqwest::Client,
+    title: reqwest::Client,
+}
+
+impl Client {
+    /// `httpx.AsyncClient(timeout=timeout)`.
+    pub fn new(timeout: Duration) -> Result<Self, HttpxError> {
+        let build = |title: bool| {
+            let mut builder = reqwest::Client::builder();
+            if title {
+                builder = builder.http1_title_case_headers();
+            }
+            builder
+                .http1_only()
+                .redirect(reqwest::redirect::Policy::none())
+                .connect_timeout(timeout)
+                .read_timeout(timeout)
+                .build()
+                .map_err(|e| HttpxError::new("ConnectError", error_chain(&e)))
+        };
+        Ok(Self {
+            lower: build(false)?,
+            title: build(true)?,
+        })
+    }
+}
+
 /// Send `req` the way `httpx.AsyncClient(timeout=…).request(…)` does.
 pub async fn send(req: Request) -> Result<Response, HttpxError> {
+    send_with(None, req).await
+}
+
+/// Send `req` on a [`Client`] (`client.request(…)` inside `async with`).
+pub async fn send_on(client: &Client, req: Request) -> Result<Response, HttpxError> {
+    send_with(Some(client), req).await
+}
+
+async fn send_with(pooled: Option<&Client>, req: Request) -> Result<Response, HttpxError> {
     let mut url = parse_url(&req.url)?;
     if !req.params.is_empty() {
         let encoded = urlencode(&req.params);
@@ -944,19 +987,27 @@ pub async fn send(req: Request) -> Result<Response, HttpxError> {
     // hyper writes header names lower-cased, or title-cased; httpx writes
     // them as given: title case reproduces them when every name is so.
     let title_case = headers.iter().all(|(k, _)| is_title_case(k));
-    let mut builder = reqwest::Client::builder();
-    if title_case {
-        builder = builder.http1_title_case_headers();
-    }
-    let client = builder
-        .http1_only()
-        .redirect(reqwest::redirect::Policy::none())
-        .danger_accept_invalid_certs(!req.verify)
-        .connect_timeout(req.timeout)
-        .read_timeout(req.timeout)
-        .pool_max_idle_per_host(0)
-        .build()
-        .map_err(|e| HttpxError::new("ConnectError", error_chain(&e)))?;
+    let built;
+    let client = match pooled {
+        Some(pool) if title_case => &pool.title,
+        Some(pool) => &pool.lower,
+        None => {
+            let mut builder = reqwest::Client::builder();
+            if title_case {
+                builder = builder.http1_title_case_headers();
+            }
+            built = builder
+                .http1_only()
+                .redirect(reqwest::redirect::Policy::none())
+                .danger_accept_invalid_certs(!req.verify)
+                .connect_timeout(req.timeout)
+                .read_timeout(req.timeout)
+                .pool_max_idle_per_host(0)
+                .build()
+                .map_err(|e| HttpxError::new("ConnectError", error_chain(&e)))?;
+            &built
+        }
+    };
     // `Request._prepare`: `Host` (the URL's netloc) comes first.
     let mut map = HeaderMap::new();
     if let Ok(host) = HeaderValue::from_str(&url.netloc()) {

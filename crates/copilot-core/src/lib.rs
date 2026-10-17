@@ -16,6 +16,7 @@
 #![warn(missing_docs)]
 
 pub mod audit;
+pub mod catalog_env;
 pub mod config;
 pub mod env;
 pub mod error;

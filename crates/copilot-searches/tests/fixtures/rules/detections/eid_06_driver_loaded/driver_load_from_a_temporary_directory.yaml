@@ -1,0 +1,134 @@
+name: Driver Load From A Temporary Directory
+id: 2c4523d5-d481-4ed0-8ec3-7fbf0cb41a75
+version: 1
+schema_version: "1.0"
+date: "2021-11-27"
+author: Florian Roth (Nextron Systems)
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 2c4523d5-d481-4ed0-8ec3-7fbf0cb41a75
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detects a driver load from a temporary directory. MITRE ATT&CK: T1543.003.
+
+data_source:
+  - Sysmon EventID 6 - Driver Loaded
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        - term:
+            data_win_system_eventID: "6"
+        
+        - wildcard:
+            data_win_eventdata_imageLoaded:
+              value: "*\\\\Temp\\\\*"
+              case_insensitive: true
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_eventdata_imageLoaded
+    - data_win_eventdata_signature
+    - data_win_eventdata_hashes
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires Sysmon EventID 6 (driver loaded) and the
+  Microsoft-Windows-Sysmon/Operational channel collected by the Wazuh agent. The
+  detection looks for events where data_win_eventdata_imageLoaded matches
+  '*\Temp\*'.
+
+known_false_positives: >
+  There is a relevant set of false positives depending on applications in the
+  environment. Baseline expected activity in your environment and tune this
+  detection before relying on it for automated response.
+
+references:
+  - Internal Research
+  - https://attack.mitre.org/techniques/T1543/003/
+
+response:
+  message: >
+    Driver Load From A Temporary Directory detected on host $agent_name$.
+    Matched data_win_eventdata_imageLoaded: $data_win_eventdata_imageLoaded$.
+    Matched data_win_eventdata_signature: $data_win_eventdata_signature$. MITRE
+    ATT&CK: T1543.003
+  risk_score: 75
+  severity: high
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 75
+  threat_objects:
+    - field: data_win_eventdata_imageLoaded
+      type: process
+    - field: data_win_eventdata_signature
+      type: other
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1543.003
+  custom_tags:
+    - driver
+    - temporary
+    - directory
+    - driver_load
+    - sysmon
+    - persistence
+    - privilege_escalation
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_win_system_eventID:"6" AND data_win_eventdata_imageLoaded:/.*\\[Tt][Ee][Mm][Pp]\\.*/

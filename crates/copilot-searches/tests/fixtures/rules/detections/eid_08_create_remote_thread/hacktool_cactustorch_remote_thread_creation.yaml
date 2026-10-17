@@ -1,0 +1,172 @@
+name: HackTool - CACTUSTORCH Remote Thread Creation
+id: 2e4e488a-6164-4811-9ea1-f960c7359c40
+version: 1
+schema_version: "1.0"
+date: "2023-05-05"
+author: "@SBousseaden (detection), Thomas Patzke (rule)"
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 2e4e488a-6164-4811-9ea1-f960c7359c40
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detects remote thread creation from CACTUSTORCH as described in references.
+  MITRE ATT&CK: T1055.012, T1059.005, T1059.007, T1218.005.
+
+data_source:
+  - Sysmon EventID 8 - CreateRemoteThread
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        - term:
+            data_win_system_eventID: "8"
+        
+        - bool:
+            should:
+              - wildcard:
+                  data_win_eventdata_sourceImage:
+                    value: "*\\\\System32\\\\cscript.exe"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_sourceImage:
+                    value: "*\\\\System32\\\\wscript.exe"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_sourceImage:
+                    value: "*\\\\System32\\\\mshta.exe"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_sourceImage:
+                    value: "*\\\\winword.exe"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_sourceImage:
+                    value: "*\\\\excel.exe"
+                    case_insensitive: true
+            minimum_should_match: 1
+        - wildcard:
+            data_win_eventdata_targetImage:
+              value: "*\\\\SysWOW64\\\\*"
+              case_insensitive: true
+        - bool:
+            must_not:
+              - exists:
+                  field: "data_win_eventdata_startModule"
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_eventdata_sourceImage
+    - data_win_eventdata_targetImage
+    - data_win_eventdata_startModule
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires Sysmon EventID 8 (CreateRemoteThread) enabled in the Sysmon
+  configuration and the Microsoft-Windows-Sysmon/Operational channel collected
+  by the Wazuh agent. The detection looks for events where
+  data_win_eventdata_sourceImage matches '*\System32\cscript.exe';
+  data_win_eventdata_sourceImage matches '*\System32\wscript.exe';
+  data_win_eventdata_sourceImage matches '*\System32\mshta.exe', among other
+  conditions.
+
+known_false_positives: >
+  Unknown. Baseline expected activity in your environment and tune this
+  detection before relying on it for automated response.
+
+references:
+  - https://twitter.com/SBousseaden/status/1090588499517079552
+  - https://github.com/mdsecactivebreach/CACTUSTORCH
+  - https://attack.mitre.org/techniques/T1055/012/
+  - https://attack.mitre.org/techniques/T1059/005/
+  - https://attack.mitre.org/techniques/T1059/007/
+  - https://attack.mitre.org/techniques/T1218/005/
+
+response:
+  message: >
+    HackTool - CACTUSTORCH Remote Thread Creation detected on host $agent_name$.
+    Matched data_win_eventdata_sourceImage: $data_win_eventdata_sourceImage$.
+    Matched data_win_eventdata_targetImage: $data_win_eventdata_targetImage$.
+    MITRE ATT&CK: T1055.012, T1059.005, T1059.007, T1218.005
+  risk_score: 75
+  severity: high
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 75
+  threat_objects:
+    - field: data_win_eventdata_sourceImage
+      type: process
+    - field: data_win_eventdata_targetImage
+      type: process
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1055.012
+    - T1059.005
+    - T1059.007
+    - T1218.005
+  custom_tags:
+    - hacktool
+    - cactustorch
+    - thread
+    - create_remote_thread
+    - sysmon
+    - privilege_escalation
+    - execution
+    - stealth
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_win_system_eventID:"8" AND (data_win_eventdata_sourceImage:/.*\\[Ss][Yy][Ss][Tt][Ee][Mm]32\\[Cc][Ss][Cc][Rr][Ii][Pp][Tt]\.[Ee][Xx][Ee]/ OR data_win_eventdata_sourceImage:/.*\\[Ss][Yy][Ss][Tt][Ee][Mm]32\\[Ww][Ss][Cc][Rr][Ii][Pp][Tt]\.[Ee][Xx][Ee]/ OR data_win_eventdata_sourceImage:/.*\\[Ss][Yy][Ss][Tt][Ee][Mm]32\\[Mm][Ss][Hh][Tt][Aa]\.[Ee][Xx][Ee]/ OR data_win_eventdata_sourceImage:/.*\\[Ww][Ii][Nn][Ww][Oo][Rr][Dd]\.[Ee][Xx][Ee]/ OR data_win_eventdata_sourceImage:/.*\\[Ee][Xx][Cc][Ee][Ll]\.[Ee][Xx][Ee]/) AND data_win_eventdata_targetImage:/.*\\[Ss][Yy][Ss][Ww][Oo][Ww]64\\.*/ AND NOT _exists_:data_win_eventdata_startModule

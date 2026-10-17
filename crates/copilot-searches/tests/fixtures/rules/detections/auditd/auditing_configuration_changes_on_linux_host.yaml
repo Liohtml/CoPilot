@@ -1,0 +1,149 @@
+name: Auditing Configuration Changes on Linux Host
+id: 977ef627-4539-4875-adf4-ed8f780c4922
+version: 1
+schema_version: "1.0"
+date: "2021-11-27"
+author: Mikhail Larin, oscd.community
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 977ef627-4539-4875-adf4-ed8f780c4922
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detect changes in auditd configuration files. MITRE ATT&CK: T1685.
+
+data_source:
+  - Linux Auditd via Wazuh agent
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        
+        - term:
+            data_audit_type:
+              value: "PATH"
+              case_insensitive: true
+        - bool:
+            should:
+              - wildcard:
+                  data_audit_file_name:
+                    value: "/etc/audit/*"
+                    case_insensitive: true
+              - term:
+                  data_audit_file_name:
+                    value: "/etc/libaudit.conf"
+                    case_insensitive: true
+              - wildcard:
+                  data_audit_file_name:
+                    value: "/etc/audisp/*"
+                    case_insensitive: true
+            minimum_should_match: 1
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_audit_type
+    - data_audit_file_name
+    - data_audit_exe
+    - data_audit_command
+    - data_audit_execve_a0
+    - data_audit_key
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires auditd running on the endpoint with audit rules covering the relevant
+  syscalls/paths, and the Wazuh agent reading /var/log/audit/audit.log (default
+  localfile entry). The detection looks for events where data_audit_type equals
+  'PATH'; data_audit_file_name matches '/etc/audit/*'; data_audit_file_name
+  equals '/etc/libaudit.conf', among other conditions.
+
+known_false_positives: >
+  Legitimate administrative activity. Baseline expected activity in your
+  environment and tune this detection before relying on it for automated
+  response.
+
+references:
+  - https://github.com/Neo23x0/auditd/blob/master/audit.rules
+  - Self Experience
+  - https://attack.mitre.org/techniques/T1685/
+
+response:
+  message: >
+    Auditing Configuration Changes on Linux Host detected on host $agent_name$.
+    Matched data_audit_type: $data_audit_type$. Matched data_audit_file_name:
+    $data_audit_file_name$. MITRE ATT&CK: T1685
+  risk_score: 75
+  severity: high
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 75
+  threat_objects:
+    - field: data_audit_type
+      type: other
+    - field: data_audit_file_name
+      type: other
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1685
+  custom_tags:
+    - auditing
+    - configuration
+    - changes
+    - linux
+    - auditd
+    - defense_impairment
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_audit_type:/[Pp][Aa][Tt][Hh]/ AND (data_audit_file_name:/\/[Ee][Tt][Cc]\/[Aa][Uu][Dd][Ii][Tt]\/.*/ OR data_audit_file_name:/\/[Ee][Tt][Cc]\/[Ll][Ii][Bb][Aa][Uu][Dd][Ii][Tt]\.[Cc][Oo][Nn][Ff]/ OR data_audit_file_name:/\/[Ee][Tt][Cc]\/[Aa][Uu][Dd][Ii][Ss][Pp]\/.*/)

@@ -31,6 +31,9 @@
 //! | `MINIO_URL`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_SECURE` | `copilot-minio`, `admin`, `password`, `false` | the MinIO object store, read as `app/data_store/data_store_session.py` reads them (environs: an empty value is a value; `MINIO_SECURE` must be one of marshmallow's boolean spellings, else neither backend starts); the client dials `{MINIO_URL}:9000` |
 //! | `COPILOT_MINIO_ENDPOINT` | *(unset)* | tests only: `host:port` dialled instead of `{MINIO_URL}:9000` (the parity harness's S3 stand-in); never set in production |
 //! | `COPILOT_API_KEY` | *(unset)* | the licence server's `x-api-key` (secret), read as `os.getenv` reads it (unset is sent as `None`) |
+//! | `GITHUB_TOKEN` | *(unset)* | the Detections Catalog's GitHub bearer token when a custom repository has none (secret), read as `os.getenv` reads it |
+//! | `COPILOT_CATALOG_REFRESH` | `true` | this process warms and refreshes its own catalog caches (`false`: they load on demand only — the parity suites, an air-gapped deployment) |
+//! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
 
 use std::fmt;
 use std::net::IpAddr;
@@ -162,6 +165,8 @@ pub struct CopilotConfig {
     /// What the response routes and the Shuffle connector read from the
     /// environment, as set.
     pub response: crate::response_env::ResponseEnv,
+    /// The Detections Catalog's settings (`copilot-searches`).
+    pub catalog: crate::catalog_env::CatalogEnv,
 }
 
 /// Raw values the WAF and provisioning modules read per call in Python
@@ -386,6 +391,7 @@ impl CopilotConfig {
             },
             copilot_api_key: env.get_raw("COPILOT_API_KEY").map(Secret::new),
             response: crate::response_env::ResponseEnv::from_env(env),
+            catalog: crate::catalog_env::CatalogEnv::from_env(env),
         })
     }
 }

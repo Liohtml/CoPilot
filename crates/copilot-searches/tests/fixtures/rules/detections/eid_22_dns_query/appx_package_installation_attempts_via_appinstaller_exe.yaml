@@ -1,0 +1,139 @@
+name: AppX Package Installation Attempts Via AppInstaller.EXE
+id: 7cff77e1-9663-46a3-8260-17f2e1aa9d0a
+version: 1
+schema_version: "1.0"
+date: "2023-11-09"
+author: frack113
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 7cff77e1-9663-46a3-8260-17f2e1aa9d0a
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detects DNS queries made by "AppInstaller.EXE". The AppInstaller is the
+  default handler for the "ms-appinstaller" URI. It attempts to load/install a
+  package from the referenced URL. MITRE ATT&CK: T1105.
+
+data_source:
+  - Sysmon EventID 22 - DNS Query
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        - term:
+            data_win_system_eventID: "22"
+        
+        - wildcard:
+            data_win_eventdata_image:
+              value: "C:\\\\Program Files\\\\WindowsApps\\\\Microsoft.DesktopAppInstaller_*"
+              case_insensitive: true
+        - wildcard:
+            data_win_eventdata_image:
+              value: "*\\\\AppInstaller.exe"
+              case_insensitive: true
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_eventdata_image
+    - data_win_eventdata_queryName
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires Sysmon EventID 22 (DNS query) enabled in the Sysmon configuration and
+  the Microsoft-Windows-Sysmon/Operational channel collected by the Wazuh agent.
+  The detection looks for events where data_win_eventdata_image matches
+  'C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*';
+  data_win_eventdata_image matches '*\AppInstaller.exe'.
+
+known_false_positives: >
+  Unknown. Baseline expected activity in your environment and tune this
+  detection before relying on it for automated response.
+
+references:
+  - https://twitter.com/notwhickey/status/1333900137232523264
+  - https://lolbas-project.github.io/lolbas/Binaries/AppInstaller/
+  - https://attack.mitre.org/techniques/T1105/
+
+response:
+  message: >
+    AppX Package Installation Attempts Via AppInstaller.EXE detected on host
+    $agent_name$. Matched data_win_eventdata_image: $data_win_eventdata_image$.
+    Matched data_win_eventdata_queryName: $data_win_eventdata_queryName$. MITRE
+    ATT&CK: T1105
+  risk_score: 50
+  severity: medium
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 50
+  threat_objects:
+    - field: data_win_eventdata_image
+      type: process
+    - field: data_win_eventdata_queryName
+      type: domain
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1105
+  custom_tags:
+    - package
+    - installation
+    - appinstaller
+    - dns_query
+    - sysmon
+    - command_and_control
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_win_system_eventID:"22" AND data_win_eventdata_image:/[Cc]:\\[Pp][Rr][Oo][Gg][Rr][Aa][Mm] [Ff][Ii][Ll][Ee][Ss]\\[Ww][Ii][Nn][Dd][Oo][Ww][Ss][Aa][Pp][Pp][Ss]\\[Mm][Ii][Cc][Rr][Oo][Ss][Oo][Ff][Tt]\.[Dd][Ee][Ss][Kk][Tt][Oo][Pp][Aa][Pp][Pp][Ii][Nn][Ss][Tt][Aa][Ll][Ll][Ee][Rr]_.*/ AND data_win_eventdata_image:/.*\\[Aa][Pp][Pp][Ii][Nn][Ss][Tt][Aa][Ll][Ll][Ee][Rr]\.[Ee][Xx][Ee]/

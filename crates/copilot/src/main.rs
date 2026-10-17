@@ -161,6 +161,8 @@ async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
     // One loop per opted-in job; each runs only while its
     // scheduled_job_metadata row is disabled (copilot-scheduler).
     let jobs = app.scheduler.spawn(cancel.clone());
+    // This process's catalog caches: warmed now, refreshed off-request.
+    copilot_searches::refresher::spawn(app.searches.clone(), cancel.clone());
 
     let addr = SocketAddr::new(cfg.bind, cfg.port);
     let listener = tokio::net::TcpListener::bind(addr)
