@@ -95,6 +95,34 @@ struct World {
     inputs: Vec<Value>,
     /// Whether GravityZone answers with a text that is not JSON.
     gravityzone_text: bool,
+    /// Whether the provisioning worker answers 500.
+    worker_fails: bool,
+}
+
+/// A swarm node as Portainer lists it, its address the worker stand-in's.
+fn e2e_node() -> Value {
+    json!({
+        "ID": "n1", "Version": {"Index": 1}, "CreatedAt": "2026-01-01T00:00:00Z",
+        "UpdatedAt": "2026-01-01T00:00:00Z",
+        "Spec": {"Labels": {}, "Role": "manager", "Availability": "active"},
+        "Description": {"Hostname": "swarm-01",
+            "Platform": {"Architecture": "x86_64", "OS": "linux"},
+            "Resources": {"NanoCPUs": 1, "MemoryBytes": 1},
+            "Engine": {"EngineVersion": "27.3.1", "Plugins": []},
+            "TLSInfo": {"TrustRoot": "r", "CertIssuerSubject": "s", "CertIssuerPublicKey": "k"}},
+        "Status": {"State": "ready", "Addr": "127.0.0.1"},
+        "ManagerStatus": {"Leader": true, "Reachability": "reachable", "Addr": "127.0.0.1:2377"}
+    })
+}
+
+/// A stack as Portainer answers its creation.
+fn e2e_stack(id: i64) -> Value {
+    json!({"Id": id, "Name": "wazuh-worker-x", "Type": 1, "EndpointId": 3, "SwarmId": "swarm-e2e",
+        "EntryPoint": "docker-compose.yml", "Env": [], "ResourceControl": null, "Status": 1,
+        "ProjectPath": "/data/compose/77", "CreationDate": 1700000000, "CreatedBy": "admin",
+        "UpdateDate": 0, "UpdatedBy": "", "AdditionalFiles": null, "AutoUpdate": null,
+        "Option": null, "GitConfig": null, "FromAppTemplate": false, "Namespace": "",
+        "IsComposeFormat": false})
 }
 
 #[derive(Clone)]
@@ -305,6 +333,48 @@ impl Respond for Tools {
                 200,
                 json!({"inputs": w.inputs.clone(), "total": w.inputs.len()}),
             ),
+            // The Wazuh manager's groups and version (customer provisioning).
+            ("GET", "/wazuh/") => reply(
+                200,
+                json!({"data": {"title": "Wazuh API REST", "api_version": "4.10.1"}, "error": 0}),
+            ),
+            ("POST", "/wazuh/groups") => reply(
+                200,
+                json!({"data": {"affected_items": [body["group_id"]]}, "error": 0}),
+            ),
+            ("PUT", p) if p.starts_with("/wazuh/groups/") => {
+                reply(200, json!({"data": {"affected_items": ["x"]}, "error": 0}))
+            }
+            // Graylog's roles of its user (the verification).
+            ("GET", p) if p.starts_with("/graylog/api/authz/roles/user/") => {
+                reply(200, json!({"roles": [], "total": 0}))
+            }
+            // Grafana's test user and organizations.
+            ("POST", "/grafanaapi/admin/users") => {
+                reply(200, json!({"id": 99, "message": "User created"}))
+            }
+            ("DELETE", "/grafanaapi/admin/users/99") => {
+                reply(200, json!({"message": "User deleted"}))
+            }
+            ("POST", "/grafanaapi/orgs") => {
+                reply(200, json!({"message": "Organization created", "orgId": 42}))
+            }
+            // Portainer (its connector URL the stand-in's root: the login is
+            // `urljoin`ed).
+            ("POST", "/api/auth") => reply(200, json!({"jwt": "e2e-jwt"})),
+            ("GET", "/api/endpoints") => reply(200, json!([{"Id": 3, "Name": "local"}])),
+            ("GET", "/api/endpoints/3/docker/nodes") => reply(200, json!([e2e_node()])),
+            ("GET", "/api/endpoints/3/docker/swarm") => reply(200, json!({"ID": "swarm-e2e"})),
+            ("POST", "/api/stacks") => reply(200, e2e_stack(77)),
+            // The provisioning worker and HAProxy services.
+            ("POST", "/worker/provision_worker" | "/provision_worker") => {
+                if w.worker_fails {
+                    reply(500, json!({"error": "worker down"}))
+                } else {
+                    reply(200, json!({"message": "ok"}))
+                }
+            }
+            ("POST", "/haproxy/provision_worker/haproxy") => reply(200, json!({"message": "ok"})),
             // GravityZone.
             ("POST", "/api/v1.0/jsonrpc/push") => {
                 if w.gravityzone_text {
@@ -659,6 +729,7 @@ async fn unseed(h: &Harness, code: &str) {
         "customer_integrations_meta",
         "customer_network_connectors_meta",
         "customersmeta",
+        "custom_alert_creation_settings",
     ] {
         sqlx::query(&format!("DELETE FROM {table} WHERE customer_code = ?"))
             .bind(code)
@@ -1735,4 +1806,393 @@ async fn collectors_provision_graylog_grafana_and_write_their_files() {
     unseed(&h, &code).await;
     leave(&h, e).await;
     std::fs::remove_dir_all(&data).unwrap();
+}
+
+// --- step 4: customer provisioning and the Portainer stack -------------------------
+
+/// A `connectors` row's verified flag, as it was.
+async fn set_verified(h: &Harness, name: &str, verified: bool) {
+    sqlx::query("UPDATE connectors SET connector_verified = ? WHERE connector_name = ?")
+        .bind(verified)
+        .bind(name)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+}
+
+async fn verified(h: &Harness, name: &str) -> Option<bool> {
+    sqlx::query_scalar("SELECT connector_verified FROM connectors WHERE connector_name = ?")
+        .bind(name)
+        .fetch_optional(h.db.pool())
+        .await
+        .unwrap()
+}
+
+fn customer_body(code: &str, name: &str) -> Value {
+    json!({
+        "customer_name": name, "customer_code": code, "customer_index_name": "e2e-acme",
+        "customer_grafana_org_name": name, "hot_data_retention": 30, "index_replicas": 0,
+        "index_shards": 2, "customer_subscription": ["Wazuh"],
+        "dashboards_to_include": {"dashboards": ["WAZUH_SUMMARY"]},
+        "grafana_url": "https://grafana.example", "wazuh_auth_password": "pw",
+        "wazuh_registration_port": format!("r-{code}"), "wazuh_logs_port": format!("l-{code}"),
+        "wazuh_api_port": format!("a-{code}"), "wazuh_cluster_name": "cl",
+        "wazuh_cluster_key": "k", "wazuh_master_ip": "10.0.0.1"
+    })
+}
+
+#[tokio::test]
+async fn customers_are_provisioned_with_their_worker_and_stack() {
+    if !configured() {
+        return;
+    }
+    let extra = format!("COPILOT_PROVISION_WORKER_PORT={}\n", port(3));
+    let h = harness_or_skip!(None, &extra);
+    let e = env(&h).await;
+    let worker = stand_in(3).await;
+    Mock::given(wiremock::matchers::any())
+        .respond_with(e.tools.clone())
+        .mount(&worker)
+        .await;
+    h.seed().await;
+    let code = h.code("acme");
+    let beta = h.code("beta");
+    unseed(&h, &code).await;
+    unseed(&h, &beta).await;
+    let main = format!("http://127.0.0.1:{}", port(0));
+    let mut saved = Vec::new();
+    for (name, url) in [
+        ("Portainer", main.clone()),
+        ("Wazuh Worker Provisioning", format!("{main}/worker")),
+        ("HAProxy Provisioning", format!("{main}/haproxy")),
+    ] {
+        saved.push((name, set_connector(&h, name, &url).await));
+    }
+    let portainer_verified = verified(&h, "Portainer").await;
+    set_verified(&h, "Portainer", false).await;
+    e.tools.with(|w| {
+        w.pipelines.push(json!({"id": "pl-wazuh", "title": "WAZUH",
+            "description": "Wazuh processing", "source": "s", "stages": [],
+            "created_at": "2026-10-17T00:00:00.000Z"}));
+    });
+    let admin = h.token(&h.code("admin"), "admin");
+    let analyst = h.token(&h.code("analyst"), "analyst");
+    let name = format!("E2E {code}");
+    let url = |q: &str| format!("/api/customer_provisioning/provision{q}");
+
+    // The query: missing (reported with the body's errors), another tenant's
+    // (Python checked none), unknown; the body's customer another tenant's.
+    let (st, _) = h
+        .call(
+            "POST",
+            &url(&format!("?customer_code={code}")),
+            None,
+            Some(customer_body(&code, &name)),
+        )
+        .await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, body) = h
+        .call(
+            "POST",
+            &url(""),
+            Some(&admin),
+            Some(json!({"customer_code": code})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["details"][0]["field"], json!("customer_code"));
+    assert_eq!(body["details"][1]["field"], json!("customer_name"));
+    let (st, _) = h
+        .call(
+            "POST",
+            &url(&format!("?customer_code={beta}")),
+            Some(&analyst),
+            Some(customer_body(&code, &name)),
+        )
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, body) = h
+        .call(
+            "POST",
+            &url("?customer_code=no-such-customer-e2e"),
+            Some(&admin),
+            Some(customer_body(&code, &name)),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(
+        body["message"],
+        json!("Customer: no-such-customer-e2e not found. Please create the customer first.")
+    );
+    let (st, _) = h
+        .call(
+            "POST",
+            &url(&format!("?customer_code={code}")),
+            Some(&analyst),
+            Some(customer_body(&beta, &name)),
+        )
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    assert!(lines(&e.tools.take()).is_empty());
+
+    // Only the row: answered as the instance (the id last); then the same
+    // ports refused for a customer that asks for a worker.
+    let mut body = customer_body(&code, &name);
+    body["only_insert_into_db"] = json!(true);
+    body["graylog_index_id"] = json!("is-x");
+    body["graylog_stream_id"] = json!("st-x");
+    let (st, answer) = h
+        .call(
+            "POST",
+            &url(&format!("?customer_code={code}")),
+            Some(&analyst),
+            Some(body),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{answer}");
+    assert_eq!(
+        answer["message"],
+        json!("Customer inserted into the database successfully")
+    );
+    let keys: Vec<&String> = answer["customer_meta"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .collect();
+    assert_eq!(keys.first().map(|k| k.as_str()), Some("customer_code"));
+    assert_eq!(keys.last().map(|k| k.as_str()), Some("id"));
+    assert_eq!(
+        answer["customer_meta"]["customer_meta_grafana_org_id"],
+        json!("0")
+    );
+    let mut body = customer_body(&code, &name);
+    body["provision_wazuh_worker"] = json!(true);
+    let (st, answer) = h
+        .call(
+            "POST",
+            &url(&format!("?customer_code={code}")),
+            Some(&admin),
+            Some(body),
+        )
+        .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{answer}");
+    assert_eq!(
+        answer["message"],
+        json!(format!(
+            "Ports must be unique. Registration port r-{code} is already in use for customer {code}."
+        ))
+    );
+    h.exec(&format!(
+        "DELETE FROM customersmeta WHERE customer_code = '{code}'"
+    ))
+    .await;
+
+    // Provisioned with its worker and HAProxy (Portainer not verified).
+    let mut body = customer_body(&code, &name);
+    body["provision_wazuh_worker"] = json!(true);
+    body["provision_ha_proxy"] = json!(true);
+    let (st, answer) = h
+        .call(
+            "POST",
+            &url(&format!("?customer_code={code}")),
+            Some(&analyst),
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{answer}");
+    assert_eq!(
+        answer["message"],
+        json!(format!("Customer {name} provisioned successfully"))
+    );
+    assert_eq!(answer["wazuh_worker_provisioned"], json!(true));
+    let meta = answer["customer_meta"].as_object().unwrap();
+    assert_eq!(meta.keys().next().map(String::as_str), Some("id"));
+    assert_eq!(meta["customer_meta_grafana_org_id"], json!(42));
+    assert_eq!(meta["customer_meta_iris_customer_id"], Value::Null);
+    let seen = e.tools.take();
+    let l = lines(&seen);
+    let at = |needle: &str| {
+        l.iter()
+            .position(|x| x == needle)
+            .unwrap_or_else(|| panic!("{needle}: {l:?}"))
+    };
+    assert!(at("GET /graylog/api/authz/roles/user/e2e-user") < at("POST /grafanaapi/admin/users"));
+    assert!(
+        at("DELETE /grafanaapi/admin/users/99") < at("GET /graylog/api/system/pipelines/pipeline")
+    );
+    assert_eq!(l.iter().filter(|x| *x == "POST /wazuh/groups").count(), 3);
+    assert_eq!(
+        l.iter()
+            .filter(|x| x.starts_with("PUT /wazuh/groups/") && x.ends_with("/configuration"))
+            .count(),
+        3
+    );
+    assert!(at("POST /grafanaapi/orgs") < at("POST /grafanaapi/datasources"));
+    assert!(at("POST /worker/provision_worker") < at("POST /haproxy/provision_worker/haproxy"));
+    let stream: Value = serde_json::from_slice(
+        &seen
+            .iter()
+            .find(|s| s.target == "/graylog/api/streams")
+            .unwrap()
+            .body,
+    )
+    .unwrap();
+    assert_eq!(stream["matching_type"], json!("OR"));
+    assert_eq!(
+        stream["rules"][1]["value"],
+        json!(format!("wazuh-worker-{code}-1"))
+    );
+    let worker_body: Value = serde_json::from_slice(
+        &seen
+            .iter()
+            .find(|s| s.target == "/worker/provision_worker")
+            .unwrap()
+            .body,
+    )
+    .unwrap();
+    assert_eq!(worker_body["portainer_deployment"], json!(false));
+    assert_eq!(worker_body["wazuh_manager_version"], json!("4.10.1"));
+    let iris: String = sqlx::query_scalar(
+        "SELECT iris_index FROM custom_alert_creation_settings WHERE customer_code = ?",
+    )
+    .bind(&code)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(iris, format!("dfir_iris_e2e_{}", code.to_lowercase()));
+
+    // The worker fails: the customer is still provisioned.
+    unseed(&h, &code).await;
+    e.tools.with(|w| w.worker_fails = true);
+    let (st, answer) = h
+        .call(
+            "POST",
+            &url(&format!("?customer_code={code}")),
+            Some(&admin),
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{answer}");
+    assert_eq!(
+        answer["message"],
+        json!(format!(
+            "Customer {name} provisioned successfully, but the Wazuh worker failed to provision"
+        ))
+    );
+    assert_eq!(answer["wazuh_worker_provisioned"], json!(false));
+    e.tools.with(|w| w.worker_fails = false);
+    e.tools.take();
+
+    // Through Portainer: each swarm node's worker, then the stack and its id.
+    set_verified(&h, "Portainer", true).await;
+    let worker_request = json!({
+        "customer_name": name, "customer_code": code, "wazuh_auth_password": "pw",
+        "wazuh_registration_port": "1515", "wazuh_logs_port": "1514", "wazuh_api_port": "55000",
+        "wazuh_cluster_name": "cl", "wazuh_cluster_key": "k", "wazuh_master_ip": "10.0.0.1"
+    });
+    let (st, _) = h
+        .call(
+            "POST",
+            &url("/wazuh_worker"),
+            Some(&analyst),
+            Some({
+                let mut b = worker_request.clone();
+                b["customer_code"] = json!(beta);
+                b
+            }),
+        )
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, answer) = h
+        .call(
+            "POST",
+            &url("/wazuh_worker"),
+            Some(&analyst),
+            Some(worker_request),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{answer}");
+    assert_eq!(
+        answer,
+        json!({"success": true, "message": "Wazuh worker provisioned successfully via Portainer"})
+    );
+    let seen = e.tools.take();
+    let node: Value = serde_json::from_slice(
+        &seen
+            .iter()
+            .find(|s| s.target == "/provision_worker")
+            .unwrap()
+            .body,
+    )
+    .unwrap();
+    assert_eq!(node["node_id"], json!("1"));
+    assert_eq!(node["portainer_deployment"], json!(true));
+    let stack: Value = serde_json::from_slice(
+        &seen
+            .iter()
+            .find(|s| {
+                s.target
+                    .starts_with("/api/stacks?type=1&method=string&endpointId=3")
+            })
+            .unwrap()
+            .body,
+    )
+    .unwrap();
+    assert_eq!(stack["Name"], json!(format!("wazuh-worker-{code}")));
+    assert_eq!(stack["SwarmID"], json!("swarm-e2e"));
+    assert!(
+        stack["StackFileContent"]
+            .as_str()
+            .unwrap()
+            .contains("replicas: 1 ")
+    );
+    let stack_id: Option<i64> = sqlx::query_scalar(
+        "SELECT customer_meta_portainer_stack_id FROM customersmeta WHERE customer_code = ?",
+    )
+    .bind(&code)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(stack_id, Some(77));
+
+    // The stack alone (admin only), and the GET of the static path.
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/portainer/create-wazuh-customer-stack",
+            Some(&analyst),
+            Some(customer_body(&code, &name)),
+        )
+        .await;
+    assert_ne!(st, StatusCode::OK);
+    let (st, answer) = h
+        .call(
+            "POST",
+            "/api/portainer/create-wazuh-customer-stack",
+            Some(&admin),
+            Some(customer_body(&code, &name)),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{answer}");
+    assert_eq!(answer["data"]["Id"], json!(77));
+    let (st, answer) = h
+        .call("GET", &url("/wazuh_worker"), Some(&admin), None)
+        .await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "{answer}");
+    assert_eq!(
+        answer["message"],
+        json!(
+            "Customer meta not found for customer: wazuh_worker. Please provision the customer first."
+        )
+    );
+
+    unseed(&h, &code).await;
+    if let Some(v) = portainer_verified {
+        set_verified(&h, "Portainer", v).await;
+    }
+    for (name, row) in saved.into_iter().rev() {
+        restore_connector(&h, name, row).await;
+    }
+    drop(worker);
+    leave(&h, e).await;
 }

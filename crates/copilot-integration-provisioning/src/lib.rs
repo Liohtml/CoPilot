@@ -21,6 +21,9 @@
 //!   table, the scheduler jobs handed to Python; SOCFortress MDR
 //! - [`collectors`] — CrowdStrike, Defender for Endpoint and Bitdefender, one
 //!   data table: the Graylog and Grafana objects, then the collector's files
+//! - [`customer`] — the customer provisioning (`POST /api/customer_provisioning
+//!   /provision`, `/provision/wazuh_worker`) and the Portainer worker stack
+//!   (`POST /api/portainer/create-wazuh-customer-stack`)
 //! - [`routes`]  — the handlers
 //!
 //! The dashboards themselves are `copilot-grafana-dashboards`'
@@ -30,6 +33,7 @@
 #![warn(missing_docs)]
 
 pub mod collectors;
+pub mod customer;
 pub mod grafana;
 pub mod graylog;
 pub mod integrations;
@@ -44,6 +48,8 @@ use copilot_db::schema::TableRequirement;
 use copilot_gateway::LegacyProxy;
 use copilot_grafana::GrafanaClient;
 use copilot_graylog::GraylogClient;
+use copilot_portainer::PortainerClient;
+use copilot_upstream::http::PyHttp;
 use copilot_wazuh::WazuhState;
 use copilot_web::AppContext;
 
@@ -65,6 +71,11 @@ pub struct ProvisioningState {
     /// What the collectors read from the environment (the backend's data
     /// directory, the GravityZone URL of the tests).
     pub env: CloudEnv,
+    /// Portainer (the customer's worker stack).
+    pub portainer: PortainerClient,
+    /// `requests` (`timeout=60`, certificates verified) for the provisioning
+    /// worker and HAProxy services.
+    pub worker_http: PyHttp,
 }
 
 impl FromRef<ProvisioningState> for AppContext {

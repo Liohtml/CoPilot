@@ -957,11 +957,6 @@ fn portainer_stack(id: i64, status: i64) -> Value {
 #[tokio::test]
 async fn portainer_stacks_are_driven_through_a_fresh_jwt() {
     let legacy = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/api/portainer/create-wazuh-customer-stack"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
-        .mount(&legacy)
-        .await;
     let h = harness_or_skip!(Some(&legacy));
     let (admin, analyst, _) = users(&h).await;
     let portainer = MockServer::start().await;
@@ -1101,7 +1096,9 @@ async fn portainer_stacks_are_driven_through_a_fresh_jwt() {
     ))
     .await;
 
-    // Creating a stack stays in Python.
+    // Creating a stack is copilot-integration-provisioning's (driven by
+    // `e2e_cloud_provisioning`): an empty body is its 422, nothing reaches
+    // Python.
     let (status, body) = h
         .call(
             "POST",
@@ -1110,6 +1107,14 @@ async fn portainer_stacks_are_driven_through_a_fresh_jwt() {
             Some(json!({})),
         )
         .await;
-    assert_eq!((status, body), (StatusCode::OK, json!({"from": "python"})));
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        legacy
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.url.path() != "/api/portainer/create-wazuh-customer-stack")
+    );
     set_connector(&h, "Portainer", None, None).await;
 }

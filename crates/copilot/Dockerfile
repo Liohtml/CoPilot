@@ -22,11 +22,14 @@ COPY Cargo.toml Cargo.lock rustfmt.toml clippy.toml ./
 COPY crates ./crates
 # copilot-grafana-dashboards' build.rs embeds the templates from the Python
 # backend's tree (one source until Python is retired), as
-# copilot-integration-provisioning embeds the collectors' file templates.
+# copilot-integration-provisioning embeds the collectors' file templates, the
+# Wazuh agent-group configurations and the Portainer worker stack.
 COPY backend/app/connectors/grafana/dashboards ./backend/app/connectors/grafana/dashboards
 COPY backend/app/integrations/crowdstrike/templates ./backend/app/integrations/crowdstrike/templates
 COPY backend/app/integrations/defender_for_endpoint/templates ./backend/app/integrations/defender_for_endpoint/templates
 COPY backend/app/integrations/bitdefender/templates ./backend/app/integrations/bitdefender/templates
+COPY backend/app/customer_provisioning/templates ./backend/app/customer_provisioning/templates
+COPY backend/app/connectors/portainer/templates ./backend/app/connectors/portainer/templates
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
     set -eux; \

@@ -1,7 +1,7 @@
 //! `/api/portainer/*` — port of `app/connectors/portainer/routes/portainer.py`
-//! but `POST /create-wazuh-customer-stack` (it reads the Wazuh manager's
-//! version and the customer provisioning schema, both still Python): eight
-//! routes, `require_any_scope("admin", "analyst")` for `/node-details`,
+//! but `POST /create-wazuh-customer-stack` (`copilot-integration-provisioning`
+//! answers it, with the customer provisioning schema and the stack template
+//! it shares with the Wazuh worker's provisioning): eight routes, `require_any_scope("admin", "analyst")` for `/node-details`,
 //! `require_any_scope("admin")` for the rest, as in Python. Admins are
 //! deployment-wide, so no route is tenant-scoped.
 

@@ -21,6 +21,7 @@ copilot-integrations = { workspace = true }
 copilot-wazuh = { workspace = true }
 copilot-gateway = { workspace = true }
 copilot-threat-intel = { workspace = true }
+copilot-portainer = { workspace = true }
 base64 = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

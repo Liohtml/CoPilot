@@ -24,6 +24,11 @@ Writes:
   keys' and customer details' models, every file the services write under `UPLOAD_FOLDER` (the
   docker-compose files, `cs.falconhoseclient.cfg` by its SHA-256, `filebeat.yml`, `config.json`
   or its `int()` failure) and GravityZone's request body and `authorization` header.
+* `crates/copilot-integration-provisioning/src/customer_vectors.json` — the customer provisioning:
+  `ProvisionNewCustomer` and `ProvisionWorkerRequest` bodies as FastAPI reads them, the index set
+  and stream `services/graylog.py` builds, the Wazuh group configurations
+  `configure_wazuh_group` sends, the WAZUH datasource's data links, the alert settings' `iris_index`,
+  and the Portainer stack `create_wazuh_customer_stack` posts (or the `TypeError` it raises).
 
 Re-run after a Python upgrade (expat and ElementTree ship with CPython) or a change to the modules
 these pin.
@@ -1790,6 +1795,228 @@ async def collector_vectors():
     return out
 
 
+# --- customer provisioning and the Portainer stack -------------------------------------------------
+
+CUSTOMER_OUT = ROOT / "crates" / "copilot-integration-provisioning" / "src" / "customer_vectors.json"
+
+CUSTOMER_BASE = {
+    "customer_name": "Acme Corp",
+    "customer_code": "AC 01",
+    "customer_index_name": "acme",
+    "customer_grafana_org_name": "Acme",
+    "hot_data_retention": 30,
+    "index_replicas": 0,
+    "index_shards": 1,
+    "customer_subscription": ["Wazuh"],
+    "dashboards_to_include": {"dashboards": ["WAZUH_SUMMARY"]},
+    "grafana_url": "https://grafana.example",
+}
+
+CUSTOMER_BODIES = [
+    CUSTOMER_BASE,
+    {**CUSTOMER_BASE, "customer_index_name": "Acme"},
+    {**CUSTOMER_BASE, "customer_index_name": "acme\n"},
+    {**CUSTOMER_BASE, "customer_index_name": "-acme"},
+    {**CUSTOMER_BASE, "customer_index_name": 5},
+    {**CUSTOMER_BASE, "customer_subscription": ["Office365"]},
+    {**CUSTOMER_BASE, "customer_subscription": "Wazuh"},
+    {**CUSTOMER_BASE, "dashboards_to_include": {"dashboards": ["NOPE"]}},
+    {**CUSTOMER_BASE, "dashboards_to_include": {}},
+    {**CUSTOMER_BASE, "wazuh_logs_port": None, "grafana_org_id": None, "only_insert_into_db": None},
+    {**CUSTOMER_BASE, "wazuh_logs_port": 1514, "provision_wazuh_worker": "yes"},
+    {**CUSTOMER_BASE, "provision_ha_proxy": None},
+    {**CUSTOMER_BASE, "hot_data_retention": "7", "index_shards": 1.0, "graylog_index_id": "is-1", "portainer_deployment": 1},
+    {"customer_code": "x"},
+    {},
+    None,
+    [],
+    "x",
+]
+
+WORKER_BASE = {
+    "customer_name": "Acme Corp",
+    "customer_code": "ac01",
+    "wazuh_auth_password": "pw",
+    "wazuh_registration_port": "1515",
+    "wazuh_logs_port": "1514",
+    "wazuh_api_port": "55000",
+    "wazuh_cluster_name": "cluster",
+    "wazuh_cluster_key": "key",
+    "wazuh_master_ip": "10.0.0.1",
+}
+
+WORKER_BODIES = [
+    WORKER_BASE,
+    {**WORKER_BASE, "node_id": None, "swarm_nodes": ["1.1.1.1"], "wazuh_worker_hostname": "w1"},
+    {**WORKER_BASE, "wazuh_logs_port": 1514},
+    {**WORKER_BASE, "swarm_nodes": "1.1.1.1"},
+    {"customer_name": "x"},
+    {},
+    None,
+]
+
+
+async def customer_vectors():
+    import importlib
+    import types
+
+    import app.connectors.portainer.services.stack as stack
+    import app.customer_provisioning.services.grafana as grafana_services
+    import app.customer_provisioning.services.provision as provision_services
+    import app.customer_provisioning.services.wazuh_manager as wm
+    from app.customer_provisioning.schema.provision import ProvisionNewCustomer
+    from app.customer_provisioning.schema.wazuh_worker import ProvisionWorkerRequest
+    from app.customer_provisioning.services.graylog import build_event_stream_config
+    from app.customer_provisioning.services.graylog import build_index_set_config
+
+    gen = _gen_module("gen-integration-provisioning-vectors")
+    out = {
+        "provision_new_customer": [
+            {"input": json.dumps(b), **gen.body_outcome(ProvisionNewCustomer, json.loads(json.dumps(b)))} for b in CUSTOMER_BODIES
+        ],
+        "provision_worker_request": [
+            {"input": json.dumps(b), **gen.body_outcome(ProvisionWorkerRequest, json.loads(json.dumps(b)))} for b in WORKER_BODIES
+        ],
+    }
+
+    # The index set and the stream.
+    graylog = []
+    for name, code, index in (("Acme Corp", "AC 01", "acme"), ('É "x"', "c_1", "x-1")):
+        request = ProvisionNewCustomer(**{**CUSTOMER_BASE, "customer_name": name, "customer_code": code, "customer_index_name": index})
+        index_set = build_index_set_config(request).model_dump()
+        index_set["creation_date"] = "<t>"
+        graylog.append(
+            {
+                "name": name,
+                "code": code,
+                "index": index,
+                "index_set": json.dumps(index_set),
+                "stream": json.dumps(build_event_stream_config(request, "is-1").model_dump()),
+            },
+        )
+    out["graylog"] = graylog
+
+    # The group configurations, as `configure_wazuh_group` sends them.
+    sent = []
+
+    async def put(endpoint, data, xml_data=False, **kwargs):
+        sent.append((endpoint, data, xml_data))
+        return {"success": True}
+
+    saved_put = wm.send_wazuh_put_request
+    wm.send_wazuh_put_request = put
+    groups = []
+    try:
+        for code, cluster in (("AC01", "prod"), ("AB_C", ""), ("x y", None)):
+            request = types.SimpleNamespace(customer_name="n", customer_code=code, wazuh_cluster_name=cluster)
+            sent.clear()
+            await wm.apply_group_configurations(request)
+            groups.append(
+                {
+                    "code": code,
+                    "cluster": cluster,
+                    "sent": [{"endpoint": e, "sha256": hashlib.sha256(d.encode()).hexdigest(), "xml": x} for e, d, x in sent],
+                },
+            )
+    finally:
+        wm.send_wazuh_put_request = saved_put
+    out["groups"] = groups
+
+    # The WAZUH datasource's payload (its data links).
+    captured = []
+
+    class FakeDatasource:
+        def create_datasource(self, datasource):
+            captured.append(datasource)
+            return {}
+
+    class FakeClient:
+        datasource = FakeDatasource()
+        user = types.SimpleNamespace(switch_actual_user_organisation=lambda org: None)
+
+    async def fake_client(name):
+        return FakeClient()
+
+    async def attribute(connector_name=None, column_name=None, session=None, connector_id=None):
+        return {"connector_url": "https://idx:9200", "connector_username": "u", "connector_password": "p"}[column_name]
+
+    async def version():
+        return "2.19.1"
+
+    saved = (grafana_services.create_grafana_client, grafana_services.get_connector_attribute, grafana_services.get_opensearch_version)
+    grafana_services.create_grafana_client = fake_client
+    grafana_services.get_connector_attribute = attribute
+    grafana_services.get_opensearch_version = version
+    datasources = []
+    try:
+        for url in ("https://grafana.example", "http://g:3000/x?y={z}"):
+            request = ProvisionNewCustomer(**{**CUSTOMER_BASE, "grafana_url": url})
+            captured.clear()
+            try:
+                await grafana_services.create_grafana_datasource(request=request, organization_id=7, session=None)
+            except Exception:
+                pass
+            datasources.append({"grafana_url": url, "payload": json.dumps(captured[0])})
+    finally:
+        (grafana_services.create_grafana_client, grafana_services.get_connector_attribute, grafana_services.get_opensearch_version) = saved
+    out["datasources"] = datasources
+
+    # The alert settings' iris_index.
+    out["iris_index"] = [[n, f'dfir_iris_{n.lower().replace(" ", "_")}'] for n in ("Acme Corp", "ÀB Ç", "ΣΑΣ Σ", "İx")]
+
+    # The Portainer stack.
+    posted = []
+
+    async def node_ips():
+        return ["10.0.0.1", "10.0.0.2"]
+
+    async def manager_version():
+        return manager_version.value
+
+    async def endpoint_id():
+        return 3
+
+    async def swarm_id():
+        return "swarm-1"
+
+    async def post(endpoint, data=None, connector_name="Portainer"):
+        posted.append((endpoint, data))
+        return {"data": None, "success": True, "message": "m"}
+
+    saved = (stack.list_node_ips, stack.get_wazuh_manager_version, stack.get_endpoint_id, stack.get_swarm_id, stack.send_post_request)
+    stack.list_node_ips, stack.get_wazuh_manager_version = node_ips, manager_version
+    stack.get_endpoint_id, stack.get_swarm_id, stack.send_post_request = endpoint_id, swarm_id, post
+    stacks = []
+    try:
+        for overrides, version_value in (
+            ({}, "4.10.1"),
+            ({"customer_name": "A b c", "customer_code": "x y", "wazuh_logs_port": "1600"}, "4.9.0"),
+            ({"wazuh_api_port": None}, "4.10.1"),
+            ({}, 4),
+        ):
+            manager_version.value = version_value
+            request = ProvisionNewCustomer(**{**CUSTOMER_BASE, **overrides})
+            posted.clear()
+            entry = {"request": json.dumps({**CUSTOMER_BASE, **overrides}), "version": version_value}
+            try:
+                await stack.create_wazuh_customer_stack(request)
+            except Exception as e:
+                entry["exception"] = [type(e).__name__, str(e)]
+            if posted:
+                endpoint, payload = posted[0]
+                entry["endpoint"] = endpoint
+                entry["name"] = payload["Name"]
+                entry["swarm"] = payload["SwarmID"]
+                entry["sha256"] = hashlib.sha256(payload["StackFileContent"].encode()).hexdigest()
+            stacks.append(entry)
+    finally:
+        (stack.list_node_ips, stack.get_wazuh_manager_version, stack.get_endpoint_id, stack.get_swarm_id, stack.send_post_request) = saved
+    out["stacks"] = stacks
+    importlib.invalidate_caches()
+    assert provision_services is not None
+    return out
+
+
 def write(path, value):
     path.write_text(json.dumps(value, indent=1, ensure_ascii=False) + "\n")
     print(f"wrote {path.relative_to(ROOT)}")
@@ -1815,6 +2042,7 @@ def main():
     import asyncio
 
     write(COLLECTOR_OUT, asyncio.run(collector_vectors()))
+    write(CUSTOMER_OUT, asyncio.run(customer_vectors()))
 
 
 if __name__ == "__main__":

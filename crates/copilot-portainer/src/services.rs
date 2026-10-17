@@ -1,6 +1,7 @@
-//! `app/connectors/portainer/services/` (`nodes.py`, `stack.py` but the
-//! stack creation) and the stack-id helpers of `utils/universal.py`, line by
-//! line: each Portainer call authenticates first, a missing connector row
+//! `app/connectors/portainer/services/` (`nodes.py`, `stack.py`; the stack
+//! creation's template and flow are `copilot-integration-provisioning`'s, on
+//! [`swarm_id`] and [`create_stack`]) and the stack-id helpers of
+//! `utils/universal.py`, line by line: each Portainer call authenticates first, a missing connector row
 //! surfaces as the `TypeError` of subscripting `None`, and the response
 //! models' `ValidationError`s are the `ValueError` handler's 400.
 
@@ -74,6 +75,33 @@ pub async fn node_details(client: &PortainerClient) -> PyResult<PyValue> {
             ("message", s("Nodes fetched successfully")),
         ]),
     )
+}
+
+/// `get_swarm_id()`: `response["data"]["ID"]` of the endpoint's swarm.
+pub async fn swarm_id(client: &PortainerClient) -> PyResult<PyValue> {
+    let id = endpoint_id(client).await?;
+    let swarm = data(
+        client
+            .get(&format!("/api/endpoints/{id}/docker/swarm"), Vec::new())
+            .await?,
+    )?;
+    Ok(getitem(&swarm, "ID")?.clone())
+}
+
+/// The stack creation's request (`POST /api/stacks?type=1&method=string&
+/// endpointId=…`, `send_post_request`), then `StackResponse(**response)`.
+pub async fn create_stack(
+    client: &PortainerClient,
+    endpoint_id: &str,
+    payload: PyValue,
+) -> PyResult<PyValue> {
+    let reply = client
+        .post(
+            &format!("/api/stacks?type=1&method=string&endpointId={endpoint_id}"),
+            Some(payload),
+        )
+        .await?;
+    star(&STACK_RESPONSE, reply)
 }
 
 /// `get_stacks()`.

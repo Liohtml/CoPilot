@@ -23,7 +23,7 @@ Ports (all overridable): REMAINING_PROV_PARITY_RUST_PORT (6841), REMAINING_PROV_
 (6842), REMAINING_PROV_PARITY_PY_PORT (6843, the uvicorn legacy backend), REMAINING_PROV_STUB_PORT
 (6844, manager, Graylog and Grafana), REMAINING_PROV_INDEXER_STUB_PORT (6845), REMAINING_PROV_AWS_STUB_PORT
 (6846). Seeded ids are seven digits in 7860000-7869999. `REMAINING_PROV_PARITY_SECTIONS=office365,aws,
-collectors` picks the sections.
+collectors,customer` picks the sections.
 
 The `collectors` section (`POST /api/{crowdstrike,defender_for_endpoint,bitdefender}/provision`,
 `copilot-integration-provisioning`) points both backends at one temporary data directory (Python's
@@ -32,6 +32,14 @@ each side, and compares every file and directory written there — and next to i
 customer name reaches — byte for byte; GravityZone is a stand-in under `/gravityzone` on the tools'
 port (Python's `httpx.AsyncClient` re-pointed, Rust's `COPILOT_BITDEFENDER_URL`). The content packs'
 `uuid4()`s are numbered by first appearance on each side.
+
+The `customer` section (`POST /api/customer_provisioning/provision`, `/provision/wazuh_worker`,
+`POST /api/portainer/create-wazuh-customer-stack`) adds Graylog's role lookup, the manager's groups
+and version, Grafana's test user and organizations, Portainer (at the tools' root: its login is
+`urljoin`ed) and the provisioning worker and HAProxy services (under `/worker` and `/haproxy`); each
+swarm node's worker listens on REMAINING_PROV_EXTRA_STUB_PORT (6847; `5003` re-pointed in Python's
+`requests.post`, Rust's `COPILOT_PROVISION_WORKER_PORT`). The new `customersmeta` row's id is masked
+in the answers.
 """
 
 import asyncio
@@ -89,6 +97,7 @@ STUB_PORT = int(os.environ.get("REMAINING_PROV_STUB_PORT", "6844"))
 INDEXER_PORT = int(os.environ.get("REMAINING_PROV_INDEXER_STUB_PORT", "6845"))
 CLOSED_PORT = int(os.environ.get("REMAINING_PROV_CLOSED_PORT", "6848"))
 AWS_PORT = int(os.environ.get("REMAINING_PROV_AWS_STUB_PORT", "6846"))
+WORKER_PORT = int(os.environ.get("REMAINING_PROV_EXTRA_STUB_PORT", "6847"))
 # botocore's endpoint override, read when a client is created: both backends reach AWS here.
 os.environ["AWS_ENDPOINT_URL"] = f"http://127.0.0.1:{AWS_PORT}"
 #: How long both backends watch the manager's log after a restart (10 s / 60 s in production).
@@ -101,7 +110,15 @@ CUSTOMERS = (CUST_A, CUST_B, CUST_C)
 NAME_A, NAME_B, NAME_C = f"Alpha {SFX}", f"Beta {SFX}", f"Gamma {SFX}"
 ADMIN, ANALYST, ANALYST_B, UNASSIGNED = (f"rp_admin{SFX}", f"rp_analyst{SFX}", f"rp_analyst_b{SFX}", f"rp_unassigned{SFX}")
 USERS = (ADMIN, ANALYST, ANALYST_B, UNASSIGNED)
-OUR_CONNECTORS = ("Wazuh-Manager", "Graylog", "Grafana", "Wazuh-Indexer")
+OUR_CONNECTORS = (
+    "Wazuh-Manager",
+    "Graylog",
+    "Grafana",
+    "Wazuh-Indexer",
+    "Portainer",
+    "Wazuh Worker Provisioning",
+    "HAProxy Provisioning",
+)
 GRAFANA_URL = f"http://127.0.0.1:{STUB_PORT}/grafana"
 INDEXER_URL = f"http://127.0.0.1:{INDEXER_PORT}"
 TENANT_A, TENANT_A2, TENANT_B, TENANT_D = (f"ten-a-{SFX}", f"ten-a2-{SFX}", f"ten-b-{SFX}", f"ten-d-{SFX}")
@@ -216,6 +233,8 @@ class Manager:
         # `GET /manager/logs` by search text: the newest entry's timestamps, answered in turn (the
         # last repeated); none when absent.
         self.logs = copy.deepcopy(logs or {})
+        self.groups = []
+        self.group_configs = []
 
     def answer(self, method, target, body):
         path = urlsplit(target).path.removeprefix("/wazuh")
@@ -233,6 +252,15 @@ class Manager:
                 return 200, j, _json({"data": {"affected_items": [], "failed_items": [{"error": {"code": 1113}}]}, "error": 1})
             self.config = body.decode()
             return 200, j, _json({"data": {"affected_items": ["manager"], "total_affected_items": 1}, "error": 0})
+        if path == "/" and method == "GET":
+            return 200, j, _json({"data": {"title": "Wazuh API REST", "api_version": "4.10.1", "revision": 1}, "error": 0})
+        if path == "/groups" and method == "POST":
+            self.groups.append(json.loads(body).get("group_id"))
+            return 200, j, _json({"data": {"affected_items": [json.loads(body).get("group_id")], "total_affected_items": 1}, "error": 0})
+        m = re.fullmatch(r"/groups/([^/]+)/configuration", path)
+        if m and method == "PUT":
+            self.group_configs.append((m.group(1), body.decode()))
+            return 200, j, _json({"data": {"affected_items": [m.group(1)], "total_affected_items": 1}, "error": 0})
         if path == "/manager/restart" and method == "PUT":
             return 200, j, _json({"data": {"affected_items": ["manager"]}, "message": "Restart request sent", "error": 0})
         if path == "/manager/configuration/validation" and method == "GET":
@@ -374,6 +402,8 @@ class Graylog:
             return 200, j, _json({"installation": {"_id": self._id("inst"), "content_pack_id": m.group(1)}, "entities_excluded": []})
         if method == "GET" and path == "/api/streams":
             return 200, j, _json({"streams": self.streams, "total": len(self.streams)})
+        if method == "GET" and path.startswith("/api/authz/roles/user/"):
+            return 200, j, _json({"roles": [{"name": "Admin", "description": "Grants all permissions"}], "total": 1})
         if method == "GET" and path == "/api/system/inputs":
             return 200, j, _json({"inputs": self.inputs, "total": len(self.inputs)})
         if method == "GET" and path == "/api/system/pipelines/rule":
@@ -466,9 +496,18 @@ class Grafana:
         self.folders = []
         self.dashboards = 0
         self.deleted = []
+        self.users = []
+        self.orgs = []
 
     def state(self):
-        return {"datasources": self.datasources, "folders": self.folders, "dashboards": self.dashboards, "deleted": self.deleted}
+        return {
+            "datasources": self.datasources,
+            "folders": self.folders,
+            "dashboards": self.dashboards,
+            "deleted": self.deleted,
+            "users": self.users,
+            "orgs": self.orgs,
+        }
 
     def answer(self, method, target, body):
         path = urlsplit(target).path.removeprefix("/grafanaapi")
@@ -552,6 +591,17 @@ class Grafana:
                 "readOnly": data.get("readOnly"),
             }
             return 200, j, _json({"datasource": ds, "id": 9, "message": "Datasource added", "name": data.get("name")})
+        if method == "POST" and path == "/admin/users":
+            self.counter += 1
+            self.users.append(json.loads(body).get("login"))
+            return 200, j, _json({"id": 300 + self.counter, "message": "User created"})
+        if method == "DELETE" and path.startswith("/admin/users/"):
+            self.deleted.append(("user", path.rsplit("/", 1)[1]))
+            return 200, j, _json({"message": "User deleted"})
+        if method == "POST" and path == "/orgs":
+            self.counter += 1
+            self.orgs.append(json.loads(body).get("name"))
+            return 200, j, _json({"message": "Organization created", "orgId": 40 + self.counter})
         if method == "DELETE" and path.startswith("/datasources/uid/"):
             self.deleted.append(("datasource", path.rsplit("/", 1)[1]))
             return 200, j, _json({"message": "Data source deleted", "id": 9})
@@ -695,6 +745,59 @@ class Aws:
         return 405, "application/xml", _s3_error("MethodNotAllowed", "no")
 
 
+class Portainer:
+    """Portainer 2.21 (a swarm of one node, at the worker stand-in's address): the login, the
+    environments, the node, the swarm and the stack creation."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self, overrides=None):
+        self.overrides = copy.deepcopy(overrides or {})
+        self.stacks = []
+
+    def answer(self, method, target, body):
+        path = urlsplit(target).path
+        reply = _override(self.overrides, method, path)
+        if reply:
+            return reply
+        j = "application/json"
+        if method == "POST" and path == "/api/auth":
+            return 200, j, _json({"jwt": samples.PORTAINER_JWT})
+        if method == "GET" and path == "/api/endpoints":
+            return 200, j, _json(samples.PORTAINER_ENDPOINTS)
+        if method == "GET" and path == "/api/endpoints/1/docker/nodes":
+            node = samples.portainer_node("n1abc", "swarm-01", "manager", leader=True)
+            node["Status"]["Addr"] = "127.0.0.1"
+            return 200, j, _json([node])
+        if method == "GET" and path == "/api/endpoints/1/docker/swarm":
+            return 200, j, _json({"ID": "abc123swarm", "Version": {"Index": 10}})
+        if method == "POST" and path == "/api/stacks":
+            data = json.loads(body)
+            self.stacks.append({k: data.get(k) for k in ("Name", "SwarmID", "Env", "StackFileContent")})
+            return 200, j, _json(samples.portainer_stack(88, data.get("Name"), 1))
+        return 404, j, _json({"message": "Object not found inside the database"})
+
+
+class Services:
+    """The provisioning worker (`/worker`, and each swarm node's on its own port) and the HAProxy
+    service (`/haproxy`): the bodies they were sent; a status per path to fail with."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self, fail=None):
+        self.fail = dict(fail or {})
+        self.received = []
+
+    def answer(self, method, target, body):
+        path = urlsplit(target).path
+        self.received.append((path, json.loads(body or b"null")))
+        if path in self.fail:
+            return self.fail[path], "text/plain", b"worker refused it"
+        return 200, "application/json", _json({"message": "ok"})
+
+
 class GravityZone:
     """GravityZone's JSON-RPC push endpoint: a JSON answer, or a text that is not JSON."""
 
@@ -732,6 +835,8 @@ AWS = Aws()
 RECORDER = Recorder()
 GRAVITYZONE_TOOL = GravityZone()
 GRAVITYZONE_TOOL.reset()
+PORTAINER = Portainer()
+SERVICES = Services()
 
 
 class ByPrefix:
@@ -745,7 +850,17 @@ class ByPrefix:
         return 404, "application/json", _json({"message": "no such stand-in route"})
 
 
-TOOLS = ByPrefix((("/grafanaapi", GRAFANA), ("/graylog", GRAYLOG), ("/wazuh", MANAGER), ("/gravityzone", GRAVITYZONE_TOOL)))
+TOOLS = ByPrefix(
+    (
+        ("/grafanaapi", GRAFANA),
+        ("/graylog", GRAYLOG),
+        ("/wazuh", MANAGER),
+        ("/gravityzone", GRAVITYZONE_TOOL),
+        ("/worker/", SERVICES),
+        ("/haproxy/", SERVICES),
+        ("/api/", PORTAINER),
+    ),
+)
 
 
 def start_stub(port, tool):
@@ -843,6 +958,10 @@ def point_tools():
             u=INDEXER_URL,
         )
     set_connector("Wazuh-Indexer", INDEXER_URL, username="idx-user", password="idx-pässword")
+    set_connector("Portainer", f"http://127.0.0.1:{STUB_PORT}", username="portainer-user", password="portainer-pw")
+    set_connector("Wazuh Worker Provisioning", f"http://127.0.0.1:{STUB_PORT}/worker")
+    set_connector("HAProxy Provisioning", f"http://127.0.0.1:{STUB_PORT}/haproxy")
+    sql("UPDATE connectors SET connector_verified = 0 WHERE connector_name = 'Portainer'")
 
 
 # The integrations: (id, customer, service, instance, keys); subscriptions take id + 100, keys ids
@@ -1032,6 +1151,7 @@ def cleanup():
     sql("DELETE FROM customer_integrations_meta WHERE customer_code IN :c", c=codes)
     sql("DELETE FROM customer_network_connectors_meta WHERE customer_code IN :c", c=codes)
     sql("DELETE FROM customersmeta WHERE customer_code IN :c", c=codes)
+    sql("DELETE FROM custom_alert_creation_settings WHERE customer_code IN :c", c=codes)
     sql("DELETE FROM connectors WHERE id = 3 AND connector_name = :n", n=SYSLOG_CONNECTOR[0])
     shutil.rmtree(DATA_PARENT, ignore_errors=True)
     for name in USERS:
@@ -1055,12 +1175,23 @@ def build_python_app():
     from app.routers import aws
     from app.routers import bitdefender
     from app.routers import crowdstrike
+    from app.routers import customer_provisioning
     from app.routers import defenderforendpoint
     from app.routers import integrations
     from app.routers import office365
+    from app.routers import portainer
 
     api = APIRouter(prefix="/api")
-    for module in (office365, aws, integrations, crowdstrike, defenderforendpoint, bitdefender):
+    for module in (
+        office365,
+        aws,
+        integrations,
+        crowdstrike,
+        defenderforendpoint,
+        bitdefender,
+        customer_provisioning,
+        portainer,
+    ):
         api.include_router(module.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
@@ -1085,6 +1216,19 @@ def point_collectors():
             return await super().post(str(url).replace(GRAVITYZONE, GRAVITYZONE_STUB), *args, **kwargs)
 
     bitdefender.httpx = types.SimpleNamespace(AsyncClient=Client)
+
+
+def point_worker_port():
+    """`http://<node>:5003/provision_worker` at the swarm worker stand-in, in Python's
+    `requests.post` (everything else `requests` does unchanged)."""
+    import requests as real_requests
+
+    from app.customer_provisioning.services import provision
+
+    def post(url, *args, **kwargs):
+        return real_requests.post(url.replace(":5003/", f":{WORKER_PORT}/"), *args, **kwargs)
+
+    provision.requests = types.SimpleNamespace(post=post)
 
 
 def start_python(port):
@@ -1115,6 +1259,7 @@ def start_rust(port):
         "COPILOT_AWS_PROFILE_CHECK_SECONDS": f"{PROFILE_CHECK[0]},{PROFILE_CHECK[1]}",
         "COPILOT_BACKEND_DATA_DIR": DATA_DIR,
         "COPILOT_BITDEFENDER_URL": GRAVITYZONE_STUB,
+        "COPILOT_PROVISION_WORKER_PORT": str(WORKER_PORT),
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
     }
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
@@ -1211,9 +1356,10 @@ class Pair:
         await asyncio.sleep(0)
         return r, RECORDER.take()
 
-    async def same(self, name, method, path, tok=None, before=None, state=None, expect=None, rust=None, **kw):
+    async def same(self, name, method, path, tok=None, before=None, state=None, expect=None, rust=None, body_norm=None, **kw):
         """Python, then Rust, each after `before()`; `state()` returns what the request left.
-        `expect=(python, rust)`: the statuses of a deliberate difference (bodies not compared)."""
+        `expect=(python, rust)`: the statuses of a deliberate difference (bodies not compared);
+        `body_norm(bytes)` masks what may differ in both answers (an AUTO_INCREMENT id)."""
         sides = []
         for client in (self.py, rust or self.rs):
             if before:
@@ -1233,6 +1379,8 @@ class Pair:
             )
             return r1, r2
         b1, b2 = norm_body(r1.content), norm_body(r2.content)
+        if body_norm:
+            b1, b2 = body_norm(b1), body_norm(b2)
         ok = r1.status_code == r2.status_code and b1 == b2
         at = next((i for i, (x, y) in enumerate(zip(b1, b2)) if x != y), min(len(b1), len(b2)))
         start = max(0, at - 300)
@@ -2484,11 +2632,432 @@ async def collector_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
     )
 
 
+# --- Customer provisioning and the Portainer stack -------------------------------------------------------
+
+CUSTOMER_URL = "/api/customer_provisioning/provision"
+WORKER_URL = "/api/customer_provisioning/provision/wazuh_worker"
+STACK_URL = "/api/portainer/create-wazuh-customer-stack"
+#: The meta row's AUTO_INCREMENT id, masked in the answers.
+META_ID = re.compile(rb'"id":\d+')
+
+
+def mask_meta_id(raw):
+    return META_ID.sub(b'"id":"<id>"', raw)
+
+
+def customer_body(code, name, **overrides):
+    return {
+        "customer_name": name,
+        "customer_code": code,
+        "customer_index_name": f"rp-{SFX}",
+        "customer_grafana_org_name": f"{name} org",
+        "hot_data_retention": 14,
+        "index_replicas": 1,
+        "index_shards": 2,
+        "customer_subscription": ["Wazuh"],
+        "dashboards_to_include": {"dashboards": ["WAZUH_SUMMARY", "EDR_FIM"]},
+        "grafana_url": "https://grafana.parity.example",
+        "wazuh_auth_password": "pw",
+        "wazuh_registration_port": f"r{SFX}",
+        "wazuh_logs_port": f"l{SFX}",
+        "wazuh_api_port": f"a{SFX}",
+        "wazuh_cluster_name": "parity-cluster",
+        "wazuh_cluster_key": "key",
+        "wazuh_master_ip": "10.0.0.1",
+        **overrides,
+    }
+
+
+def worker_body(code, name, **overrides):
+    return {
+        "customer_name": name,
+        "customer_code": code,
+        "wazuh_auth_password": "pw",
+        "wazuh_registration_port": "1515",
+        "wazuh_logs_port": "1514",
+        "wazuh_api_port": "55000",
+        "wazuh_cluster_name": "parity-cluster",
+        "wazuh_cluster_key": "key",
+        "wazuh_master_ip": "10.0.0.1",
+        **overrides,
+    }
+
+
+def customers(version=6, portainer=False, fail=None, setup=None, meta_for=None):
+    """A fresh world: no meta or alert-settings row for C (or one for `meta_for`'s name), Portainer
+    verified or not, the stand-ins reset."""
+
+    def before():
+        point_tools()
+        sql("UPDATE connectors SET connector_verified = :v WHERE connector_name = 'Portainer'", v=1 if portainer else 0)
+        sql("DELETE FROM customersmeta WHERE customer_code IN :c", c=[CUST_C, CUST_D])
+        sql("UPDATE customersmeta SET customer_meta_wazuh_log_ingestion_port = NULL WHERE customer_code = :c", c=CUST_B)
+        sql("DELETE FROM custom_alert_creation_settings WHERE customer_code IN :c", c=list(CUSTOMERS) + [CUST_D])
+        if meta_for:
+            sql(
+                "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, customer_meta_graylog_stream, "
+                "customer_meta_grafana_org_id, customer_meta_wazuh_group) VALUES (:c, :n, 'i', 's', '9', 'g')",
+                c=CUST_C,
+                n=meta_for,
+            )
+        MANAGER.reset()
+        GRAYLOG.reset(version)
+        GRAFANA.reset()
+        INDEXER.reset()
+        PORTAINER.reset()
+        SERVICES.reset(fail)
+        pin_graylog_version("Graylog", version)
+        if setup:
+            setup()
+
+    return before
+
+
+def customer_state():
+    codes = list(CUSTOMERS) + [CUST_D]
+    return {
+        "meta": rows(
+            "SELECT customer_code, customer_name, customer_meta_graylog_index, customer_meta_graylog_stream, "
+            "customer_meta_grafana_org_id, customer_meta_wazuh_group, customer_meta_index_retention, "
+            "customer_meta_wazuh_registration_port, customer_meta_wazuh_log_ingestion_port, customer_meta_wazuh_api_port, "
+            "customer_meta_wazuh_auth_password, customer_meta_iris_customer_id, customer_meta_office365_organization_id, "
+            "customer_meta_portainer_stack_id FROM customersmeta WHERE customer_code IN :c ORDER BY id",
+            c=codes,
+        ),
+        "alert_settings": rows(
+            "SELECT customer_code, customer_name, excluded_wazuh_rules, excluded_suricata_rules, timefield, "
+            "office365_organization_id, iris_customer_id, iris_customer_name, iris_index, grafana_url, misp_url, opencti_url, "
+            "custom_message, shuffle_endpoint, nvd_url FROM custom_alert_creation_settings WHERE customer_code IN :c ORDER BY id",
+            c=codes,
+        ),
+        "groups": MANAGER.groups,
+        "group_configs": MANAGER.group_configs,
+        "graylog": GRAYLOG.state(),
+        "grafana": GRAFANA.state(),
+        "stacks": PORTAINER.stacks,
+        "services": SERVICES.received,
+    }
+
+
+async def customer_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
+    st = customer_state
+    name_c = NAME_C
+    query = {"customer_code": CUST_C}
+    body = customer_body(CUST_C, name_c)
+    await p.same("customer: no token", "POST", CUSTOMER_URL, params=query, json=body)
+    await p.same(
+        "customer: malformed JSON, no token",
+        "POST",
+        CUSTOMER_URL,
+        params=query,
+        content=b"{",
+        headers={"Content-Type": "application/json"},
+    )
+    await p.same("customer: a customer_user token", "POST", CUSTOMER_URL, token(ANALYST, ["customer_user"]), params=query, json=body)
+    await p.same("customer: no query, a body Pydantic refuses", "POST", CUSTOMER_URL, t_admin, json={"customer_code": CUST_C})
+    await p.same("customer: no query, no body", "POST", CUSTOMER_URL, t_admin)
+    await p.same(
+        "customer: an unknown customer in the query",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        params={"customer_code": f"RPX{SFX}"},
+        json=body,
+    )
+    await p.same(
+        "customer: an index name the validator refuses",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        params=query,
+        json=customer_body(CUST_C, name_c, customer_index_name="Bad Index"),
+    )
+    await p.same(
+        "customer: a dashboard Grafana's enum lacks",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        params=query,
+        json=customer_body(CUST_C, name_c, dashboards_to_include={"dashboards": ["NOPE"]}),
+    )
+    await p.same(
+        "customer: another tenant's customer in the query [Python looks it up]",
+        "POST",
+        CUSTOMER_URL,
+        t_analyst,
+        before=customers(),
+        state=st,
+        params={"customer_code": CUST_B},
+        expect=(200, 403),
+        json=customer_body(CUST_C, name_c, only_insert_into_db=True, graylog_index_id="i", graylog_stream_id="s"),
+    )
+    await p.same(
+        "customer: another tenant's customer in the body [Python provisions it]",
+        "POST",
+        CUSTOMER_URL,
+        t_analyst,
+        before=customers(),
+        state=st,
+        params={"customer_code": CUST_A},
+        expect=(200, 403),
+        json=customer_body(CUST_C, name_c, only_insert_into_db=True, graylog_index_id="i", graylog_stream_id="s"),
+    )
+    await p.same(
+        "customer: only the row",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(),
+        state=st,
+        body_norm=mask_meta_id,
+        params=query,
+        json=customer_body(
+            CUST_C,
+            name_c,
+            only_insert_into_db=True,
+            graylog_index_id="is-1",
+            graylog_stream_id="st-1",
+            wazuh_logs_port=None,
+        ),
+    )
+    await p.same(
+        "customer: only the row, its Grafana organization None (MySQL refuses the NULL)",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(),
+        state=st,
+        params=query,
+        json=customer_body(
+            CUST_C,
+            name_c,
+            only_insert_into_db=True,
+            graylog_index_id="is-1",
+            graylog_stream_id="st-1",
+            grafana_org_id=None,
+        ),
+    )
+    await p.same(
+        "customer: only the row, without the Graylog ids (MySQL refuses the NULL)",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(),
+        state=st,
+        params=query,
+        json=customer_body(CUST_C, name_c, only_insert_into_db=True),
+    )
+    await p.same(
+        "customer: ports in use (a worker asked for)",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(
+            setup=lambda: sql(
+                "UPDATE customersmeta SET customer_meta_wazuh_log_ingestion_port = :p WHERE customer_code = :c",
+                p=f"a{SFX}",
+                c=CUST_B,
+            ),
+        ),
+        state=st,
+        params=query,
+        json=customer_body(CUST_C, name_c, provision_wazuh_worker=True, only_insert_into_db=True),
+    )
+    for version, rust in ((6, None), (7, p.rs7)):
+        await p.same(
+            f"customer: provisioned (Graylog {version})",
+            "POST",
+            CUSTOMER_URL,
+            t_admin,
+            before=customers(version),
+            state=st,
+            rust=rust,
+            body_norm=mask_meta_id,
+            params=query,
+            json=body,
+        )
+    await p.same(
+        "customer: provisioned with its worker and HAProxy",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(),
+        state=st,
+        body_norm=mask_meta_id,
+        params=query,
+        json=customer_body(CUST_C, name_c, provision_wazuh_worker=True, provision_ha_proxy=True, wazuh_worker_hostname="w-1"),
+    )
+    await p.same(
+        "customer: the worker refuses (provisioned all the same)",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(fail={"/worker/provision_worker": 503}),
+        state=st,
+        body_norm=mask_meta_id,
+        params=query,
+        json=customer_body(CUST_C, name_c, provision_wazuh_worker=True, provision_ha_proxy=True),
+    )
+    await p.same(
+        "customer: HAProxy refuses, through Portainer",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(portainer=True, fail={"/haproxy/provision_worker/haproxy": 500}),
+        state=st,
+        body_norm=mask_meta_id,
+        params=query,
+        json=customer_body(CUST_C, name_c, provision_ha_proxy=True),
+    )
+    await p.same(
+        "customer: a port that is None, a worker asked for (`IS NULL` matches a meta row without one)",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(),
+        state=st,
+        params=query,
+        json=customer_body(CUST_C, name_c, provision_wazuh_worker=True, wazuh_api_port=None),
+    )
+    await p.same(
+        "customer: HAProxy with a port that is None (ProvisionHaProxyRequest's 400, after everything)",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(),
+        state=st,
+        body_norm=mask_meta_id,
+        params=query,
+        json=customer_body(CUST_C, name_c, provision_ha_proxy=True, wazuh_logs_port=None),
+    )
+    await p.same(
+        "customer: Graylog's user unknown (the verification's 500)",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(
+            setup=lambda: GRAYLOG.overrides.update(
+                {("GET", "/api/authz/roles/user/*"): (404, "application/json", _json({"message": "no"}))},
+            ),
+        ),
+        state=st,
+        params=query,
+        json=body,
+    )
+    await p.same(
+        "customer: Grafana refuses the test user",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(
+            setup=lambda: GRAFANA.overrides.update(
+                {("POST", "/admin/users"): (200, "application/json", _json({"message": "Login taken"}))},
+            ),
+        ),
+        state=st,
+        params=query,
+        json=body,
+    )
+    await p.same(
+        "customer: the Wazuh pipeline missing",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(setup=lambda: GRAYLOG.pipelines.clear()),
+        state=st,
+        params=query,
+        json=body,
+    )
+    await p.same(
+        "customer: the manager refuses the groups (only logged)",
+        "POST",
+        CUSTOMER_URL,
+        t_admin,
+        before=customers(
+            setup=lambda: MANAGER.overrides.update(
+                {("POST", "/groups"): (400, "application/json", _json({"title": "Bad Request", "detail": "exists"}))},
+            ),
+        ),
+        state=st,
+        body_norm=mask_meta_id,
+        params=query,
+        json=body,
+    )
+    # The worker alone.
+    await p.same("worker: no token", "POST", WORKER_URL, json=worker_body(CUST_C, name_c))
+    await p.same("worker: a body Pydantic refuses", "POST", WORKER_URL, t_admin, json={"customer_code": CUST_C})
+    await p.same(
+        "worker: another tenant's customer [Python provisions it]",
+        "POST",
+        WORKER_URL,
+        t_analyst,
+        before=customers(),
+        state=st,
+        expect=(200, 403),
+        json=worker_body(CUST_C, name_c),
+    )
+    await p.same("worker: provisioned", "POST", WORKER_URL, t_admin, before=customers(), state=st, json=worker_body(CUST_C, name_c))
+    await p.same(
+        "worker: refused",
+        "POST",
+        WORKER_URL,
+        t_admin,
+        before=customers(fail={"/worker/provision_worker": 500}),
+        state=st,
+        json=worker_body(CUST_C, name_c),
+    )
+    await p.same(
+        "worker: through Portainer (the nodes' workers, the stack and its id)",
+        "POST",
+        WORKER_URL,
+        t_admin,
+        before=customers(portainer=True, meta_for=f"{name_c} w"),
+        state=st,
+        json=worker_body(CUST_C, f"{name_c} w"),
+    )
+    await p.same(
+        "worker: through Portainer, the customer's row missing (the 404 after the stack)",
+        "POST",
+        WORKER_URL,
+        t_admin,
+        before=customers(portainer=True),
+        state=st,
+        json=worker_body(CUST_C, f"{name_c} w"),
+    )
+    await p.same(
+        "worker: through Portainer, a node's worker refuses",
+        "POST",
+        WORKER_URL,
+        t_admin,
+        before=customers(portainer=True, fail={"/provision_worker": 502}),
+        state=st,
+        json=worker_body(CUST_C, name_c),
+    )
+    # The stack alone.
+    await p.same("stack: an analyst", "POST", STACK_URL, t_analyst, json=body)
+    await p.same("stack: created", "POST", STACK_URL, t_admin, before=customers(), state=st, json=body)
+    await p.same(
+        "stack: a port that is None (the replace's TypeError)",
+        "POST",
+        STACK_URL,
+        t_admin,
+        before=customers(),
+        state=st,
+        json=customer_body(CUST_C, name_c, wazuh_api_port=None),
+    )
+    await p.same("customer: GET of the worker's path (the meta of `wazuh_worker`)", "GET", WORKER_URL, t_admin)
+
+
 # --- Main ------------------------------------------------------------------------------------------------
 
 
 async def main():
-    servers = [start_stub(STUB_PORT, TOOLS), start_stub(INDEXER_PORT, INDEXER), start_stub(AWS_PORT, AWS)]
+    servers = [
+        start_stub(STUB_PORT, TOOLS),
+        start_stub(INDEXER_PORT, INDEXER),
+        start_stub(AWS_PORT, AWS),
+        start_stub(WORKER_PORT, SERVICES),
+    ]
     from app.integrations.aws.services import wazuh_manager as aws_manager
 
     aws_manager.PROFILE_CHECK_INTERVAL_SECONDS, aws_manager.PROFILE_CHECK_TIMEOUT_SECONDS = PROFILE_CHECK
@@ -2497,6 +3066,7 @@ async def main():
     try:
         seed()
         point_collectors()
+        point_worker_port()
         python = start_python(PY_PORT)
         procs.append(start_rust(RS_PORT))
         procs.append(start_rust(RS7_PORT))
@@ -2504,13 +3074,15 @@ async def main():
         t_admin, t_analyst = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"])
         t_analyst_b, t_unassigned = token(ANALYST_B, ["analyst"]), token(UNASSIGNED, ["analyst"])
         try:
-            sections = os.environ.get("REMAINING_PROV_PARITY_SECTIONS", "office365,aws,collectors").split(",")
+            sections = os.environ.get("REMAINING_PROV_PARITY_SECTIONS", "office365,aws,collectors,customer").split(",")
             if "office365" in sections:
                 await office365_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned)
             if "aws" in sections:
                 await aws_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned)
             if "collectors" in sections:
                 await collector_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned)
+            if "customer" in sections:
+                await customer_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned)
         finally:
             await p.close()
     finally:

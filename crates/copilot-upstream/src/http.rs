@@ -389,13 +389,20 @@ impl PyHttp {
         }
         match body {
             Some(b) => {
-                let content_type = match self.flavor {
-                    Flavor::Requests => "application/json",
-                    Flavor::Niquests => "application/json;charset=utf-8",
-                };
-                builder = builder
-                    .header(http::header::CONTENT_TYPE, content_type)
-                    .body(b.into_bytes());
+                // `prepare_body` sets `Content-Type` only when the caller's
+                // headers carry none (Portainer's helpers name it themselves).
+                if !req
+                    .headers
+                    .iter()
+                    .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                {
+                    let content_type = match self.flavor {
+                        Flavor::Requests => "application/json",
+                        Flavor::Niquests => "application/json;charset=utf-8",
+                    };
+                    builder = builder.header(http::header::CONTENT_TYPE, content_type);
+                }
+                builder = builder.body(b.into_bytes());
             }
             None => {
                 // `prepare_content_length`: every method but GET and HEAD

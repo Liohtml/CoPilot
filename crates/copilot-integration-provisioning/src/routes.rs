@@ -17,14 +17,18 @@ use copilot_monitoring_alerts::body::{PyBody, WithPyJson};
 use copilot_upstream::model::{Model, field};
 use copilot_upstream::py::{PyExc, type_name};
 use copilot_upstream::respond::model_response;
-use copilot_web::{AdminOrAnalyst, ApiError, ApiResult, Authorized};
+use copilot_web::validate::{FieldError, Validator, loc};
+use copilot_web::{AdminOnly, AdminOrAnalyst, ApiError, ApiResult, Authorized, QueryPairs};
 
 use crate::ProvisioningState;
 use crate::collectors::{self, COLLECTORS, Collector};
+use crate::customer::schema::{PROVISION_NEW_CUSTOMER, PROVISION_WORKER_REQUEST};
+use crate::customer::{self, Customer};
 use crate::integrations::{self, INTEGRATIONS, Integration, PROVISION_MDR_REQUEST};
 use crate::network::{self, NETWORKS, Network, Tools};
 
 type Reader = Authorized<AdminOrAnalyst>;
+type Admin = Authorized<AdminOnly>;
 
 /// The routes.
 pub fn router(state: ProvisioningState) -> Router {
@@ -67,6 +71,18 @@ pub fn router(state: ProvisioningState) -> Router {
     }
     router
         .route("/api/socfortress_mdr/provision", post(provision_mdr))
+        .route(
+            "/api/customer_provisioning/provision",
+            post(provision_customer),
+        )
+        .route(
+            "/api/customer_provisioning/provision/wazuh_worker",
+            post(provision_wazuh_worker),
+        )
+        .route(
+            "/api/portainer/create-wazuh-customer-stack",
+            post(create_wazuh_customer_stack),
+        )
         .with_state(state)
 }
 
@@ -167,6 +183,77 @@ async fn provision_collector(
     auth.enforce_customer(&st.ctx, &field(&request, "customer_code").py_str())
         .await?;
     collectors::provision(&st.ctx, tools(&st), &st.env, collector, &request)
+        .await
+        .map(|dump| model_response(&dump))
+        .map_err(PyExc::unhandled)
+}
+
+/// The customer provisioning's tools.
+fn customer_of(st: &ProvisioningState) -> Customer<'_> {
+    Customer {
+        ctx: &st.ctx,
+        tools: tools(st),
+        portainer: &st.portainer,
+        http: &st.worker_http,
+        env: &st.env,
+    }
+}
+
+/// `POST /api/customer_provisioning/provision`: the body read, the token,
+/// then `check_customer_exists`' query (a missing one is reported with the
+/// body's errors, as FastAPI collects them), the query's customer checked
+/// against the caller (§4) and looked up (404), the body validated, its
+/// customer checked against the caller (§4).
+async fn provision_customer(
+    State(st): State<ProvisioningState>,
+    query: QueryPairs,
+    WithPyJson(auth, body): WithPyJson<Reader>,
+) -> ApiResult {
+    let Some(code) = query.get("customer_code").map(str::to_string) else {
+        let mut v = Validator::new();
+        v.missing(loc("query", "customer_code"));
+        let mut items: Vec<_> = v.errors().iter().map(FieldError::to_item).collect();
+        if let Err(ApiError::Validation(more)) = body.model(&PROVISION_NEW_CUSTOMER) {
+            items.extend(more);
+        }
+        return Err(ApiError::Validation(items));
+    };
+    auth.enforce_customer(&st.ctx, &code).await?;
+    customer::check_customer_exists(&st.ctx.db, &code)
+        .await
+        .map_err(PyExc::unhandled)?;
+    let request = body.model(&PROVISION_NEW_CUSTOMER)?;
+    auth.enforce_customer(&st.ctx, &field(&request, "customer_code").py_str())
+        .await?;
+    customer::provision(customer_of(&st), &request)
+        .await
+        .map(|dump| model_response(&dump))
+        .map_err(PyExc::unhandled)
+}
+
+/// `POST /api/customer_provisioning/provision/wazuh_worker`; the body's
+/// customer checked against the caller (§4).
+async fn provision_wazuh_worker(
+    State(st): State<ProvisioningState>,
+    WithPyJson(auth, body): WithPyJson<Reader>,
+) -> ApiResult {
+    let request = body.model(&PROVISION_WORKER_REQUEST)?;
+    auth.enforce_customer(&st.ctx, &field(&request, "customer_code").py_str())
+        .await?;
+    customer::provision_wazuh_worker(customer_of(&st), request)
+        .await
+        .map(|dump| model_response(&dump))
+        .map_err(PyExc::unhandled)
+}
+
+/// `POST /api/portainer/create-wazuh-customer-stack` (admin only, so
+/// deployment-wide).
+async fn create_wazuh_customer_stack(
+    State(st): State<ProvisioningState>,
+    WithPyJson(_auth, body): WithPyJson<Admin>,
+) -> ApiResult {
+    let request = body.model(&PROVISION_NEW_CUSTOMER)?;
+    customer::create_wazuh_customer_stack(customer_of(&st), &request)
         .await
         .map(|dump| model_response(&dump))
         .map_err(PyExc::unhandled)

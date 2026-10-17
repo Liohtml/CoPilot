@@ -1002,6 +1002,7 @@ dependencies = [
  "copilot-graylog",
  "copilot-integrations",
  "copilot-monitoring-alerts",
+ "copilot-portainer",
  "copilot-provisioning",
  "copilot-threat-intel",
  "copilot-upstream",

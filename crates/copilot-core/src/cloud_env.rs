@@ -28,6 +28,11 @@ pub struct CloudEnv {
     /// replaces `https://cloud.gravityzone.bitdefender.com` in the
     /// Bitdefender provisioning's GravityZone call.
     pub bitdefender_url: Option<String>,
+    /// `COPILOT_PROVISION_WORKER_PORT` — tests only: the port of each swarm
+    /// node's provisioning worker instead of `5003` (the customer
+    /// provisioning's Portainer deployment; the Sysmon deploy reads the same
+    /// variable through `ResponseEnv`).
+    pub provision_worker_port: Option<String>,
 }
 
 impl CloudEnv {
@@ -42,6 +47,11 @@ impl CloudEnv {
             .unwrap_or(Self::DEFAULT_BACKEND_DATA_DIR)
     }
 
+    /// The port of a swarm node's provisioning worker.
+    pub fn provision_worker_port(&self) -> &str {
+        self.provision_worker_port.as_deref().unwrap_or("5003")
+    }
+
     /// Read the values the way `os.getenv` would see them.
     pub fn from_env(env: &EnvFile) -> Self {
         let read = |k: &str| env.get(k).filter(|v| !v.is_empty());
@@ -52,6 +62,10 @@ impl CloudEnv {
             aws_profile_check_seconds: read("COPILOT_AWS_PROFILE_CHECK_SECONDS"),
             backend_data_dir: read("COPILOT_BACKEND_DATA_DIR"),
             bitdefender_url: read("COPILOT_BITDEFENDER_URL"),
+            provision_worker_port: env
+                .get("COPILOT_PROVISION_WORKER_PORT")
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty()),
         }
     }
 }
