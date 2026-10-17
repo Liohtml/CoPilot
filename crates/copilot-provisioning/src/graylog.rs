@@ -37,7 +37,7 @@ fn st(s: &str) -> PyValue {
 }
 
 /// `get_system_info().version`.
-async fn graylog_version(c: &GraylogClient) -> PyResult<String> {
+pub async fn graylog_version(c: &GraylogClient) -> PyResult<String> {
     let reply = c.get("/api/system", &[]).await?;
     let info = construct_star(
         &GRAYLOG_SERVER_INFO,

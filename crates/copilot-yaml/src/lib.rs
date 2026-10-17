@@ -39,7 +39,7 @@ mod composer;
 mod constructor;
 pub mod error;
 mod parser;
-mod pyint;
+pub mod pyint;
 mod reader;
 mod repr;
 mod scanner;

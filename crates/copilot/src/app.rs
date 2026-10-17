@@ -257,6 +257,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/vulnerabilities",
     "/api/sca",
     "/api/syscollector",
+    // The Detections Catalog and CoPilot Searches (copilot-searches): every
+    // route of the module.
+    "/api/copilot_searches",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -293,6 +296,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_integrations::REQUIREMENTS);
     all.extend_from_slice(copilot_siem::REQUIREMENTS);
     all.extend_from_slice(copilot_threat_intel::REQUIREMENTS);
+    all.extend_from_slice(copilot_searches::REQUIREMENTS);
     all.extend(copilot_agent_reports::requirements());
     all.push(TableRequirement {
         table: "audit_log",
@@ -380,6 +384,8 @@ pub struct App {
     /// The agents' report routers (`/api/vulnerabilities`, `/api/sca`,
     /// `/api/syscollector`).
     pub agent_reports: AgentReportsState,
+    /// The Detections Catalog (`/api/copilot_searches`) and its caches.
+    pub searches: copilot_searches::SearchesState,
 }
 
 impl App {
@@ -520,6 +526,14 @@ impl App {
             sca_repo: copilot_agent_reports::sca::policies::ScaRepo::from_env()
                 .context("building the CoPilot-SCA client")?,
         };
+        let searches = copilot_searches::SearchesState::new(
+            ctx.clone(),
+            wazuh.clone(),
+            graylog.clone(),
+            objectstore.clone(),
+            legacy.clone(),
+        )
+        .context("building the catalog clients")?;
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -570,6 +584,7 @@ impl App {
             response,
             shuffle,
             agent_reports,
+            searches,
         })
     }
 
@@ -843,6 +858,9 @@ impl App {
             }))
             // Full paths: `/api/threat_intel/*`.
             .merge(copilot_threat_intel::router(self.threat_intel.clone()))
+            // Full paths: `/api/copilot_searches/*`, dispatched on the decoded
+            // path as Starlette routes it.
+            .merge(copilot_searches::router(self.searches.clone()))
             .nest(
                 "/api/active_response",
                 copilot_response::active_response_router(self.response.clone()).layer(

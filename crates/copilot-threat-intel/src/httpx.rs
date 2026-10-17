@@ -822,8 +822,47 @@ fn decode(headers: &HeaderMap, raw: Bytes) -> Result<Bytes, HttpxError> {
     Ok(data)
 }
 
+/// One `httpx.AsyncClient`, reused across requests (its connection pool):
+/// what `async with httpx.AsyncClient(timeout=…) as client:` holds for
+/// several calls. The timeout is the client's; a request's own is ignored.
+#[derive(Debug, Clone)]
+pub struct Client {
+    inner: reqwest::Client,
+}
+
+impl Client {
+    /// `httpx.AsyncClient(timeout=timeout)`.
+    pub fn new(timeout: Duration) -> Result<Self, HttpxError> {
+        reqwest::Client::builder()
+            .http1_only()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(timeout)
+            .read_timeout(timeout)
+            .build()
+            .map(|inner| Self { inner })
+            .map_err(|e| HttpxError::new("ConnectError", error_chain(&e)))
+    }
+}
+
 /// Send `req` the way `httpx.AsyncClient(timeout=…).request(…)` does.
 pub async fn send(req: Request) -> Result<Response, HttpxError> {
+    let client = reqwest::Client::builder()
+        .http1_only()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(req.timeout)
+        .read_timeout(req.timeout)
+        .pool_max_idle_per_host(0)
+        .build()
+        .map_err(|e| HttpxError::new("ConnectError", error_chain(&e)))?;
+    send_with(&client, req).await
+}
+
+/// Send `req` on a [`Client`] (`client.request(…)` inside `async with`).
+pub async fn send_on(client: &Client, req: Request) -> Result<Response, HttpxError> {
+    send_with(&client.inner, req).await
+}
+
+async fn send_with(client: &reqwest::Client, req: Request) -> Result<Response, HttpxError> {
     let mut url = parse_url(&req.url)?;
     if !req.params.is_empty() {
         let encoded = urlencode(&req.params);
@@ -875,14 +914,6 @@ pub async fn send(req: Request) -> Result<Response, HttpxError> {
     }
     let rendered = url.render();
     let target = reqwest::Url::parse(&url.target()).map_err(|e| invalid(e.to_string()))?;
-    let client = reqwest::Client::builder()
-        .http1_only()
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(req.timeout)
-        .read_timeout(req.timeout)
-        .pool_max_idle_per_host(0)
-        .build()
-        .map_err(|e| HttpxError::new("ConnectError", error_chain(&e)))?;
     let mut map = HeaderMap::new();
     for (name, value) in &headers {
         let name = HeaderName::from_bytes(name.as_bytes())
