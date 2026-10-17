@@ -25,6 +25,7 @@ bytes = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+serde = { workspace = true }
 
 [lints]
 workspace = true

@@ -37,6 +37,7 @@
 //! | `COPILOT_CATALOG_REFRESH` | `true` | this process warms and refreshes its own catalog caches (`false`: they load on demand only — the parity suites, an air-gapped deployment) |
 //! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's (and the Atomic Red Team listings') GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
 //! | `COPILOT_INTEGRATION_MODULES_URL` | *(unset)* | tests only: every request to an integration module container (`http://copilot-<name>-module/…`, the AI module's rule exclusion included) and to Mimecast's region discovery goes to `{url}/{host}{path}` (the parity harness's stand-in); never set in production |
+//! | `COPILOT_BACKEND_DATA_DIR` | `/opt/copilot/backend/data` | the Python backend's data directory (`UPLOAD_FOLDER`), where the connector YAML upload writes its file and records its path; the Rust container mounts it at that path (`docker-compose.rust.yml`) |
 //! | `COPILOT_SIDEBAR_REFRESH` | `COPILOT_CATALOG_REFRESH` | this process warms and refreshes its own sidebar indicators (`copilot-status`); unset, it follows the catalog switch |
 //! | `ENVIRONMENT` | `PRODUCTION` | the sidebar's `environment` field, as `os.getenv` reads it |
 //! | `PERF_MONITOR_ENABLED`, `PERF_LAG_SAMPLE_INTERVAL`, `PERF_LAG_STALL_THRESHOLD_MS`, `PERF_SLOW_REQUEST_MS`, `PERF_RECENT_REQUESTS`, `PERF_RECENT_STALLS`, `PERF_LAG_SAMPLES`, `PERF_DURATION_SAMPLES`, `PERF_MAX_ENDPOINTS`, `DB_SLOW_QUERY_MS`, `DB_QUERY_SAMPLES`, `DB_MAX_STATEMENTS` | `true`, `0.25`, `100`, `1000`, `500`, `200`, `2000`, `200`, `500`, `250`, `2000`, `300` | this process's request timing, runtime-lag watchdog and query metrics (`/api/performance`, `copilot-status`), read as `app/middleware/performance.py` and `app/db/query_metrics.py` read them |
@@ -181,6 +182,8 @@ pub struct CopilotConfig {
     /// `COPILOT_INTEGRATION_MODULES_URL` — tests only: the stand-in the
     /// integration modules and Mimecast's discovery are reached at.
     pub integration_modules_url: Option<String>,
+    /// `COPILOT_BACKEND_DATA_DIR`: the Python backend's `UPLOAD_FOLDER`.
+    pub backend_data_dir: PathBuf,
     /// `COPILOT_SIDEBAR_REFRESH`, as set (`copilot-status`'s refresher).
     pub sidebar_refresh: Option<String>,
     /// `ENVIRONMENT`, as set (`os.getenv` semantics).
@@ -188,6 +191,10 @@ pub struct CopilotConfig {
     /// The `PERF_*` and `DB_*` instrumentation settings, as set.
     pub perf: PerfEnv,
 }
+
+/// The Python backend's `UPLOAD_FOLDER` in its image (`/opt/copilot/backend`
+/// + `data`).
+pub const DEFAULT_BACKEND_DATA_DIR: &str = "/opt/copilot/backend/data";
 
 /// Raw instrumentation settings (`os.environ.get`; `None` = unset),
 /// interpreted by `copilot-status`'s performance module.
@@ -448,6 +455,11 @@ impl CopilotConfig {
                 .get("COPILOT_INTEGRATION_MODULES_URL")
                 .map(|v| v.trim().trim_end_matches('/').to_string())
                 .filter(|v| !v.is_empty()),
+            backend_data_dir: env
+                .get("COPILOT_BACKEND_DATA_DIR")
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .map_or_else(|| PathBuf::from(DEFAULT_BACKEND_DATA_DIR), PathBuf::from),
             sidebar_refresh: env.get_raw("COPILOT_SIDEBAR_REFRESH"),
             environment: env.get_raw("ENVIRONMENT"),
             perf: PerfEnv {

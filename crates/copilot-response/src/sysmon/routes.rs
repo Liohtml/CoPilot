@@ -1,5 +1,5 @@
 //! `/api/sysmon_config` — port of
-//! `app/active_response/routes/sysmon_config.py` but the upload.
+//! `app/active_response/routes/sysmon_config.py`.
 //!
 //! A responder may read their customers' configs and deploy them (#1219);
 //! every route keyed by a customer code checks it first
@@ -7,10 +7,12 @@
 //! customers (`scoped_customer_codes`). A deploy is audited as
 //! `response.sysmon_deploy` before anything is fetched, as in Python.
 //!
-//! Still Python: `POST /upload` (admin) validates the XML with
-//! `xml.etree.ElementTree`, whose refusals are expat's error texts (`not
-//! well-formed (invalid token): line 3, column 4`, …); no route here matches
-//! it (`/{customer_code}` is a `GET`), so the binary forwards it.
+//! `POST /upload` (admin) checks the file's name and UTF-8, validates the
+//! XML as `ET.fromstring` does (`copilot_integrations::etree`: expat's
+//! refusals and their positions, `Invalid XML syntax: not well-formed
+//! (invalid token): line 3, column 4`), then the Sysmon shape, then stores
+//! it; the form's `customer_code` is checked against the caller's
+//! customers (an admin's are all of them, as Python's route assumes).
 
 use axum::Router;
 use axum::extract::{Path, State};
@@ -19,6 +21,7 @@ use axum::routing::{get, post};
 use http::{HeaderValue, StatusCode};
 
 use copilot_auth::AccessScope;
+use copilot_auth::pyvalue::PyValue;
 use copilot_core::audit::AuditRecord;
 use copilot_upstream::py::PyExc;
 use copilot_upstream::respond::model_response;
@@ -38,6 +41,7 @@ pub fn router(state: ResponseState) -> Router {
         .route("/content/{customer_code}", get(content))
         .route("/{customer_code}", get(download))
         .route("/deploy/{customer_code}", post(deploy))
+        .route("/upload", post(upload))
         .with_state(state)
 }
 
@@ -132,4 +136,46 @@ async fn deploy(
     )
     .await;
     Ok(model_response(&dump))
+}
+
+/// `POST /upload` (`require_any_scope("admin")`): `customer_code: str =
+/// Form(...)`, `file: UploadFile = File(...)`.
+async fn upload(
+    State(st): State<ResponseState>,
+    form: copilot_objectstore::web::UploadForm<Authorized<copilot_web::AdminOnly>>,
+) -> ApiResult {
+    let mut v = copilot_web::validate::Validator::new();
+    let customer_code = form.text(&mut v, "customer_code");
+    let file = form.file(&mut v, "file");
+    v.finish()?;
+    let (Some(customer_code), Some(file)) = (customer_code, file) else {
+        return Err(ApiError::internal("validated form missing"));
+    };
+    form.auth.enforce_customer(&st.ctx, &customer_code).await?;
+    if !file.filename.ends_with(".xml") {
+        return Err(ApiError::bad_request(
+            "Only XML files are accepted for sysmon configs",
+        ));
+    }
+    let Ok(text) = std::str::from_utf8(&file.data) else {
+        return Err(ApiError::bad_request(
+            "File is not valid UTF-8 encoded text",
+        ));
+    };
+    services::validate_config(text)?;
+    let exists = services::config_exists(&st.store, &customer_code).await?;
+    services::upload(&st.store, &customer_code, &file.data).await?;
+    Ok(model_response(&PyValue::Dict(vec![
+        ("success".into(), PyValue::Bool(true)),
+        (
+            "message".into(),
+            PyValue::Str(format!(
+                "Successfully {} Sysmon config",
+                if exists { "updated" } else { "uploaded" }
+            )),
+        ),
+        ("customer_code".into(), PyValue::Str(customer_code)),
+        ("filename".into(), PyValue::Str("sysmon_config.xml".into())),
+        ("overwritten".into(), PyValue::Bool(exists)),
+    ])))
 }

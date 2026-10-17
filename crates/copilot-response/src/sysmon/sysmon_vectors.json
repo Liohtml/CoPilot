@@ -1,0 +1,82 @@
+[
+ {
+  "text": "<Sysmon schemaversion='4.90'>\n  <EventFiltering>\n    <RuleGroup name='' groupRelation='or'>\n      <ProcessCreate onmatch='exclude'/>\n    </RuleGroup>\n  </EventFiltering>\n</Sysmon>",
+  "detail": null
+ },
+ {
+  "text": "<?xml version='1.0' encoding='UTF-8'?>\n<!-- comment -->\n<Sysmon schemaversion='4.90'><HashAlgorithms>md5</HashAlgorithms><EventFiltering><RuleGroup groupRelation='and'></RuleGroup></EventFiltering></Sysmon>",
+  "detail": null
+ },
+ {
+  "text": "<sysmon><EventFiltering><RuleGroup groupRelation='or'/></EventFiltering></sysmon>",
+  "detail": "Root element must be 'Sysmon'"
+ },
+ {
+  "text": "<x:Sysmon xmlns:x='u'><EventFiltering><RuleGroup groupRelation='or'/></EventFiltering></x:Sysmon>",
+  "detail": "Root element must be 'Sysmon'"
+ },
+ {
+  "text": "<Sysmon/>",
+  "detail": "Missing required 'EventFiltering' element"
+ },
+ {
+  "text": "<Sysmon><Other><EventFiltering/></Other></Sysmon>",
+  "detail": "Missing required 'EventFiltering' element"
+ },
+ {
+  "text": "<Sysmon><EventFiltering>text<RuleGroup groupRelation='or'/></EventFiltering></Sysmon>",
+  "detail": "Invalid text content found directly in EventFiltering element"
+ },
+ {
+  "text": "<Sysmon><EventFiltering>\n  \t<RuleGroup groupRelation='or'/></EventFiltering></Sysmon>",
+  "detail": null
+ },
+ {
+  "text": "<Sysmon><EventFiltering> <RuleGroup groupRelation='or'/></EventFiltering></Sysmon>",
+  "detail": null
+ },
+ {
+  "text": "<Sysmon><EventFiltering><!-- x --><RuleGroup groupRelation='or'/></EventFiltering></Sysmon>",
+  "detail": null
+ },
+ {
+  "text": "<Sysmon><EventFiltering/></Sysmon>",
+  "detail": "EventFiltering must contain at least one RuleGroup"
+ },
+ {
+  "text": "<Sysmon><EventFiltering><Rule/></EventFiltering></Sysmon>",
+  "detail": "EventFiltering must contain at least one RuleGroup"
+ },
+ {
+  "text": "<Sysmon><EventFiltering><RuleGroup/></EventFiltering></Sysmon>",
+  "detail": "RuleGroup must have 'groupRelation' attribute"
+ },
+ {
+  "text": "<Sysmon><EventFiltering><RuleGroup groupRelation=''/></EventFiltering></Sysmon>",
+  "detail": "RuleGroup must have 'groupRelation' attribute"
+ },
+ {
+  "text": "<Sysmon><EventFiltering><RuleGroup groupRelation='or'/><RuleGroup/></EventFiltering></Sysmon>",
+  "detail": "RuleGroup must have 'groupRelation' attribute"
+ },
+ {
+  "text": "<Sysmon><EventFiltering><RuleGroup groupRelation='or'/></EventFiltering><EventFiltering/></Sysmon>",
+  "detail": null
+ },
+ {
+  "text": "<Sysmon><EventFiltering><RuleGroup groupRelation='or'/></EventFiltering>",
+  "detail": "Invalid XML syntax: no element found: line 1, column 72"
+ },
+ {
+  "text": "<Sysmon><EventFiltering><RuleGroup groupRelation='or'></EventFiltering></Sysmon>",
+  "detail": "Invalid XML syntax: mismatched tag: line 1, column 56"
+ },
+ {
+  "text": "not xml",
+  "detail": "Invalid XML syntax: syntax error: line 1, column 0"
+ },
+ {
+  "text": "",
+  "detail": "Invalid XML syntax: no element found: line 1, column 0"
+ }
+]

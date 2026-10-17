@@ -21,6 +21,8 @@ bytes = { workspace = true }
 chrono = { workspace = true }
 sqlx = { workspace = true }
 async-trait = { workspace = true }
+copilot-jinja = { workspace = true }
+unicode-normalization = { workspace = true }
 
 [lints]
 workspace = true

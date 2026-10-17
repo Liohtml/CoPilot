@@ -1,0 +1,605 @@
+{
+ "expat": "expat_2.6.1",
+ "documents": [
+  {
+   "text": "<a/>",
+   "error": null
+  },
+  {
+   "text": "<a></a >",
+   "error": null
+  },
+  {
+   "text": "<?xml version='1.0' encoding='UTF-8'?>\n<!-- c -->\n<a b=\"x\" c='y'>t<b/>u</a>",
+   "error": null
+  },
+  {
+   "text": "<?xml version='1.0' ?><a/>",
+   "error": null
+  },
+  {
+   "text": "<?xml version = '1.0'?><a/>",
+   "error": null
+  },
+  {
+   "text": "<?xml version='2.0'?><a/>",
+   "error": null
+  },
+  {
+   "text": "<?xml version='1.0' encoding='latin-1' standalone='yes'?><a/>",
+   "error": null
+  },
+  {
+   "text": "﻿<a/>",
+   "error": null
+  },
+  {
+   "text": "<a/><?pi?>",
+   "error": null
+  },
+  {
+   "text": "<a/> <!-- c -->",
+   "error": null
+  },
+  {
+   "text": "<a/>\n\n\n",
+   "error": null
+  },
+  {
+   "text": "<a>&lt;&gt;&amp;&apos;&quot;&#65;&#x42;</a>",
+   "error": null
+  },
+  {
+   "text": "<a><![CDATA[x<y]]></a>",
+   "error": null
+  },
+  {
+   "text": "<a><?x?><?xml-foo bar?></a>",
+   "error": null
+  },
+  {
+   "text": "<é/>",
+   "error": null
+  },
+  {
+   "text": "<a·/>",
+   "error": null
+  },
+  {
+   "text": "<a xml:lang='en'/>",
+   "error": null
+  },
+  {
+   "text": "<a xmlns:xml='http://www.w3.org/XML/1998/namespace'/>",
+   "error": null
+  },
+  {
+   "text": "<a xmlns=''/>",
+   "error": null
+  },
+  {
+   "text": "<!DOCTYPE a [<!ENTITY e 'x'>]><a>&e;</a>",
+   "error": null
+  },
+  {
+   "text": "<a b='x'\n/>",
+   "error": null
+  },
+  {
+   "text": "<Sysmon schemaversion='4.90'>\n  <EventFiltering>\n    <RuleGroup name='' groupRelation='or'>\n      <ProcessCreate onmatch='exclude'/>\n    </RuleGroup>\n  </EventFiltering>\n</Sysmon>",
+   "error": null
+  },
+  {
+   "text": "",
+   "error": "no element found: line 1, column 0"
+  },
+  {
+   "text": "   ",
+   "error": "no element found: line 1, column 3"
+  },
+  {
+   "text": "\n\n",
+   "error": "no element found: line 3, column 0"
+  },
+  {
+   "text": "abc",
+   "error": "syntax error: line 1, column 0"
+  },
+  {
+   "text": "\n  x",
+   "error": "syntax error: line 2, column 2"
+  },
+  {
+   "text": "é",
+   "error": "syntax error: line 1, column 0"
+  },
+  {
+   "text": "<!-- only -->",
+   "error": "no element found: line 1, column 13"
+  },
+  {
+   "text": "<?pi only?>",
+   "error": "no element found: line 1, column 11"
+  },
+  {
+   "text": "<a>",
+   "error": "no element found: line 1, column 3"
+  },
+  {
+   "text": "<a>text",
+   "error": "no element found: line 1, column 7"
+  },
+  {
+   "text": "<a>]]",
+   "error": "no element found: line 1, column 5"
+  },
+  {
+   "text": "<a>]",
+   "error": "no element found: line 1, column 4"
+  },
+  {
+   "text": "<?xml version='1.0'?>",
+   "error": "no element found: line 1, column 21"
+  },
+  {
+   "text": "<?xml version='1.0'?>x",
+   "error": "syntax error: line 1, column 21"
+  },
+  {
+   "text": " <?xml version='1.0'?><a/>",
+   "error": "XML or text declaration not at start of entity: line 1, column 1"
+  },
+  {
+   "text": "<!DOCTYPE a><!DOCTYPE a><a/>",
+   "error": "syntax error: line 1, column 12"
+  },
+  {
+   "text": "<a></b>",
+   "error": "mismatched tag: line 1, column 5"
+  },
+  {
+   "text": "<a>\n  <b>\n</a>",
+   "error": "mismatched tag: line 3, column 2"
+  },
+  {
+   "text": "<a>\r\n</b>",
+   "error": "mismatched tag: line 2, column 2"
+  },
+  {
+   "text": "<a>\r</b>",
+   "error": "mismatched tag: line 2, column 2"
+  },
+  {
+   "text": "<a><b></a></b>",
+   "error": "mismatched tag: line 1, column 8"
+  },
+  {
+   "text": "<a><b><c></b></c></a>",
+   "error": "mismatched tag: line 1, column 11"
+  },
+  {
+   "text": "<a>é<b></c></a>",
+   "error": "mismatched tag: line 1, column 9"
+  },
+  {
+   "text": "<a>éé</c>",
+   "error": "mismatched tag: line 1, column 7"
+  },
+  {
+   "text": "<a>𝔸</b>",
+   "error": "mismatched tag: line 1, column 6"
+  },
+  {
+   "text": "﻿<a></b>",
+   "error": "mismatched tag: line 1, column 6"
+  },
+  {
+   "text": "<?xml version='1.0' encoding='utf-8'?>\n<Sysmon><EventFiltering></Sysmon>",
+   "error": "mismatched tag: line 2, column 26"
+  },
+  {
+   "text": "< a/>",
+   "error": "not well-formed (invalid token): line 1, column 1"
+  },
+  {
+   "text": "<1a/>",
+   "error": "not well-formed (invalid token): line 1, column 1"
+  },
+  {
+   "text": "</a>",
+   "error": "not well-formed (invalid token): line 1, column 1"
+  },
+  {
+   "text": "<a></ a>",
+   "error": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "text": "<a></a x>",
+   "error": "not well-formed (invalid token): line 1, column 7"
+  },
+  {
+   "text": "<̀a/>",
+   "error": "not well-formed (invalid token): line 1, column 1"
+  },
+  {
+   "text": "<a\u0001/>",
+   "error": "not well-formed (invalid token): line 1, column 2"
+  },
+  {
+   "text": "<a\r\n<b/>",
+   "error": "not well-formed (invalid token): line 2, column 0"
+  },
+  {
+   "text": "<a b=c/>",
+   "error": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "text": "<a b='<'/>",
+   "error": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "text": "<a b='x' c/>",
+   "error": "not well-formed (invalid token): line 1, column 10"
+  },
+  {
+   "text": "<a b='x'c='y'/>",
+   "error": "not well-formed (invalid token): line 1, column 8"
+  },
+  {
+   "text": "<a\n  b='1'\n  c/>",
+   "error": "not well-formed (invalid token): line 3, column 3"
+  },
+  {
+   "text": "<a b='1' b='2'/>",
+   "error": "duplicate attribute: line 1, column 9"
+  },
+  {
+   "text": "<a b=\"x\" b=\"y\"/>",
+   "error": "duplicate attribute: line 1, column 9"
+  },
+  {
+   "text": "<a>\n\n   <b c='1' c='2'/></a>",
+   "error": "duplicate attribute: line 3, column 12"
+  },
+  {
+   "text": "<a b='1' b='2' c/>",
+   "error": "not well-formed (invalid token): line 1, column 16"
+  },
+  {
+   "text": "<a b='\u0001'/>",
+   "error": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "text": "<a b='&x;'/>",
+   "error": "undefined entity: line 1, column 0"
+  },
+  {
+   "text": "<a b='&#0;'/>",
+   "error": "reference to invalid character number: line 1, column 6"
+  },
+  {
+   "text": "<a b='&#12'/>",
+   "error": "not well-formed (invalid token): line 1, column 10"
+  },
+  {
+   "text": "<a b='&am'/>",
+   "error": "not well-formed (invalid token): line 1, column 9"
+  },
+  {
+   "text": "<a b='&#x110000;'/>",
+   "error": "reference to invalid character number: line 1, column 6"
+  },
+  {
+   "text": "<a b='&#0;' b='1'/>",
+   "error": "reference to invalid character number: line 1, column 6"
+  },
+  {
+   "text": "<a>&</a>",
+   "error": "not well-formed (invalid token): line 1, column 4"
+  },
+  {
+   "text": "<a>&foo;</a>",
+   "error": "undefined entity: line 1, column 3"
+  },
+  {
+   "text": "<a>&amp</a>",
+   "error": "not well-formed (invalid token): line 1, column 7"
+  },
+  {
+   "text": "<a>&#0;</a>",
+   "error": "reference to invalid character number: line 1, column 3"
+  },
+  {
+   "text": "<a>&#x110000;</a>",
+   "error": "reference to invalid character number: line 1, column 3"
+  },
+  {
+   "text": "<a>&#;</a>",
+   "error": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "text": "<a>&#x;</a>",
+   "error": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "text": "<a>&#1a;</a>",
+   "error": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "text": "<a>\u0001</a>",
+   "error": "not well-formed (invalid token): line 1, column 3"
+  },
+  {
+   "text": "<a>￿</a>",
+   "error": "not well-formed (invalid token): line 1, column 3"
+  },
+  {
+   "text": "<a>]]></a>",
+   "error": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "text": "<a>é<</a>",
+   "error": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "text": "<!DOCTYPE a [<!ENTITY e 'x'>]><a>&f;</a>",
+   "error": "undefined entity: line 1, column 33"
+  },
+  {
+   "text": "<a><!-- -- --></a>",
+   "error": "not well-formed (invalid token): line 1, column 10"
+  },
+  {
+   "text": "<a><!--x--y--></a>",
+   "error": "not well-formed (invalid token): line 1, column 10"
+  },
+  {
+   "text": "<a><!---></a>",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a><!x></a>",
+   "error": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "text": "<a><!-x></a>",
+   "error": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "text": "<a><!DOCTYPE b></a>",
+   "error": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "text": "<a><![CDATA[x</a>",
+   "error": "unclosed CDATA section: line 1, column 17"
+  },
+  {
+   "text": "<a><![CDATA[\u0001]]></a>",
+   "error": "not well-formed (invalid token): line 1, column 12"
+  },
+  {
+   "text": "<a><![CDAT[x]]></a>",
+   "error": "not well-formed (invalid token): line 1, column 10"
+  },
+  {
+   "text": "<a><?></a>",
+   "error": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "text": "<a><? x?></a>",
+   "error": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "text": "<a><?XML?></a>",
+   "error": "not well-formed (invalid token): line 1, column 8"
+  },
+  {
+   "text": "<a><?xml x?></a>",
+   "error": "XML or text declaration not at start of entity: line 1, column 3"
+  },
+  {
+   "text": "<a",
+   "error": "unclosed token: line 1, column 0"
+  },
+  {
+   "text": "<a b",
+   "error": "unclosed token: line 1, column 0"
+  },
+  {
+   "text": "<a b=",
+   "error": "unclosed token: line 1, column 0"
+  },
+  {
+   "text": "<a b='x",
+   "error": "unclosed token: line 1, column 0"
+  },
+  {
+   "text": "<a>text<",
+   "error": "unclosed token: line 1, column 7"
+  },
+  {
+   "text": "<a>text</",
+   "error": "unclosed token: line 1, column 7"
+  },
+  {
+   "text": "<a>text</a",
+   "error": "unclosed token: line 1, column 7"
+  },
+  {
+   "text": "<a>&#12",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a>&#x",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a>&am",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a>&",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a><!",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a><!-",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a><![CDA",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a><?pi",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a><?",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a></",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a><!-- x",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a><?pi x",
+   "error": "unclosed token: line 1, column 3"
+  },
+  {
+   "text": "<a/><!-- x",
+   "error": "unclosed token: line 1, column 4"
+  },
+  {
+   "text": "<?xml version='1.0'",
+   "error": "unclosed token: line 1, column 0"
+  },
+  {
+   "text": "<a/><b/>",
+   "error": "junk after document element: line 1, column 4"
+  },
+  {
+   "text": "<a/>x",
+   "error": "junk after document element: line 1, column 4"
+  },
+  {
+   "text": "<a/>\n x",
+   "error": "junk after document element: line 2, column 1"
+  },
+  {
+   "text": "<a></a><a>",
+   "error": "junk after document element: line 1, column 7"
+  },
+  {
+   "text": "<a/>\n\n  </b>",
+   "error": "not well-formed (invalid token): line 3, column 3"
+  },
+  {
+   "text": "<a/><!x>",
+   "error": "not well-formed (invalid token): line 1, column 7"
+  },
+  {
+   "text": "<a/><!x y>",
+   "error": "junk after document element: line 1, column 4"
+  },
+  {
+   "text": "<?xml?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 5"
+  },
+  {
+   "text": "<?xml foo='1'?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 6"
+  },
+  {
+   "text": "<?xml encoding='x'?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 6"
+  },
+  {
+   "text": "<?xml version='1.0' encoding='1x'?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 30"
+  },
+  {
+   "text": "<?xml version='1.0'encoding='u'?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 19"
+  },
+  {
+   "text": "<?xml version=1.0?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 14"
+  },
+  {
+   "text": "<?xml version='1.0' version='1.0'?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 20"
+  },
+  {
+   "text": "<?xml version='1.0' standalone='yes' encoding='u'?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 37"
+  },
+  {
+   "text": "<?xml version='1.0' standalone='maybe'?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 32"
+  },
+  {
+   "text": "<?xml version='1 0'?><a/>",
+   "error": "XML declaration not well-formed: line 1, column 16"
+  },
+  {
+   "text": "<x:a/>",
+   "error": "unbound prefix: line 1, column 0"
+  },
+  {
+   "text": "<a x:y='1'/>",
+   "error": "unbound prefix: line 1, column 0"
+  },
+  {
+   "text": "<a xmlns:p='u'><p:b/><q:c/></a>",
+   "error": "unbound prefix: line 1, column 21"
+  },
+  {
+   "text": "<a xmlns:p='u' p:x='1' p:x='2'/>",
+   "error": "duplicate attribute: line 1, column 23"
+  },
+  {
+   "text": "<a xmlns:p='u' xmlns:q='u' p:x='1' q:x='2'/>",
+   "error": "duplicate attribute: line 1, column 0"
+  },
+  {
+   "text": "<a xmlns:xml='u'/>",
+   "error": "reserved prefix (xml) must not be undeclared or bound to another namespace name: line 1, column 0"
+  },
+  {
+   "text": "<a xmlns:p=''/>",
+   "error": "must not undeclare prefix: line 1, column 0"
+  },
+  {
+   "text": "<a xmlns:xmlns='u'/>",
+   "error": "reserved prefix (xmlns) must not be declared or undeclared: line 1, column 0"
+  },
+  {
+   "text": "<a xmlns:p='http://www.w3.org/2000/xmlns/'/>",
+   "error": "prefix must not be bound to one of the reserved namespace names: line 1, column 0"
+  },
+  {
+   "text": "<a xmlns='http://www.w3.org/2000/xmlns/'/>",
+   "error": "prefix must not be bound to one of the reserved namespace names: line 1, column 0"
+  },
+  {
+   "text": "<a xmlns='http://www.w3.org/XML/1998/namespace'/>",
+   "error": "prefix must not be bound to one of the reserved namespace names: line 1, column 0"
+  },
+  {
+   "text": "<a xmlns:p='http://www.w3.org/XML/1998/namespace'/>",
+   "error": "prefix must not be bound to one of the reserved namespace names: line 1, column 0"
+  },
+  {
+   "text": "<a xmlns:p='u'><b xmlns:p=''/></a>",
+   "error": "must not undeclare prefix: line 1, column 15"
+  }
+ ]
+}

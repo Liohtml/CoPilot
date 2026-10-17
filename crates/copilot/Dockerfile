@@ -23,6 +23,8 @@ COPY crates ./crates
 # copilot-grafana-dashboards' build.rs embeds the templates from the Python
 # backend's tree (one source until Python is retired).
 COPY backend/app/connectors/grafana/dashboards ./backend/app/connectors/grafana/dashboards
+# copilot-incidents compiles in the default case report templates.
+COPY backend/app/incidents/templates ./backend/app/incidents/templates
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
     set -eux; \

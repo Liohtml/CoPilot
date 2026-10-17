@@ -22,7 +22,10 @@ services:
         volumes:
             # The Velociraptor connector's api.config.yaml: its row holds a path in
             # the backend's data directory (where the connector's YAML upload puts
-            # it), read here at that same path.
+            # it), read here at that same path. Read-only, so the YAML upload is
+            # handed to copilot-backend (which writes the directory as root);
+            # drop ":ro" and give uid 10001 the directory to have this service
+            # write it.
             - ./data/data:/opt/copilot/backend/data:ro
         environment:
             - COPILOT_LEGACY_URL=http://copilot-backend:5000

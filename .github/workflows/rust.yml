@@ -15,6 +15,8 @@ on:
       - "backend/alembic/**"
       # Embedded by copilot-grafana-dashboards (its vectors pin every template).
       - "backend/app/connectors/grafana/dashboards/**"
+      # Embedded by copilot-incidents (a test pins the list to the directory).
+      - "backend/app/incidents/templates/**"
       - "scripts/check-alembic-head.py"
       - ".github/workflows/rust.yml"
   push:
@@ -25,6 +27,7 @@ on:
       - "Cargo.lock"
       - "backend/alembic/**"
       - "backend/app/connectors/grafana/dashboards/**"
+      - "backend/app/incidents/templates/**"
       - ".github/workflows/rust.yml"
 
 permissions:

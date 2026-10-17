@@ -637,6 +637,7 @@ dependencies = [
  "copilot-core",
  "copilot-db",
  "copilot-gateway",
+ "copilot-jinja",
  "copilot-web",
  "http",
  "serde",
@@ -644,6 +645,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tracing",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -1003,6 +1005,7 @@ dependencies = [
  "copilot-web",
  "http",
  "pretty_assertions",
+ "serde",
  "serde_json",
  "sqlx",
  "tracing",
@@ -1226,6 +1229,7 @@ dependencies = [
  "copilot-db",
  "copilot-gateway",
  "copilot-ingest",
+ "copilot-integrations",
  "copilot-objectstore",
  "copilot-upstream",
  "copilot-velociraptor",

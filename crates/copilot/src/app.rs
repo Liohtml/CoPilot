@@ -109,9 +109,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/auth/sso",
     "/api/auth/passkey",
     "/api/auth/security",
-    // /api/incidents/db_operations but POST /case-report-template/default-template
-    // (the templates are files on the Python host), which falls through to the
-    // legacy backend; POST /case/notification is copilot-shuffle's. The MinIO routes
+    // /api/incidents/db_operations (POST /case-report-template/default-template
+    // uploads the templates compiled in from the Python tree); POST
+    // /case/notification is copilot-shuffle's. The MinIO routes
     // (case files, report templates, DELETE /case/{id}) are copilot-objectstore's,
     // the Wazuh-indexer reads (/available-source, /available-indices, /mappings)
     // copilot-ingest's.
@@ -142,12 +142,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customers/{customer_code}/notification_routes",
     "/api/customers/{customer_code}/notification_dispatch_log",
     "/api/customers/{customer_code}/shuffle_integrations",
-    // The connector list, rows, updates and verification; a connector whose
-    // tool has no Rust verifier is updated and verified by Python, and the YAML
-    // upload (a file on the Python host) stays there.
-    "GET /api/connectors",
-    "PUT /api/connectors",
-    "POST /api/connectors/verify",
+    // The connector list, rows, updates, verification and the YAML upload; a
+    // connector whose tool has no Rust verifier is updated and verified by
+    // Python.
+    "/api/connectors",
     // The Wazuh indexer: every route of its three routers.
     "/api/alerts",
     "/api/wazuh_indexer",
@@ -277,9 +275,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // its Graylog webhook.
     "/api/active_response",
     "POST /api/graylog/invoke",
-    // Sysmon configs but `POST /upload` (ElementTree's XML validation).
-    "GET /api/sysmon_config",
-    "POST /api/sysmon_config/deploy",
+    // Sysmon configs: the reads, the deploy and the upload (expat-exact
+    // validation on copilot-integrations' parser).
+    "/api/sysmon_config",
     // CoPilot Actions: the inventory and the invoke.
     "/api/copilot_action",
     // The Shuffle connector (copilot-shuffle), and its case notification.
@@ -464,6 +462,8 @@ pub struct App {
     /// The Wazuh manager's rule switches, the exclusion and the Atomic Red
     /// Team listings (`copilot-wazuh-rules`) with their caches.
     pub wazuh_rules: copilot_wazuh_rules::RulesState,
+    /// The Python backend's data directory (`COPILOT_BACKEND_DATA_DIR`).
+    pub backend_data_dir: std::path::PathBuf,
 }
 
 impl App {
@@ -715,6 +715,7 @@ impl App {
             license,
             sidebar,
             wazuh_rules,
+            backend_data_dir: cfg.backend_data_dir.clone(),
         })
     }
 
@@ -855,7 +856,12 @@ impl App {
                     ctx: self.ctx.clone(),
                     verifiers: self.verifiers.clone(),
                     legacy: self.legacy.clone(),
-                }),
+                    data_dir: self.backend_data_dir.clone(),
+                })
+                .layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
             )
             // Only the Graylog connector's routes; `POST /invoke` (active
             // response) falls through to the legacy backend.

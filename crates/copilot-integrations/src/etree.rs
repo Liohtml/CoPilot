@@ -10,8 +10,12 @@
 //! expanded, CDATA read as text. Comments and processing instructions are
 //! dropped (the default `TreeBuilder`), and text around them joins. Names
 //! are namespace-resolved to `{uri}local` (expat's namespace mode). A
-//! document expat would reject is a [`ParseError`]; only the decision
-//! matters to the caller (its message is replaced by a fixed one).
+//! document expat would reject is a [`ParseError`] with expat's text and
+//! position: the tag tokenized first, then `storeAtts`' checks (a duplicate
+//! at its name, a bad character reference at its `&`, the rest at the tag),
+//! an unclosed token at its start, an invalid one at the character expat
+//! stops at, columns counted in characters (`expat_vectors.json`,
+//! `scripts/gen-expat-vectors.py`, pins them against expat 2.6).
 //!
 //! **Serialising** is `_serialize_xml`: attributes in document order,
 //! `_escape_attrib` / `_escape_cdata`, ` />` for an element with neither
@@ -56,7 +60,8 @@ impl Element {
     }
 }
 
-/// `xml.etree.ElementTree.ParseError` (its text approximates expat's).
+/// `xml.etree.ElementTree.ParseError`: `str(e)`, expat's message and where
+/// it stopped (`"mismatched tag: line 1, column 5"`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError(pub String);
 
@@ -102,8 +107,19 @@ struct Parser {
     scopes: Vec<HashMap<String, String>>,
 }
 
-fn err<T>(msg: &str) -> Result<T, ParseError> {
-    Err(ParseError(msg.to_string()))
+const INVALID: &str = "not well-formed (invalid token)";
+const UNCLOSED: &str = "unclosed token";
+const XML_DECL: &str = "XML declaration not well-formed";
+const RESERVED_URI: &str = "prefix must not be bound to one of the reserved namespace names";
+
+/// A start tag's attribute as the tokenizer saw it.
+struct RawAttribute {
+    name: String,
+    /// Where its name starts (a duplicate is reported there).
+    name_at: usize,
+    /// The value between its quotes (`chars[start..end]`).
+    start: usize,
+    end: usize,
 }
 
 impl Parser {
@@ -129,6 +145,22 @@ impl Parser {
             entities: HashMap::new(),
             scopes: vec![root_scope],
         }
+    }
+
+    /// expat's error at character `at`: `"{message}: line {l}, column {c}"`
+    /// (columns count characters; a line end resets them).
+    fn fail<T>(&self, msg: &str, at: usize) -> Result<T, ParseError> {
+        let mut line = 1;
+        let mut column = 0;
+        for c in self.chars.iter().take(at) {
+            if *c == '\n' {
+                line += 1;
+                column = 0;
+            } else {
+                column += 1;
+            }
+        }
+        Err(ParseError(format!("{msg}: line {line}, column {column}")))
     }
 
     fn peek(&self) -> Option<char> {
@@ -158,11 +190,13 @@ impl Parser {
         self.pos > start
     }
 
-    fn name(&mut self) -> Result<String, ParseError> {
+    /// A name; the end of the input is the token starting at `token` left
+    /// unclosed.
+    fn name(&mut self, token: usize) -> Result<String, ParseError> {
         match self.peek() {
             Some(c) if is_name_start(c) => {}
-            Some(_) => return err("not well-formed (invalid token)"),
-            None => return err("unclosed token"),
+            Some(_) => return self.fail(INVALID, self.pos),
+            None => return self.fail(UNCLOSED, token),
         }
         let start = self.pos;
         while self.peek().is_some_and(is_name_char) {
@@ -171,16 +205,30 @@ impl Parser {
         Ok(self.chars[start..self.pos].iter().collect())
     }
 
-    fn check_char(c: char) -> Result<(), ParseError> {
+    fn check_char(&self, c: char, at: usize) -> Result<(), ParseError> {
         if is_xml_char(c) {
             Ok(())
         } else {
-            err("not well-formed (invalid token)")
+            self.fail(INVALID, at)
         }
     }
 
-    /// `&…;` after the `&`: the replacement text.
-    fn reference(&mut self) -> Result<String, ParseError> {
+    /// The next character must be `;` (or the token is unclosed).
+    fn semicolon(&mut self, token: usize) -> Result<(), ParseError> {
+        match self.peek() {
+            Some(';') => {
+                self.pos += 1;
+                Ok(())
+            }
+            Some(_) => self.fail(INVALID, self.pos),
+            None => self.fail(UNCLOSED, token),
+        }
+    }
+
+    /// `&…;` after the `&` (at `amp`), as the tokenizer reads it: the
+    /// reference's text, its syntax checked (`token`: what an end of input
+    /// leaves unclosed).
+    fn reference_syntax(&mut self, token: usize) -> Result<(), ParseError> {
         if self.eat("#") {
             let hex = self.eat("x");
             let start = self.pos;
@@ -193,49 +241,68 @@ impl Parser {
             }) {
                 self.pos += 1;
             }
-            let digits: String = self.chars[start..self.pos].iter().collect();
-            if digits.is_empty() || !self.eat(";") {
-                return err("not well-formed (invalid token)");
+            if self.pos == start {
+                return match self.peek() {
+                    Some(_) => self.fail(INVALID, self.pos),
+                    None => self.fail(UNCLOSED, token),
+                };
             }
-            let n = u32::from_str_radix(&digits, if hex { 16 } else { 10 }).ok();
+            return self.semicolon(token);
+        }
+        self.name(token)?;
+        self.semicolon(token)
+    }
+
+    /// The replacement text of the reference `chars[amp..end]` (syntax
+    /// already checked): a bad character number is reported at `amp`, an
+    /// undefined entity at `undefined_at`.
+    fn reference_value(
+        &self,
+        amp: usize,
+        end: usize,
+        undefined_at: usize,
+    ) -> Result<String, ParseError> {
+        let body: String = self.chars[amp + 1..end - 1].iter().collect();
+        if let Some(number) = body.strip_prefix('#') {
+            let (digits, radix) = match number.strip_prefix('x') {
+                Some(h) => (h, 16),
+                None => (number, 10),
+            };
+            let n = u32::from_str_radix(digits, radix).ok();
             return match n.and_then(char::from_u32).filter(|c| is_xml_char(*c)) {
                 Some(c) => Ok(c.to_string()),
-                None => err("reference to invalid character number"),
+                None => self.fail("reference to invalid character number", amp),
             };
         }
-        let name = self.name()?;
-        if !self.eat(";") {
-            return err("not well-formed (invalid token)");
-        }
-        match name.as_str() {
+        match body.as_str() {
             "lt" => Ok("<".into()),
             "gt" => Ok(">".into()),
             "amp" => Ok("&".into()),
             "apos" => Ok("'".into()),
             "quot" => Ok("\"".into()),
-            other => self.expand_entity(other, 0),
+            other => self.expand_entity(other, 0, undefined_at),
         }
     }
 
     /// A general entity of the internal subset, its own references
     /// expanded (markup inside one is beyond this subset: a parse error).
-    fn expand_entity(&self, name: &str, depth: usize) -> Result<String, ParseError> {
+    fn expand_entity(&self, name: &str, depth: usize, at: usize) -> Result<String, ParseError> {
         if depth > 32 {
-            return err("recursive entity reference");
+            return self.fail("recursive entity reference", at);
         }
         let Some(value) = self.entities.get(name) else {
-            return err("undefined entity");
+            return self.fail("undefined entity", at);
         };
         if value.contains('<') {
-            return err("not well-formed (invalid token)");
+            return self.fail(INVALID, at);
         }
         let mut out = String::new();
         let mut rest = value.as_str();
-        while let Some(at) = rest.find('&') {
-            out.push_str(&rest[..at]);
-            let after = &rest[at + 1..];
+        while let Some(i) = rest.find('&') {
+            out.push_str(&rest[..i]);
+            let after = &rest[i + 1..];
             let Some(end) = after.find(';') else {
-                return err("not well-formed (invalid token)");
+                return self.fail(INVALID, at);
             };
             let inner = &after[..end];
             out.push_str(&match inner {
@@ -244,7 +311,7 @@ impl Parser {
                 "amp" => "&".to_string(),
                 "apos" => "'".to_string(),
                 "quot" => "\"".to_string(),
-                other => self.expand_entity(other, depth + 1)?,
+                other => self.expand_entity(other, depth + 1, at)?,
             });
             rest = &after[end + 1..];
         }
@@ -252,39 +319,47 @@ impl Parser {
         Ok(out)
     }
 
-    fn comment(&mut self) -> Result<(), ParseError> {
-        // after "<!--"
+    /// After `<!--` (the comment starts at `start`).
+    fn comment(&mut self, start: usize) -> Result<(), ParseError> {
         loop {
             if self.eat("-->") {
                 return Ok(());
             }
             if self.starts_with("--") {
-                return err("not well-formed (invalid token)");
+                let after = self.pos + 2;
+                return if after < self.chars.len() {
+                    self.fail(INVALID, after)
+                } else {
+                    self.fail(UNCLOSED, start)
+                };
             }
             match self.peek() {
                 Some(c) => {
-                    Self::check_char(c)?;
+                    self.check_char(c, self.pos)?;
                     self.pos += 1;
                 }
-                None => return err("unclosed token"),
+                None => return self.fail(UNCLOSED, start),
             }
         }
     }
 
-    fn pi(&mut self) -> Result<(), ParseError> {
-        // after "<?"
-        let target = self.name()?;
+    /// After `<?` (the instruction starts at `start`).
+    fn pi(&mut self, start: usize) -> Result<(), ParseError> {
+        let target = self.name(start)?;
         if target == "xml" {
-            return err("XML or text declaration not at start of entity");
+            return self.fail("XML or text declaration not at start of entity", start);
         }
-        if target.contains(':') {
-            return err("not well-formed (invalid token)");
+        if target.eq_ignore_ascii_case("xml") || target.contains(':') {
+            return self.fail(INVALID, self.pos);
         }
         if self.eat("?>") {
             return Ok(());
         }
+        if self.peek().is_none() {
+            return self.fail(UNCLOSED, start);
+        }
         if !self.skip_space() {
-            return err("not well-formed (invalid token)");
+            return self.fail(INVALID, self.pos);
         }
         loop {
             if self.eat("?>") {
@@ -292,18 +367,19 @@ impl Parser {
             }
             match self.peek() {
                 Some(c) => {
-                    Self::check_char(c)?;
+                    self.check_char(c, self.pos)?;
                     self.pos += 1;
                 }
-                None => return err("unclosed token"),
+                None => return self.fail(UNCLOSED, start),
             }
         }
     }
 
-    fn quoted(&mut self) -> Result<String, ParseError> {
+    fn quoted(&mut self, token: usize) -> Result<String, ParseError> {
         let q = match self.peek() {
             Some(q @ ('"' | '\'')) => q,
-            _ => return err("not well-formed (invalid token)"),
+            Some(_) => return self.fail(INVALID, self.pos),
+            None => return self.fail(UNCLOSED, token),
         };
         self.pos += 1;
         let start = self.pos;
@@ -311,84 +387,106 @@ impl Parser {
             self.pos += 1;
         }
         if self.peek().is_none() {
-            return err("unclosed token");
+            return self.fail(UNCLOSED, token);
         }
         let v: String = self.chars[start..self.pos].iter().collect();
         self.pos += 1;
         Ok(v)
     }
 
-    fn xml_decl(&mut self) -> Result<(), ParseError> {
-        // after "<?xml" followed by a space
-        let bad = || err("XML declaration not well-formed");
-        let mut seen = Vec::new();
+    /// After `<?xml` (followed by a space or `?`); the declaration starts
+    /// at `start`. A malformed one is reported where expat stops: the
+    /// pseudo-attribute that is out of place, the character a value may
+    /// not hold.
+    fn xml_decl(&mut self, start: usize) -> Result<(), ParseError> {
+        let mut seen: Vec<&str> = Vec::new();
         loop {
             let spaced = self.skip_space();
+            let end_at = self.pos;
             if self.eat("?>") {
-                break;
+                if seen.first() != Some(&"version") {
+                    return self.fail(XML_DECL, end_at);
+                }
+                return Ok(());
+            }
+            if self.peek().is_none() {
+                return self.fail(UNCLOSED, start);
             }
             if !spaced {
-                return bad();
+                return self.fail(XML_DECL, self.pos);
             }
-            let name = match self.name() {
-                Ok(n) => n,
-                Err(_) => return bad(),
-            };
+            let name_at = self.pos;
+            if !self.peek().is_some_and(is_name_start) {
+                return self.fail(XML_DECL, self.pos);
+            }
+            let name = self.name(start)?;
             self.skip_space();
-            if !self.eat("=") {
-                return bad();
+            match self.peek() {
+                Some('=') => self.pos += 1,
+                Some(_) => return self.fail(XML_DECL, self.pos),
+                None => return self.fail(UNCLOSED, start),
             }
             self.skip_space();
-            let value = match self.quoted() {
-                Ok(v) => v,
-                Err(_) => return bad(),
-            };
-            let ok = match name.as_str() {
-                "version" => {
-                    seen.is_empty()
-                        && !value.is_empty()
-                        && value
-                            .chars()
-                            .all(|c| c.is_ascii_alphanumeric() || "_.:-".contains(c))
-                }
-                "encoding" => {
-                    seen == ["version"]
-                        && value
-                            .chars()
-                            .next()
-                            .is_some_and(|c| c.is_ascii_alphabetic())
-                        && value
-                            .chars()
-                            .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
-                }
-                "standalone" => {
-                    seen.first().is_some_and(|f| *f == "version")
-                        && !seen.contains(&"standalone")
-                        && (value == "yes" || value == "no")
-                }
-                _ => false,
-            };
-            if !ok {
-                return bad();
+            match self.peek() {
+                Some('"' | '\'') => {}
+                Some(_) => return self.fail(XML_DECL, self.pos),
+                None => return self.fail(UNCLOSED, start),
             }
-            seen.push(match name.as_str() {
-                "version" => "version",
-                "encoding" => "encoding",
-                _ => "standalone",
-            });
+            let value_at = self.pos + 1;
+            let value = self.quoted(start)?;
+            let first_bad = |ok: &dyn Fn(usize, char) -> bool| {
+                value
+                    .chars()
+                    .enumerate()
+                    .find(|(i, c)| !ok(*i, *c))
+                    .map(|(i, _)| value_at + i)
+            };
+            match name.as_str() {
+                "version" if seen.is_empty() => {
+                    let bad = first_bad(&|_, c| c.is_ascii_alphanumeric() || "_.:-".contains(c));
+                    if let Some(at) = bad {
+                        return self.fail(XML_DECL, at);
+                    }
+                    if value.is_empty() {
+                        return self.fail(XML_DECL, value_at);
+                    }
+                    seen.push("version");
+                }
+                "encoding" if seen == ["version"] => {
+                    let bad = first_bad(&|i, c| {
+                        if i == 0 {
+                            c.is_ascii_alphabetic()
+                        } else {
+                            c.is_ascii_alphanumeric() || "._-".contains(c)
+                        }
+                    });
+                    if let Some(at) = bad {
+                        return self.fail(XML_DECL, at);
+                    }
+                    if value.is_empty() {
+                        return self.fail(XML_DECL, value_at);
+                    }
+                    seen.push("encoding");
+                }
+                "standalone"
+                    if seen.first() == Some(&"version") && !seen.contains(&"standalone") =>
+                {
+                    if value != "yes" && value != "no" {
+                        return self.fail(XML_DECL, value_at);
+                    }
+                    seen.push("standalone");
+                }
+                _ => return self.fail(XML_DECL, name_at),
+            }
         }
-        if seen.first() != Some(&"version") {
-            return bad();
-        }
-        Ok(())
     }
 
-    fn doctype(&mut self) -> Result<(), ParseError> {
-        // after "<!DOCTYPE"
+    /// After `<!DOCTYPE` (the declaration starts at `start`).
+    fn doctype(&mut self, start: usize) -> Result<(), ParseError> {
         if !self.skip_space() {
-            return err("syntax error");
+            return self.fail("syntax error", self.pos);
         }
-        self.name()?;
+        self.name(start)?;
         loop {
             self.skip_space();
             match self.peek() {
@@ -398,65 +496,66 @@ impl Parser {
                 }
                 Some('[') => {
                     self.pos += 1;
-                    self.internal_subset()?;
+                    self.internal_subset(start)?;
                 }
                 Some('"' | '\'') => {
-                    self.quoted()?;
+                    self.quoted(start)?;
                 }
                 Some(c) if is_name_start(c) => {
-                    self.name()?;
+                    self.name(start)?;
                 }
-                Some(_) => return err("syntax error"),
-                None => return err("unclosed token"),
+                Some(_) => return self.fail("syntax error", self.pos),
+                None => return self.fail(UNCLOSED, start),
             }
         }
     }
 
-    fn internal_subset(&mut self) -> Result<(), ParseError> {
+    fn internal_subset(&mut self, start: usize) -> Result<(), ParseError> {
         loop {
             self.skip_space();
+            let at = self.pos;
             if self.eat("]") {
                 return Ok(());
             }
             if self.eat("<!--") {
-                self.comment()?;
+                self.comment(at)?;
             } else if self.eat("<!ENTITY") {
                 if !self.skip_space() {
-                    return err("syntax error");
+                    return self.fail("syntax error", self.pos);
                 }
                 let parameter = self.eat("%");
                 if parameter {
                     self.skip_space();
                 }
-                let name = self.name()?;
+                let name = self.name(at)?;
                 self.skip_space();
                 if matches!(self.peek(), Some('"' | '\'')) {
-                    let raw = self.quoted()?;
+                    let raw = self.quoted(at)?;
                     if !parameter && !self.entities.contains_key(&name) {
-                        let value = self.expand_literal(&raw)?;
+                        let value = self.expand_literal(&raw, at)?;
                         self.entities.insert(name, value);
                     }
                 }
-                self.skip_to_decl_end()?;
+                self.skip_to_decl_end(at)?;
             } else if self.eat("<?") {
-                self.pi()?;
+                self.pi(at)?;
             } else if self.eat("<!") {
-                self.skip_to_decl_end()?;
+                self.skip_to_decl_end(at)?;
             } else if self.peek() == Some('%') {
                 self.pos += 1;
-                self.name()?;
+                self.name(at)?;
                 if !self.eat(";") {
-                    return err("syntax error");
+                    return self.fail("syntax error", self.pos);
                 }
             } else if self.peek().is_none() {
-                return err("unclosed token");
+                return self.fail(UNCLOSED, start);
             } else {
-                return err("syntax error");
+                return self.fail("syntax error", self.pos);
             }
         }
     }
 
-    fn skip_to_decl_end(&mut self) -> Result<(), ParseError> {
+    fn skip_to_decl_end(&mut self, token: usize) -> Result<(), ParseError> {
         loop {
             match self.peek() {
                 Some('>') => {
@@ -464,32 +563,34 @@ impl Parser {
                     return Ok(());
                 }
                 Some('"' | '\'') => {
-                    self.quoted()?;
+                    self.quoted(token)?;
                 }
                 Some(_) => self.pos += 1,
-                None => return err("unclosed token"),
+                None => return self.fail(UNCLOSED, token),
             }
         }
     }
 
     /// Character and predefined references in an entity's literal value.
-    fn expand_literal(&self, raw: &str) -> Result<String, ParseError> {
+    fn expand_literal(&self, raw: &str, at: usize) -> Result<String, ParseError> {
         let mut sub = Parser::new(raw);
         sub.entities = self.entities.clone();
         let mut out = String::new();
         while let Some(c) = sub.peek() {
+            let amp = sub.pos;
             sub.pos += 1;
             if c == '&' {
-                if sub.peek() == Some('#') {
-                    out.push_str(&sub.reference()?);
+                if sub.reference_syntax(amp).is_err() {
+                    return self.fail(INVALID, at);
+                }
+                if sub.chars.get(amp + 1) == Some(&'#') {
+                    match sub.reference_value(amp, sub.pos, amp) {
+                        Ok(v) => out.push_str(&v),
+                        Err(_) => return self.fail("reference to invalid character number", at),
+                    }
                 } else {
                     // a general entity reference stays as written
-                    let start = sub.pos - 1;
-                    sub.name()?;
-                    if !sub.eat(";") {
-                        return err("not well-formed (invalid token)");
-                    }
-                    out.extend(sub.chars[start..sub.pos].iter());
+                    out.extend(sub.chars[amp..sub.pos].iter());
                 }
             } else {
                 out.push(c);
@@ -498,42 +599,65 @@ impl Parser {
         Ok(out)
     }
 
-    /// An attribute value between its quotes, references expanded and
-    /// whitespace normalised.
-    fn attribute_value(&mut self) -> Result<String, ParseError> {
+    /// An attribute value, as the tokenizer reads it: its quotes, no `<`,
+    /// the characters and the references' syntax. Its text is expanded
+    /// later ([`Parser::attribute_text`]).
+    fn attribute_value(&mut self, tag: usize) -> Result<(usize, usize), ParseError> {
         let q = match self.peek() {
             Some(q @ ('"' | '\'')) => q,
-            _ => return err("not well-formed (invalid token)"),
+            Some(_) => return self.fail(INVALID, self.pos),
+            None => return self.fail(UNCLOSED, tag),
         };
         self.pos += 1;
-        let mut out = String::new();
+        let start = self.pos;
         loop {
             match self.peek() {
-                None => return err("unclosed token"),
+                None => return self.fail(UNCLOSED, tag),
                 Some(c) if c == q => {
+                    let end = self.pos;
                     self.pos += 1;
-                    return Ok(out);
+                    return Ok((start, end));
                 }
-                Some('<') => return err("not well-formed (invalid token)"),
+                Some('<') => return self.fail(INVALID, self.pos),
                 Some('&') => {
                     self.pos += 1;
-                    let replacement = self.reference()?;
-                    out.push_str(&replacement);
+                    self.reference_syntax(tag)?;
                 }
                 Some(c) => {
-                    Self::check_char(c)?;
+                    self.check_char(c, self.pos)?;
                     self.pos += 1;
-                    out.push(if is_space(c) { ' ' } else { c });
                 }
             }
         }
     }
 
-    fn resolve(&self, raw: &str, attribute: bool) -> Result<String, ParseError> {
+    /// `storeAtts`' normalisation of a value: references expanded (a bad
+    /// character number at its `&`, an undefined entity at the tag) and
+    /// whitespace made spaces.
+    fn attribute_text(&self, start: usize, end: usize, tag: usize) -> Result<String, ParseError> {
+        let mut out = String::new();
+        let mut i = start;
+        while i < end {
+            let c = self.chars[i];
+            if c == '&' {
+                let close = (i..end)
+                    .find(|j| self.chars[*j] == ';')
+                    .map_or(end, |j| j + 1);
+                out.push_str(&self.reference_value(i, close, tag)?);
+                i = close;
+            } else {
+                out.push(if is_space(c) { ' ' } else { c });
+                i += 1;
+            }
+        }
+        Ok(out)
+    }
+
+    fn resolve(&self, raw: &str, attribute: bool, tag: usize) -> Result<String, ParseError> {
         let (prefix, local) = match raw.split_once(':') {
             Some((p, l)) => {
                 if p.is_empty() || l.is_empty() || l.contains(':') {
-                    return err("not well-formed (invalid token)");
+                    return self.fail(INVALID, tag);
                 }
                 (p, l)
             }
@@ -551,14 +675,39 @@ impl Parser {
         match uri {
             Some(u) if !u.is_empty() => Ok(format!("{{{u}}}{local}")),
             Some(_) | None if prefix.is_empty() => Ok(local.to_string()),
-            _ => err("unbound prefix"),
+            _ => self.fail("unbound prefix", tag),
         }
     }
 
-    /// `<` already consumed, at the name.
-    fn start_tag(&mut self) -> Result<(Open, bool), ParseError> {
-        let raw = self.name()?;
-        let mut raw_attrs: Vec<(String, String)> = Vec::new();
+    /// `addBinding`'s checks of a namespace declaration.
+    fn binding_error(prefix: Option<&str>, uri: &str) -> Option<&'static str> {
+        if uri.is_empty() && prefix.is_some() {
+            return Some("must not undeclare prefix");
+        }
+        if prefix == Some("xmlns") {
+            return Some("reserved prefix (xmlns) must not be declared or undeclared");
+        }
+        let must_be_xml = prefix == Some("xml");
+        let is_xml = uri == XML_NS;
+        if must_be_xml != is_xml {
+            return Some(if must_be_xml {
+                "reserved prefix (xml) must not be undeclared or bound to another namespace name"
+            } else {
+                RESERVED_URI
+            });
+        }
+        if uri == XMLNS_NS {
+            return Some(RESERVED_URI);
+        }
+        None
+    }
+
+    /// `<` (at `tag`) already consumed, at the name: the tag tokenized
+    /// first, then `storeAtts` — per attribute in order its duplicate, its
+    /// value, its namespace binding; then the prefixed names.
+    fn start_tag(&mut self, tag: usize) -> Result<(Open, bool), ParseError> {
+        let raw = self.name(tag)?;
+        let mut raw_attrs: Vec<RawAttribute> = Vec::new();
         let empty;
         loop {
             let spaced = self.skip_space();
@@ -571,61 +720,65 @@ impl Parser {
                 break;
             }
             if self.peek().is_none() {
-                return err("unclosed token");
+                return self.fail(UNCLOSED, tag);
             }
             if !spaced {
-                return err("not well-formed (invalid token)");
+                return self.fail(INVALID, self.pos);
             }
-            let name = self.name()?;
+            let name_at = self.pos;
+            let name = self.name(tag)?;
             self.skip_space();
-            if !self.eat("=") {
-                return err("not well-formed (invalid token)");
+            match self.peek() {
+                Some('=') => self.pos += 1,
+                Some(_) => return self.fail(INVALID, self.pos),
+                None => return self.fail(UNCLOSED, tag),
             }
             self.skip_space();
-            let value = self.attribute_value()?;
-            if raw_attrs.iter().any(|(n, _)| *n == name) {
-                return err("duplicate attribute");
-            }
-            raw_attrs.push((name, value));
+            let (start, end) = self.attribute_value(tag)?;
+            raw_attrs.push(RawAttribute {
+                name,
+                name_at,
+                start,
+                end,
+            });
         }
-        // Namespace declarations first, then the names.
         let mut scope = HashMap::new();
         let mut plain = Vec::new();
-        for (name, value) in raw_attrs {
-            if name == "xmlns" {
-                scope.insert(String::new(), value);
-            } else if let Some(prefix) = name.strip_prefix("xmlns:") {
-                if prefix == "xmlns" || (prefix == "xml" && value != XML_NS) {
-                    return err(
-                        "reserved prefix (xml) must not be undeclared or bound to another namespace name",
-                    );
-                }
-                if value.is_empty() {
-                    return err("must not undeclare prefix");
-                }
-                if value == XMLNS_NS || (value == XML_NS && prefix != "xml") {
-                    return err("reserved prefix (xmlns) must not be declared or undeclared");
-                }
-                scope.insert(prefix.to_string(), value);
+        for (i, attr) in raw_attrs.iter().enumerate() {
+            if raw_attrs[..i].iter().any(|a| a.name == attr.name) {
+                return self.fail("duplicate attribute", attr.name_at);
+            }
+            let value = self.attribute_text(attr.start, attr.end, tag)?;
+            let prefix = if attr.name == "xmlns" {
+                Some(None)
             } else {
-                plain.push((name, value));
+                attr.name.strip_prefix("xmlns:").map(Some)
+            };
+            match prefix {
+                Some(prefix) => {
+                    if let Some(message) = Self::binding_error(prefix, &value) {
+                        return self.fail(message, tag);
+                    }
+                    scope.insert(prefix.unwrap_or_default().to_string(), value);
+                }
+                None => plain.push((attr.name.clone(), value)),
             }
         }
         self.scopes.push(scope);
-        let tag = self.resolve(&raw, false)?;
         let mut attrib: Vec<(String, String)> = Vec::new();
         for (name, value) in plain {
-            let key = self.resolve(&name, true)?;
+            let key = self.resolve(&name, true, tag)?;
             if attrib.iter().any(|(k, _)| *k == key) {
-                return err("duplicate attribute");
+                return self.fail("duplicate attribute", tag);
             }
             attrib.push((key, value));
         }
+        let element_tag = self.resolve(&raw, false, tag)?;
         Ok((
             Open {
                 raw,
                 element: Element {
-                    tag,
+                    tag: element_tag,
                     attrib,
                     text: None,
                     tail: None,
@@ -634,6 +787,71 @@ impl Parser {
             },
             empty,
         ))
+    }
+
+    /// `<!` in content (at `start`): a comment or a CDATA section, else the
+    /// first character that cannot follow.
+    fn markup_declaration(&mut self, start: usize, data: &mut String) -> Result<(), ParseError> {
+        if self.eat("--") {
+            return self.comment(start);
+        }
+        if self.peek() == Some('-') {
+            return match self.chars.get(self.pos + 1) {
+                Some(_) => self.fail(INVALID, self.pos + 1),
+                None => self.fail(UNCLOSED, start),
+            };
+        }
+        if self.peek() == Some('[') {
+            for expected in "[CDATA[".chars() {
+                match self.peek() {
+                    Some(c) if c == expected => self.pos += 1,
+                    Some(_) => return self.fail(INVALID, self.pos),
+                    None => return self.fail(UNCLOSED, start),
+                }
+            }
+            loop {
+                if self.eat("]]>") {
+                    return Ok(());
+                }
+                match self.peek() {
+                    Some(c) => {
+                        self.check_char(c, self.pos)?;
+                        data.push(c);
+                        self.pos += 1;
+                    }
+                    None => return self.fail("unclosed CDATA section", self.pos),
+                }
+            }
+        }
+        match self.peek() {
+            Some(_) => self.fail(INVALID, self.pos),
+            None => self.fail(UNCLOSED, start),
+        }
+    }
+
+    /// `<!` after the root (not a comment): a declaration is junk, a
+    /// malformed one an invalid token where expat's prolog tokenizer stops.
+    fn epilog_declaration(&self, at: usize) -> Result<Element, ParseError> {
+        let mut i = at + 2;
+        match self.chars.get(i) {
+            None => return self.fail(UNCLOSED, at),
+            Some('-') => {
+                return match self.chars.get(i + 1) {
+                    None => self.fail(UNCLOSED, at),
+                    Some(_) => self.fail(INVALID, i + 1),
+                };
+            }
+            Some(c) if is_name_start(*c) => {}
+            Some(_) => return self.fail(INVALID, i),
+        }
+        while self.chars.get(i).is_some_and(|c| is_name_char(*c)) {
+            i += 1;
+        }
+        match self.chars.get(i) {
+            None => self.fail(UNCLOSED, at),
+            Some(c) if is_space(*c) => self.fail("junk after document element", at),
+            Some(_) => self.fail(INVALID, i),
+        }
     }
 
     fn parse(mut self) -> Result<Element, ParseError> {
@@ -646,35 +864,38 @@ impl Parser {
                 .get(self.pos + 5)
                 .is_some_and(|c| is_space(*c) || *c == '?')
         {
+            let start = self.pos;
             self.pos += 5;
-            self.xml_decl()?;
+            self.xml_decl(start)?;
         }
         let mut doctype_seen = false;
         // Prolog.
         loop {
             self.skip_space();
+            let at = self.pos;
             if self.eat("<!--") {
-                self.comment()?;
+                self.comment(at)?;
             } else if self.eat("<?") {
-                self.pi()?;
+                self.pi(at)?;
             } else if self.starts_with("<!DOCTYPE") {
                 if doctype_seen {
-                    return err("syntax error");
+                    return self.fail("syntax error", at);
                 }
                 doctype_seen = true;
                 self.pos += 9;
-                self.doctype()?;
+                self.doctype(at)?;
             } else if self.peek() == Some('<') {
                 break;
             } else if self.peek().is_none() {
-                return err("no element found");
+                return self.fail("no element found", self.pos);
             } else {
-                return err("syntax error");
+                return self.fail("syntax error", at);
             }
         }
         // The root and its content.
+        let root_at = self.pos;
         self.pos += 1;
-        let (open, empty) = self.start_tag()?;
+        let (open, empty) = self.start_tag(root_at)?;
         let mut stack: Vec<Open> = Vec::new();
         let root = if empty {
             self.scopes.pop();
@@ -685,89 +906,100 @@ impl Parser {
             let mut data = String::new();
             while finished.is_none() {
                 let Some(c) = self.peek() else {
-                    return err("no element found");
+                    return self.fail("no element found", self.pos);
                 };
+                let at = self.pos;
                 if c == '<' {
-                    if self.eat("<!--") {
-                        self.comment()?;
-                    } else if self.eat("<![CDATA[") {
-                        loop {
-                            if self.eat("]]>") {
-                                break;
-                            }
+                    self.pos += 1;
+                    match self.peek() {
+                        None => return self.fail(UNCLOSED, at),
+                        Some('!') => {
+                            self.pos += 1;
+                            self.markup_declaration(at, &mut data)?;
+                        }
+                        Some('?') => {
+                            self.pos += 1;
+                            self.pi(at)?;
+                        }
+                        Some('/') => {
+                            self.pos += 1;
+                            let name_at = self.pos;
+                            let name = self.name(at)?;
+                            self.skip_space();
                             match self.peek() {
-                                Some(c) => {
-                                    Self::check_char(c)?;
-                                    data.push(c);
-                                    self.pos += 1;
-                                }
-                                None => return err("unclosed CDATA section"),
+                                Some('>') => self.pos += 1,
+                                Some(_) => return self.fail(INVALID, self.pos),
+                                None => return self.fail(UNCLOSED, at),
                             }
-                        }
-                    } else if self.eat("<?") {
-                        self.pi()?;
-                    } else if self.eat("</") {
-                        let name = self.name()?;
-                        self.skip_space();
-                        if !self.eat(">") {
-                            return err("not well-formed (invalid token)");
-                        }
-                        let Some(mut done) = stack.pop() else {
-                            return err("not well-formed (invalid token)");
-                        };
-                        if done.raw != name {
-                            return err("mismatched tag");
-                        }
-                        flush(&mut data, &mut done.element);
-                        self.scopes.pop();
-                        match stack.last_mut() {
-                            Some(parent) => parent.element.children.push(done.element),
-                            None => finished = Some(done.element),
-                        }
-                    } else if self.eat("<!") {
-                        return err("syntax error");
-                    } else {
-                        self.pos += 1;
-                        if let Some(parent) = stack.last_mut() {
-                            flush(&mut data, &mut parent.element);
-                        }
-                        let (open, empty) = self.start_tag()?;
-                        if empty {
+                            let Some(mut done) = stack.pop() else {
+                                return self.fail(INVALID, at);
+                            };
+                            if done.raw != name {
+                                return self.fail("mismatched tag", name_at);
+                            }
+                            flush(&mut data, &mut done.element);
                             self.scopes.pop();
-                            if let Some(parent) = stack.last_mut() {
-                                parent.element.children.push(open.element);
+                            match stack.last_mut() {
+                                Some(parent) => parent.element.children.push(done.element),
+                                None => finished = Some(done.element),
                             }
-                        } else {
-                            stack.push(open);
+                        }
+                        Some(_) => {
+                            if let Some(parent) = stack.last_mut() {
+                                flush(&mut data, &mut parent.element);
+                            }
+                            let (open, empty) = self.start_tag(at)?;
+                            if empty {
+                                self.scopes.pop();
+                                if let Some(parent) = stack.last_mut() {
+                                    parent.element.children.push(open.element);
+                                }
+                            } else {
+                                stack.push(open);
+                            }
                         }
                     }
                 } else if c == '&' {
                     self.pos += 1;
-                    let replacement = self.reference()?;
+                    self.reference_syntax(at)?;
+                    let replacement = self.reference_value(at, self.pos, at)?;
                     data.push_str(&replacement);
                 } else {
                     if self.starts_with("]]>") {
-                        return err("not well-formed (invalid token)");
+                        return self.fail(INVALID, self.pos + 2);
                     }
-                    Self::check_char(c)?;
+                    self.check_char(c, self.pos)?;
                     data.push(c);
                     self.pos += 1;
                 }
             }
-            finished.ok_or_else(|| ParseError("no element found".into()))?
+            match finished {
+                Some(root) => root,
+                None => return self.fail("no element found", self.pos),
+            }
         };
         // Epilog.
         loop {
             self.skip_space();
-            if self.peek().is_none() {
+            let at = self.pos;
+            let Some(c) = self.peek() else {
                 break;
-            }
+            };
             if self.eat("<!--") {
-                self.comment()?;
+                self.comment(at)?;
             } else if self.eat("<?") {
-                self.pi()?;
+                self.pi(at)?;
+            } else if self.starts_with("<!") {
+                return self.epilog_declaration(at);
+            } else if c == '<' {
+                return match self.chars.get(at + 1) {
+                    None => self.fail(UNCLOSED, at),
+                    Some(n) if is_name_start(*n) => self.fail("junk after document element", at),
+                    Some(_) => self.fail(INVALID, at + 1),
+                };
             } else {
-                return err("junk after document element");
+                self.check_char(c, at)?;
+                return self.fail("junk after document element", at);
             }
         }
         Ok(root)
@@ -958,6 +1190,33 @@ mod tests {
         ] {
             assert!(fromstring(doc).is_err(), "{doc:?}");
         }
+    }
+
+    /// `ET.fromstring` against expat 2.6 (`scripts/gen-expat-vectors.py`):
+    /// what it accepts, and each refusal's text and position.
+    #[test]
+    fn refusals_are_expats() {
+        #[derive(serde::Deserialize)]
+        struct Probe {
+            text: String,
+            error: Option<String>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Vectors {
+            documents: Vec<Probe>,
+        }
+        let v: Vectors = serde_json::from_str(include_str!("expat_vectors.json")).unwrap();
+        let mut failures = Vec::new();
+        for probe in v.documents {
+            let got = fromstring(&probe.text).err().map(|e| e.0);
+            if got != probe.error {
+                failures.push(format!(
+                    "{:?}: python {:?}, rust {:?}",
+                    probe.text, probe.error, got
+                ));
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
     #[test]

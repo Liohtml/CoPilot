@@ -239,6 +239,73 @@ pub async fn upload_file_to_case(
     })
 }
 
+/// `upload_report_template_to_data_store(db)` (`POST
+/// /case-report-template/default-template`): per shipped template, the
+/// name refused when a row has it (the 400 ends the run; the templates
+/// before it stay), `CaseReportTemplateDataStoreCreation` checked, the
+/// object stored with `mimetypes`' type, then the row — whose
+/// `content_type` is `NULL`, as Python builds it from an `UploadFile`
+/// without headers. Answers the names, in the order they were stored.
+pub async fn upload_default_templates(
+    db: &Db,
+    store: &ObjectStore,
+) -> Result<Vec<String>, copilot_web::ApiError> {
+    for dir in super::default_templates::DIRECTORIES {
+        tracing::info!("Uploading report template {dir} to Minio");
+    }
+    let mut names = Vec::new();
+    for (name, data) in super::default_templates::FILES {
+        tracing::info!("Uploading report template {name} to Minio");
+        if crate::files::report_template_exists(db, name).await? {
+            return Err(copilot_web::ApiError::bad_request(
+                "File name already exists for this template",
+            ));
+        }
+        let content_type = super::default_templates::guess_type(name);
+        let file_hash = sha256(data);
+        validate_creation(
+            "CaseReportTemplateDataStoreCreation",
+            &[
+                ("report_template_name", Some(name), 255),
+                ("bucket_name", Some(ops::REPORT_TEMPLATES_BUCKET), 255),
+                ("object_key", Some(name), 1024),
+                ("file_name", Some(name), 255),
+                ("content_type", content_type, 100),
+                ("file_hash", Some(&file_hash), 128),
+            ],
+        )
+        .map_err(PyExc::unhandled)?;
+        ops::upload_case_report_template_data_store(store, name, content_type, data)
+            .await
+            .map_err(PyExc::unhandled)?;
+        names.push((*name).to_string());
+        sqlx::query(
+            "INSERT INTO incident_management_case_report_template_datastore \
+             (report_template_name, bucket_name, object_key, file_name, content_type, file_size, \
+             upload_time, file_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(name)
+        .bind(ops::REPORT_TEMPLATES_BUCKET)
+        .bind(name)
+        .bind(name)
+        .bind(None::<&str>)
+        .bind(i32::try_from(data.len()).unwrap_or(i32::MAX))
+        .bind(now_utc_micros())
+        .bind(&file_hash)
+        .execute(db.pool())
+        .await
+        .map_err(|e| {
+            sqlalchemy_error(
+                &e,
+                "INSERT INTO incident_management_case_report_template_datastore",
+                "",
+            )
+            .unhandled()
+        })?;
+    }
+    Ok(names)
+}
+
 /// `upload_report_template`: the model checked, the object stored under its
 /// file name in `copilot-case-report-templates`, then the row.
 pub async fn upload_report_template(

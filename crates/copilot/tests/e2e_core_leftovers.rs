@@ -1143,3 +1143,221 @@ async fn host_logs_and_carbonblack_test_follow_python() {
         .await;
     cleanup(&h).await;
 }
+
+// --- POST /api/connectors/upload/{connector_identifier} ------------------------------
+
+fn multipart_file(field: &str, filename: &str, data: &[u8]) -> (String, Vec<u8>) {
+    let boundary = "e2e-core-leftovers-boundary";
+    let mut body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; \
+         filename=\"{filename}\"\r\nContent-Type: application/x-yaml\r\n\r\n"
+    )
+    .into_bytes();
+    body.extend_from_slice(data);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+#[tokio::test]
+async fn connector_yaml_upload_follows_python() {
+    if !configured() {
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("copilot-e2e-upload-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let extra = format!("COPILOT_BACKEND_DATA_DIR={}\n", dir.display());
+    let h = harness_or_skip!(None, &extra);
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    // A run that failed half-way leaves its own two rows (`velo.example`): those go.
+    h.exec(
+        "DELETE FROM connectors WHERE id IN (5, 6) AND connector_url = 'https://velo.example' \
+         AND connector_description = 'desc'",
+    )
+    .await;
+    let taken: i64 = h
+        .scalar_i64("SELECT COUNT(*) FROM connectors WHERE id IN (5, 6)")
+        .await;
+    if taken > 0 {
+        eprintln!("connectors 5 or 6 exist in this database; skipping");
+        return;
+    }
+    let six = format!("E2E Six {s}");
+    for (id, name) in [(5, "Velociraptor"), (6, six.as_str())] {
+        sqlx::query(
+            "INSERT INTO connectors (id, connector_name, connector_type, connector_url, \
+             connector_last_updated, connector_username, connector_password, connector_api_key, \
+             connector_description, connector_supports, connector_configured, connector_verified, \
+             connector_accepts_host_only, connector_accepts_api_key, \
+             connector_accepts_username_password, connector_accepts_file, \
+             connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES \
+             (?, ?, '0.6.8', 'https://velo.example', '2026-01-02 03:04:05', NULL, NULL, NULL, \
+             'desc', 'supports', 0, 1, 0, 0, 0, 1, 0, NULL, 1)",
+        )
+        .bind(id)
+        .bind(name)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+    let hr = &h;
+    let up = |who: &str, ident: &str, field: &str, filename: &str| {
+        let (ct, body) = multipart_file(field, filename, b"api_url: x\n");
+        let uri = format!("/api/connectors/upload/{ident}");
+        let token = who.to_string();
+        async move {
+            hr.call_raw("POST", &uri, Some(&token), Some(&ct), body)
+                .await
+        }
+    };
+    let (st, _) = up(&analyst, "5", "file", "api.config.yaml").await;
+    assert_eq!(st, 403);
+    let (st, out) = up(&admin, "5", "other", "api.config.yaml").await;
+    assert_eq!(st, 422, "{out}");
+    for (ident, status, message) in [
+        (
+            "7",
+            400,
+            "Only the Velociraptor or another specific connector is allowed for YAML file uploads.",
+        ),
+        (
+            "%201_0%20",
+            400,
+            "Only the Velociraptor or another specific connector is allowed for YAML file uploads.",
+        ),
+        ("Nope", 404, "Could not find connector with name: Nope"),
+        ("Talon", 404, "Could not find connector with name: Talon"),
+    ] {
+        let (st, out) = up(&admin, ident, "file", "api.config.yaml").await;
+        assert_eq!(
+            (st.as_u16(), out),
+            (status, json!({"success": false, "message": message})),
+            "{ident:?}"
+        );
+    }
+    let (st, out) = up(&admin, "5", "file", "api.config.yml").await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            400,
+            json!({"success": false, "message": "Only .yaml files are allowed."})
+        )
+    );
+    // By id, then by name; the file name is werkzeug's secure one.
+    let (st, out) = up(&admin, "05", "file", "../my api.config.yaml").await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(
+        out,
+        json!({"success": true, "message": "File uploaded successfully"})
+    );
+    let path = dir.join("my_api.config.yaml");
+    assert_eq!(std::fs::read(&path).unwrap(), b"api_url: x\n");
+    let (key, configured): (Option<String>, bool) = sqlx::query_as(
+        "SELECT connector_api_key, connector_configured FROM connectors WHERE id = 5",
+    )
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(key.as_deref(), Some(path.to_str().unwrap()));
+    assert!(configured);
+    let (st, out) = up(&admin, &format!("E2E%20Six%20{s}"), "file", "six.yaml").await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(
+        std::fs::read(dir.join("six.yaml")).unwrap(),
+        b"api_url: x\n"
+    );
+    // A directory that cannot be written: Python's 500.
+    std::fs::remove_dir_all(&dir).unwrap();
+    let (st, out) = up(&admin, "6", "file", "six.yaml").await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            500,
+            json!({"success": false, "message": "Failed to upload file"})
+        )
+    );
+    h.exec("DELETE FROM connectors WHERE id IN (5, 6)").await;
+    cleanup(&h).await;
+}
+
+#[tokio::test]
+async fn connector_yaml_upload_is_python_s_when_the_directory_is_not_writable() {
+    use wiremock::matchers::{body_string_contains, header};
+
+    if !configured() {
+        return;
+    }
+    let legacy = stand_in(5).await;
+    // sysfs refuses a new file even to root: the `PermissionDenied` of a
+    // container user that does not own the backend's data directory.
+    let h = harness_or_skip!(Some(&legacy), "COPILOT_BACKEND_DATA_DIR=/sys\n");
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&format!("admin{s}"), "admin");
+    h.exec(
+        "DELETE FROM connectors WHERE id IN (5, 6) AND connector_url = 'https://velo.example' \
+         AND connector_description = 'desc'",
+    )
+    .await;
+    let taken: i64 = h
+        .scalar_i64("SELECT COUNT(*) FROM connectors WHERE id IN (5, 6)")
+        .await;
+    if taken > 0 {
+        eprintln!("connectors 5 or 6 exist in this database; skipping");
+        return;
+    }
+    h.exec(
+        "INSERT INTO connectors (id, connector_name, connector_type, connector_url, \
+         connector_last_updated, connector_username, connector_password, connector_api_key, \
+         connector_description, connector_supports, connector_configured, connector_verified, \
+         connector_accepts_host_only, connector_accepts_api_key, \
+         connector_accepts_username_password, connector_accepts_file, \
+         connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES \
+         (5, 'Velociraptor', '0.6.8', 'https://velo.example', '2026-01-02 03:04:05', NULL, NULL, \
+         NULL, 'desc', 'supports', 0, 1, 0, 0, 0, 1, 0, NULL, 1)",
+    )
+    .await;
+    Mock::given(method("POST"))
+        .and(path("/api/connectors/upload/Velociraptor"))
+        .and(header("authorization", format!("Bearer {admin}").as_str()))
+        .and(body_string_contains("api_url: x"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"answered_by": "python"})))
+        .expect(1)
+        .mount(&legacy)
+        .await;
+    let (ct, body) = multipart_file("file", "api.config.yaml", b"api_url: x\n");
+    let (st, out) = h
+        .call_raw(
+            "POST",
+            "/api/connectors/upload/Velociraptor",
+            Some(&admin),
+            Some(&ct),
+            body,
+        )
+        .await;
+    assert_eq!((st.as_u16(), out), (200, json!({"answered_by": "python"})));
+    // Nothing was written here: the row is as it was.
+    let (key, configured): (Option<String>, bool) = sqlx::query_as(
+        "SELECT connector_api_key, connector_configured FROM connectors WHERE id = 5",
+    )
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!((key, configured), (None, false));
+    // The checks before the write stay here.
+    let (ct, body) = multipart_file("file", "api.config.yml", b"x");
+    let (st, _) = h
+        .call_raw(
+            "POST",
+            "/api/connectors/upload/5",
+            Some(&admin),
+            Some(&ct),
+            body,
+        )
+        .await;
+    assert_eq!(st, 400);
+    h.exec("DELETE FROM connectors WHERE id = 5").await;
+    cleanup(&h).await;
+}

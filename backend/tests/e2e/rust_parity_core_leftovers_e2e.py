@@ -15,7 +15,10 @@ stand-ins that record what arrives:
 * GitHub (`/raw/…` for raw.githubusercontent.com, `/api/…` for api.github.com): the Atomic Red
   Team index, the folder listing, each technique's YAML and markdown;
 * the Wazuh indexer (the host logs: `_alias`, then one `_search` per index);
-* the CarbonBlack module (`POST /copilot-carbonblack-module/collect`, on the AI module's stand-in).
+* the CarbonBlack module (`POST /copilot-carbonblack-module/collect`, on the AI module's stand-in);
+* Sublime (`GET /v0/rules`: the verification that follows a YAML upload to connector 6), reached by
+  the in-process routers and, for Rust, by its legacy backend — Python's connector routes served by
+  uvicorn in a subprocess, which the Rust instance hands that verification to.
 
 Python reaches the stand-ins because `requests.Session.request` (and the other clients, as
 sections need them) are patched here to rewrite the public hosts; Rust because its instance is
@@ -23,14 +26,18 @@ started with the `COPILOT_*_URL` overrides (parity harness only).
 
 The `license`, `license_cache` and `disabledrule` rows, the `Wazuh-Manager`, `Wazuh-Indexer` and
 `Event Shipper` connectors and the CarbonBlack job's `scheduled_job_metadata` rows are
-deployment-wide: put aside first, restored at the end. Two things are masked in the indexer's
+deployment-wide: put aside first, restored at the end; so are connectors 5 and 6 (and any row named
+`Velociraptor` or `Sublime`), which the upload section replaces with its own before every request.
+The uploaded files go to a temporary directory both backends write (Python's `UPLOAD_FOLDER`
+patched, Rust's `COPILOT_BACKEND_DATA_DIR`). Two things are masked in the indexer's
 requests: the time window's start (each backend reads its own clock) and the patch version
 elasticsearch-py names in its `User-Agent`. Rows created by both backends are twins (a `py`/`rs` pair of keys) compared column by
 column.
 
 Ports (all overridable): CORE_LEFTOVERS_PARITY_RUST_PORT, CORE_LEFTOVERS_LICENSE_STUB_PORT,
 CORE_LEFTOVERS_MANAGER_STUB_PORT, CORE_LEFTOVERS_AI_STUB_PORT, CORE_LEFTOVERS_GITHUB_STUB_PORT,
-CORE_LEFTOVERS_INDEXER_STUB_PORT.
+CORE_LEFTOVERS_INDEXER_STUB_PORT, CORE_LEFTOVERS_SUBLIME_STUB_PORT, CORE_LEFTOVERS_LEGACY_PORT.
+CORE_LEFTOVERS_PARITY_SECTIONS (default `1,2,3,4`) runs some sections only.
 
     PARITY_SUITES=tests/e2e/rust_parity_core_leftovers_e2e.py scripts/rust-parity.sh
 """
@@ -40,8 +47,10 @@ import datetime
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import types
@@ -79,6 +88,8 @@ MANAGER_PORT = int(os.environ.get("CORE_LEFTOVERS_MANAGER_STUB_PORT", "6442"))
 AI_PORT = int(os.environ.get("CORE_LEFTOVERS_AI_STUB_PORT", "6443"))
 GITHUB_PORT = int(os.environ.get("CORE_LEFTOVERS_GITHUB_STUB_PORT", "6444"))
 INDEXER_PORT = int(os.environ.get("CORE_LEFTOVERS_INDEXER_STUB_PORT", "6445"))
+SUBLIME_PORT = int(os.environ.get("CORE_LEFTOVERS_SUBLIME_STUB_PORT", "6446"))
+LEGACY_PORT = int(os.environ.get("CORE_LEFTOVERS_LEGACY_PORT", "6447"))
 RUST = f"http://127.0.0.1:{RS_PORT}"
 
 SFX = uuid.uuid4().hex[:6]
@@ -90,6 +101,8 @@ results = []
 #: Every stand-in (`main` fills it): each call takes and compares what all of them received.
 RECS = []
 SAVED = {}
+#: The directory the uploaded YAML files go to (`dir`), shared by the two backends.
+UPLOAD = {}
 
 
 def check(name, passed, detail=""):
@@ -280,6 +293,8 @@ async def seed():
             k=k,
             v=v,
         )
+    # Connectors 5 and 6 (the YAML upload's): put aside, restored at the end.
+    SAVED["yaml"] = await rows("SELECT * FROM connectors WHERE id IN (5, 6) OR connector_name IN ('Velociraptor', 'Sublime') ORDER BY id")
     # The disabled rules and the manager's connector: put aside, restored at the end.
     SAVED["disabledrule"] = await rows("SELECT * FROM disabledrule ORDER BY id")
     await sql("DELETE FROM disabledrule")
@@ -329,6 +344,11 @@ async def cleanup():
         for row in SAVED["indexer"]:
             cols = list(row.keys())
             await sql(f"INSERT INTO connectors ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})", **row)
+    if "yaml" in SAVED:
+        await sql("DELETE FROM connectors WHERE id IN (5, 6) OR connector_name IN ('Velociraptor', 'Sublime')")
+        for row in SAVED["yaml"]:
+            cols = list(row.keys())
+            await sql(f"INSERT INTO connectors ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})", **row)
     if "manager" in SAVED:
         await sql("DELETE FROM connectors WHERE connector_name = 'Wazuh-Manager'")
         for row in SAVED["manager"]:
@@ -351,6 +371,7 @@ def build_python_app():
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
     from app.routers.carbonblack import router as carbonblack_router
+    from app.routers.connectors import router as connectors_router
     from app.routers.healthcheck import router as healthcheck_router
     from app.routers.wazuh_manager import router as wazuh_manager_router
 
@@ -359,12 +380,53 @@ def build_python_app():
     api.include_router(wazuh_manager_router)
     api.include_router(healthcheck_router)
     api.include_router(carbonblack_router)
+    api.include_router(connectors_router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(ValueError, value_error_handler)
     return app
+
+
+def build_legacy_app():
+    """The Rust instance's legacy backend: Python's connector routes, for the verification of a
+    connector Rust does not verify (Sublime's, after a YAML upload)."""
+    from app.middleware.exception_handlers import custom_http_exception_handler
+    from app.middleware.exception_handlers import validation_exception_handler
+    from app.middleware.exception_handlers import value_error_handler
+    from app.routers.connectors import router as connectors_router
+
+    api = APIRouter(prefix="/api")
+    api.include_router(connectors_router)
+    app = FastAPI(redirect_slashes=False)
+    app.include_router(api)
+    app.add_exception_handler(HTTPException, custom_http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(ValueError, value_error_handler)
+    return app
+
+
+def start_python_legacy():
+    here = os.path.dirname(os.path.abspath(__file__))
+    backend = os.path.abspath(os.path.join(here, "..", ".."))
+    code = (
+        "import sys; sys.path.insert(0, %r); import rust_parity_core_leftovers_e2e as m; import uvicorn; "
+        "uvicorn.run(m.build_legacy_app(), host='127.0.0.1', port=%d, log_level='warning')" % (here, LEGACY_PORT)
+    )
+    env = {**os.environ, "PYTHONPATH": backend}
+    proc = subprocess.Popen([sys.executable, "-c", code], env=env, cwd=backend, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(300):
+        if proc.poll() is not None:
+            raise RuntimeError(f"the legacy backend exited ({proc.returncode})")
+        try:
+            if httpx.get(f"http://127.0.0.1:{LEGACY_PORT}/openapi.json", timeout=1).status_code == 200:
+                return proc
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.1)
+    proc.kill()
+    raise RuntimeError("the legacy backend did not start")
 
 
 #: The public hosts the Python services call, and the stand-ins they reach here.
@@ -463,6 +525,8 @@ def start_rust(port, extra=None):
         "COPILOT_INTEGRATION_MODULES_URL": f"http://127.0.0.1:{AI_PORT}",
         "COPILOT_GITHUB_RAW_URL": f"http://127.0.0.1:{GITHUB_PORT}/raw",
         "COPILOT_GITHUB_API_URL": f"http://127.0.0.1:{GITHUB_PORT}/api",
+        "COPILOT_BACKEND_DATA_DIR": UPLOAD["dir"],
+        "COPILOT_LEGACY_URL": f"http://127.0.0.1:{LEGACY_PORT}",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
         **(extra or {}),
     }
@@ -742,20 +806,6 @@ async def customers_section(pair):
     await sql(
         "INSERT INTO license (license_key, customer_name, customer_email, company_name) VALUES (:k, 'n', 'e@parity.test', 'c')",
         k=LICENSE_KEY,
-    )
-    # The disabled rules and the manager's connector: put aside, restored at the end.
-    SAVED["disabledrule"] = await rows("SELECT * FROM disabledrule ORDER BY id")
-    await sql("DELETE FROM disabledrule")
-    SAVED["manager"] = await rows("SELECT * FROM connectors WHERE connector_name = 'Wazuh-Manager'")
-    await sql("DELETE FROM connectors WHERE connector_name = 'Wazuh-Manager'")
-    await sql(
-        "INSERT INTO connectors (connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
-        "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
-        "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
-        "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES "
-        "('Wazuh-Manager', '4.8', :u, '2026-01-02 03:04:05', 'wazuh', 'pw', NULL, 'desc', 'supports', 1, 1, 0, 0, 1, 0, 0, "
-        "NULL, 1)",
-        u=f"http://127.0.0.1:{MANAGER_PORT}",
     )
 
     # The code is unique as MySQL's collation compares it; too long for the column.
@@ -1418,6 +1468,153 @@ async def logs_and_carbonblack_section(pair):
     await no_row()
 
 
+# --- 4. the connector YAML upload --------------------------------------------------------
+SEEDED_AT = "2026-01-02 03:04:05"
+
+
+def sublime_answer(rec, method, path, headers, body):
+    if method == "GET" and path.startswith("/v0/rules"):
+        if rec.mode.get("fail"):
+            return 500, "text/plain", b"sublime is down", {}
+        return ok({"rules": []})
+    return ok({"detail": "Not Found"}, 404)
+
+
+async def reset_yaml_connectors(drop=(), directory=None):
+    """Connectors 5 (`Velociraptor`, verified) and 6 (`Sublime` on the stand-in, not verified) as
+    seeded, but the ids in `drop`; an empty upload directory, or one holding `directory`."""
+    await sql("DELETE FROM connectors WHERE id IN (5, 6) OR connector_name IN ('Velociraptor', 'Sublime')")
+    for cid, name, url, verified in ((5, "Velociraptor", "https://velo.example", 1), (6, "Sublime", f"http://127.0.0.1:{SUBLIME_PORT}", 0)):
+        if cid in drop:
+            continue
+        await sql(
+            "INSERT INTO connectors (id, connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
+            "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
+            "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
+            "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES "
+            "(:i, :n, '0.6.8', :u, :t, NULL, NULL, NULL, 'desc', 'supports', 0, :v, 0, 0, 0, 1, 0, NULL, 1)",
+            i=cid,
+            n=name,
+            u=url,
+            t=SEEDED_AT,
+            v=verified,
+        )
+    shutil.rmtree(UPLOAD["dir"], ignore_errors=True)
+    os.makedirs(UPLOAD["dir"])
+    if directory:
+        os.makedirs(os.path.join(UPLOAD["dir"], directory))
+    connector_cache.invalidate_all()
+
+
+async def yaml_state():
+    """Connectors 5 and 6 (whether the verification wrote `connector_last_updated`) and the files."""
+    found = await rows(
+        "SELECT id, connector_name, connector_api_key, connector_configured, connector_verified, "
+        "connector_last_updated <> :t AS touched FROM connectors WHERE id IN (5, 6) ORDER BY id",
+        t=SEEDED_AT,
+    )
+    files = {}
+    for name in sorted(os.listdir(UPLOAD["dir"])):
+        full = os.path.join(UPLOAD["dir"], name)
+        if os.path.isdir(full):
+            files[name] = None
+        else:
+            with open(full, "rb") as f:
+                files[name] = f.read().decode("latin-1")
+    return {"rows": found, "files": files}
+
+
+async def connector_upload_section(pair):
+    print("\n== 4. POST /api/connectors/upload/{connector_identifier} ==")
+    t_admin = token(ADMIN, ["admin"])
+    t_analyst = token(ANALYST, ["analyst"])
+    t_portal = token(PORTAL, ["customer_user"])
+    sublime = RECS[5]
+    U = "/api/connectors/upload"
+    junk = b"api_url: x\n"
+
+    def upload(name="api.config.yaml", data=junk, ctype="application/x-yaml"):
+        return {"files": {"file": (name, data, ctype)}}
+
+    def reset(**kw):
+        return lambda: reset_yaml_connectors(**kw)
+
+    def run(label, ident, tok=t_admin, drop=(), directory=None, **kw):
+        return pair.same(
+            f"upload {ident!r}: {label}",
+            "POST",
+            f"{U}/{ident}",
+            tok,
+            reset=reset(drop=drop, directory=directory),
+            snapshot=yaml_state,
+            **kw,
+        )
+
+    await run("no token", "5", None, **upload())
+    await run("no token, no file", "5", None, data={"other": "x"})
+    await run("malformed multipart, no token", "5", None, raw=b"--x\r\n", headers={"Content-Type": "multipart/form-data; boundary=zz"})
+    await run("analyst", "5", t_analyst, **upload())
+    await run("portal user", "5", t_portal, **upload())
+    await run("no file", "5", data={"other": "x"})
+    await run("the file as a text field", "5", data={"file": "api_url: x"})
+    await run("an empty text field", "5", data={"file": ""})
+    for ident in ("7", "0", "-5", "1_0", "99999999999999999999999"):
+        await run("an id other than 5 or 6", ident, **upload())
+    for ident in ("Nope", "Wazuh-Manager", "5.0", "5_", "%20"):
+        await run("a name no YAML connector has", ident, **upload())
+    await run("an id, but a .yml file", "5", **upload("api.config.yml"))
+    await run("a name, but no extension", "Velociraptor", **upload("api.config"))
+    # Velociraptor: the junk file fails its verification (verified 0, the time written).
+    for ident in ("5", "05", "+5", "%205%20", "%D9%A5", "Velociraptor", "velociraptor"):
+        await run("Velociraptor, verified against the file", ident, **upload())
+    await run("a path in the name, secured", "5", **upload("../../etc/api.config.yaml"))
+    await run("a name werkzeug rewrites", "5", **upload("résumé my\tconfig .yaml"))
+    await run("a file that is not UTF-8", "5", **upload(data=b"\xff\xfe\x00"))
+    await run("an empty file", "5", **upload(data=b""))
+    # Sublime: Python verifies (Rust hands it to its legacy backend): the stand-in is asked.
+    for ident in ("6", "Sublime"):
+        await run("Sublime, verified by Python", ident, **upload("sublime.yaml"))
+    (p, pout), (q, qout) = await pair.both("POST", f"{U}/6", t_admin, reset=reset(), snapshot=yaml_state, **upload("sublime.yaml"))
+    asked = [c for c in pout["sublime"] if c["path"] == "/v0/rules?limit=1"]
+    six = [snap["rows"][1] for snap in pair.snapshots.values()]
+    check(
+        "upload '6': Sublime asked once by each, connector 6 verified by both",
+        p.status_code == q.status_code == 200
+        and len(asked) == 1
+        and pout["sublime"] == qout["sublime"]
+        and all(r["connector_verified"] == 1 and r["touched"] for r in six),
+        f"python {pout['sublime']}\n        rust   {qout['sublime']}\n        rows {six}",
+    )
+    (p, _), (q, _) = await pair.both("POST", f"{U}/5", t_admin, reset=reset(), snapshot=yaml_state, **upload())
+    five = [snap["rows"][0] for snap in pair.snapshots.values()]
+    check(
+        "upload '5': the junk file failed Velociraptor's verification on both (verified 0, time written)",
+        p.status_code == q.status_code == 200 and all(r["connector_verified"] == 0 and r["touched"] for r in five),
+        f"rows {five}",
+    )
+    sublime.mode["fail"] = True
+    await run("Sublime refuses the verification", "6", **upload("sublime.yaml"))
+    sublime.mode.clear()
+    await run("no row 6 (the file is written, then the 500)", "6", drop=(6,), **upload("six.yaml"))
+    await run("no row 5, by name", "Velociraptor", drop=(5,), **upload())
+    await run("the file's path is a directory", "5", directory="api.config.yaml", **upload())
+
+    async def two_named():
+        await reset_yaml_connectors()
+        await sql("UPDATE connectors SET connector_name = 'Velociraptor' WHERE id = 6")
+
+    await pair.same(
+        "upload 'Velociraptor': two rows of that name",
+        "POST",
+        f"{U}/Velociraptor",
+        t_admin,
+        reset=two_named,
+        snapshot=yaml_state,
+        **upload(),
+    )
+    await reset_yaml_connectors()
+
+
 async def both_twin_bodies(pair, method, path, payload, tok, reset):
     """`Pair.both` for twins: each backend gets its own twin's path and body."""
     got = {}
@@ -1440,22 +1637,36 @@ async def main():
         Recorder(ai_answer, AI_PORT, "ai"),
         Recorder(github_answer, GITHUB_PORT, "github"),
         Recorder(indexer_answer, INDEXER_PORT, "indexer"),
+        Recorder(sublime_answer, SUBLIME_PORT, "sublime"),
     ]
+    UPLOAD["dir"] = tempfile.mkdtemp(prefix="copilot-parity-upload-")
     await seed()
     patch_python_clients()
+    from app.connectors import services as connector_services
+
+    connector_services.UPLOAD_FOLDER = UPLOAD["dir"]
+    legacy = start_python_legacy()
     holder = {"rust": start_rust(RS_PORT)}
     py = httpx.AsyncClient(transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False), base_url="http://py")
     rs = httpx.AsyncClient(base_url=RUST, timeout=120)
     pair = Pair(py, rs)
     try:
-        await customers_section(pair)
-        await wazuh_rules_section(pair, holder)
-        await logs_and_carbonblack_section(pair)
+        sections = os.environ.get("CORE_LEFTOVERS_PARITY_SECTIONS", "1,2,3,4").split(",")
+        if "1" in sections:
+            await customers_section(pair)
+        if "2" in sections:
+            await wazuh_rules_section(pair, holder)
+        if "3" in sections:
+            await logs_and_carbonblack_section(pair)
+        if "4" in sections:
+            await connector_upload_section(pair)
     finally:
         await py.aclose()
         await rs.aclose()
         await pair.rs.aclose()
         stop_rust(holder["rust"])
+        stop_rust(legacy)
+        shutil.rmtree(UPLOAD["dir"], ignore_errors=True)
         for rec in RECS:
             rec.stop()
         await cleanup()

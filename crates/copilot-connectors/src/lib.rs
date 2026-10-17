@@ -14,12 +14,15 @@
 //! - [`services`] — reads (with `history_logs`), the update and verify writes
 //! - [`verify`]   — [`ConnectorVerifier`] and the registry ([`Verifiers`])
 //! - [`routes`]   — the handlers
+//! - [`upload`]   — `POST /upload/{connector_identifier}` (the YAML file
+//!   written to the Python backend's data directory)
 
 #![warn(missing_docs)]
 
 pub mod routes;
 pub mod schema;
 pub mod services;
+pub mod upload;
 pub mod verify;
 
 use axum::extract::FromRef;
@@ -50,6 +53,9 @@ pub struct ConnectorsState {
     pub verifiers: Verifiers,
     /// The Python backend, which verifies (and updates) every other connector.
     pub legacy: Option<LegacyProxy>,
+    /// The Python backend's data directory (`UPLOAD_FOLDER`,
+    /// `COPILOT_BACKEND_DATA_DIR`), where a YAML upload is written.
+    pub data_dir: std::path::PathBuf,
 }
 
 impl FromRef<ConnectorsState> for AppContext {

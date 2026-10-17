@@ -83,6 +83,10 @@ pub fn router(state: DatastoreState) -> Router {
             delete(delete_template),
         )
         .route(
+            &format!("{P}/case-report-template/default-template"),
+            post(default_templates).delete(delete_template),
+        )
+        .route(
             &format!("{P}/case-report-template/{{file_name}}"),
             delete(delete_template),
         )
@@ -397,6 +401,18 @@ async fn upload_template(State(st): State<DatastoreState>, form: UploadForm<Soc>
         "case_report_template_data_store": services::created_template(&row),
         "success": true,
         "message": "File uploaded successfully",
+    })))
+}
+
+/// `POST /case-report-template/default-template`: the shipped templates
+/// stored ([`services::upload_default_templates`]).
+async fn default_templates(_auth: Soc, State(st): State<DatastoreState>) -> ApiResult {
+    tracing::info!("Creating default file in the data store");
+    let names = services::upload_default_templates(&st.ctx.db, &st.store).await?;
+    Ok(json_response(json!({
+        "case_report_template_data_store": names,
+        "success": true,
+        "message": "Default file created successfully",
     })))
 }
 
