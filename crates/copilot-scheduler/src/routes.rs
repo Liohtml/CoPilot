@@ -204,10 +204,10 @@ async fn run(
     }
     tracing::info!(job_id = %job.id, function = %job.name, "Running job manually");
     match st.scheduler.run_now(&job.name).await? {
-        ManualRun::Ran(Ok(())) => Ok(json(RunResponse {
+        ManualRun::Ran(Ok(result)) => Ok(json(RunResponse {
             success: true,
             message: "Job executed successfully",
-            result: None,
+            result,
         })),
         ManualRun::Ran(Err(e)) => Err(ApiError::server_error(e.0)),
         ManualRun::Busy => Err(ApiError::server_error(format!(

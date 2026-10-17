@@ -6,8 +6,10 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-/// What a job's run returns.
-pub type JobFuture = Pin<Box<dyn Future<Output = Result<(), JobError>> + Send>>;
+/// What a job's run returns: the value the Python function returned (the
+/// manual run's `result`; `None` for most jobs), or its failure.
+pub type JobFuture =
+    Pin<Box<dyn Future<Output = Result<Option<serde_json::Value>, JobError>> + Send>>;
 
 /// Starts one run of a job.
 pub type JobFn = Arc<dyn Fn() -> JobFuture + Send + Sync>;
@@ -59,7 +61,7 @@ impl fmt::Debug for JobSpec {
 }
 
 impl JobSpec {
-    /// A job from an async closure.
+    /// A job from an async closure (its Python function returns `None`).
     pub fn new<F, Fut>(id: &'static str, default_minutes: i64, run: F) -> Self
     where
         F: Fn() -> Fut + Send + Sync + 'static,
@@ -69,7 +71,28 @@ impl JobSpec {
             id,
             default_minutes,
             manual_run_stamps: false,
-            run: Arc::new(move || Box::pin(run())),
+            run: Arc::new(move || {
+                let fut = run();
+                Box::pin(async move { fut.await.map(|()| None) })
+            }),
+        }
+    }
+
+    /// A job whose Python function returns a value (a response model): a
+    /// manual run answers it as `result`, as `run_job_manually` does.
+    pub fn returning<F, Fut>(id: &'static str, default_minutes: i64, run: F) -> Self
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<serde_json::Value, JobError>> + Send + 'static,
+    {
+        Self {
+            id,
+            default_minutes,
+            manual_run_stamps: false,
+            run: Arc::new(move || {
+                let fut = run();
+                Box::pin(async move { fut.await.map(Some) })
+            }),
         }
     }
 

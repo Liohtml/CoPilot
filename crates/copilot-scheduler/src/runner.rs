@@ -45,8 +45,8 @@ pub enum Tick {
 /// What a run started by hand did.
 #[derive(Debug)]
 pub enum ManualRun {
-    /// It ran (its result).
-    Ran(Result<(), JobError>),
+    /// It ran (what it returned, or its failure).
+    Ran(Result<Option<serde_json::Value>, JobError>),
     /// Still running elsewhere after [`MANUAL_LOCK_WAIT`].
     Busy,
     /// This service does not own the job (any more): let APScheduler's
@@ -221,7 +221,7 @@ impl Scheduler {
         }
         let result = {
             let _running = RunningFlag::set(job);
-            (job.spec.run)().await
+            (job.spec.run)().await.map(|_| ())
         };
         if result.is_ok() {
             if let Err(e) = db::stamp_last_success(db, job_id).await {

@@ -73,16 +73,16 @@ pub struct JobsNextRunResponse {
     pub message: &'static str,
 }
 
-/// The manual run's answer: `{"success", "message", "result"}`. Every job
-/// this service runs returns `None`.
+/// The manual run's answer: `{"success", "message", "result"}`, `result`
+/// what the job's function returned (`null` for most jobs).
 #[derive(Debug, Serialize)]
 pub struct RunResponse {
     /// Always true.
     pub success: bool,
     /// `Job executed successfully`.
     pub message: &'static str,
-    /// `null`.
-    pub result: Option<()>,
+    /// The function's return value, as FastAPI encodes it.
+    pub result: Option<serde_json::Value>,
 }
 
 /// An aware UTC time as Pydantic renders it (`…Z`, microseconds only when
