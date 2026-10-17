@@ -264,6 +264,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // stays in Python (its tables are not created by Alembic).
     "/api/opencti",
     "/api/analyzers",
+    // The SOCFortress UBA connector (copilot-uba).
+    "/api/uba",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -301,6 +303,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_siem::REQUIREMENTS);
     all.extend_from_slice(copilot_threat_intel::REQUIREMENTS);
     all.extend(copilot_agent_reports::requirements());
+    all.extend_from_slice(copilot_uba::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -564,7 +567,8 @@ impl App {
                         agents.velociraptor.timeouts(),
                     ))
                     .chain(copilot_shuffle::verifiers(&shuffle))
-                    .chain(copilot_intel_connectors::verify::verifiers()),
+                    .chain(copilot_intel_connectors::verify::verifiers())
+                    .chain(copilot_uba::verifiers()),
             ),
             wazuh,
             ingest,
@@ -910,6 +914,18 @@ impl App {
             // Full paths: `/api/opencti/*` and `/api/analyzers*`.
             .merge(
                 copilot_intel_connectors::router(self.intel.clone()).layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
+            .nest(
+                "/api/uba",
+                copilot_uba::router(copilot_uba::UbaState::new(
+                    self.ctx.clone(),
+                    self.graylog.clone(),
+                    self.wazuh.clone(),
+                ))
+                .layer(from_fn_with_state(
                     self.wazuh.legacy.clone(),
                     copilot_wazuh::decoded_slash_to_legacy,
                 )),

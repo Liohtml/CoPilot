@@ -1336,10 +1336,12 @@ async def main():  # noqa: C901 - one scenario after the other
         """A difference by design (§4): Python answers `py_status`, Rust `rs_status` with
         `rs_detail`, sends nothing upstream and leaves the rows as they were."""
         await reset()
-        before = await snapshot()
         r = await send(py, method, path, tok, body, None, None)
         check(f"python: {name} [{r.status_code}]", r.status_code == py_status, f"{r.status_code} {r.text[:600]}")
         await reset()
+        # Taken after the reset Rust starts from: a reset stamps rows with UTC_TIMESTAMP(), so a
+        # snapshot from before Python's request differs whenever the two resets fall in two seconds.
+        before = await snapshot()
         for rec in RECS:
             rec.take()
         q = await send(rs, method, path, tok, body, None, None)
@@ -1350,7 +1352,11 @@ async def main():  # noqa: C901 - one scenario after the other
             f"{q.status_code} {q.text[:600]}",
         )
         after = await snapshot()
-        check(f"rust: {name}: no rows changed", json.dumps(before, default=str) == json.dumps(after, default=str))
+        check(
+            f"rust: {name}: no rows changed",
+            json.dumps(before, default=str) == json.dumps(after, default=str),
+            f"before {json.dumps(before, default=str)[:1500]}\n        after  {json.dumps(after, default=str)[:1500]}",
+        )
         check(f"rust: {name}: no upstream request", all(rec.take() == [] for rec in RECS))
         await reset()
 

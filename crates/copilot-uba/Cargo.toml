@@ -1,0 +1,36 @@
+[package]
+name = "copilot-uba"
+description = "The SOCFortress UBA connector (/api/uba): the UBA proxy routes, the verdict write-back onto incident alerts, provisioning, mode and rollback"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-connectors = { workspace = true }
+copilot-graylog = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-incidents = { workspace = true }
+copilot-sla = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-jinja = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+regex = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true
