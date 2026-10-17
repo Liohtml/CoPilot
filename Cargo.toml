@@ -63,6 +63,7 @@ copilot-grafana-dashboards = { path = "crates/copilot-grafana-dashboards" }
 copilot-integration-provisioning = { path = "crates/copilot-integration-provisioning" }
 copilot-license = { path = "crates/copilot-license" }
 copilot-status = { path = "crates/copilot-status" }
+copilot-patch-tuesday = { path = "crates/copilot-patch-tuesday" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

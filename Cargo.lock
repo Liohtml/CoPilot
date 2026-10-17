@@ -489,6 +489,7 @@ dependencies = [
  "copilot-monitoring-alerts",
  "copilot-notifications",
  "copilot-objectstore",
+ "copilot-patch-tuesday",
  "copilot-platform",
  "copilot-portainer",
  "copilot-provisioning",
@@ -1132,6 +1133,28 @@ dependencies = [
  "serde_json",
  "sha2",
  "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "copilot-patch-tuesday"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-gateway",
+ "copilot-jinja",
+ "copilot-threat-intel",
+ "copilot-uba",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "copilot-yaml",
+ "http",
+ "pretty_assertions",
+ "serde_json",
  "tokio",
  "tracing",
 ]

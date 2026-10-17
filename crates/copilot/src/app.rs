@@ -307,6 +307,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // This process's request timing, runtime lag and query metrics
     // (copilot-status).
     "/api/performance",
+    // Microsoft Patch Tuesday (copilot-patch-tuesday): MSRC, EPSS and KEV.
+    "/api/patch-tuesday",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -451,6 +453,8 @@ pub struct App {
     /// The sidebar's status panel (`/api/status/sidebar`) and its process
     /// state.
     pub sidebar: copilot_status::sidebar::SidebarState,
+    /// Microsoft Patch Tuesday (`/api/patch-tuesday`).
+    pub patch_tuesday: copilot_patch_tuesday::PatchTuesdayState,
 }
 
 impl App {
@@ -635,6 +639,8 @@ impl App {
             )),
             cache: Arc::default(),
         };
+        let patch_tuesday =
+            copilot_patch_tuesday::PatchTuesdayState::new(ctx.clone(), legacy.clone());
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -693,6 +699,7 @@ impl App {
             modules,
             license,
             sidebar,
+            patch_tuesday,
         })
     }
 
@@ -1098,6 +1105,8 @@ impl App {
                     copilot_wazuh::decoded_slash_to_legacy,
                 )),
             )
+            // Full paths: `/api/patch-tuesday*`.
+            .merge(copilot_patch_tuesday::router(self.patch_tuesday.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
