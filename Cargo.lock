@@ -506,6 +506,7 @@ dependencies = [
  "copilot-velociraptor",
  "copilot-waf",
  "copilot-wazuh",
+ "copilot-wazuh-rules",
  "copilot-web",
  "copilot-webauthn",
  "http",
@@ -1611,6 +1612,36 @@ dependencies = [
  "tracing",
  "url",
  "wiremock",
+]
+
+[[package]]
+name = "copilot-wazuh-rules"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-db",
+ "copilot-integration-modules",
+ "copilot-jinja",
+ "copilot-monitoring-alerts",
+ "copilot-searches",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "copilot-yaml",
+ "flate2",
+ "futures",
+ "http",
+ "num-bigint-dig",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

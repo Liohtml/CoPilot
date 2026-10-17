@@ -152,9 +152,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/wazuh_indexer",
     "/api/snapshots",
     // The Wazuh manager: rules and rule files (the upload included), groups,
-    // the six MITRE listings and the restart; /rule/disabled|disable|enable
-    // (no `disabledrule` table), /rule/exclude, the Atomic Red Team routes and
-    // the two MITRE alert searches stay in Python.
+    // the six MITRE listings and the restart; the rule switches, the
+    // exclusion and the Atomic Red Team listings are copilot-wazuh-rules'.
+    // The two MITRE alert searches stay in Python.
     "/api/wazuh_manager/rules",
     "/api/wazuh_manager/groups",
     "GET /api/wazuh_manager/mitre/groups",
@@ -164,6 +164,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/wazuh_manager/mitre/tactics",
     "GET /api/wazuh_manager/mitre/techniques",
     "POST /api/wazuh_manager/management/restart",
+    "/api/wazuh_manager/rule",
+    "GET /api/wazuh_manager/mitre/atomic-tests",
+    "GET /api/wazuh_manager/mitre/techniques/{technique_id}/atomic-tests",
     // The Graylog connector (copilot-graylog); `POST /api/graylog/invoke`,
     // the active-response webhook, is copilot-response's (below).
     "GET /api/graylog/indices",
@@ -351,6 +354,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend(copilot_agent_reports::requirements());
     all.extend_from_slice(copilot_uba::REQUIREMENTS);
     all.extend_from_slice(copilot_integration_modules::REQUIREMENTS);
+    all.extend_from_slice(copilot_wazuh_rules::REQUIREMENTS);
     all.extend_from_slice(copilot_license::REQUIREMENTS);
     all.extend_from_slice(copilot_status::REQUIREMENTS);
     all.push(TableRequirement {
@@ -453,6 +457,9 @@ pub struct App {
     /// The sidebar's status panel (`/api/status/sidebar`) and its process
     /// state.
     pub sidebar: copilot_status::sidebar::SidebarState,
+    /// The Wazuh manager's rule switches, the exclusion and the Atomic Red
+    /// Team listings (`copilot-wazuh-rules`) with their caches.
+    pub wazuh_rules: copilot_wazuh_rules::RulesState,
 }
 
 impl App {
@@ -530,6 +537,14 @@ impl App {
             epss: copilot_agents::services::epss::EpssClient::new()
                 .context("building the EPSS client")?,
         };
+        let wazuh_rules = copilot_wazuh_rules::RulesState::new(
+            wazuh.clone(),
+            cfg.integration_modules_url.clone(),
+            cfg.catalog.github_raw_url.clone(),
+            cfg.catalog.github_api_url.clone(),
+        )
+        .map_err(anyhow::Error::msg)
+        .context("building the Atomic Red Team client")?;
         let modules = copilot_integration_modules::ModulesState::new(
             ctx.clone(),
             cfg.integration_modules_url.clone(),
@@ -695,6 +710,7 @@ impl App {
             modules,
             license,
             sidebar,
+            wazuh_rules,
         })
     }
 
@@ -1078,6 +1094,14 @@ impl App {
             // copilot-integrations' routes, and `POST /api/mimecast/invoke`,
             // `/ttp/urls`.
             .merge(copilot_integration_modules::router(self.modules.clone()))
+            // Full paths under `/api/wazuh_manager` (the manager's other
+            // routes are nested above).
+            .merge(copilot_wazuh_rules::router(self.wazuh_rules.clone()).layer(
+                axum::middleware::from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                ),
+            ))
             .nest(
                 "/api/license",
                 copilot_license::router(copilot_license::LicenseState {

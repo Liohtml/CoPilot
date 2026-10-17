@@ -1,5 +1,7 @@
 //! The core leftovers against a real MySQL at the Alembic head: the customer
-//! writes (`copilot-customers`, the licence server a wiremock stand-in).
+//! writes (`copilot-customers`, the licence server a wiremock stand-in) and
+//! the Wazuh manager's rule switches, exclusion and Atomic Red Team listings
+//! (`copilot-wazuh-rules`: the manager, the AI module and GitHub stand-ins).
 //!
 //! `license` and `license_cache` are deployment-wide: each test puts the rows
 //! it finds aside and restores them, so the suites can share one database.
@@ -426,5 +428,464 @@ async fn customer_writes_follow_python() {
     ))
     .await;
     restore_licences(&h, saved).await;
+    cleanup(&h).await;
+}
+
+// --- /api/wazuh_manager rule switches, exclusion, Atomic Red Team ---------------------
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct SavedConnector {
+    connector_name: String,
+    connector_url: String,
+}
+
+/// The `Wazuh-Manager` row pointed at `url` (the row found is restored by
+/// [`restore_manager`]).
+async fn point_manager(h: &Harness, url: &str) -> Vec<SavedConnector> {
+    let saved = sqlx::query_as::<_, SavedConnector>(
+        "SELECT connector_name, connector_url FROM connectors WHERE connector_name = 'Wazuh-Manager'",
+    )
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    if saved.is_empty() {
+        sqlx::query(
+            "INSERT INTO connectors (connector_name, connector_type, connector_url, \
+             connector_last_updated, connector_username, connector_password, connector_api_key, \
+             connector_description, connector_supports, connector_configured, connector_verified, \
+             connector_accepts_host_only, connector_accepts_api_key, \
+             connector_accepts_username_password, connector_accepts_file, \
+             connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES \
+             ('Wazuh-Manager', '4.8', ?, '2026-01-02 03:04:05', 'wazuh', 'pw', NULL, 'desc', \
+             'supports', 1, 1, 0, 0, 1, 0, 0, NULL, 1)",
+        )
+        .bind(url)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    } else {
+        sqlx::query(
+            "UPDATE connectors SET connector_url = ? WHERE connector_name = 'Wazuh-Manager'",
+        )
+        .bind(url)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+    saved
+}
+
+async fn restore_manager(h: &Harness, saved: Vec<SavedConnector>) {
+    match saved.first() {
+        None => {
+            h.exec("DELETE FROM connectors WHERE connector_name = 'Wazuh-Manager'")
+                .await;
+        }
+        Some(row) => {
+            sqlx::query("UPDATE connectors SET connector_url = ? WHERE connector_name = ?")
+                .bind(&row.connector_url)
+                .bind(&row.connector_name)
+                .execute(h.db.pool())
+                .await
+                .unwrap();
+        }
+    }
+}
+
+fn rule_file(rule_id: &str, level: &str) -> Value {
+    json!({"data": {"affected_items": [{"group": {
+        "@name": "syslog,sshd,",
+        "rule": [
+            {"@id": "5700", "@level": "0", "decoded_as": "sshd", "description": "SSHD messages."},
+            {"@id": rule_id, "@level": level, "if_sid": "5700",
+             "match": "illegal user|invalid user", "description": "sshd: attempt & <bad>"}
+        ]
+    }}], "total_affected_items": 1}, "error": 0})
+}
+
+async fn wazuh_manager(rule_id: &str, filename: &str) -> MockServer {
+    use wiremock::matchers::query_param;
+    let server = stand_in(1).await;
+    Mock::given(method("GET"))
+        .and(path("/security/user/authenticate"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"data": {"token": "tok"}, "error": 0})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/rules"))
+        .and(query_param("rule_ids", rule_id))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "affected_items": [{"filename": filename, "id": 5710}], "total_affected_items": 1
+        }, "error": 0})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/rules"))
+        .and(query_param("rule_ids", "404404"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "affected_items": [], "total_affected_items": 0
+        }, "error": 0})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/rules/files/{filename}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(rule_file(rule_id, "5")))
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path(format!("/rules/files/{filename}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"data": {"affected_items": [filename], "total_affected_items": 1}, "error": 0}),
+        ))
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/manager/restart"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {}, "error": 0})))
+        .mount(&server)
+        .await;
+    server
+}
+
+/// The rule file Python's `convert_to_xml` writes for [`rule_file`] at `level`.
+fn expected_xml(rule_id: &str, level: &str) -> String {
+    format!(
+        "<group name=\"syslog,sshd,\">\n\t<rule id=\"5700\" level=\"0\">\n\t\t<decoded_as>sshd\
+         </decoded_as>\n\t\t<description>SSHD messages.</description>\n\t</rule>\n\t<rule \
+         id=\"{rule_id}\" level=\"{level}\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match>illegal \
+         user|invalid user</match>\n\t\t<description>sshd: attempt &amp; &lt;bad&gt;\
+         </description>\n\t</rule>\n</group>"
+    )
+}
+
+#[tokio::test]
+async fn wazuh_rule_routes_follow_python() {
+    if !configured() {
+        return;
+    }
+    let extra = format!(
+        "COPILOT_INTEGRATION_MODULES_URL=http://127.0.0.1:{}\n\
+         COPILOT_GITHUB_RAW_URL=http://127.0.0.1:{}/raw\n\
+         COPILOT_GITHUB_API_URL=http://127.0.0.1:{}/api\n",
+        port(2),
+        port(3),
+        port(3)
+    );
+    let h = harness_or_skip!(None, &extra);
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let rule_id = format!("9{}", u32::from_str_radix(&s, 16).unwrap() % 100_000);
+    let filename = "0095-sshd_rules.xml";
+    h.exec(&format!(
+        "DELETE FROM disabledrule WHERE rule_id = '{rule_id}'"
+    ))
+    .await;
+    let manager = wazuh_manager(&rule_id, filename).await;
+    let saved = point_manager(&h, &manager.uri()).await;
+    let m = |p: &str| format!("/api/wazuh_manager{p}");
+
+    // Guards and the body, in FastAPI's order.
+    let (st, _) = h
+        .call("GET", &m("/rule/disabled"), Some(&analyst), None)
+        .await;
+    assert_eq!(st, 403);
+    let (st, out) = h
+        .call_raw(
+            "POST",
+            &m("/rule/disable"),
+            None,
+            Some("application/json"),
+            "{",
+        )
+        .await;
+    assert_eq!(st, 422, "{out}");
+    let (st, out) = h
+        .call(
+            "POST",
+            &m("/rule/disable"),
+            Some(&admin),
+            Some(json!({"rule_id": 5})),
+        )
+        .await;
+    assert_eq!(st, 422, "{out}");
+
+    // Disable: the file goes back with level 1, the row keeps the old one.
+    let body = json!({"rule_id": rule_id, "reason_for_disabling": "noise", "length_of_time": "1d"});
+    let (st, out) = h
+        .call(
+            "POST",
+            &m("/rule/disable"),
+            Some(&admin),
+            Some(body.clone()),
+        )
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(
+        out,
+        json!({"previous_level": "5", "message": format!(
+            "Rule {rule_id} successfully processed in file {filename}."
+        ), "success": true})
+    );
+    let sent = manager.received_requests().await.unwrap();
+    let puts: Vec<_> = sent
+        .iter()
+        .filter(|r| r.method.as_str() == "PUT" && r.url.path().starts_with("/rules/files/"))
+        .collect();
+    assert_eq!(puts.len(), 1);
+    assert_eq!(puts[0].url.query(), Some("overwrite=true"));
+    assert_eq!(
+        puts[0].headers.get("content-type").unwrap(),
+        "application/octet-stream"
+    );
+    assert_eq!(
+        String::from_utf8(puts[0].body.clone()).unwrap(),
+        expected_xml(&rule_id, "1")
+    );
+    assert!(
+        sent.iter()
+            .any(|r| r.method.as_str() == "PUT" && r.url.path() == "/manager/restart")
+    );
+    let disabled_by: String = sqlx::query_scalar(
+        "SELECT CONCAT(previous_level, '|', new_level, '|', reason_for_disabling, '|', \
+         length_of_time, '|', disabled_by) FROM disabledrule WHERE rule_id = ?",
+    )
+    .bind(&rule_id)
+    .fetch_one(h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(disabled_by, format!("5|1|noise|1d|admin{s}"));
+    let (st, out) = h
+        .call("POST", &m("/rule/disable"), Some(&admin), Some(body))
+        .await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            500,
+            json!({"success": false, "message": "Rule is already disabled"})
+        )
+    );
+    let (st, out) = h
+        .call("GET", &m("/rule/disabled"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 200, "{out}");
+    let mine: Vec<&Value> = out["disabled_rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["rule_id"] == json!(rule_id))
+        .collect();
+    assert_eq!(
+        mine,
+        vec![
+            &json!({"rule_id": rule_id, "previous_level": "5", "new_level": "1",
+                     "reason_for_disabling": "noise", "length_of_time": "1d",
+                     "disabled_by": format!("admin{s}")})
+        ]
+    );
+    assert_eq!(
+        out["message"],
+        json!("Successfully fetched all disabled rules")
+    );
+
+    // Enable: the recorded level goes back, the row goes.
+    let enable = json!({"rule_id": rule_id, "reason_for_enabling": "fixed"});
+    let (st, out) = h
+        .call(
+            "POST",
+            &m("/rule/enable"),
+            Some(&admin),
+            Some(enable.clone()),
+        )
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(out["new_level"], Value::Null);
+    let sent = manager.received_requests().await.unwrap();
+    let last_put = sent
+        .iter()
+        .rfind(|r| r.method.as_str() == "PUT" && r.url.path().starts_with("/rules/files/"))
+        .unwrap();
+    assert_eq!(
+        String::from_utf8(last_put.body.clone()).unwrap(),
+        expected_xml(&rule_id, "5")
+    );
+    let (st, out) = h
+        .call("POST", &m("/rule/enable"), Some(&admin), Some(enable))
+        .await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            404,
+            json!({"success": false, "message": "Rule is already enabled"})
+        )
+    );
+    let missing = json!({"rule_id": "404404", "reason_for_disabling": "x", "length_of_time": "x"});
+    let (st, out) = h
+        .call("POST", &m("/rule/disable"), Some(&admin), Some(missing))
+        .await;
+    assert_eq!(st, 404, "{out}");
+    assert_eq!(
+        out["message"],
+        json!("Rule 404404 not found. Make sure the rule ID is correct within the Wazuh Manager.")
+    );
+
+    // The exclusion: the AI module's answer, validated.
+    let ai = stand_in(2).await;
+    Mock::given(method("POST"))
+        .and(path("/copilot-ai-module/wazuh-rule-exclusion"))
+        .and(body_json(json!({"integration": "wazuh-rule-exclusion",
+                              "prompt": {"rule_group1": "windows", "n": 1}})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "wazuh_rule": "<rule/>", "explanation": "e", "message": "m", "success": true
+        })))
+        .mount(&ai)
+        .await;
+    let ok = json!({"integration": "wazuh-rule-exclusion", "prompt": {"rule_group1": "windows", "n": 1}});
+    let (st, out) = h
+        .call("POST", &m("/rule/exclude"), Some(&admin), Some(ok))
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(out["wazuh_rule"], json!("<rule/>"));
+    let (st, out) = h
+        .call(
+            "POST",
+            &m("/rule/exclude"),
+            Some(&admin),
+            Some(json!({"integration": "x", "prompt": {}})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            400,
+            json!({"success": false, "message": "Invalid integration. Only 'wazuh-rule-exclusion' is supported."})
+        )
+    );
+    let (st, _) = h
+        .call(
+            "POST",
+            &m("/rule/exclude"),
+            Some(&analyst),
+            Some(json!({"integration": "x", "prompt": {}})),
+        )
+        .await;
+    assert_eq!(st, 403);
+    drop(ai);
+
+    // Atomic Red Team: the index, then the process's cache.
+    let github = stand_in(3).await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/raw/redcanaryco/atomic-red-team/refs/heads/master/atomics/Indexes/Indexes-Markdown/atomic-red-team-index.md",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "| [OS Credential Dumping](x) | T1003 | 12 |\n| [LSASS Memory](y) | T1003.001 | 7 |\n",
+        ))
+        .mount(&github)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/raw/redcanaryco/atomic-red-team/refs/heads/master/atomics/T1003/T1003.md",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_string("# OS Credential Dumping"))
+        .mount(&github)
+        .await;
+    let (st, out) = h
+        .call(
+            "GET",
+            &m("/mitre/atomic-tests?size=1&page=2"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(
+        out["message"],
+        json!("Found 2 MITRE techniques (page 2 of 2)")
+    );
+    assert_eq!(out["total_tests"], json!(19));
+    assert_eq!(out["tests"][0]["technique_id"], json!("T1003.001"));
+    let (st, out) = h
+        .call("GET", &m("/mitre/atomic-tests"), Some(&analyst), None)
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(out["total_tests"], Value::Null);
+    let index_fetches = github
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path().ends_with("atomic-red-team-index.md"))
+        .count();
+    assert_eq!(index_fetches, 1);
+    let sent = github.received_requests().await.unwrap();
+    let names: Vec<String> = sent[0]
+        .headers
+        .iter()
+        .map(|(k, _)| k.as_str().to_string())
+        .collect();
+    assert!(names.contains(&"user-agent".to_string()), "{names:?}");
+    assert_eq!(
+        sent[0].headers.get("user-agent").unwrap(),
+        "Python/3.11 aiohttp/3.13.5"
+    );
+    let (st, out) = h
+        .call(
+            "GET",
+            &m("/mitre/atomic-tests?page=0&size=x"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 422, "{out}");
+    let (st, out) = h
+        .call(
+            "GET",
+            &m("/mitre/atomic-tests?size=0"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            500,
+            json!({"success": false, "message": "Error retrieving atomic tests: integer division or modulo by zero"})
+        )
+    );
+    let (st, out) = h
+        .call(
+            "GET",
+            &m("/mitre/techniques/attack-T1003/atomic-tests"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(
+        out,
+        json!({"success": true, "message": "Atomic Red Team tests retrieved for technique attack-T1003",
+               "technique_id": "T1003", "markdown_content": "# OS Credential Dumping"})
+    );
+    let (st, out) = h
+        .call(
+            "GET",
+            &m("/mitre/techniques/T9999/atomic-tests"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(out["success"], json!(false));
+    assert_eq!(out["markdown_content"], Value::Null);
+
+    restore_manager(&h, saved).await;
+    h.exec(&format!(
+        "DELETE FROM disabledrule WHERE rule_id = '{rule_id}'"
+    ))
+    .await;
     cleanup(&h).await;
 }

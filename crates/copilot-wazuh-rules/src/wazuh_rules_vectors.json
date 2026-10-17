@@ -1,0 +1,1113 @@
+{
+ "levels": [
+  {
+   "content": {
+    "@name": "syslog,sshd,",
+    "rule": [
+     {
+      "@id": "5700",
+      "@level": "0",
+      "decoded_as": "sshd",
+      "description": "SSHD messages grouped."
+     },
+     {
+      "@id": "5701",
+      "@level": "8",
+      "if_sid": "5700",
+      "match": "Bad protocol version identification",
+      "description": "sshd: Possible attack.",
+      "mitre": {
+       "id": "T1190"
+      }
+     },
+     {
+      "@id": "5702",
+      "@level": "5",
+      "if_sid": "5700",
+      "match": {
+       "@type": "pcre2",
+       "#text": "^reverse mapping .* failed"
+      },
+      "description": "x",
+      "group": "gdpr_IV_35.7.d,"
+     }
+    ]
+   },
+   "rule_id": "5701",
+   "new_level": "1",
+   "previous_level": "8",
+   "xml": "<group name=\"syslog,sshd,\">\n\t<rule id=\"5700\" level=\"0\">\n\t\t<decoded_as>sshd</decoded_as>\n\t\t<description>SSHD messages grouped.</description>\n\t</rule>\n\t<rule id=\"5701\" level=\"1\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match>Bad protocol version identification</match>\n\t\t<description>sshd: Possible attack.</description>\n\t\t<mitre>\n\t\t\t<id>T1190</id>\n\t\t</mitre>\n\t</rule>\n\t<rule id=\"5702\" level=\"5\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match type=\"pcre2\">^reverse mapping .* failed</match>\n\t\t<description>x</description>\n\t\t<group>gdpr_IV_35.7.d,</group>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "syslog,sshd,",
+    "rule": [
+     {
+      "@id": "5700",
+      "@level": "0",
+      "decoded_as": "sshd",
+      "description": "SSHD messages grouped."
+     },
+     {
+      "@id": "5701",
+      "@level": "8",
+      "if_sid": "5700",
+      "match": "Bad protocol version identification",
+      "description": "sshd: Possible attack.",
+      "mitre": {
+       "id": "T1190"
+      }
+     },
+     {
+      "@id": "5702",
+      "@level": "5",
+      "if_sid": "5700",
+      "match": {
+       "@type": "pcre2",
+       "#text": "^reverse mapping .* failed"
+      },
+      "description": "x",
+      "group": "gdpr_IV_35.7.d,"
+     }
+    ]
+   },
+   "rule_id": "5700",
+   "new_level": "1",
+   "previous_level": "0",
+   "xml": "<group name=\"syslog,sshd,\">\n\t<rule id=\"5700\" level=\"1\">\n\t\t<decoded_as>sshd</decoded_as>\n\t\t<description>SSHD messages grouped.</description>\n\t</rule>\n\t<rule id=\"5701\" level=\"8\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match>Bad protocol version identification</match>\n\t\t<description>sshd: Possible attack.</description>\n\t\t<mitre>\n\t\t\t<id>T1190</id>\n\t\t</mitre>\n\t</rule>\n\t<rule id=\"5702\" level=\"5\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match type=\"pcre2\">^reverse mapping .* failed</match>\n\t\t<description>x</description>\n\t\t<group>gdpr_IV_35.7.d,</group>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "syslog,sshd,",
+    "rule": [
+     {
+      "@id": "5700",
+      "@level": "0",
+      "decoded_as": "sshd",
+      "description": "SSHD messages grouped."
+     },
+     {
+      "@id": "5701",
+      "@level": "8",
+      "if_sid": "5700",
+      "match": "Bad protocol version identification",
+      "description": "sshd: Possible attack.",
+      "mitre": {
+       "id": "T1190"
+      }
+     },
+     {
+      "@id": "5702",
+      "@level": "5",
+      "if_sid": "5700",
+      "match": {
+       "@type": "pcre2",
+       "#text": "^reverse mapping .* failed"
+      },
+      "description": "x",
+      "group": "gdpr_IV_35.7.d,"
+     }
+    ]
+   },
+   "rule_id": "9999",
+   "new_level": "1",
+   "previous_level": null,
+   "xml": "<group name=\"syslog,sshd,\">\n\t<rule id=\"5700\" level=\"0\">\n\t\t<decoded_as>sshd</decoded_as>\n\t\t<description>SSHD messages grouped.</description>\n\t</rule>\n\t<rule id=\"5701\" level=\"8\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match>Bad protocol version identification</match>\n\t\t<description>sshd: Possible attack.</description>\n\t\t<mitre>\n\t\t\t<id>T1190</id>\n\t\t</mitre>\n\t</rule>\n\t<rule id=\"5702\" level=\"5\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match type=\"pcre2\">^reverse mapping .* failed</match>\n\t\t<description>x</description>\n\t\t<group>gdpr_IV_35.7.d,</group>\n\t</rule>\n</group>"
+  },
+  {
+   "content": [
+    {
+     "@name": "syslog,sshd,",
+     "rule": [
+      {
+       "@id": "5700",
+       "@level": "0",
+       "decoded_as": "sshd",
+       "description": "SSHD messages grouped."
+      },
+      {
+       "@id": "5701",
+       "@level": "8",
+       "if_sid": "5700",
+       "match": "Bad protocol version identification",
+       "description": "sshd: Possible attack.",
+       "mitre": {
+        "id": "T1190"
+       }
+      },
+      {
+       "@id": "5702",
+       "@level": "5",
+       "if_sid": "5700",
+       "match": {
+        "@type": "pcre2",
+        "#text": "^reverse mapping .* failed"
+       },
+       "description": "x",
+       "group": "gdpr_IV_35.7.d,"
+      }
+     ]
+    },
+    {
+     "@name": "second,",
+     "rule": {
+      "@id": "5701",
+      "@level": "3",
+      "description": "again"
+     }
+    }
+   ],
+   "rule_id": "5701",
+   "new_level": "1",
+   "previous_level": "3",
+   "xml": "<group name=\"syslog,sshd,\">\n\t<rule id=\"5700\" level=\"0\">\n\t\t<decoded_as>sshd</decoded_as>\n\t\t<description>SSHD messages grouped.</description>\n\t</rule>\n\t<rule id=\"5701\" level=\"1\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match>Bad protocol version identification</match>\n\t\t<description>sshd: Possible attack.</description>\n\t\t<mitre>\n\t\t\t<id>T1190</id>\n\t\t</mitre>\n\t</rule>\n\t<rule id=\"5702\" level=\"5\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match type=\"pcre2\">^reverse mapping .* failed</match>\n\t\t<description>x</description>\n\t\t<group>gdpr_IV_35.7.d,</group>\n\t</rule>\n</group>\n\n<group name=\"second,\">\n\t<rule id=\"5701\" level=\"1\">\n\t\t<description>again</description>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "one,",
+    "rule": {
+     "@id": "100",
+     "@level": "12",
+     "description": "only"
+    }
+   },
+   "rule_id": "100",
+   "new_level": "12",
+   "previous_level": "12",
+   "xml": "<group name=\"one,\">\n\t<rule id=\"100\" level=\"12\">\n\t\t<description>only</description>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "empty,"
+   },
+   "rule_id": "100",
+   "new_level": "1",
+   "previous_level": null,
+   "xml": "<group name=\"empty,\"></group>"
+  },
+  {
+   "content": {
+    "@name": "norule,",
+    "rule": null
+   },
+   "rule_id": "100",
+   "new_level": "1",
+   "previous_level": null,
+   "xml": "<group name=\"norule,\">\n\t<rule></rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "norule,",
+    "rule": []
+   },
+   "rule_id": "100",
+   "new_level": "1",
+   "previous_level": null,
+   "xml": "<group name=\"norule,\"></group>"
+  },
+  {
+   "content": [],
+   "rule_id": "100",
+   "new_level": "1",
+   "previous_level": null,
+   "xml": ""
+  },
+  {
+   "content": {
+    "@name": "x",
+    "rule": [
+     {
+      "@level": "3"
+     }
+    ]
+   },
+   "rule_id": "100",
+   "new_level": "1",
+   "http": "Failed to set rule level: '@id'"
+  },
+  {
+   "content": {
+    "@name": "x",
+    "rule": "text"
+   },
+   "rule_id": "100",
+   "new_level": "1",
+   "http": "Failed to set rule level: string indices must be integers, not 'str'"
+  },
+  {
+   "content": {
+    "@name": "x",
+    "rule": 5
+   },
+   "rule_id": "100",
+   "new_level": "1",
+   "http": "Failed to set rule level: 'int' object is not iterable"
+  },
+  {
+   "content": {
+    "@name": "x",
+    "rule": [
+     {
+      "@id": 100,
+      "@level": "3"
+     }
+    ]
+   },
+   "rule_id": "100",
+   "new_level": "1",
+   "previous_level": null,
+   "xml": "<group name=\"x\">\n\t<rule id=\"100\" level=\"3\"></rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "x",
+    "rule": [
+     {
+      "@id": "100",
+      "@level": 3
+     }
+    ]
+   },
+   "rule_id": "100",
+   "new_level": "1",
+   "previous_level": 3,
+   "xml": "<group name=\"x\">\n\t<rule id=\"100\" level=\"1\"></rule>\n</group>"
+  },
+  {
+   "content": [
+    "not a group"
+   ],
+   "rule_id": "100",
+   "new_level": "1",
+   "raised": "AttributeError",
+   "text": "'str' object has no attribute 'get'"
+  },
+  {
+   "content": "text",
+   "rule_id": "100",
+   "new_level": "1",
+   "raised": "AttributeError",
+   "text": "'str' object has no attribute 'get'"
+  },
+  {
+   "content": 5,
+   "rule_id": "100",
+   "new_level": "1",
+   "http": "Failed to set rule level: 'int' object is not iterable"
+  },
+  {
+   "content": null,
+   "rule_id": "100",
+   "new_level": "1",
+   "http": "Failed to set rule level: 'NoneType' object is not iterable"
+  },
+  {
+   "content": [
+    {
+     "@name": "syslog,sshd,",
+     "rule": [
+      {
+       "@id": "5700",
+       "@level": "0",
+       "decoded_as": "sshd",
+       "description": "SSHD messages grouped."
+      },
+      {
+       "@id": "5701",
+       "@level": "8",
+       "if_sid": "5700",
+       "match": "Bad protocol version identification",
+       "description": "sshd: Possible attack.",
+       "mitre": {
+        "id": "T1190"
+       }
+      },
+      {
+       "@id": "5702",
+       "@level": "5",
+       "if_sid": "5700",
+       "match": {
+        "@type": "pcre2",
+        "#text": "^reverse mapping .* failed"
+       },
+       "description": "x",
+       "group": "gdpr_IV_35.7.d,"
+      }
+     ]
+    },
+    {
+     "@name": "syslog,sshd,",
+     "rule": [
+      {
+       "@id": "5700",
+       "@level": "0",
+       "decoded_as": "sshd",
+       "description": "SSHD messages grouped."
+      },
+      {
+       "@id": "5701",
+       "@level": "8",
+       "if_sid": "5700",
+       "match": "Bad protocol version identification",
+       "description": "sshd: Possible attack.",
+       "mitre": {
+        "id": "T1190"
+       }
+      },
+      {
+       "@id": "5702",
+       "@level": "5",
+       "if_sid": "5700",
+       "match": {
+        "@type": "pcre2",
+        "#text": "^reverse mapping .* failed"
+       },
+       "description": "x",
+       "group": "gdpr_IV_35.7.d,"
+      }
+     ]
+    }
+   ],
+   "rule_id": "5701",
+   "new_level": "1",
+   "previous_level": "8",
+   "xml": "<group name=\"syslog,sshd,\">\n\t<rule id=\"5700\" level=\"0\">\n\t\t<decoded_as>sshd</decoded_as>\n\t\t<description>SSHD messages grouped.</description>\n\t</rule>\n\t<rule id=\"5701\" level=\"1\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match>Bad protocol version identification</match>\n\t\t<description>sshd: Possible attack.</description>\n\t\t<mitre>\n\t\t\t<id>T1190</id>\n\t\t</mitre>\n\t</rule>\n\t<rule id=\"5702\" level=\"5\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match type=\"pcre2\">^reverse mapping .* failed</match>\n\t\t<description>x</description>\n\t\t<group>gdpr_IV_35.7.d,</group>\n\t</rule>\n</group>\n\n<group name=\"syslog,sshd,\">\n\t<rule id=\"5700\" level=\"0\">\n\t\t<decoded_as>sshd</decoded_as>\n\t\t<description>SSHD messages grouped.</description>\n\t</rule>\n\t<rule id=\"5701\" level=\"1\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match>Bad protocol version identification</match>\n\t\t<description>sshd: Possible attack.</description>\n\t\t<mitre>\n\t\t\t<id>T1190</id>\n\t\t</mitre>\n\t</rule>\n\t<rule id=\"5702\" level=\"5\">\n\t\t<if_sid>5700</if_sid>\n\t\t<match type=\"pcre2\">^reverse mapping .* failed</match>\n\t\t<description>x</description>\n\t\t<group>gdpr_IV_35.7.d,</group>\n\t</rule>\n</group>"
+  },
+  {
+   "content": [
+    [
+     {
+      "@name": "syslog,sshd,",
+      "rule": [
+       {
+        "@id": "5700",
+        "@level": "0",
+        "decoded_as": "sshd",
+        "description": "SSHD messages grouped."
+       },
+       {
+        "@id": "5701",
+        "@level": "8",
+        "if_sid": "5700",
+        "match": "Bad protocol version identification",
+        "description": "sshd: Possible attack.",
+        "mitre": {
+         "id": "T1190"
+        }
+       },
+       {
+        "@id": "5702",
+        "@level": "5",
+        "if_sid": "5700",
+        "match": {
+         "@type": "pcre2",
+         "#text": "^reverse mapping .* failed"
+        },
+        "description": "x",
+        "group": "gdpr_IV_35.7.d,"
+       }
+      ]
+     }
+    ]
+   ],
+   "rule_id": "5701",
+   "new_level": "1",
+   "raised": "AttributeError",
+   "text": "'list' object has no attribute 'get'"
+  },
+  {
+   "content": {
+    "@name": "a&b<c>",
+    "@x": "say \"hi\"",
+    "@y": "it's",
+    "@z": "both ' and \"",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "description": "a & b < c > d"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"a&amp;b&lt;c&gt;\" x='say \"hi\"' y=\"it's\" z=\"both ' and &quot;\">\n\t<rule id=\"1\" level=\"1\">\n\t\t<description>a &amp; b &lt; c &gt; d</description>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "ws",
+    "@n": "line\nbreak\ttab\rcr",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "field": "  spaced  "
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"ws\" n=\"line&#10;break&#9;tab&#13;cr\">\n\t<rule id=\"1\" level=\"1\">\n\t\t<field>  spaced  </field>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "types",
+    "@int": 5,
+    "@float": 1.5,
+    "@true": true,
+    "@false": false,
+    "@none": null,
+    "@list": [
+     "a",
+     1
+    ],
+    "@dict": {
+     "k": "v"
+    },
+    "rule": {
+     "@id": "1",
+     "@level": "2"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"types\" int=\"5\" float=\"1.5\" true=\"true\" false=\"false\" none=\"\" list=\"['a', 1]\" dict=\"{'k': 'v'}\">\n\t<rule id=\"1\" level=\"1\"></rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "kids",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "n": 5,
+     "f": 2.0,
+     "t": true,
+     "f2": false,
+     "none": null,
+     "empty": "",
+     "lst": [
+      "a",
+      "b"
+     ],
+     "emptylist": [],
+     "nested": [
+      [
+       "x"
+      ],
+      {
+       "a": "b"
+      }
+     ],
+     "obj": {
+      "@k": "v",
+      "#text": "t",
+      "c": "d"
+     }
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"kids\">\n\t<rule id=\"1\" level=\"1\">\n\t\t<n>5</n>\n\t\t<f>2.0</f>\n\t\t<t>true</t>\n\t\t<f2>false</f2>\n\t\t<none></none>\n\t\t<empty></empty>\n\t\t<lst>a</lst>\n\t\t<lst>b</lst>\n\t\t<nested>['x']</nested>\n\t\t<nested>\n\t\t\t<a>b</a>\n\t\t</nested>\n\t\t<obj k=\"v\">\n\t\t\t<c>d</c>\nt\t\t</obj>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "text",
+    "#text": "group text",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "description": {
+      "#text": 5
+     },
+     "info": {
+      "#text": null
+     },
+     "x": {
+      "#text": [
+       "l"
+      ]
+     }
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"text\">\n\t<rule id=\"1\" level=\"1\">\n\t\t<description>5</description>\n\t\t<info></info>\n\t\t<x>['l']</x>\n\t</rule>\ngroup text</group>"
+  },
+  {
+   "content": {
+    "@name": "unicode é ☃",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "description": "naïve — ünïcödé 日本"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"unicode é ☃\">\n\t<rule id=\"1\" level=\"1\">\n\t\t<description>naïve — ünïcödé 日本</description>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "xmlns",
+    "@xmlns": {
+     "": "urn:a",
+     "b": "urn:b",
+     "c": null
+    },
+    "rule": {
+     "@id": "1",
+     "@level": "2"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"xmlns\" xmlns=\"urn:a\" xmlns:b=\"urn:b\" xmlns:c=\"\">\n\t<rule id=\"1\" level=\"1\"></rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "decl",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "description": "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"decl\">\n\t<rule id=\"1\" level=\"1\">\n\t\t<description>&lt;?xml version=\"1.0\" encoding=\"utf-8\"?&gt;</description>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "comment",
+    "#comment": "a note",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "#comment": [
+      "one",
+      "",
+      null,
+      7
+     ]
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"comment\">\n\t<!--a note-->\n\t<rule id=\"1\" level=\"1\">\n\t\t<!--one-->\n\t\t<!--7-->\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "badcomment",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "#comment": "a--b"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Comment text cannot contain '--'"
+  },
+  {
+   "content": {
+    "@name": "badcomment2",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "#comment": "ends-"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Comment text cannot end with '-'"
+  },
+  {
+   "content": {
+    "@name": "names",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "bad name": "x"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Invalid element name: whitespace not allowed"
+  },
+  {
+   "content": {
+    "@name": "names",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "a/b": "x"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Invalid element name: \"/\" not allowed"
+  },
+  {
+   "content": {
+    "@name": "names",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "?pi": "x"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Invalid element name: cannot start with \"?\" or \"!\""
+  },
+  {
+   "content": {
+    "@name": "names",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "a=b": "x"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Invalid element name: \"=\" not allowed"
+  },
+  {
+   "content": {
+    "@name": "names",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "q'": "x"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Invalid element name: quotes not allowed"
+  },
+  {
+   "content": {
+    "@name": "names",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "x\u001cy": "x"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Invalid element name: whitespace not allowed"
+  },
+  {
+   "content": {
+    "@name": "names",
+    "@a b": "x",
+    "rule": {
+     "@id": "1",
+     "@level": "2"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Invalid attribute name: whitespace not allowed"
+  },
+  {
+   "content": {
+    "@name": "names",
+    "@": "empty attr",
+    "rule": {
+     "@id": "1",
+     "@level": "2"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"names\" =\"empty attr\">\n\t<rule id=\"1\" level=\"1\"></rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "names",
+    "@xmlns": {
+     "b c": "urn"
+    },
+    "rule": {
+     "@id": "1",
+     "@level": "2"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "http": "Failed to convert to XML: Invalid attribute name: whitespace not allowed"
+  },
+  {
+   "content": {
+    "@name": "big",
+    "@n": 12345678901234567890,
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "x": -0.0,
+     "y": 1e+100,
+     "z": 3.14159
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"big\" n=\"12345678901234567890\">\n\t<rule id=\"1\" level=\"1\">\n\t\t<x>-0.0</x>\n\t\t<y>1e+100</y>\n\t\t<z>3.14159</z>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "ctrl",
+    "rule": {
+     "@id": "1",
+     "@level": "2",
+     "description": "a\u0001bc"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"ctrl\">\n\t<rule id=\"1\" level=\"1\">\n\t\t<description>a\u0001bc</description>\n\t</rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "  lead",
+    "rule": {
+     "@id": "1",
+     "@level": "2"
+    }
+   },
+   "rule_id": "1",
+   "new_level": "1",
+   "previous_level": "2",
+   "xml": "<group name=\"  lead\">\n\t<rule id=\"1\" level=\"1\"></rule>\n</group>"
+  },
+  {
+   "content": {
+    "@name": "trailing ws doc\n",
+    "rule": {
+     "@id": "1",
+     "@level": "2"
+    }
+   },
+   "rule_id": "1",
+   "new_level": " \n",
+   "previous_level": "2",
+   "xml": "<group name=\"trailing ws doc&#10;\">\n\t<rule id=\"1\" level=\" &#10;\"></rule>\n</group>"
+  }
+ ],
+ "index": [
+  {
+   "text": "| [OS Credential Dumping](../../T1003/T1003.md) | T1003 | 12 |\n| [LSASS Memory](../../T1003.001/T1003.001.md) | T1003.001 | 7 |\n",
+   "parsed": {
+    "total_techniques": 2,
+    "total_tests": 19,
+    "tests": [
+     {
+      "technique_id": "T1003",
+      "technique_name": "OS Credential Dumping",
+      "test_count": 12,
+      "categories": [],
+      "has_prerequisites": false
+     },
+     {
+      "technique_id": "T1003.001",
+      "technique_name": "LSASS Memory",
+      "test_count": 7,
+      "categories": [],
+      "has_prerequisites": false
+     }
+    ]
+   }
+  },
+  {
+   "text": "# Index\n\n| Technique | ID | Tests |\n|---|---|---|\n| [A](x) | T1 | 1 |\n|[B]( y )|T2.002|  3  |\n| [C] (z) | T3 | 4 |\n",
+   "parsed": {
+    "total_techniques": 2,
+    "total_tests": 4,
+    "tests": [
+     {
+      "technique_id": "T1",
+      "technique_name": "A",
+      "test_count": 1,
+      "categories": [],
+      "has_prerequisites": false
+     },
+     {
+      "technique_id": "T2.002",
+      "technique_name": "B",
+      "test_count": 3,
+      "categories": [],
+      "has_prerequisites": false
+     }
+    ]
+   }
+  },
+  {
+   "text": "| [Bad](x) | T9 | x |\n| [Unicode](x) | T5 | ٣ |\n| [Brackets [inner]](x) | T6 | 2 |\n",
+   "parsed": {
+    "total_techniques": 1,
+    "total_tests": 3,
+    "tests": [
+     {
+      "technique_id": "T5",
+      "technique_name": "Unicode",
+      "test_count": 3,
+      "categories": [],
+      "has_prerequisites": false
+     }
+    ]
+   }
+  },
+  {
+   "text": "",
+   "parsed": {
+    "total_techniques": 0,
+    "total_tests": 0,
+    "tests": []
+   }
+  },
+  {
+   "text": "| [Name|pipe](x) | T7 | 1 |",
+   "parsed": {
+    "total_techniques": 1,
+    "total_tests": 1,
+    "tests": [
+     {
+      "technique_id": "T7",
+      "technique_name": "Name|pipe",
+      "test_count": 1,
+      "categories": [],
+      "has_prerequisites": false
+     }
+    ]
+   }
+  }
+ ],
+ "exclude": [
+  {
+   "body": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group1": "windows",
+     "x": 1
+    }
+   },
+   "dump": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group1": "windows",
+     "x": 1
+    }
+   }
+  },
+  {
+   "body": {
+    "integration": "other",
+    "prompt": {
+     "rule_group1": "windows"
+    }
+   },
+   "http": [
+    400,
+    "Invalid integration. Only 'wazuh-rule-exclusion' is supported."
+   ]
+  },
+  {
+   "body": {
+    "integration": 5,
+    "prompt": {
+     "rule_group1": "windows"
+    }
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "integration"
+     ],
+     "msg": "Input should be a valid string"
+    }
+   ]
+  },
+  {
+   "body": {
+    "integration": 5,
+    "prompt": {
+     "rule_group1": "linux"
+    }
+   },
+   "http": [
+    400,
+    "Invalid 'rule_group1'. Only 'windows' is supported."
+   ]
+  },
+  {
+   "body": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {}
+   },
+   "http": [
+    400,
+    "Missing 'rule_group1' in prompt."
+   ]
+  },
+  {
+   "body": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group1": "linux"
+    }
+   },
+   "http": [
+    400,
+    "Invalid 'rule_group1'. Only 'windows' is supported."
+   ]
+  },
+  {
+   "body": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group3": "windows"
+    }
+   },
+   "dump": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group3": "windows"
+    }
+   }
+  },
+  {
+   "body": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group3": "linux"
+    }
+   },
+   "dump": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group3": "linux"
+    }
+   }
+  },
+  {
+   "body": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group3": "linux",
+     "rule_group1": "linux"
+    }
+   },
+   "http": [
+    400,
+    "Invalid 'rule_group1' or 'rule_group3'. At least one must be 'windows'."
+   ]
+  },
+  {
+   "body": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group3": "linux",
+     "rule_group1": "windows"
+    }
+   },
+   "dump": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": {
+     "rule_group3": "linux",
+     "rule_group1": "windows"
+    }
+   }
+  },
+  {
+   "body": {
+    "integration": "wazuh-rule-exclusion",
+    "prompt": "text"
+   },
+   "errors": [
+    {
+     "type": "dict_type",
+     "loc": [
+      "prompt"
+     ],
+     "msg": "Input should be a valid dictionary"
+    }
+   ]
+  },
+  {
+   "body": {
+    "integration": "wazuh-rule-exclusion"
+   },
+   "errors": [
+    {
+     "type": "missing",
+     "loc": [
+      "prompt"
+     ],
+     "msg": "Field required"
+    }
+   ]
+  },
+  {
+   "body": {},
+   "errors": [
+    {
+     "type": "missing",
+     "loc": [
+      "integration"
+     ],
+     "msg": "Field required"
+    },
+    {
+     "type": "missing",
+     "loc": [
+      "prompt"
+     ],
+     "msg": "Field required"
+    }
+   ]
+  },
+  {
+   "body": {
+    "integration": null,
+    "prompt": null
+   },
+   "errors": [
+    {
+     "type": "string_type",
+     "loc": [
+      "integration"
+     ],
+     "msg": "Input should be a valid string"
+    },
+    {
+     "type": "dict_type",
+     "loc": [
+      "prompt"
+     ],
+     "msg": "Input should be a valid dictionary"
+    }
+   ]
+  }
+ ]
+}

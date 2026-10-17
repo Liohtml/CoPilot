@@ -11,7 +11,7 @@
 use crate::{Db, DbError};
 
 /// The Alembic head this Rust tree was written and tested against.
-pub const TESTED_ALEMBIC_HEAD: &str = "c1241a1b2c3d";
+pub const TESTED_ALEMBIC_HEAD: &str = "d15ab1ed7e1e";
 
 /// Columns a module needs in one table.
 #[derive(Debug, Clone, Copy)]

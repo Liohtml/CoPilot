@@ -707,6 +707,21 @@ CREATE TABLE `customersmeta` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `disabledrule` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `rule_id` varchar(255) NOT NULL,
+  `previous_level` varchar(256) NOT NULL,
+  `new_level` varchar(256) NOT NULL,
+  `reason_for_disabling` varchar(256) NOT NULL,
+  `length_of_time` varchar(256) NOT NULL,
+  `date_disabled` datetime NOT NULL,
+  `disabled_by` varchar(256) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_disabledrule_rule_id` (`rule_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `enabled_dashboards` (
   `id` int NOT NULL AUTO_INCREMENT,
   `customer_code` varchar(50) NOT NULL,
@@ -1919,7 +1934,7 @@ CREATE TABLE `webauthn_challenge` (
 
 LOCK TABLES `alembic_version` WRITE;
 /*!40000 ALTER TABLE `alembic_version` DISABLE KEYS */;
-INSERT INTO `alembic_version` VALUES ('c1241a1b2c3d');
+INSERT INTO `alembic_version` VALUES ('d15ab1ed7e1e');
 /*!40000 ALTER TABLE `alembic_version` ENABLE KEYS */;
 UNLOCK TABLES;
 

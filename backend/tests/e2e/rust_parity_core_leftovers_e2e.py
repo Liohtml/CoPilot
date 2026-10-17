@@ -7,17 +7,24 @@ order included), the rows each write leaves and every request each backend sends
 method, path, query, body and every header, `Content-Length` included. The upstreams are local
 stand-ins that record what arrives:
 
-* the SOCFortress licence server (the MSSP seat check on customer creation).
+* the SOCFortress licence server (the MSSP seat check on customer creation);
+* the Wazuh manager (the rule switches: `GET /rules`, the rule file, its upload, the restart),
+  stateful — an upload changes the level the next read shows;
+* the AI module (`POST /copilot-ai-module/wazuh-rule-exclusion`, as COPILOT_INTEGRATION_MODULES_URL
+  addresses it);
+* GitHub (`/raw/…` for raw.githubusercontent.com, `/api/…` for api.github.com): the Atomic Red
+  Team index, the folder listing, each technique's YAML and markdown.
 
 Python reaches the stand-ins because `requests.Session.request` (and the other clients, as
 sections need them) are patched here to rewrite the public hosts; Rust because its instance is
 started with the `COPILOT_*_URL` overrides (parity harness only).
 
-The `license` and `license_cache` rows are deployment-wide: put aside first, restored at the
-end. Rows created by both backends are twins (a `py`/`rs` pair of keys) compared column by
+The `license`, `license_cache` and `disabledrule` rows and the `Wazuh-Manager` connector are
+deployment-wide: put aside first, restored at the end. Rows created by both backends are twins (a `py`/`rs` pair of keys) compared column by
 column.
 
-Ports (all overridable): CORE_LEFTOVERS_PARITY_RUST_PORT, CORE_LEFTOVERS_LICENSE_STUB_PORT.
+Ports (all overridable): CORE_LEFTOVERS_PARITY_RUST_PORT, CORE_LEFTOVERS_LICENSE_STUB_PORT,
+CORE_LEFTOVERS_MANAGER_STUB_PORT, CORE_LEFTOVERS_AI_STUB_PORT, CORE_LEFTOVERS_GITHUB_STUB_PORT.
 
     PARITY_SUITES=tests/e2e/rust_parity_core_leftovers_e2e.py scripts/rust-parity.sh
 """
@@ -26,13 +33,16 @@ import asyncio
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
 import time
+import types
 import uuid
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
+from urllib.parse import parse_qs
 
 os.environ.setdefault("MYSQL_URL", "127.0.0.1:13306")
 os.environ.setdefault("MYSQL_USER", "copilot")
@@ -59,6 +69,9 @@ from app.db.db_session import async_engine  # noqa: E402
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 RS_PORT = int(os.environ.get("CORE_LEFTOVERS_PARITY_RUST_PORT", "6440"))
 LICENSE_PORT = int(os.environ.get("CORE_LEFTOVERS_LICENSE_STUB_PORT", "6441"))
+MANAGER_PORT = int(os.environ.get("CORE_LEFTOVERS_MANAGER_STUB_PORT", "6442"))
+AI_PORT = int(os.environ.get("CORE_LEFTOVERS_AI_STUB_PORT", "6443"))
+GITHUB_PORT = int(os.environ.get("CORE_LEFTOVERS_GITHUB_STUB_PORT", "6444"))
 RUST = f"http://127.0.0.1:{RS_PORT}"
 
 SFX = uuid.uuid4().hex[:6]
@@ -220,6 +233,20 @@ async def seed():
         "INSERT INTO license (license_key, customer_name, customer_email, company_name) VALUES (:k, 'n', 'e@parity.test', 'c')",
         k=LICENSE_KEY,
     )
+    # The disabled rules and the manager's connector: put aside, restored at the end.
+    SAVED["disabledrule"] = await rows("SELECT * FROM disabledrule ORDER BY id")
+    await sql("DELETE FROM disabledrule")
+    SAVED["manager"] = await rows("SELECT * FROM connectors WHERE connector_name = 'Wazuh-Manager'")
+    await sql("DELETE FROM connectors WHERE connector_name = 'Wazuh-Manager'")
+    await sql(
+        "INSERT INTO connectors (connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
+        "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
+        "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
+        "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES "
+        "('Wazuh-Manager', '4.8', :u, '2026-01-02 03:04:05', 'wazuh', 'pw', NULL, 'desc', 'supports', 1, 1, 0, 0, 1, 0, 0, "
+        "NULL, 1)",
+        u=f"http://127.0.0.1:{MANAGER_PORT}",
+    )
 
 
 async def restore_table(table, saved):
@@ -238,6 +265,13 @@ async def cleanup():
     if "license" in SAVED:
         await restore_table("license_cache", SAVED.get("license_cache", []))
         await restore_table("license", SAVED.get("license", []))
+    if "disabledrule" in SAVED:
+        await restore_table("disabledrule", SAVED["disabledrule"])
+    if "manager" in SAVED:
+        await sql("DELETE FROM connectors WHERE connector_name = 'Wazuh-Manager'")
+        for row in SAVED["manager"]:
+            cols = list(row.keys())
+            await sql(f"INSERT INTO connectors ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})", **row)
     like = f"%{SFX}%"
     await sql("DELETE FROM user_customer_access WHERE user_id IN (SELECT id FROM `user` WHERE username IN " + in_list(USERS) + ")")
     await sql("DELETE FROM user_customer_access WHERE customer_code LIKE :l", l=like)
@@ -254,9 +288,11 @@ def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers.wazuh_manager import router as wazuh_manager_router
 
     api = APIRouter(prefix="/api")
     api.include_router(customers_router, prefix="/customers")
+    api.include_router(wazuh_manager_router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -268,6 +304,8 @@ def build_python_app():
 #: The public hosts the Python services call, and the stand-ins they reach here.
 REWRITES = {
     "https://license.socfortress.co": f"http://127.0.0.1:{LICENSE_PORT}",
+    "https://raw.githubusercontent.com": f"http://127.0.0.1:{GITHUB_PORT}/raw",
+    "https://api.github.com": f"http://127.0.0.1:{GITHUB_PORT}/api",
 }
 
 
@@ -286,6 +324,56 @@ def patch_python_clients():
         return original_request(self, method, rewrite(url), *args, **kwargs)
 
     requests.Session.request = session_request
+    redirect_python_httpx()
+    redirect_python_aiohttp()
+
+
+class _ModuleRedirect(httpx.AsyncBaseTransport):
+    """What COPILOT_INTEGRATION_MODULES_URL does for the Rust service: `{base}/{host}{path}`."""
+
+    def __init__(self):
+        self.inner = httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request):
+        base = f"http://127.0.0.1:{AI_PORT}"
+        rest = str(request.url).split("://", 1)[1]
+        request.url = httpx.URL(f"{base}/{rest}")
+        request.headers["Host"] = base.split("://", 1)[1]
+        return await self.inner.handle_async_request(request)
+
+    async def aclose(self):
+        await self.inner.aclose()
+
+
+def redirect_python_httpx():
+    """The rule exclusion's `httpx.AsyncClient()` reaches the AI module stand-in."""
+    from app.connectors.wazuh_manager.services import rules
+
+    real = httpx.AsyncClient
+    shim = types.SimpleNamespace(**{k: getattr(httpx, k) for k in dir(httpx) if not k.startswith("_")})
+    shim.AsyncClient = lambda *a, **kw: real(*a, transport=_ModuleRedirect(), **kw)
+    rules.httpx = shim
+
+
+def redirect_python_aiohttp():
+    """The Atomic Red Team service's `aiohttp.ClientSession()` reaches the GitHub stand-in (the
+    URL rewritten before yarl reads it, as the Rust overrides replace the host)."""
+    import warnings
+
+    import aiohttp
+
+    from app.connectors.wazuh_manager.services import mitre
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+
+        class Session(aiohttp.ClientSession):
+            def _request(self, method, str_or_url, *a, **kw):
+                return super()._request(method, rewrite(str(str_or_url)), *a, **kw)
+
+    shim = types.SimpleNamespace(**{k: getattr(aiohttp, k) for k in dir(aiohttp) if not k.startswith("_")})
+    shim.ClientSession = Session
+    mitre.aiohttp = shim
 
 
 def start_rust(port, extra=None):
@@ -303,6 +391,9 @@ def start_rust(port, extra=None):
         "CONNECTOR_CACHE_TTL_SECONDS": "0",
         "COPILOT_API_KEY": os.environ["COPILOT_API_KEY"],
         "COPILOT_LICENSE_URL": f"http://127.0.0.1:{LICENSE_PORT}/",
+        "COPILOT_INTEGRATION_MODULES_URL": f"http://127.0.0.1:{AI_PORT}",
+        "COPILOT_GITHUB_RAW_URL": f"http://127.0.0.1:{GITHUB_PORT}/raw",
+        "COPILOT_GITHUB_API_URL": f"http://127.0.0.1:{GITHUB_PORT}/api",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
         **(extra or {}),
     }
@@ -583,6 +674,20 @@ async def customers_section(pair):
         "INSERT INTO license (license_key, customer_name, customer_email, company_name) VALUES (:k, 'n', 'e@parity.test', 'c')",
         k=LICENSE_KEY,
     )
+    # The disabled rules and the manager's connector: put aside, restored at the end.
+    SAVED["disabledrule"] = await rows("SELECT * FROM disabledrule ORDER BY id")
+    await sql("DELETE FROM disabledrule")
+    SAVED["manager"] = await rows("SELECT * FROM connectors WHERE connector_name = 'Wazuh-Manager'")
+    await sql("DELETE FROM connectors WHERE connector_name = 'Wazuh-Manager'")
+    await sql(
+        "INSERT INTO connectors (connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
+        "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
+        "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
+        "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES "
+        "('Wazuh-Manager', '4.8', :u, '2026-01-02 03:04:05', 'wazuh', 'pw', NULL, 'desc', 'supports', 1, 1, 0, 0, 1, 0, 0, "
+        "NULL, 1)",
+        u=f"http://127.0.0.1:{MANAGER_PORT}",
+    )
 
     # The code is unique as MySQL's collation compares it; too long for the column.
     await pair.same("create: an existing code (another case)", "POST", C, t_admin, body(CUST_A.lower()), reset=no_cache)
@@ -696,6 +801,386 @@ async def customers_section(pair):
     await pair.same("delete: no token", "DELETE", f"{C}/{CUST_A}")
 
 
+# --- 2. the Wazuh manager's rule switches, the exclusion, Atomic Red Team ------------------
+RULE_ID = f"77{int(SFX, 16) % 10000:04d}"
+RULE_FILE = "0095-sshd_rules.xml"
+
+
+def rule_group(level):
+    return {
+        "@name": "syslog,sshd,",
+        "rule": [
+            {"@id": "5700", "@level": "0", "decoded_as": "sshd", "description": "SSHD messages grouped."},
+            {
+                "@id": RULE_ID,
+                "@level": level,
+                "if_sid": "5700",
+                "match": "illegal user|invalid user",
+                "description": "sshd: Attempt <x> & y",
+            },
+        ],
+    }
+
+
+def manager_answer(rec, method, path, headers, body):
+    """The Wazuh API as the rule switches use it; the rule's level is what the last upload wrote."""
+    p, _, q = path.partition("?")
+    if p == "/security/user/authenticate":
+        return ok({"data": {"token": "tok"}, "error": 0})
+    if method == "GET" and p == "/rules":
+        if parse_qs(q).get("rule_ids") == [RULE_ID]:
+            return ok({"data": {"affected_items": [{"filename": RULE_FILE, "id": int(RULE_ID)}], "total_affected_items": 1}, "error": 0})
+        return ok({"data": {"affected_items": [], "total_affected_items": 0}, "error": 0})
+    if method == "GET" and p == f"/rules/files/{RULE_FILE}":
+        group = rule_group(rec.mode.get("level", "5"))
+        return ok({"data": {"affected_items": [{"group": group}], "total_affected_items": 1}, "error": 0})
+    if method == "PUT" and p == f"/rules/files/{RULE_FILE}":
+        if headers.get("content-type") != "application/octet-stream":
+            return ok({"title": "Unsupported Media Type", "detail": "Invalid content-type"}, 415)
+        found = re.search(rf'<rule id="{RULE_ID}" level="([^"]*)"', body.decode())
+        if found:
+            rec.mode["level"] = found.group(1)
+        return ok({"data": {"affected_items": [RULE_FILE], "total_affected_items": 1}, "error": 0})
+    if method == "PUT" and p == "/manager/restart":
+        return ok({"data": {"affected_items": ["node01"], "total_affected_items": 1}, "error": 0})
+    return ok({"title": "Not Found"}, 404)
+
+
+#: What the AI module answers next.
+AI_ANSWER = {}
+
+
+def ai_answer(rec, method, path, headers, body):
+    if method == "POST" and path == "/copilot-ai-module/wazuh-rule-exclusion":
+        return AI_ANSWER.get("answer") or ok({"wazuh_rule": "<rule id='1'/>", "explanation": "e", "message": "m", "success": True})
+    return ok({"detail": "Not Found"}, 404)
+
+
+ART = "/raw/redcanaryco/atomic-red-team/refs/heads/master/atomics"
+INDEX_PATH = f"{ART}/Indexes/Indexes-Markdown/atomic-red-team-index.md"
+CONTENTS_PATH = "/api/repos/redcanaryco/atomic-red-team/contents/atomics"
+INDEX_TEXT = (
+    "# Atomic Red Team\n\n| Technique | ID | Tests |\n|---|---|---|\n"
+    "| [OS Credential Dumping](../../T1003/T1003.md) | T1003 | 12 |\n"
+    "| [LSASS Memory](../../T1003.001/T1003.001.md) | T1003.001 | 7 |\n"
+    "|[Command and Scripting Interpreter](x)|T1059|  3  |\n"
+    "| [Bad count](y) | T1 | x |\n"
+)
+TECHNIQUE_FILES = {
+    "T1001.yaml": "display_name: Data Obfuscation\natomic_tests:\n- name: a\n  supported_platforms: [windows, linux]\n"
+    "  dependencies:\n  - description: x\n- name: b\n  supported_platforms: [linux, macos]\n",
+    "T1002.md": "# Data Compressed - T1002\n## Atomic Test #1\n## Atomic Test #2\nRuns on Windows.\n",
+    "T1003.yaml": "atomic_tests: [unclosed\n",
+    "T1003.md": "# OS Credential Dumping\n## Atomic Test #1 - linux dependencies\n",
+    "T1006.yaml": "- a list\n",
+    "T1006.md": "no header, no tests\n",
+}
+TEXT = "text/plain; charset=utf-8"
+
+
+def github_answer(rec, method, path, headers, body):
+    mode = rec.mode
+    if path == INDEX_PATH:
+        index = mode.get("index", "ok")
+        if index == "close":
+            return None
+        if index == "404":
+            return 404, TEXT, b"404: Not Found", {}
+        if index == "bad-utf8":
+            return 200, TEXT, b"| [x](y) | T1 | 1 |\n\xff\xfe", {}
+        return 200, TEXT, INDEX_TEXT.encode(), {}
+    if path == CONTENTS_PATH:
+        contents = mode.get("contents", "ok")
+        if contents == "403":
+            return ok({"message": "API rate limit exceeded"}, 403)
+        if contents == "html":
+            return 200, "text/html; charset=utf-8", b"<html></html>", {}
+        if contents == "no-type":
+            return ok([{"name": "T1001"}])
+        if contents == "dict":
+            return ok({"name": "T1001", "type": "dir"})
+        folders = [
+            {"name": "T1001", "type": "dir"},
+            {"name": "T1002", "type": "dir"},
+            {"name": "T1003", "type": "dir"},
+            {"name": "T1004", "type": "dir"},
+            {"name": "T1006", "type": "dir"},
+            {"name": "Indexes", "type": "dir"},
+            {"name": "T1005", "type": "file"},
+        ]
+        return ok(folders)
+    if path.startswith(ART + "/"):
+        name = path[len(ART) + 1 :].split("/")[-1]
+        if name == "T7777.md":
+            return 200, TEXT, b"# x\n\xff", {}
+        if name in TECHNIQUE_FILES:
+            return 200, TEXT, TECHNIQUE_FILES[name].encode(), {}
+        if name == "T1059.md":
+            return 200, TEXT, b"# Command and Scripting Interpreter\n", {}
+    return 404, TEXT, b"404: Not Found", {}
+
+
+def masked_listing(body):
+    """`last_updated` is a clock reading (checked for its form, then masked); a technique's YAML
+    platforms are a Python `set`, whose order follows per-process string hashes."""
+    if isinstance(body, dict) and isinstance(body.get("last_updated"), str):
+        stamp = body["last_updated"]
+        body = dict(body)
+        body["last_updated"] = "<iso>" if re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?", stamp) else stamp
+        body["tests"] = [{**t, "categories": sorted(t.get("categories") or [])} for t in body.get("tests", [])]
+    return body
+
+
+async def disabled_rows():
+    return await rows(
+        "SELECT rule_id, previous_level, new_level, reason_for_disabling, length_of_time, disabled_by FROM disabledrule "
+        "WHERE rule_id = :a OR rule_id = :b ORDER BY id",
+        a=RULE_ID,
+        b="404404",
+    )
+
+
+def bare_500(r):
+    return r.status_code == 500 and r.text == "Internal Server Error"
+
+
+async def wazuh_rules_section(pair, holder):
+    from app.connectors.wazuh_manager.services.mitre import AtomicRedTeamService
+    from app.connectors.wazuh_manager.services.rules import convert_to_xml
+    from app.connectors.wazuh_manager.services.rules import set_rule_level
+
+    print("\n== 2. /api/wazuh_manager rule switches, exclusion, Atomic Red Team ==")
+    W = "/api/wazuh_manager"
+    t_admin = token(ADMIN, ["admin"])
+    t_analyst = token(ANALYST, ["analyst"])
+    t_portal = token(PORTAL, ["customer_user"])
+    manager, ai, github = RECS[1], RECS[2], RECS[3]
+    disable = {"rule_id": RULE_ID, "reason_for_disabling": "noisy", "length_of_time": "1 week"}
+    enable = {"rule_id": RULE_ID, "reason_for_enabling": "tuned"}
+
+    # Guards and bodies, in FastAPI's order (nothing reaches the manager).
+    for route, payload in (("/rule/disable", disable), ("/rule/enable", enable)):
+        await pair.same(f"POST {route}: no token", "POST", W + route, body=payload)
+        await pair.same(f"POST {route}: analyst", "POST", W + route, t_analyst, payload)
+        await pair.same(f"POST {route}: malformed JSON, no token", "POST", W + route, raw=b"{")
+        await pair.same(f"POST {route}: no body", "POST", W + route, t_admin)
+        await pair.same(f"POST {route}: a list", "POST", W + route, t_admin, [1])
+        await pair.same(f"POST {route}: wrong types", "POST", W + route, t_admin, {"rule_id": 5, "reason_for_disabling": None})
+    await pair.same("GET /rule/disabled: no token", "GET", W + "/rule/disabled")
+    await pair.same("GET /rule/disabled: analyst", "GET", W + "/rule/disabled", t_analyst)
+    await pair.same("GET /rule/disabled: none", "GET", W + "/rule/disabled", t_admin)
+    await pair.same("POST /rule/enable: not disabled", "POST", W + "/rule/enable", t_admin, enable, snapshot=disabled_rows)
+
+    # Disable. Python's endpoints lack their `/` (`{url}rules`: a malformed URL, then the KeyError of
+    # the failure answer) — a bare 500 on any connector URL that ends without one, which is every
+    # working one; and its upload is `application/json`, which the manager refuses. Rust works.
+    manager.mode.clear()
+    (p, pout), (q, qout) = await pair.both("POST", W + "/rule/disable", t_admin, disable, snapshot=disabled_rows)
+    _, expected_xml = await set_rule_level([rule_group("5")], RULE_ID, "1")
+    expected_xml = await convert_to_xml(expected_xml)
+    rust_calls = [(c["method"], c["path"]) for c in qout["manager"] if c["path"] != "/security/user/authenticate"]
+    upload = [c for c in qout["manager"] if c["method"] == "PUT" and c["path"].startswith("/rules/files/")]
+    check(
+        "POST /rule/disable: Python fails (bare 500, nothing written), Rust works",
+        bare_500(p)
+        and pair.snapshots["py"] == []
+        and q.status_code == 200
+        and body_of(q)
+        == {"previous_level": "5", "message": f"Rule {RULE_ID} successfully processed in file {RULE_FILE}.", "success": True},
+        f"python {p.status_code} {p.text[:200]}\n        rust   {q.status_code} {q.text[:300]}",
+    )
+    check(
+        "POST /rule/disable: Rust's manager calls are Python's chain, with the `/` and the rule file's type",
+        rust_calls
+        == [
+            ("GET", f"/rules?rule_ids={RULE_ID}"),
+            ("GET", f"/rules/files/{RULE_FILE}"),
+            ("PUT", f"/rules/files/{RULE_FILE}?overwrite=true"),
+            ("PUT", "/manager/restart"),
+        ]
+        and len(upload) == 1
+        and upload[0]["body"] == expected_xml
+        and dict(upload[0]["headers"]).get("content-type") == "application/octet-stream",
+        f"{json.dumps(qout['manager'])[:1500]}\n        expected body {expected_xml!r}",
+    )
+    check(
+        "POST /rule/disable: the row Rust writes (the previous level, the caller)",
+        pair.snapshots["rs"]
+        == [
+            {
+                "rule_id": RULE_ID,
+                "previous_level": "5",
+                "new_level": "1",
+                "reason_for_disabling": "noisy",
+                "length_of_time": "1 week",
+                "disabled_by": ADMIN,
+            },
+        ],
+        str(pair.snapshots["rs"]),
+    )
+    # Listing a stored row: Python validates the ORM rows without `from_attributes` (its 400).
+    (p, _), (q, _) = await pair.both("GET", W + "/rule/disabled", t_admin)
+    listed = body_of(q)
+    check(
+        "GET /rule/disabled with a row: Python fails (the response model's 400), Rust lists it",
+        p.status_code == 400
+        and "validation error for AllDisabledRuleResponse" in str(body_of(p))
+        and q.status_code == 200
+        and listed["message"] == "Successfully fetched all disabled rules"
+        and [r for r in listed["disabled_rules"] if r["rule_id"] == RULE_ID]
+        == [
+            {
+                "rule_id": RULE_ID,
+                "previous_level": "5",
+                "new_level": "1",
+                "reason_for_disabling": "noisy",
+                "length_of_time": "1 week",
+                "disabled_by": ADMIN,
+            },
+        ],
+        f"python {p.status_code} {p.text[:300]}\n        rust   {q.status_code} {q.text[:300]}",
+    )
+    await pair.same("POST /rule/disable: already disabled", "POST", W + "/rule/disable", t_admin, disable)
+    # Enable: the recorded level goes back, the row goes.
+    (p, _), (q, qout) = await pair.both("POST", W + "/rule/enable", t_admin, enable, snapshot=disabled_rows)
+    _, expected_xml = await set_rule_level([rule_group("1")], RULE_ID, "5")
+    expected_xml = await convert_to_xml(expected_xml)
+    upload = [c for c in qout["manager"] if c["method"] == "PUT" and c["path"].startswith("/rules/files/")]
+    check(
+        "POST /rule/enable: Python fails (bare 500, the row kept), Rust works and deletes the row",
+        bare_500(p)
+        and len(pair.snapshots["py"]) == 1
+        and q.status_code == 200
+        and body_of(q) == {"new_level": None, "message": f"Rule {RULE_ID} successfully processed in file {RULE_FILE}.", "success": True}
+        and pair.snapshots["rs"] == []
+        and len(upload) == 1
+        and upload[0]["body"] == expected_xml,
+        f"python {p.status_code} {p.text[:200]}\n        rust   {q.status_code} {q.text[:300]} {json.dumps(upload)[:600]}",
+    )
+    await pair.same("POST /rule/enable: enabled again", "POST", W + "/rule/enable", t_admin, enable)
+    unknown = {"rule_id": "404404", "reason_for_disabling": "x", "length_of_time": "x"}
+    (p, _), (q, _) = await pair.both("POST", W + "/rule/disable", t_admin, unknown, snapshot=disabled_rows)
+    check(
+        "POST /rule/disable: a rule the manager does not know (Python's bare 500, Rust's 404)",
+        bare_500(p)
+        and q.status_code == 404
+        and body_of(q) == {"message": "Rule 404404 not found. Make sure the rule ID is correct within the Wazuh Manager.", "success": False}
+        and pair.snapshots["rs"] == [],
+        f"python {p.status_code} {p.text[:200]}\n        rust   {q.status_code} {q.text[:300]}",
+    )
+
+    # The exclusion: the AI module's answer, whatever its status.
+    X = W + "/rule/exclude"
+    good = {"integration": "wazuh-rule-exclusion", "prompt": {"rule_group1": "windows", "n": 10**20, "f": 1.5, "u": "é"}}
+    await pair.same("POST /rule/exclude: no token", "POST", X, body=good)
+    await pair.same("POST /rule/exclude: analyst", "POST", X, t_analyst, good)
+    await pair.same("POST /rule/exclude: malformed JSON", "POST", X, t_admin, raw=b"{")
+    for name, payload in (
+        ("no body", None),
+        ("integration not a str", {"integration": 5, "prompt": {"rule_group1": "windows"}}),
+        ("another integration", {"integration": "x", "prompt": {"rule_group1": "windows"}}),
+        ("integration wrong, prompt not a dict", {"integration": "x", "prompt": 5}),
+        ("integration not a str, prompt refused", {"integration": 5, "prompt": {}}),
+        ("prompt not a dict", {"integration": "wazuh-rule-exclusion", "prompt": [1]}),
+        ("no rule_group1", {"integration": "wazuh-rule-exclusion", "prompt": {"x": 1}}),
+        ("rule_group1 not windows", {"integration": "wazuh-rule-exclusion", "prompt": {"rule_group1": "linux"}}),
+        ("rule_group3, neither windows", {"integration": "wazuh-rule-exclusion", "prompt": {"rule_group1": "a", "rule_group3": "b"}}),
+        ("rule_group3 alone", {"integration": "wazuh-rule-exclusion", "prompt": {"rule_group3": "b"}}),
+        ("rule_group3 windows", {"integration": "wazuh-rule-exclusion", "prompt": {"rule_group1": "a", "rule_group3": "windows"}}),
+        ("a valid body", good),
+    ):
+        await pair.same(f"POST /rule/exclude: {name}", "POST", X, t_admin, payload)
+    await pair.same(
+        "POST /rule/exclude: NaN in the prompt (httpx refuses it)",
+        "POST",
+        X,
+        t_admin,
+        raw=b'{"integration": "wazuh-rule-exclusion", "prompt": {"rule_group1": "windows", "x": NaN}}',
+    )
+    for name, answer in (
+        ("the module's 500 with a valid answer", ok({"wazuh_rule": "r", "explanation": "e", "message": "m", "success": False}, 500)),
+        ("not JSON", (502, "text/html", b"<html>bad gateway</html>", {})),
+        ("a list", ok([1, 2])),
+        ("fields missing or wrong", ok({"wazuh_rule": 5, "success": "maybe"})),
+        ("the connection dropped", None),
+    ):
+        AI_ANSWER["answer"] = answer
+        if answer is None:
+            AI_ANSWER["answer"] = None
+            ai.answer = lambda *a: None
+        await pair.same(f"POST /rule/exclude: {name}", "POST", X, t_admin, good)
+        ai.answer = ai_answer
+    AI_ANSWER.clear()
+
+    # Atomic Red Team. Both processes cache the listing for a day once it loads: the failures first.
+    A = W + "/mitre/atomic-tests"
+    AtomicRedTeamService._tests_cache.clear()
+    AtomicRedTeamService._cache.clear()
+    await pair.same("GET /atomic-tests: no token", "GET", A)
+    await pair.same("GET /atomic-tests: portal user", "GET", A, t_portal)
+    for q in ("page=0", "page=-1&size=x", "size=1.5", "page=1.0&size=2_0&os_category="):
+        github.mode.update({"index": "close"})
+        await pair.same(f"GET /atomic-tests?{q}", "GET", f"{A}?{q}", t_analyst)
+    for name, mode in (
+        ("the index fetch dropped", {"index": "close"}),
+        ("the index not UTF-8", {"index": "bad-utf8"}),
+        ("no index, the API refuses", {"index": "404", "contents": "403"}),
+        ("no index, the API answers HTML", {"index": "404", "contents": "html"}),
+        ("no index, a folder without its type", {"index": "404", "contents": "no-type"}),
+        ("no index, the API answers a dict", {"index": "404", "contents": "dict"}),
+    ):
+        github.mode.clear()
+        github.mode.update(mode)
+        await pair.same(f"GET /atomic-tests: {name}", "GET", A, t_analyst)
+    # The fallback: each technique's YAML (then its markdown), five at a time — so the requests are
+    # compared as a set.
+    github.mode.clear()
+    github.mode.update({"index": "404"})
+    (p, pout), (q, qout) = await pair.both("GET", f"{A}?size=10", t_analyst)
+    key = lambda c: (c["method"], c["path"])  # noqa: E731
+    check(
+        "GET /atomic-tests: the fallback (folders, YAML, markdown) [200]",
+        p.status_code == q.status_code == 200 and masked_listing(body_of(p)) == masked_listing(body_of(q)),
+        f"python {p.status_code} {json.dumps(body_of(p))[:900]}\n        rust   {q.status_code} {json.dumps(body_of(q))[:900]}",
+    )
+    check(
+        "GET /atomic-tests: the fallback's requests (as a set)",
+        sorted(pout["github"], key=key) == sorted(qout["github"], key=key) and pout["manager"] == qout["manager"] == [],
+        f"python {json.dumps(sorted(pout['github'], key=key))[:1500]}\n        rust   {json.dumps(sorted(qout['github'], key=key))[:1500]}",
+    )
+    for q in (
+        "",
+        "?size=2&page=2",
+        "?os_category=WINDOWS",
+        "?os_category=linux&size=1&page=2",
+        "?size=0",
+        "?size=-1&page=3",
+        "?size=3&page=-1",
+    ):
+        await pair.same(f"GET /atomic-tests{q} (cached)", "GET", A + q, t_analyst, adjust=masked_listing)
+    # A fresh start of both: the index.
+    AtomicRedTeamService._tests_cache.clear()
+    stop_rust(holder["rust"])
+    holder["rust"] = start_rust(RS_PORT)
+    await pair.rs.aclose()
+    pair.rs = httpx.AsyncClient(base_url=RUST, timeout=120)
+    github.mode.clear()
+    await pair.same("GET /atomic-tests: the index", "GET", f"{A}?size=2", t_analyst, adjust=masked_listing)
+    await pair.same("GET /atomic-tests: the index, cached", "GET", f"{A}?page=2&size=2", t_analyst, adjust=masked_listing)
+    await pair.same(
+        "GET /atomic-tests: os_category on the index (no categories)",
+        "GET",
+        f"{A}?os_category=windows",
+        t_analyst,
+        adjust=masked_listing,
+    )
+
+    T = W + "/mitre/techniques"
+    await pair.same("GET /techniques/{id}/atomic-tests: no token", "GET", f"{T}/T1003/atomic-tests")
+    for tid in ("T1003", "T1003", "T9998", "attack-pattern-T1059", "T7777", "T1003%20x", "T1%3Fx", "T%C3%A9", "%2E%2E", "a-b-"):
+        await pair.same(f"GET /techniques/{tid}/atomic-tests", "GET", f"{T}/{tid}/atomic-tests", t_analyst)
+
+
 async def both_twin_bodies(pair, method, path, payload, tok, reset):
     """`Pair.both` for twins: each backend gets its own twin's path and body."""
     got = {}
@@ -712,19 +1197,26 @@ async def both_twin_bodies(pair, method, path, payload, tok, reset):
 
 
 async def main():
-    RECS[:] = [Recorder(license_answer, LICENSE_PORT, "license")]
+    RECS[:] = [
+        Recorder(license_answer, LICENSE_PORT, "license"),
+        Recorder(manager_answer, MANAGER_PORT, "manager"),
+        Recorder(ai_answer, AI_PORT, "ai"),
+        Recorder(github_answer, GITHUB_PORT, "github"),
+    ]
     await seed()
     patch_python_clients()
-    rust = start_rust(RS_PORT)
+    holder = {"rust": start_rust(RS_PORT)}
     py = httpx.AsyncClient(transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False), base_url="http://py")
     rs = httpx.AsyncClient(base_url=RUST, timeout=120)
     pair = Pair(py, rs)
     try:
         await customers_section(pair)
+        await wazuh_rules_section(pair, holder)
     finally:
         await py.aclose()
         await rs.aclose()
-        stop_rust(rust)
+        await pair.rs.aclose()
+        stop_rust(holder["rust"])
         for rec in RECS:
             rec.stop()
         await cleanup()
