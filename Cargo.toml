@@ -59,6 +59,8 @@ copilot-uba = { path = "crates/copilot-uba" }
 copilot-yaml = { path = "crates/copilot-yaml" }
 copilot-searches = { path = "crates/copilot-searches" }
 copilot-integration-modules = { path = "crates/copilot-integration-modules" }
+copilot-grafana-dashboards = { path = "crates/copilot-grafana-dashboards" }
+copilot-integration-provisioning = { path = "crates/copilot-integration-provisioning" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

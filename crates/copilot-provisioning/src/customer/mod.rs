@@ -9,13 +9,12 @@
 //!   worker and HAProxy, the row)
 //! - [`routes`]       — the handlers
 //!
-//! `POST /provision`, `POST /provision/dashboards` and
+//! `POST /provision/dashboards` is `copilot-grafana-dashboards`' (the
+//! dashboard templates compiled in from `backend/`). `POST /provision` and
 //! `POST /provision/wazuh_worker` stay in Python: in the same request they
-//! create Grafana dashboards from the dashboard templates under `backend/`
-//! (any of the deployment's dashboard families) or the Portainer worker stack
-//! from its template, which the Rust image does not carry — the reason
-//! `POST /api/grafana/dashboards` and `POST /api/portainer/
-//! create-wazuh-customer-stack` stayed there too.
+//! create the customer's Grafana organization, datasources and dashboards, or
+//! the Portainer worker stack from its template — the reason
+//! `POST /api/portainer/create-wazuh-customer-stack` stayed there too.
 
 pub mod decommission;
 pub mod edr;

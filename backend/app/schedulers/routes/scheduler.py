@@ -1,4 +1,5 @@
 import asyncio
+from typing import List
 from typing import Optional
 
 from fastapi import APIRouter
@@ -6,6 +7,7 @@ from fastapi import Depends
 from fastapi import HTTPException
 from fastapi import Security
 from loguru import logger
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -15,7 +17,9 @@ from app.middleware.search_query import SearchParams
 from app.middleware.search_query import filter_and_limit
 from app.middleware.search_query import search_query
 from app.schedulers.handover import manual_run
+from app.schedulers.models.scheduler import CreateSchedulerRequest
 from app.schedulers.models.scheduler import JobMetadata
+from app.schedulers.scheduler import add_scheduler_jobs
 from app.schedulers.scheduler import get_function_by_name
 from app.schedulers.scheduler import get_scheduler_instance
 from app.schedulers.scheduler import init_scheduler
@@ -223,6 +227,43 @@ async def add_job(
         scheduler.start()
     logger.info(f"Job {job_id} added successfully")
     return {"success": True, "message": "Job added successfully"}
+
+
+# The jobs the integrations' `/provision` routes register. Those routes are answered by the Rust
+# service (copilot-integration-provisioning), which cannot reach APScheduler: it hands this one step
+# back here, after its provisioning, with the caller's token.
+PROVISIONING_JOBS = frozenset(
+    {
+        "invoke_huntress_integration_collect",
+        "invoke_darktrace_integration_collect",
+        "invoke_duo_integration_collect",
+        "invoke_cato_integration_collect",
+        "invoke_carbonblack_integration_collection",
+        "invoke_mimecast_integration_ttp",
+        "invoke_mimecast_integration",
+        "invoke_sap_siem_integration_collection",
+        "invoke_sap_siem_integration_suspicious_logins_analysis",
+        "invoke_sap_siem_integration_multiple_logins_same_ip_analysis",
+    },
+)
+
+
+class ProvisioningJobsRequest(BaseModel):
+    jobs: List[CreateSchedulerRequest]
+
+
+@scheduler_router.post("/provisioning_jobs", include_in_schema=False, description="Register an integration's jobs")
+async def add_provisioning_jobs(request: ProvisioningJobsRequest):
+    """
+    `add_scheduler_jobs` for each job, in order, as the integrations' `/provision` routes call it.
+    Only those routes' jobs, each under its own function name.
+    """
+    for job in request.jobs:
+        if job.job_id not in PROVISIONING_JOBS or job.function_name != job.job_id:
+            raise HTTPException(status_code=400, detail=f"Job {job.job_id} is not an integration provisioning job")
+    for job in request.jobs:
+        await add_scheduler_jobs(job)
+    return {"success": True, "message": "Jobs added successfully"}
 
 
 @scheduler_router.post("/jobs/run/{job_id}", description="Run a job")

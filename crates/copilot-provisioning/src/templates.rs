@@ -4,9 +4,9 @@
 //! from disk on every call. The Rust image carries no `backend/`, so the
 //! files are copied under `crates/copilot-provisioning/templates/` and
 //! embedded; the test below fails when a copy differs from the backend's.
-//! Only the templates a ported route can load are here (the
-//! `SENTINELONE_INPUT_SYSLOG_TLS` content pack belongs to the SentinelOne
-//! provisioning, which stays in Python).
+//! Only the templates a ported route can load are here: the
+//! `SENTINELONE_INPUT_SYSLOG_TLS` file is not an `AvailableContentPacks`
+//! member, so the SentinelOne provisioning never loads it (nor does Python).
 
 use copilot_auth::pyvalue::{PyValue, loads};
 

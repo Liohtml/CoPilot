@@ -6,7 +6,8 @@
 #   docker build -f crates/copilot/Dockerfile -t copilot-rs:latest .
 #
 # The context is filtered by crates/copilot/Dockerfile.dockerignore (allowlist:
-# only the Cargo workspace — never .env, data/, backend/ or target/).
+# only the Cargo workspace and the Grafana dashboard templates the binary
+# embeds — never .env, data/, the rest of backend/ or target/).
 #
 # Runtime: debian:bookworm-slim, non-root, one static-ish binary. The service
 # listens on :5000 (COPILOT_PORT) and reads the same environment as the
@@ -19,6 +20,9 @@ FROM ${RUST_IMAGE} AS rust-builder
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rustfmt.toml clippy.toml ./
 COPY crates ./crates
+# copilot-grafana-dashboards' build.rs embeds the templates from the Python
+# backend's tree (one source until Python is retired).
+COPY backend/app/connectors/grafana/dashboards ./backend/app/connectors/grafana/dashboards
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
     set -eux; \

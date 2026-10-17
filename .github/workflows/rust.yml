@@ -13,6 +13,8 @@ on:
       - "rustfmt.toml"
       - "clippy.toml"
       - "backend/alembic/**"
+      # Embedded by copilot-grafana-dashboards (its vectors pin every template).
+      - "backend/app/connectors/grafana/dashboards/**"
       - "scripts/check-alembic-head.py"
       - ".github/workflows/rust.yml"
   push:
@@ -22,6 +24,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "backend/alembic/**"
+      - "backend/app/connectors/grafana/dashboards/**"
       - ".github/workflows/rust.yml"
 
 permissions:

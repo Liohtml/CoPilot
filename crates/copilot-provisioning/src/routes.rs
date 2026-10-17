@@ -1,9 +1,8 @@
 //! The stack-provisioning handlers — port of
 //! `app/stack_provisioning/{graylog,influxdb}/routes/` but the three
-//! network-connector provisioning routes.
+//! network-connector provisioning routes (`copilot-integration-provisioning`).
 //!
-//! Full paths, so that every other path under the two prefixes (the
-//! Fortinet / SonicWall / SentinelOne provisioning) reaches Python. Every
+//! Full paths, beside that crate's. Every
 //! route is admin/analyst but deleting an InfluxDB check (admin). The body is
 //! read first, then the token, then the body is validated — the custom
 //! `__init__`s answer before any field ([`crate::schema`]).

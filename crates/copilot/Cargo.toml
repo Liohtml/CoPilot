@@ -52,6 +52,8 @@ copilot-monitoring-alerts = { workspace = true }
 copilot-intel-connectors = { workspace = true }
 copilot-uba = { workspace = true }
 copilot-integration-modules = { workspace = true }
+copilot-grafana-dashboards = { workspace = true }
+copilot-integration-provisioning = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

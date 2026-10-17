@@ -547,9 +547,19 @@ pub async fn create_meta(
     body: &JsonBody,
 ) -> Result<PyValue, ApiError> {
     let req = body_model(body, &CUSTOMER_INTEGRATIONS_META_SCHEMA)?;
+    user.enforce_customer(ctx, text(&req, "customer_code"))
+        .await?;
+    create_meta_validated(ctx, &req).await
+}
+
+/// `create_integration_meta(meta, session)` once `meta` is a validated
+/// `CustomerIntegrationsMetaSchema` dump (the provisioning flows call it
+/// directly, as Python's do): the customer and its meta row checked, an
+/// existing row refused, then the insert, whose failure is `success: false`.
+pub async fn create_meta_validated(ctx: &AppContext, req: &PyValue) -> Result<PyValue, ApiError> {
+    let req = req.clone();
     let code = text(&req, "customer_code");
     let name = text(&req, "integration_name");
-    user.enforce_customer(ctx, code).await?;
     validate_customer(ctx, code, "integration").await?;
     let instance = normalize_instance_name(opt_text(&req, "instance_name"));
     let clause = instance_matches(

@@ -181,11 +181,14 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/influxdb",
     // The Grafana connector (copilot-grafana): the reporting reads and iframe
     // links, adding a user to an org. `POST /api/reporting/generate-report`
-    // (Playwright) and `POST /api/grafana/dashboards` (the templates live in
-    // backend/) stay in Python.
+    // (Playwright) stays in Python.
     "GET /api/reporting",
     "POST /api/reporting/generate_iframe_links",
     "POST /api/user/user/organization/add",
+    // Dashboard provisioning (copilot-grafana-dashboards, the templates
+    // compiled in from backend/); its customer-provisioning twin
+    // `POST /api/customer_provisioning/provision/dashboards` is below.
+    "POST /api/grafana/dashboards",
     // The Portainer connector (copilot-portainer) but
     // `POST /api/portainer/create-wazuh-customer-stack` (Wazuh, provisioning).
     "GET /api/portainer",
@@ -204,14 +207,18 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/monitoring_alert",
     // Stack provisioning (copilot-provisioning): the content packs and the
     // InfluxDB checks, and network-connector decommissioning; the Fortinet /
-    // SonicWall / SentinelOne provisioning (Grafana dashboards) stays Python.
+    // SonicWall / SentinelOne provisioning is copilot-integration-provisioning's.
     "GET /api/stack_provisioning/graylog/available/content_packs",
     "POST /api/stack_provisioning/graylog/provision/content_pack",
+    "POST /api/stack_provisioning/graylog/provision/fortinet",
+    "POST /api/stack_provisioning/graylog/provision/sonicwall",
+    "POST /api/stack_provisioning/graylog/provision/sentinelone",
     "/api/stack_provisioning/influxdb",
     "/api/stack_decommissioning",
-    // Customer provisioning (copilot-provisioning) but `POST /provision`,
-    // `POST /provision/dashboards` and `POST /provision/wazuh_worker`
-    // (Grafana dashboard and Portainer stack templates), which fall through.
+    // Customer provisioning (copilot-provisioning; `POST /provision/dashboards`
+    // is copilot-grafana-dashboards') but `POST /provision` and
+    // `POST /provision/wazuh_worker` (Grafana dashboards and the Portainer
+    // stack in one request), which fall through.
     "/api/customer_provisioning",
     // The agents router (copilot-agents, on copilot-velociraptor's client).
     "/api/agents",
@@ -238,6 +245,17 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/integrations/update_meta_auto",
     "/api/api/v1/alert_settings",
     "/api/network_connectors",
+    // The integrations' provisioning (copilot-integration-provisioning; the
+    // scheduler jobs handed to Python) but CrowdStrike, Defender for Endpoint
+    // and Bitdefender (collector files on the Python host), Office365 and AWS.
+    "POST /api/huntress/provision",
+    "POST /api/darktrace/provision",
+    "POST /api/duo/provision",
+    "POST /api/cato/provision",
+    "POST /api/carbonblack/provision",
+    "POST /api/mimecast/provision",
+    "POST /api/sap_siem/provision",
+    "POST /api/socfortress_mdr/provision",
     // SIEM (copilot-siem): dashboards (built-in and custom templates, panel
     // data), event sources and the event search.
     "/api/siem/dashboards",
@@ -311,6 +329,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_portainer::REQUIREMENTS);
     all.extend_from_slice(copilot_waf::REQUIREMENTS);
     all.extend_from_slice(copilot_provisioning::REQUIREMENTS);
+    all.extend_from_slice(copilot_integration_provisioning::REQUIREMENTS);
     all.extend_from_slice(copilot_agents::REQUIREMENTS);
     all.extend_from_slice(copilot_velociraptor::REQUIREMENTS);
     all.extend_from_slice(copilot_objectstore::REQUIREMENTS);
@@ -818,6 +837,26 @@ impl App {
                     ctx: self.ctx.clone(),
                     graylog: self.graylog.clone(),
                     influx: self.influxdb.clone(),
+                    grafana: self.grafana.clone(),
+                },
+            ))
+            // Full paths: `POST /api/stack_provisioning/graylog/provision/
+            // {fortinet,sonicwall,sentinelone}` and `POST /api/<integration>/provision`.
+            .merge(copilot_integration_provisioning::router(
+                copilot_integration_provisioning::ProvisioningState {
+                    ctx: self.ctx.clone(),
+                    graylog: self.graylog.clone(),
+                    grafana: self.grafana.clone(),
+                    wazuh: self.wazuh.clone(),
+                    legacy: self.legacy.clone(),
+                },
+            ))
+            // Full paths: `POST /api/grafana/dashboards` and
+            // `POST /api/customer_provisioning/provision/dashboards` (beside
+            // the customer router's `GET` of that path).
+            .merge(copilot_grafana_dashboards::router(
+                copilot_grafana_dashboards::DashboardsState {
+                    ctx: self.ctx.clone(),
                     grafana: self.grafana.clone(),
                 },
             ))
