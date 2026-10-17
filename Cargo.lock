@@ -1099,6 +1099,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-searches"
+version = "0.2.0"
+dependencies = [
+ "copilot-yaml",
+]
+
+[[package]]
 name = "copilot-shuffle"
 version = "0.2.0"
 dependencies = [
@@ -1404,6 +1411,20 @@ dependencies = [
  "thiserror",
  "unicode-normalization",
  "x509-cert",
+]
+
+[[package]]
+name = "copilot-yaml"
+version = "0.2.0"
+dependencies = [
+ "copilot-auth",
+ "copilot-jinja",
+ "hex",
+ "num-bigint-dig",
+ "num-traits",
+ "regex",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

@@ -1,0 +1,159 @@
+name: Communication To LocaltoNet Tunneling Service Initiated
+id: 3ab65069-d82a-4d44-a759-466661a082d1
+version: 1
+schema_version: "1.0"
+date: "2024-06-17"
+author: Andreas Braathen (mnemonic.io)
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 3ab65069-d82a-4d44-a759-466661a082d1
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detects an executable initiating a network connection to "LocaltoNet"
+  tunneling sub-domains. LocaltoNet is a reverse proxy that enables localhost
+  services to be exposed to the Internet. Attackers have been seen to use this
+  service for command-and-control activities to bypass MFA and perimeter
+  controls. MITRE ATT&CK: T1572, T1090, T1102.
+
+data_source:
+  - Sysmon EventID 3 - Network Connection
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        - term:
+            data_win_system_eventID: "3"
+        
+        - bool:
+            should:
+              - wildcard:
+                  data_win_eventdata_destinationHostname:
+                    value: "*.localto.net"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_destinationHostname:
+                    value: "*.localtonet.com"
+                    case_insensitive: true
+            minimum_should_match: 1
+        - term:
+            data_win_eventdata_initiated:
+              value: "true"
+              case_insensitive: true
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_eventdata_destinationHostname
+    - data_win_eventdata_initiated
+    - data_win_eventdata_image
+    - data_win_eventdata_destinationIp
+    - data_win_eventdata_destinationPort
+    - data_win_eventdata_user
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires Sysmon EventID 3 (network connection) enabled in the Sysmon
+  configuration and the Microsoft-Windows-Sysmon/Operational channel collected
+  by the Wazuh agent. The detection looks for events where
+  data_win_eventdata_destinationHostname matches '*.localto.net';
+  data_win_eventdata_destinationHostname matches '*.localtonet.com';
+  data_win_eventdata_initiated equals 'true'.
+
+known_false_positives: >
+  Legitimate use of the LocaltoNet service. Baseline expected activity in your
+  environment and tune this detection before relying on it for automated
+  response.
+
+references:
+  - https://localtonet.com/documents/supported-tunnels
+  - https://cloud.google.com/blog/topics/threat-intelligence/unc3944-targets-saas-applications
+  - https://attack.mitre.org/techniques/T1572/
+  - https://attack.mitre.org/techniques/T1090/
+  - https://attack.mitre.org/techniques/T1102/
+
+response:
+  message: >
+    Communication To LocaltoNet Tunneling Service Initiated detected on host
+    $agent_name$. Matched data_win_eventdata_destinationHostname:
+    $data_win_eventdata_destinationHostname$. Matched
+    data_win_eventdata_initiated: $data_win_eventdata_initiated$. MITRE ATT&CK:
+    T1572, T1090, T1102
+  risk_score: 75
+  severity: high
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 75
+  threat_objects:
+    - field: data_win_eventdata_destinationHostname
+      type: domain
+    - field: data_win_eventdata_initiated
+      type: other
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1572
+    - T1090
+    - T1102
+  custom_tags:
+    - communication
+    - localtonet
+    - tunneling
+    - network_connection
+    - sysmon
+    - command_and_control
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_win_system_eventID:"3" AND (data_win_eventdata_destinationHostname:/.*\.[Ll][Oo][Cc][Aa][Ll][Tt][Oo]\.[Nn][Ee][Tt]/ OR data_win_eventdata_destinationHostname:/.*\.[Ll][Oo][Cc][Aa][Ll][Tt][Oo][Nn][Ee][Tt]\.[Cc][Oo][Mm]/) AND data_win_eventdata_initiated:/[Tt][Rr][Uu][Ee]/

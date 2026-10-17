@@ -1,0 +1,22 @@
+[package]
+name = "copilot-yaml"
+description = "PyYAML 6.0.3's SafeLoader (yaml.safe_load), line by line: the YAML 1.1 resolver, the constructed Python values and the YAMLError texts with their marks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-auth = { workspace = true }
+copilot-jinja = { workspace = true }
+num-bigint-dig = { workspace = true }
+num-traits = { workspace = true }
+regex = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[lints]
+workspace = true

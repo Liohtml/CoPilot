@@ -1,0 +1,13 @@
+[package]
+name = "copilot-searches"
+description = "CoPilot Searches and the Detections Catalog: /api/copilot_searches (the rules from GitHub and the customers' own repositories, MITRE ATT&CK coverage, the Wazuh ruleset with its firing statistics, Graylog provisioning and backtests, the rule linter, publishing)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-yaml = { workspace = true }
+
+[lints]
+workspace = true
