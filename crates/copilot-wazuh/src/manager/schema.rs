@@ -155,7 +155,9 @@ static MITRE_REFERENCE: Model = Model {
     ],
 };
 
-const REFERENCES: Ty = Ty::List(&Ty::Model(&MITRE_REFERENCE));
+// Two steps: Rust 1.85 does not promote `&Ty::Model(&STATIC)` inside a const.
+const REFERENCE: Ty = Ty::Model(&MITRE_REFERENCE);
+const REFERENCES: Ty = Ty::List(&REFERENCE);
 
 static MITRE_TACTIC: Model = Model {
     name: "MitreTacticItem",
