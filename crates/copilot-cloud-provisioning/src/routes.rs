@@ -18,8 +18,8 @@ use copilot_upstream::respond::model_response;
 use copilot_web::{AdminOrAnalyst, ApiResult, Authorized};
 
 use crate::CloudState;
-use crate::office365;
 use crate::rollback::failure_response;
+use crate::{aws, office365};
 
 type Reader = Authorized<AdminOrAnalyst>;
 
@@ -27,6 +27,7 @@ type Reader = Authorized<AdminOrAnalyst>;
 pub fn router(state: CloudState) -> Router {
     Router::new()
         .route("/api/office365/provision", post(provision_office365))
+        .route("/api/aws/provision", post(provision_aws))
         .with_state(state)
 }
 
@@ -53,6 +54,30 @@ async fn provision_office365(
         st.tools(),
         &code,
         &field(&request, "integration_name").py_str(),
+        opt_text(field(&request, "instance_name")),
+    )
+    .await;
+    Ok(match outcome {
+        Ok(dump) => model_response(&dump),
+        Err(e) => failure_response(e),
+    })
+}
+
+async fn provision_aws(
+    State(st): State<CloudState>,
+    WithPyJson(auth, body): WithPyJson<Reader>,
+) -> ApiResult {
+    let request = read_forced(
+        &body,
+        &aws::schema::PROVISION_AWS_REQUEST,
+        "integration_name",
+        aws::schema::AWS_INTEGRATION_NAME,
+    )?;
+    let code = field(&request, "customer_code").py_str();
+    auth.enforce_customer(&st.ctx, &code).await?;
+    let outcome = aws::provision(
+        st.tools(),
+        &code,
         opt_text(field(&request, "instance_name")),
     )
     .await;

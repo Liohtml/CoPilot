@@ -8,15 +8,12 @@
 //! are not part of this router.
 
 use axum::Router;
-use axum::body::{Body, Bytes};
-use axum::extract::{FromRequest, Path, Request, State};
-use axum::response::{IntoResponse, Response};
+use axum::extract::{Path, State};
 use axum::routing::{delete, get, post, put};
 use copilot_web::validate::path_int;
-use copilot_web::{AdminOrAnalyst, ApiError, ApiResult, Authorized, QueryPairs, WithJson};
-use http::StatusCode;
+use copilot_web::{AdminOrAnalyst, ApiResult, Authorized, QueryPairs, WithJson};
 
-use super::services::{self, Outcome};
+use super::services;
 use crate::IntegrationsState;
 use crate::sql::ok;
 
@@ -142,51 +139,11 @@ async fn update(
     Ok(ok(&services::update(&st.ctx, &code, &body).await?))
 }
 
-/// The request rebuilt for the Python backend (method, URI, headers, the
-/// peer address, the body as read).
-fn rebuild(parts: &http::request::Parts, bytes: Bytes) -> Request {
-    let mut builder = Request::builder()
-        .method(parts.method.clone())
-        .uri(parts.uri.clone())
-        .version(parts.version);
-    if let Some(headers) = builder.headers_mut() {
-        *headers = parts.headers.clone();
-    }
-    let mut req = builder
-        .body(Body::from(bytes))
-        .unwrap_or_else(|_| Request::new(Body::empty()));
-    if let Some(peer) = parts
-        .extensions
-        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-    {
-        req.extensions_mut().insert(*peer);
-    }
-    req
-}
-
-async fn delete_integration(State(st): State<IntegrationsState>, req: Request) -> Response {
-    let (parts, body) = req.into_parts();
-    let bytes = match axum::body::to_bytes(body, usize::MAX).await {
-        Ok(b) => b,
-        Err(_) => {
-            return ApiError::detail(StatusCode::BAD_REQUEST, copilot_web::body::BODY_PARSE_ERROR)
-                .into_response();
-        }
-    };
-    let request = rebuild(&parts, bytes.clone());
-    let WithJson(auth, body) = match WithJson::<Reader>::from_request(request, &st).await {
-        Ok(w) => w,
-        Err(resp) => return resp,
-    };
-    match services::delete(&st, &auth, &body).await {
-        Ok(Outcome::Answer(dump)) => ok(&dump),
-        Ok(Outcome::Python) => match &st.legacy {
-            Some(proxy) => proxy.forward(rebuild(&parts, bytes)).await,
-            None => ApiError::internal("a deployed AWS instance is deleted by the Python backend")
-                .into_response(),
-        },
-        Err(e) => e.into_response(),
-    }
+async fn delete_integration(
+    State(st): State<IntegrationsState>,
+    WithJson(auth, body): WithJson<Reader>,
+) -> ApiResult {
+    Ok(ok(&services::delete(&st, &auth, &body).await?))
 }
 
 async fn customer_by_auth_key(

@@ -19,17 +19,18 @@
 //! `ossec.conf` with; [`table_model`] the catalog `PUT`s' SQLModel table
 //! bodies; [`sql`] the statement helpers the three share.
 //!
-//! What stays in Python: the delete of a *deployed* AWS instance (its
-//! `ossec.conf` edit reconciles buckets under an in-process lock that AWS
-//! provisioning, still Python, takes too — two processes could interleave),
-//! handed over whole; the AWS provisioning. The network connectors' and the
+//! [`aws`] is the AWS integration's Wazuh side: the `aws-s3` wodle
+//! reconcile under its process-wide lock and the decommission, which the
+//! delete of a deployed AWS instance runs and AWS provisioning
+//! (`copilot-cloud-provisioning`) shares. The network connectors' and the
 //! other integrations' provisioning routes are
-//! `copilot-integration-provisioning`'s, Office365's
+//! `copilot-integration-provisioning`'s, Office365's and AWS's
 //! `copilot-cloud-provisioning`'s.
 
 #![warn(missing_docs)]
 
 pub mod alert_settings;
+pub mod aws;
 pub mod etree;
 pub mod integrations;
 pub mod network_connectors;
@@ -58,7 +59,7 @@ pub struct IntegrationsState {
     pub grafana: GrafanaClient,
     /// The Wazuh manager client (an Office365 tenant's `<api_auth>` block).
     pub wazuh: WazuhState,
-    /// The Python backend, which deletes a deployed AWS instance.
+    /// The Python backend (a path with an encoded `/` is Starlette's).
     pub legacy: Option<LegacyProxy>,
 }
 

@@ -25,9 +25,23 @@ axum = { workspace = true }
 http = { workspace = true }
 sqlx = { workspace = true }
 chrono = { workspace = true }
-
-[dev-dependencies]
 tokio = { workspace = true }
+copilot-ingest = { workspace = true }
+copilot-jinja = { workspace = true }
+# botocore's four calls of the AWS validation: HTTP/1.1 over rustls with the
+# webpki roots (the versions the rest of the workspace already builds).
+bytes = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { version = "=0.1.21", features = ["tokio"] }
+http-body-util = "=0.1.5"
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "=1.0.9"
+sha2 = { workspace = true }
+hmac = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+uuid = { workspace = true }
 
 [lints]
 workspace = true

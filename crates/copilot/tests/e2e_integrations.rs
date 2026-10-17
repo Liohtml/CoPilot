@@ -18,7 +18,7 @@
 
 use http::StatusCode;
 use serde_json::{Value, json};
-use wiremock::matchers::{any, body_json, method, path, query_param};
+use wiremock::matchers::{any, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[macro_use]
@@ -1133,11 +1133,12 @@ async fn upstream_failures_become_warnings() {
     restore_connectors(&h, saved).await;
 }
 
-/// A deployed AWS account is decommissioned by Python (its ossec.conf
-/// reconcile shares a lock with AWS provisioning): the request goes there
-/// whole and its answer comes back; an undeployed one is deleted in Rust.
+/// A deployed AWS account is decommissioned in Rust now that AWS
+/// provisioning is (the two share the process's ossec.conf lock): nothing
+/// reaches Python. Without a metadata row or a bucket the delete warns and
+/// removes the settings, as Python's does; an undeployed one is deleted too.
 #[tokio::test]
-async fn deployed_aws_delete_is_handed_to_python() {
+async fn deployed_aws_delete_is_answered_in_rust() {
     if !configured() {
         return;
     }
@@ -1167,13 +1168,9 @@ async fn deployed_aws_delete_is_handed_to_python() {
     .await;
     let deployed =
         json!({"customer_code": acme, "integration_name": "AWS", "instance_name": "acct-2"});
-    Mock::given(method("DELETE"))
-        .and(path("/api/integrations/delete_integration"))
-        .and(body_json(&deployed))
-        .respond_with(ResponseTemplate::new(200).set_body_json(
-            json!({"message": "answered by Python", "success": true, "additional_info": null}),
-        ))
-        .expect(1)
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
         .mount(&legacy)
         .await;
 
@@ -1186,12 +1183,19 @@ async fn deployed_aws_delete_is_handed_to_python() {
             Some(deployed),
         )
         .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["message"], "answered by Python");
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["message"],
+        format!("Customer integration {acme} AWS successfully deleted.")
+    );
+    assert!(
+        body.to_string()
+            .contains("No metadata record was found for AWS"),
+        "{body}"
+    );
     assert_eq!(
         count(&h, "customer_integrations WHERE id = 7521002").await,
-        1,
-        "Rust left it to Python"
+        0
     );
 
     let (status, body) = h

@@ -5,22 +5,32 @@
 //! - [`office365`] — `POST /api/office365/provision`: one Microsoft 365
 //!   tenant (its `<api_auth>` block on the manager, its Graylog stream; the
 //!   customer's index set and Grafana objects shared with its other tenants);
+//! - [`aws`] — `POST /api/aws/provision`: one AWS account (its `<bucket>`
+//!   entries in the aws-s3 wodle, a stream per service; the customer's index
+//!   sets, datasources and folder shared with its other accounts), after its
+//!   credentials were checked against AWS (botocore's four calls);
 //! - [`graylog`] — the pipeline rules and pipelines both flows keep up to
 //!   date on the default Graylog;
 //! - [`rollback`] — `_ProvisioningRollback`: what a failed deployment
 //!   created, undone newest-first, each failure reported, never fatal.
 //!
-//! Python hands `ossec.conf` from step to step through a file next to its
-//! module; this service keeps it in memory and writes no file (§4).
+//! Python's Office 365 flow hands `ossec.conf` from step to step through a
+//! file next to its module; this service keeps it in memory and writes no
+//! file (§4). The one piece of state the process keeps is AWS's
+//! `WAZUH_CONFIG_LOCK` (`copilot_integrations::aws::manager`), as Python
+//! keeps one per process; across the two processes the re-read before each
+//! write is what stops one from undoing the other's edit.
 
 #![warn(missing_docs)]
 
+pub mod aws;
 pub mod graylog;
 pub mod office365;
 pub mod rollback;
 pub mod routes;
 
 use axum::extract::FromRef;
+use copilot_core::cloud_env::CloudEnv;
 use copilot_db::schema::TableRequirement;
 use copilot_grafana::GrafanaClient;
 use copilot_graylog::GraylogClient;
@@ -40,6 +50,8 @@ pub struct CloudState {
     pub grafana: GrafanaClient,
     /// The Wazuh manager (ossec.conf) and indexer (shards, version).
     pub wazuh: WazuhState,
+    /// What the flows read from the environment.
+    pub env: CloudEnv,
 }
 
 impl FromRef<CloudState> for AppContext {
@@ -59,6 +71,8 @@ pub struct Tools<'a> {
     pub grafana: &'a GrafanaClient,
     /// The Wazuh manager and indexer.
     pub wazuh: &'a WazuhState,
+    /// What the flows read from the environment.
+    pub env: &'a CloudEnv,
 }
 
 impl CloudState {
@@ -69,6 +83,7 @@ impl CloudState {
             graylog: &self.graylog,
             grafana: &self.grafana,
             wazuh: &self.wazuh,
+            env: &self.env,
         }
     }
 }
@@ -98,5 +113,7 @@ pub const REQUIREMENTS: &[TableRequirement] = &[
     },
 ];
 
+#[cfg(test)]
+mod aws_vectors;
 #[cfg(test)]
 mod vectors;

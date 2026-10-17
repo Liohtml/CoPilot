@@ -1,15 +1,18 @@
 """Parity of the remaining provisioning routes ported to Rust with this backend — NOT collected by
 pytest (needs a live MySQL and the Rust binary; run by scripts/rust-parity.sh).
 
-`POST /api/office365/provision` (`copilot-cloud-provisioning`) is answered by the real FastAPI
-router and by Rust instances on one database. One Rust instance meets Graylog 6, a second Graylog 7
+`POST /api/office365/provision` and `POST /api/aws/provision` (`copilot-cloud-provisioning`), and the
+delete of a deployed AWS instance (`copilot-integrations`), are answered by the real FastAPI routers
+and by Rust instances on one database. One Rust instance meets Graylog 6, a second Graylog 7
 (both backends cache the version; Python's is pinned to the instance in use). The routers are
 served by uvicorn in a thread: that app is the Python side of every check and the Rust instances'
 legacy backend. The tools are local stand-ins recording every request — method, target, every
 header the client sent and the body bytes: the Wazuh manager (`/wazuh`, its `ossec.conf` kept and
 rewritten as a manager would), Graylog (`/graylog`, stateful: pipeline rules, pipelines, index sets,
 streams, connections) and Grafana (`/grafanaapi`, the root `grafana_client` builds from a connector
-URL ending in `/grafana`) on one port, the Wazuh indexer on another. For each request the suite
+URL ending in `/grafana`) on one port, the Wazuh indexer on another, and AWS (STS and S3 as botocore
+reaches them through `AWS_ENDPOINT_URL`, path-style) on a third — the signing time, the signature,
+the invocation id and the interpreter's patch version masked. For each request the suite
 compares the status, the body, every outbound request and what the request left: the rows, the
 manager's configuration and Graylog's objects. Deliberate differences are asserted as such
 (RUST_MIGRATION.md §4).
@@ -18,8 +21,9 @@ manager's configuration and Graylog's objects. Deliberate differences are assert
 
 Ports (all overridable): REMAINING_PROV_PARITY_RUST_PORT (6841), REMAINING_PROV_PARITY_RUST7_PORT
 (6842), REMAINING_PROV_PARITY_PY_PORT (6843, the uvicorn legacy backend), REMAINING_PROV_STUB_PORT
-(6844, manager, Graylog and Grafana), REMAINING_PROV_INDEXER_STUB_PORT (6845). Seeded ids are seven
-digits in 7860000-7869999. `REMAINING_PROV_PARITY_SECTIONS=office365` picks the sections.
+(6844, manager, Graylog and Grafana), REMAINING_PROV_INDEXER_STUB_PORT (6845), REMAINING_PROV_AWS_STUB_PORT
+(6846). Seeded ids are seven digits in 7860000-7869999. `REMAINING_PROV_PARITY_SECTIONS=office365,aws`
+picks the sections.
 """
 
 import asyncio
@@ -36,6 +40,9 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
+from urllib.parse import parse_qs
+from urllib.parse import quote
+from urllib.parse import unquote
 from urllib.parse import urlsplit
 
 os.environ.setdefault("MYSQL_URL", "127.0.0.1:13306")
@@ -70,6 +77,11 @@ PY_PORT = int(os.environ.get("REMAINING_PROV_PARITY_PY_PORT", "6843"))
 STUB_PORT = int(os.environ.get("REMAINING_PROV_STUB_PORT", "6844"))
 INDEXER_PORT = int(os.environ.get("REMAINING_PROV_INDEXER_STUB_PORT", "6845"))
 CLOSED_PORT = int(os.environ.get("REMAINING_PROV_CLOSED_PORT", "6848"))
+AWS_PORT = int(os.environ.get("REMAINING_PROV_AWS_STUB_PORT", "6846"))
+# botocore's endpoint override, read when a client is created: both backends reach AWS here.
+os.environ["AWS_ENDPOINT_URL"] = f"http://127.0.0.1:{AWS_PORT}"
+#: How long both backends watch the manager's log after a restart (10 s / 60 s in production).
+PROFILE_CHECK = (0.1, 0.3)
 SEED_LO, SEED_HI = 7_860_000, 7_869_999
 
 CUST_A, CUST_B, CUST_C = f"RPA{SFX}", f"RPB{SFX}", f"RPC{SFX}"
@@ -82,6 +94,8 @@ OUR_CONNECTORS = ("Wazuh-Manager", "Graylog", "Grafana", "Wazuh-Indexer")
 GRAFANA_URL = f"http://127.0.0.1:{STUB_PORT}/grafana"
 INDEXER_URL = f"http://127.0.0.1:{INDEXER_PORT}"
 TENANT_A, TENANT_A2, TENANT_B, TENANT_D = (f"ten-a-{SFX}", f"ten-a2-{SFX}", f"ten-b-{SFX}", f"ten-d-{SFX}")
+ACCT_A = "210987654321"
+BUCKET_A, BUCKET_B = f"rp-{SFX}-trail", f"rp-{SFX}-prod"
 results = []
 
 
@@ -178,11 +192,14 @@ class Manager:
     def __init__(self):
         self.reset()
 
-    def reset(self, config=OSSEC, refuse=0, overrides=None):
+    def reset(self, config=OSSEC, refuse=0, overrides=None, logs=None):
         self.config = config
         # How many PUTs of the configuration answer `error: 1` before one is taken.
         self.refuse = refuse
         self.overrides = copy.deepcopy(overrides or {})
+        # `GET /manager/logs` by search text: the newest entry's timestamps, answered in turn (the
+        # last repeated); none when absent.
+        self.logs = copy.deepcopy(logs or {})
 
     def answer(self, method, target, body):
         path = urlsplit(target).path.removeprefix("/wazuh")
@@ -202,6 +219,29 @@ class Manager:
             return 200, j, _json({"data": {"affected_items": ["manager"], "total_affected_items": 1}, "error": 0})
         if path == "/manager/restart" and method == "PUT":
             return 200, j, _json({"data": {"affected_items": ["manager"]}, "message": "Restart request sent", "error": 0})
+        if path == "/manager/configuration/validation" and method == "GET":
+            return (
+                200,
+                j,
+                _json(
+                    {
+                        "data": {
+                            "affected_items": [{"name": "node01", "status": "OK"}],
+                            "total_affected_items": 1,
+                            "total_failed_items": 0,
+                            "failed_items": [],
+                        },
+                        "message": "Validation was successfully checked",
+                        "error": 0,
+                    },
+                ),
+            )
+        if path == "/manager/logs" and method == "GET":
+            search = parse_qs(urlsplit(target).query).get("search", [""])[0]
+            stamps = self.logs.get(search)
+            stamp = (stamps.pop(0) if len(stamps) > 1 else stamps[0]) if stamps else None
+            items = [{"timestamp": stamp, "tag": "wazuh-modulesd:aws-s3", "level": "warning", "description": search}] if stamp else []
+            return 200, j, _json({"data": {"affected_items": items, "total_affected_items": len(items), "failed_items": []}, "error": 0})
         return 404, j, _json({"title": "Not Found", "detail": f"no stand-in for {method} {path}"})
 
 
@@ -288,6 +328,13 @@ class Graylog:
             return 200, j, _json(found)
         if method == "GET" and path == "/api/system/pipelines/pipeline":
             return 200, j, _json(self.pipelines)
+        m = re.fullmatch(r"/api/system/pipelines/pipeline/([^/]+)", path)
+        if method == "PUT" and m:
+            found = next((p for p in self.pipelines if p["id"] == m.group(1)), None)
+            if found is None:
+                return 404, j, _json({"type": "ApiError", "message": f"Pipeline {m.group(1)} not found"})
+            found.update(json.loads(body))
+            return 200, j, _json(found)
         if method == "POST" and path == "/api/system/pipelines/pipeline":
             data = json.loads(body)
             new = pipeline(self._id("pl"), data.get("title"), data.get("description"))
@@ -487,6 +534,97 @@ class Indexer:
         return 404, j, _json({"error": "no such index", "status": 404})
 
 
+def _sts(account):
+    return (
+        '<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">\n  <GetCallerIdentityResult>\n'
+        f"    <Arn>arn:aws:iam::{account}:user/copilot</Arn>\n    <UserId>AIDAPARITY</UserId>\n    <Account>{account}</Account>\n"
+        "  </GetCallerIdentityResult>\n  <ResponseMetadata><RequestId>rq-1</RequestId></ResponseMetadata>\n</GetCallerIdentityResponse>\n"
+    ).encode()
+
+
+def _s3_error(code, message):
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<Error><Code>'
+        + code
+        + "</Code><Message>"
+        + message
+        + "</Message><RequestId>rq</RequestId>"
+        "<HostId>h</HostId></Error>"
+    ).encode()
+
+
+class Aws:
+    """AWS as botocore reaches it through `AWS_ENDPOINT_URL` (path-style S3): STS's
+    GetCallerIdentity, a bucket's HEAD, ListObjectsV2 (`encoding-type=url`, with its delimiter's
+    common prefixes) and the one-byte GetObject. Per-test overrides by (method, path glob)."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self, account=ACCT_A, region="eu-west-1", buckets=None, objects=None, overrides=None):
+        self.account = account
+        self.region = region
+        self.buckets = set(buckets if buckets is not None else (BUCKET_A, BUCKET_B))
+        day = datetime.datetime.now(datetime.timezone.utc).strftime("%Y/%m/%d")
+        default = {
+            f"AWSLogs/{ACCT_A}/CloudTrail/eu-west-1/{day}/{ACCT_A}_CloudTrail_eu-west-1_1+x.json.gz": (1234, "STANDARD"),
+            f"AWSLogs/{ACCT_A}/CloudTrail/eu-west-1/{day}/": (0, "STANDARD"),
+            f"AWSLogs/{ACCT_A}/GuardDuty/eu-west-1/{day}/gd 1.jsonl.gz": (99, None),
+        }
+        self.objects = dict(objects if objects is not None else default)
+        self.overrides = copy.deepcopy(overrides or {})
+
+    def answer(self, method, target, body):
+        parts = urlsplit(target)
+        path = parts.path
+        reply = _override(self.overrides, method, path)
+        if reply:
+            return reply
+        if method == "POST" and path == "/":
+            return 200, "text/xml", _sts(self.account)
+        bucket, _, key = path.lstrip("/").partition("/")
+        bucket = unquote(bucket)
+        if bucket not in self.buckets:
+            if method == "HEAD":
+                return 404, {"x-amz-request-id": "rq"}, b""
+            return 404, "application/xml", _s3_error("NoSuchBucket", "The specified bucket does not exist")
+        if method == "HEAD":
+            return 200, {"x-amz-bucket-region": self.region, "x-amz-request-id": "rq"}, b""
+        if method == "GET" and not key:
+            q = parse_qs(parts.query, keep_blank_values=True)
+            prefix = q.get("prefix", [""])[0]
+            delimiter = q.get("delimiter", [None])[0]
+            max_keys = int(q.get("max-keys", ["1000"])[0])
+            contents, prefixes = [], []
+            for name in sorted(k for k in self.objects if k.startswith(prefix)):
+                rest = name[len(prefix) :]
+                if delimiter and delimiter in rest:
+                    common = prefix + rest.split(delimiter, 1)[0] + delimiter
+                    if common not in prefixes:
+                        prefixes.append(common)
+                else:
+                    contents.append(name)
+            contents = contents[:max_keys]
+            xml = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+                f"<Name>{bucket}</Name><Prefix>{quote(prefix, safe='/')}</Prefix><KeyCount>{len(contents) + len(prefixes)}</KeyCount>"
+                f"<MaxKeys>{max_keys}</MaxKeys><EncodingType>url</EncodingType><IsTruncated>false</IsTruncated>"
+            )
+            for name in contents:
+                size, storage = self.objects[name]
+                xml += (
+                    f"<Contents><Key>{quote(name, safe='/')}</Key><LastModified>2026-10-16T01:02:03.000Z</LastModified><Size>{size}</Size>"
+                )
+                xml += f"<StorageClass>{storage}</StorageClass>" if storage else ""
+                xml += "</Contents>"
+            for common in prefixes:
+                xml += f"<CommonPrefixes><Prefix>{quote(common, safe='/')}</Prefix></CommonPrefixes>"
+            return 200, "application/xml", (xml + "</ListBucketResult>").encode()
+        if method == "GET":
+            return 206, {"Content-Type": "binary/octet-stream", "Content-Range": "bytes 0-0/1234"}, b"x"
+        return 405, "application/xml", _s3_error("MethodNotAllowed", "no")
+
+
 class Recorder:
     """Every request a stand-in was sent: (method, target, every header sorted, body)."""
 
@@ -508,6 +646,7 @@ MANAGER = Manager()
 GRAYLOG = Graylog("/graylog")
 GRAFANA = Grafana()
 INDEXER = Indexer()
+AWS = Aws()
 RECORDER = Recorder()
 
 
@@ -537,13 +676,15 @@ def start_stub(port, tool):
             RECORDER.add(self.command, self.path, headers, body)
             status, ctype, payload = tool.answer(self.command, self.path, body)
             self.send_response(status)
-            if ctype:
-                self.send_header("Content-Type", ctype)
+            # A content type, or the answer's headers.
+            for name, value in (ctype or {}).items() if isinstance(ctype, dict) else [("Content-Type", ctype)] if ctype else []:
+                self.send_header(name, value)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
-            self.wfile.write(payload)
+            if self.command != "HEAD":
+                self.wfile.write(payload)
 
-        do_GET = do_POST = do_PUT = do_DELETE = _handle  # noqa: N815 - http.server API
+        do_GET = do_POST = do_PUT = do_DELETE = do_HEAD = _handle  # noqa: N815 - http.server API
 
         def log_message(self, *args):
             pass
@@ -622,7 +763,7 @@ def point_tools():
 
 # The integrations: (id, customer, service, instance, keys); subscriptions take id + 100, keys ids
 # from 7860700.
-INT_SERVICES = {"Office365": 7_860_001}
+INT_SERVICES = {"Office365": 7_860_001, "AWS": 7_860_002}
 O365_KEYS_A = [("TENANT_ID", TENANT_A), ("CLIENT_ID", "c-a"), ("CLIENT_SECRET", "s<a>&"), ("API_TYPE", "commercial")]
 O365_KEYS_A2 = [("TENANT_ID", TENANT_A2), ("CLIENT_ID", "c-a2"), ("CLIENT_SECRET", "s-a2"), ("API_TYPE", "gcc-high")]
 INT_ROWS = [
@@ -632,7 +773,41 @@ INT_ROWS = [
 ]
 #: The second tenant of customer A, seeded by the checks that need it.
 SECOND_TENANT = (7_860_012, CUST_A, "Office365", "sub.example", O365_KEYS_A2)
-INT_IDS = [r[0] for r in INT_ROWS] + [SECOND_TENANT[0]]
+AWS_KEYS_A = [
+    ("ACCESS_KEY_ID", "AKIAPARITY0000000001"),
+    ("SECRET_ACCESS_KEY", "par/ity+s3cr<et>&"),
+    ("AWS_ACCOUNT_ID", ACCT_A),
+    ("BUCKET_NAME", BUCKET_A),
+    ("SERVICES", "cloudtrail,guardduty"),
+    ("ONLY_LOGS_AFTER", "2026-oct-01"),
+]
+#: Customer A's unnamed AWS account, its named second one and the AWS rows of B (the bad keys, no
+#: keys, and — seeded by the check that needs it — A's account claimed by B).
+AWS_A = (7_860_021, CUST_A, "AWS", None, AWS_KEYS_A)
+AWS_A_PROD = (
+    7_860_022,
+    CUST_A,
+    "AWS",
+    "prod",
+    [
+        ("ACCESS_KEY_ID", "AKIAPARITY0000000002"),
+        ("SECRET_ACCESS_KEY", "s2"),
+        ("AWS_ACCOUNT_ID", ACCT_A),
+        ("BUCKET_NAME", BUCKET_B),
+        ("SERVICES", "cloudtrail"),
+    ],
+)
+AWS_B_BAD = (
+    7_860_023,
+    CUST_B,
+    "AWS",
+    "bad",
+    [("ACCESS_KEY_ID", "akia"), ("AWS_ACCOUNT_ID", "12"), ("BUCKET_NAME", "Bad_Bucket"), ("SERVICES", "vpcflow"), ("ONLY_LOGS_AFTER", "x")],
+)
+AWS_B_NOKEYS = (7_860_024, CUST_B, "AWS", "nokeys", [])
+AWS_B_CLAIM = (7_860_025, CUST_B, "AWS", None, [("AWS_ACCOUNT_ID", f" {ACCT_A} "), ("BUCKET_NAME", "other-bucket")])
+AWS_ROWS = [AWS_A, AWS_A_PROD, AWS_B_BAD, AWS_B_NOKEYS, AWS_B_CLAIM]
+INT_IDS = [r[0] for r in INT_ROWS] + [SECOND_TENANT[0]] + [r[0] for r in AWS_ROWS]
 
 
 def insert_integration(cid, code, service, instance, keys):
@@ -736,10 +911,12 @@ def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers import aws
+    from app.routers import integrations
     from app.routers import office365
 
     api = APIRouter(prefix="/api")
-    for module in (office365,):
+    for module in (office365, aws, integrations):
         api.include_router(module.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
@@ -773,6 +950,8 @@ def start_rust(port):
         "COPILOT_PORT": str(port),
         "COPILOT_LEGACY_URL": f"http://127.0.0.1:{PY_PORT}",
         "CONNECTOR_CACHE_TTL_SECONDS": "0",
+        "AWS_ENDPOINT_URL": os.environ["AWS_ENDPOINT_URL"],
+        "COPILOT_AWS_PROFILE_CHECK_SECONDS": f"{PROFILE_CHECK[0]},{PROFILE_CHECK[1]}",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
     }
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
@@ -797,6 +976,25 @@ def norm_body(raw):
     return ADDRESS.sub(b"object at 0x...", raw)
 
 
+def aws_header(name, value):
+    """A botocore header with what depends on the moment or the process masked: the signing time,
+    the signature over it, the invocation id, a retry's time to live, the interpreter's patch
+    version and the order of the user agent's `m/` features (a set's)."""
+    if name == "x-amz-date":
+        return "<date>"
+    if name == "authorization" and value.startswith("AWS4-HMAC-SHA256"):
+        value = re.sub(r"(Credential=[^/]+/)\d{8}/", r"\1<day>/", value)
+        return re.sub(r"Signature=[0-9a-f]{64}", "Signature=<sig>", value)
+    if name == "amz-sdk-invocation-id":
+        return "<uuid>"
+    if name == "amz-sdk-request":
+        return re.sub(r"ttl=\d{8}T\d{6}Z", "ttl=<ttl>", value)
+    if name == "user-agent" and "Botocore/" in value:
+        value = re.sub(r"lang/python#3\.11(?:\.\d+)?", "lang/python#3.11", value)
+        return re.sub(r" m/([A-Za-z,]+) ", lambda m: " m/" + ",".join(sorted(m.group(1).split(","))) + " ", value)
+    return value
+
+
 def out_norm(requests):
     """The outbound requests compared: the Graylog version probe left out (both backends cache the
     version; Python's is pinned), the manager's token fetch left out (each process caches its own),
@@ -810,6 +1008,7 @@ def out_norm(requests):
             continue
         body = CREATION_DATE.sub(b'"creation_date": "<utcnow>"', body)
         headers = [(k, ES_AGENT.sub("(Python 3.11)", v) if k == "user-agent" else v) for k, v in headers]
+        headers = [(k, aws_header(k, v)) for k, v in headers]
         out.append((method, target, headers, body))
     return out
 
@@ -1320,11 +1519,566 @@ def o365_existing_pipelines():
     return [pipeline("pl-wazuh", "WAZUH", "Wazuh processing"), pipeline("pl-o365", "OFFICE365 PROCESSING PIPELINE", "office365 pipeline")]
 
 
+# --- AWS -------------------------------------------------------------------------------------------------
+
+AWS_URL = "/api/aws/provision"
+DELETE_URL = "/api/integrations/delete_integration"
+SECRET_XML = "par/ity+s3cr&lt;et&gt;&amp;"
+
+
+def aws_bucket(kind, name, account, key="AKIAPARITY0000000001", secret=SECRET_XML, start="2026-OCT-01", path=None):
+    """One `<bucket>` as `build_bucket` writes it (text already XML-escaped)."""
+    return (
+        f'    <bucket type="{kind}">\n      <name>{name}</name>\n'
+        + (f"      <path>{path}</path>\n" if path else "")
+        + f"      <access_key>{key}</access_key>\n      <secret_key>{secret}</secret_key>\n"
+        f"      <aws_account_id>{account}</aws_account_id>\n      <only_logs_after>{start}</only_logs_after>\n    </bucket>\n"
+    )
+
+
+def aws_ossec(*buckets, disabled="no"):
+    """`OSSEC` with an aws-s3 wodle holding `buckets`."""
+    wodle = (
+        f'  <wodle name="aws-s3">\n    <disabled>{disabled}</disabled>\n    <interval>10m</interval>\n'
+        "    <run_on_start>yes</run_on_start>\n    <skip_on_error>yes</skip_on_error>\n" + "".join(buckets) + "  </wodle>\n"
+    )
+    return OSSEC.replace("  <!-- Policy monitoring -->", wodle + "  <!-- Policy monitoring -->")
+
+
+OTHER_BUCKET = aws_bucket("cloudtrail", "someone-else", "999999999999", key="AKIAOTHER00000000000", secret="o")
+OWN_BUCKETS = (aws_bucket("cloudtrail", BUCKET_A, ACCT_A), aws_bucket("guardduty", BUCKET_A, ACCT_A))
+
+
+def aws_deployed(services=("cloudtrail", "guardduty")):
+    """Customer A's unnamed instance deployed: its metadata row and `deployed`."""
+    pairs = lambda prefix: ",".join(f"{svc}:{prefix}-{svc}" for svc in services)  # noqa: E731
+    sql(
+        "INSERT INTO customer_integrations_meta (customer_code, integration_name, instance_name, graylog_input_id, graylog_index_id, "
+        "graylog_stream_id, grafana_org_id, grafana_dashboard_folder_id, grafana_datasource_uid) VALUES (:c, 'AWS', NULL, NULL, :i, :s, "
+        "'7', '71', :d)",
+        c=CUST_A,
+        i=pairs("is"),
+        s=pairs("st"),
+        d=pairs("ds"),
+    )
+    sql("UPDATE customer_integrations SET deployed = 1 WHERE id = :i", i=AWS_A[0])
+
+
+def set_aws_key(cid, name, value):
+    sql("UPDATE integration_auth_keys SET auth_value = :v WHERE subscription_id = :s AND auth_key_name = :n", v=value, s=cid + 100, n=name)
+
+
+def aws_world(
+    version=6,
+    config=OSSEC,
+    manager=None,
+    logs=None,
+    graylog=None,
+    grafana=None,
+    indexer=None,
+    aws=None,
+    rows_=(AWS_A, AWS_B_BAD, AWS_B_NOKEYS),
+    setup=None,
+):
+    """A fresh world: the AWS integrations re-seeded, no metadata, nothing deployed, the stand-ins
+    reset."""
+
+    def before():
+        point_tools()
+        codes = list(CUSTOMERS) + [CUST_D]
+        sql("DELETE FROM customer_integrations_meta WHERE customer_code IN :c", c=codes)
+        for row in AWS_ROWS:
+            delete_integration(row[0])
+        for row in rows_:
+            insert_integration(*row)
+        sql("UPDATE customer_integrations SET deployed = 0 WHERE id IN :i", i=INT_IDS)
+        sql("UPDATE customersmeta SET customer_meta_grafana_org_id = '7' WHERE customer_code = :c", c=CUST_A)
+        MANAGER.reset(config, 0, manager, logs)
+        GRAYLOG.reset(version, **(graylog or {}))
+        GRAFANA.reset(grafana)
+        INDEXER.reset(indexer)
+        AWS.reset(**(aws or {}))
+        pin_graylog_version("Graylog", version)
+        if setup:
+            setup()
+
+    return before
+
+
+def aws_state():
+    codes = list(CUSTOMERS) + [CUST_D]
+    return {
+        "meta": rows(
+            "SELECT customer_code, integration_name, instance_name, graylog_input_id, graylog_index_id, graylog_stream_id, "
+            "grafana_org_id, grafana_dashboard_folder_id, grafana_datasource_uid FROM customer_integrations_meta "
+            "WHERE customer_code IN :c ORDER BY id",
+            c=codes,
+        ),
+        "integrations": rows("SELECT id, deployed FROM customer_integrations WHERE id IN :i ORDER BY id", i=INT_IDS),
+        "keys": rows(
+            "SELECT id, auth_key_name, auth_value FROM integration_auth_keys WHERE id BETWEEN :lo AND :hi ORDER BY id",
+            lo=SEED_LO,
+            hi=SEED_HI,
+        ),
+        "ossec": MANAGER.config,
+        "graylog": GRAYLOG.state(),
+        "grafana": GRAFANA.state(),
+    }
+
+
+def aws_existing_rules(stale=False):
+    """Every rule the AWS flow needs, the AWS ones possibly from an older version."""
+    from app.integrations.aws.services.provision import aws_rule_sources
+
+    out = [pipeline_rule("r-other", "Other rule", 'rule "Other rule"\nend')]
+
+    for n, title in enumerate(
+        (
+            "WAZUH CREATE FIELD SYSLOG LEVEL - INFO",
+            "WAZUH CREATE FIELD SYSLOG LEVEL - WARNING",
+            "WAZUH CREATE FIELD SYSLOG LEVEL - NOTICE",
+            "WAZUH CREATE FIELD SYSLOG LEVEL - ALERT",
+        ),
+    ):
+        out.append(pipeline_rule(f"r-wz{n}", title, f'rule "{title}"\nwhen\n  true\nthen\nend'))
+    for n, (title, source) in enumerate(aws_rule_sources().items()):
+        if stale and title == "AWS ACCOUNT ID":
+            source = f'rule "{title}"\nwhen\n  has_field("data_aws_aws_account_id")\nthen\nend'
+        elif not stale:
+            source = source.replace("\n", "\n  ")
+        out.append(pipeline_rule(f"r-aws{n}", title, source, description=None if n else ""))
+    return out
+
+
+async def aws_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
+    st = aws_state
+    body = {"customer_code": CUST_A}
+    await p.same("aws: no token", "POST", AWS_URL, json=body)
+    await p.same("aws: malformed JSON, no token", "POST", AWS_URL, content=b"{", headers={"Content-Type": "application/json"})
+    await p.same("aws: a customer_user token", "POST", AWS_URL, token(ANALYST, ["customer_user"]), json=body)
+    await p.same("aws: a list body (the before-validator's TypeError)", "POST", AWS_URL, t_admin, json=[body])
+    await p.same("aws: no customer_code", "POST", AWS_URL, t_admin, json={"integration_name": "AWS"})
+    await p.same(
+        "aws: another customer's analyst (Python's own check)",
+        "POST",
+        AWS_URL,
+        t_analyst_b,
+        before=aws_world(),
+        state=st,
+        json=body,
+    )
+    await p.same("aws: an unassigned analyst", "POST", AWS_URL, t_unassigned, before=aws_world(), state=st, json=body)
+    await p.same("aws: no integration at all", "POST", AWS_URL, t_admin, before=aws_world(), state=st, json={"customer_code": CUST_C})
+    await p.same("aws: integrations but no AWS one", "POST", AWS_URL, t_admin, before=aws_world(), state=st, json={"customer_code": CUST_D})
+    await p.same(
+        "aws: keys Pydantic refuses, every field named",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(),
+        state=st,
+        json={"customer_code": CUST_B, "instance_name": "bad"},
+    )
+    await p.same(
+        "aws: no auth keys",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(),
+        state=st,
+        json={"customer_code": CUST_B, "instance_name": "nokeys"},
+    )
+    await p.same(
+        "aws: several instances, none named",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(),
+        state=st,
+        json={"customer_code": CUST_B},
+    )
+    await p.same("aws: an unknown instance", "POST", AWS_URL, t_admin, before=aws_world(), state=st, json={**body, "instance_name": "nope"})
+
+    # Deployments.
+    await p.same("aws: deployed on Graylog 6 (the wodle created)", "POST", AWS_URL, t_admin, before=aws_world(), state=st, json=body)
+    await p.same(
+        "aws: deployed on Graylog 7 as the customer's analyst, beside another customer's bucket",
+        "POST",
+        AWS_URL,
+        t_analyst,
+        before=aws_world(7, config=aws_ossec(OTHER_BUCKET)),
+        state=st,
+        rust=p.rs7,
+        json={**body, "integration_name": "x", "instance_name": " "},
+    )
+    await p.same(
+        "aws: a re-sync with nothing to change (the manager not written)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(config=aws_ossec(*OWN_BUCKETS), graylog={"rules": aws_existing_rules()}, setup=aws_deployed),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: a re-sync dropping GuardDuty (its bucket, stream, index set and datasource removed)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            config=aws_ossec(*OWN_BUCKETS),
+            setup=lambda: (aws_deployed(), set_aws_key(AWS_A[0], "SERVICES", "cloudtrail")),
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: a re-sync with a rotated key (the start date kept), stale AWS rules rewritten",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            config=aws_ossec(aws_bucket("cloudtrail", BUCKET_A, ACCT_A, key="AKIAOLD0000000000000", start="2026-JAN-15"), OTHER_BUCKET),
+            graylog={"rules": aws_existing_rules(stale=True)},
+            setup=lambda: (
+                aws_deployed(("cloudtrail",)),
+                set_aws_key(AWS_A[0], "SERVICES", "cloudtrail"),
+                set_aws_key(AWS_A[0], "ONLY_LOGS_AFTER", " "),
+            ),
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the second instance reuses the index set, datasource and folder",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(config=aws_ossec(*OWN_BUCKETS), rows_=(AWS_A, AWS_A_PROD), setup=aws_deployed),
+        state=st,
+        json={**body, "instance_name": "prod"},
+    )
+    await p.same(
+        "aws: the account another customer has configured",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(rows_=(AWS_A, AWS_B_CLAIM)),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the bucket and account of another instance of the customer",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(rows_=(AWS_A, AWS_A_PROD), setup=lambda: set_aws_key(AWS_A_PROD[0], "BUCKET_NAME", BUCKET_A)),
+        state=st,
+        json={**body, "instance_name": "prod"},
+    )
+    await p.same(
+        "aws: a hand-made bucket for the account (refused, nothing written)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(config=aws_ossec(aws_bucket("cloudtrail", BUCKET_A, ACCT_A, key="AKIAHAND000000000000"))),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the wodle disabled (a warning)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(config=aws_ossec(OTHER_BUCKET, disabled="yes")),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the exit-23 error after the restart (the notice says so)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(logs={"No profile named": ["2026-10-17T10:00:00Z", "2026-10-17T10:00:00Z", "2026-10-17T11:00:00Z"]}),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: a finished run ends the watch early",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            logs={"Fetching logs finished": ["2026-10-17T09:00:00+00:00", "2026-10-17T12:00:00Z"], "No profile named": ["garbage"]},
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: log timestamps that are not ISO (compared as text)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(logs={"No profile named": ["b", "b", "c"]}),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the manager rejects the new ossec.conf",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            manager={
+                ("PUT", "/manager/configuration"): (
+                    200,
+                    "application/json",
+                    _json({"data": {"failed_items": [1]}, "message": "bad", "error": 1}),
+                ),
+            },
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the new ossec.conf does not validate (the original restored)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            manager={
+                ("GET", "/manager/configuration/validation"): (
+                    200,
+                    "application/json",
+                    _json(
+                        {
+                            "data": {"affected_items": [{"name": "node01", "status": "KO"}], "total_failed_items": 0, "failed_items": []},
+                            "error": 0,
+                        },
+                    ),
+                ),
+            },
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the manager's ossec.conf unreadable",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(manager={("GET", "/manager/configuration"): (500, "application/json", _json({"title": "boom"}))}),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: a stale AWS rule Graylog will not update (rolled back)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            graylog={
+                "rules": aws_existing_rules(stale=True),
+                "overrides": {("PUT", "/api/system/pipelines/rule/*"): (400, "application/json", _json({"message": "parse error"}))},
+            },
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the stream refused (index set and buckets rolled back)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(graylog={"overrides": {("POST", "/api/streams"): (500, "application/json", _json({"message": "no"}))}}),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the Grafana folder refused, an undo fails too",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            config=aws_ossec(OTHER_BUCKET),
+            grafana={("POST", "/folders"): (409, "application/json", _json({"message": "a folder with the same name"}))},
+            graylog={"overrides": {("DELETE", "/api/streams/*"): (500, "application/json", _json({"message": "stream busy"}))}},
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: a datasource refused (folder, streams, index sets and buckets rolled back)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(grafana={("POST", "/datasources"): (400, "application/json", _json({"message": "bad datasource"}))}),
+        state=st,
+        json=body,
+    )
+
+    # The credentials, checked against AWS before anything changes.
+    await p.same(
+        "aws: the key belongs to another account",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(aws={"account": "999999999999"}),
+        state=st,
+        json=body,
+    )
+    bad_key = b"<ErrorResponse><Error><Type>Sender</Type><Code>InvalidClientTokenId</Code><Message>no</Message></Error></ErrorResponse>"
+    await p.same(
+        "aws: AWS rejects the key",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(aws={"overrides": {("POST", "/"): (403, "text/xml", bad_key)}}),
+        state=st,
+        json=body,
+    )
+    await p.same("aws: no such bucket", "POST", AWS_URL, t_admin, before=aws_world(aws={"buckets": ()}), state=st, json=body)
+    await p.same(
+        "aws: listing denied",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            aws={"overrides": {("GET", f"/{BUCKET_A}"): (403, "application/xml", _s3_error("AccessDenied", "Access Denied"))}},
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same("aws: no logs at all", "POST", AWS_URL, t_admin, before=aws_world(aws={"objects": {}}), state=st, json=body)
+    await p.same(
+        "aws: only archived logs (a warning)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            aws={
+                "objects": {
+                    f"AWSLogs/{ACCT_A}/CloudTrail/eu-west-1/2025/01/01/old.json.gz": (10, "GLACIER"),
+                    f"AWSLogs/{ACCT_A}/GuardDuty/eu-west-1/2025/01/01/old.jsonl.gz": (10, "DEEP_ARCHIVE"),
+                },
+            },
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: reading denied by KMS",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            aws={"overrides": {("GET", f"/{BUCKET_A}/*"): (403, "application/xml", _s3_error("AccessDenied", "kms:Decrypt denied"))}},
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: STS answers something that is not XML (ResponseParserError, a bare 500)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(aws={"overrides": {("POST", "/"): (200, "text/xml", b"not xml")}}),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: STS throttles twice, then answers",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            aws={
+                "overrides": {
+                    ("POST", "/"): [
+                        (400, "text/xml", b"<ErrorResponse><Error><Code>Throttling</Code><Message>slow</Message></Error></ErrorResponse>"),
+                        (503, "text/xml", b""),
+                        (200, "text/xml", _sts(ACCT_A)),
+                    ],
+                },
+            },
+        ),
+        state=st,
+        json=body,
+    )
+    await p.same(
+        "aws: the bucket in another region (HEAD's 301, redirected)",
+        "POST",
+        AWS_URL,
+        t_admin,
+        before=aws_world(
+            aws={
+                "overrides": {
+                    ("HEAD", f"/{BUCKET_A}"): [
+                        (301, {"x-amz-bucket-region": "ap-south-1"}, b""),
+                        (200, {"x-amz-bucket-region": "ap-south-1"}, b""),
+                    ],
+                },
+            },
+        ),
+        state=st,
+        json=body,
+    )
+
+    # The delete of a deployed instance (Rust's own since this port).
+    delete = {"customer_code": CUST_A, "integration_name": "AWS"}
+    await p.same(
+        "aws delete: a deployed instance (its buckets, streams, index sets, datasources and folder)",
+        "DELETE",
+        DELETE_URL,
+        t_admin,
+        before=aws_world(config=aws_ossec(*OWN_BUCKETS, OTHER_BUCKET), setup=aws_deployed),
+        state=st,
+        json=delete,
+    )
+    await p.same(
+        "aws delete: a sibling instance still collects CloudTrail (its index set kept)",
+        "DELETE",
+        DELETE_URL,
+        t_admin,
+        before=aws_world(
+            config=aws_ossec(*OWN_BUCKETS, aws_bucket("cloudtrail", BUCKET_B, ACCT_A, key="AKIAPARITY0000000002", secret="s2")),
+            rows_=(AWS_A, AWS_A_PROD),
+            setup=lambda: (
+                aws_deployed(),
+                sql(
+                    "INSERT INTO customer_integrations_meta (customer_code, integration_name, instance_name, graylog_input_id, "
+                    "graylog_index_id, graylog_stream_id, grafana_org_id, grafana_dashboard_folder_id, grafana_datasource_uid) "
+                    "VALUES (:c, 'AWS', 'prod', NULL, 'cloudtrail:is-cloudtrail', 'cloudtrail:st-prod', '7', '71', 'cloudtrail:ds-cloudtrail')",
+                    c=CUST_A,
+                ),
+            ),
+        ),
+        state=st,
+        json=delete,
+    )
+    await p.same(
+        "aws delete: the manager unreadable (a warning, the settings removed)",
+        "DELETE",
+        DELETE_URL,
+        t_admin,
+        before=aws_world(
+            config=aws_ossec(*OWN_BUCKETS),
+            manager={("GET", "/manager/configuration"): (500, "application/json", _json({"title": "boom"}))},
+            setup=aws_deployed,
+        ),
+        state=st,
+        json=delete,
+    )
+
+
 # --- Main ------------------------------------------------------------------------------------------------
 
 
 async def main():
-    servers = [start_stub(STUB_PORT, TOOLS), start_stub(INDEXER_PORT, INDEXER)]
+    servers = [start_stub(STUB_PORT, TOOLS), start_stub(INDEXER_PORT, INDEXER), start_stub(AWS_PORT, AWS)]
+    from app.integrations.aws.services import wazuh_manager as aws_manager
+
+    aws_manager.PROFILE_CHECK_INTERVAL_SECONDS, aws_manager.PROFILE_CHECK_TIMEOUT_SECONDS = PROFILE_CHECK
     procs = []
     python = None
     try:
@@ -1336,9 +2090,11 @@ async def main():
         t_admin, t_analyst = token(ADMIN, ["admin"]), token(ANALYST, ["analyst"])
         t_analyst_b, t_unassigned = token(ANALYST_B, ["analyst"]), token(UNASSIGNED, ["analyst"])
         try:
-            sections = os.environ.get("REMAINING_PROV_PARITY_SECTIONS", "office365").split(",")
+            sections = os.environ.get("REMAINING_PROV_PARITY_SECTIONS", "office365,aws").split(",")
             if "office365" in sections:
                 await office365_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned)
+            if "aws" in sections:
+                await aws_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned)
         finally:
             await p.close()
     finally:

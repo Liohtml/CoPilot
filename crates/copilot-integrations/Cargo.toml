@@ -22,6 +22,9 @@ axum = { workspace = true }
 http = { workspace = true }
 sqlx = { workspace = true }
 bytes = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+copilot-jinja = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

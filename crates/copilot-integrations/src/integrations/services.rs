@@ -30,14 +30,6 @@ use crate::IntegrationsState;
 use crate::sql::{dict, instance_differs, instance_matches, internal, normalize_instance_name, s};
 use crate::table_model::{self, Bound, TableModel};
 
-/// A handler's answer or what it does instead.
-pub enum Outcome {
-    /// The dump to answer with (200).
-    Answer(PyValue),
-    /// Hand the request to the Python backend unchanged.
-    Python,
-}
-
 fn bad_request(detail: impl Into<String>) -> ApiError {
     ApiError::bad_request(detail)
 }
@@ -768,7 +760,7 @@ pub async fn delete(
     st: &IntegrationsState,
     user: &CurrentUser,
     body: &JsonBody,
-) -> Result<Outcome, ApiError> {
+) -> Result<PyValue, ApiError> {
     let ctx = &st.ctx;
     let db = &ctx.db;
     let req = body_model(body, &DELETE_CUSTOMER_INTEGRATION)?;
@@ -796,10 +788,6 @@ pub async fn delete(
     };
     let deployed = store::deployed(db, customer_id).await.map_err(internal)?;
     let is_deployed = deployed == Some(true);
-    if name == AWS && is_deployed {
-        // Its ossec.conf edit is AWS provisioning's, under that process's lock.
-        return Ok(Outcome::Python);
-    }
     let subscriptions = store::subscription_ids(db, customer_id, service_id)
         .await
         .map_err(internal)?;
@@ -814,7 +802,19 @@ pub async fn delete(
     } else {
         None
     };
+    // `find_aws_instance`: the bucket and account say which <bucket> entries
+    // are this instance's (read before the auth keys go).
+    let aws_instance = if name == AWS && is_deployed {
+        store::aws_instances(db)
+            .await
+            .map_err(internal)?
+            .into_iter()
+            .find(|r| r.customer_code == code && r.instance_name == instance)
+    } else {
+        None
+    };
     let mut delete_meta: Option<(bool, Option<String>)> = None;
+    let mut missing_meta = false;
     if is_deployed {
         let resources = if is_network {
             store::network_meta_first(db, code, name)
@@ -832,18 +832,41 @@ pub async fn delete(
                 "customer_integrations_meta.instance_name",
                 instance.as_deref(),
             );
-            store::meta_first(db, code, name, Some(&clause))
+            let meta = store::meta_first(db, code, name, Some(&clause))
                 .await
-                .map_err(internal)?
-                .map(|m| Resources {
+                .map_err(internal)?;
+            match meta {
+                // AWS records one index set, stream and datasource per
+                // service; its metadata row is left as Python leaves it.
+                Some(meta) if name == AWS => {
+                    crate::aws::decommission::cleanup_aws_infrastructure(
+                        db,
+                        &st.graylog,
+                        &st.grafana,
+                        &meta,
+                        code,
+                        instance.as_deref(),
+                        &mut warnings,
+                    )
+                    .await
+                    .map_err(internal)?;
+                    None
+                }
+                Some(m) => Some(Resources {
                     stream_id: m.graylog_stream_id,
                     index_id: m.graylog_index_id,
                     org_id: m.grafana_org_id,
                     folder_id: m.grafana_dashboard_folder_id,
                     datasource_uid: m.grafana_datasource_uid,
-                })
+                }),
+                None => {
+                    missing_meta = true;
+                    None
+                }
+            }
         };
         match resources {
+            None if !missing_meta && !is_network => {}
             None => {
                 tracing::warn!(
                     "No metadata found for {name} / {code}; skipping infrastructure cleanup and \
@@ -971,9 +994,31 @@ pub async fn delete(
             ));
         }
     }
-    Ok(Outcome::Answer(decommission_response(
-        code, name, &warnings,
-    )))
+    // Only for a deployed instance: an undeployed one put nothing on the
+    // manager, and any bucket with the same bucket + account there would be
+    // somebody's hand-made configuration.
+    if let Some(record) = aws_instance {
+        if let (Some(bucket), Some(account)) = (&record.bucket_name, &record.account_id) {
+            if let Err(e) =
+                crate::aws::decommission::decommission_aws_instance(&st.wazuh, bucket, account)
+                    .await
+            {
+                let detail = match &e {
+                    copilot_upstream::py::PyExc::Http(_, d) if !d.is_empty() => d.clone(),
+                    other => other.display(),
+                };
+                tracing::warn!(
+                    "Failed to remove the aws-s3 buckets for {bucket} / {account}: {detail}"
+                );
+                warnings.push(format!(
+                    "Could not remove the aws-s3 <bucket> entries for bucket {bucket} and \
+                     account {account} from the Wazuh manager ({detail}). Remove them from \
+                     ossec.conf and restart the manager."
+                ));
+            }
+        }
+    }
+    Ok(decommission_response(code, name, &warnings))
 }
 
 // --- lookups and the metadata routes -------------------------------------------

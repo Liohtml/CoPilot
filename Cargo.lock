@@ -631,6 +631,7 @@ name = "copilot-cloud-provisioning"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "bytes",
  "chrono",
  "copilot-auth",
  "copilot-core",
@@ -638,17 +639,30 @@ dependencies = [
  "copilot-grafana",
  "copilot-grafana-dashboards",
  "copilot-graylog",
+ "copilot-ingest",
  "copilot-integration-provisioning",
  "copilot-integrations",
+ "copilot-jinja",
  "copilot-monitoring-alerts",
  "copilot-upstream",
  "copilot-wazuh",
  "copilot-web",
+ "hex",
+ "hmac",
  "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rand 0.8.8",
+ "rustls",
  "serde_json",
+ "sha2",
  "sqlx",
  "tokio",
+ "tokio-rustls",
  "tracing",
+ "uuid",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -1007,12 +1021,14 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "bytes",
+ "chrono",
  "copilot-auth",
  "copilot-core",
  "copilot-db",
  "copilot-gateway",
  "copilot-grafana",
  "copilot-graylog",
+ "copilot-jinja",
  "copilot-upstream",
  "copilot-wazuh",
  "copilot-web",
@@ -1020,6 +1036,7 @@ dependencies = [
  "pretty_assertions",
  "serde_json",
  "sqlx",
+ "tokio",
  "tracing",
 ]
 

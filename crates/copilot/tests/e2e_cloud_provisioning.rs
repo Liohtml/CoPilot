@@ -12,7 +12,8 @@
 //! ```
 //!
 //! The stand-ins listen on `CLOUD_PROVISIONING_E2E_PORT_BASE` (6831) and the
-//! port after it. The connector rows a test points at them are replaced for
+//! two ports after it (the third is AWS, reached through botocore's
+//! `AWS_ENDPOINT_URL`). The connector rows a test points at them are replaced for
 //! that test and restored (run single-threaded); seeded rows carry explicit
 //! ids in 7850000–7859999 (the parity suite's are 7860000–7869999).
 
@@ -85,6 +86,8 @@ struct World {
     counter: u32,
     /// `(method, path prefix)` → a fixed answer.
     fail: Vec<(String, String, u16, Value)>,
+    /// The account STS answers for (AWS).
+    aws_account: String,
 }
 
 #[derive(Clone)]
@@ -137,6 +140,52 @@ impl Respond for Tools {
                 )
             }
             ("PUT", "/wazuh/manager/restart") => reply(200, json!({"data": {}, "error": 0})),
+            ("GET", "/wazuh/manager/configuration/validation") => reply(
+                200,
+                json!({"data": {"affected_items": [{"name": "node01", "status": "OK"}],
+                    "total_affected_items": 1, "total_failed_items": 0, "failed_items": []},
+                    "message": "Validation was successfully checked", "error": 0}),
+            ),
+            ("GET", "/wazuh/manager/logs") => reply(
+                200,
+                json!({"data": {"affected_items": [], "total_affected_items": 0,
+                    "total_failed_items": 0, "failed_items": []}, "error": 0}),
+            ),
+            // AWS: STS and the bucket (path-style, the endpoint override).
+            ("POST", "/") => {
+                let account = if w.aws_account.is_empty() {
+                    "123456789012".to_string()
+                } else {
+                    w.aws_account.clone()
+                };
+                ResponseTemplate::new(200).set_body_raw(
+                    format!(
+                        "<GetCallerIdentityResponse><GetCallerIdentityResult><Arn>a</Arn>\
+                         <UserId>u</UserId><Account>{account}</Account>\
+                         </GetCallerIdentityResult></GetCallerIdentityResponse>"
+                    )
+                    .into_bytes(),
+                    "text/xml",
+                )
+            }
+            ("HEAD", AWS_BUCKET_PATH) => {
+                ResponseTemplate::new(200).insert_header("x-amz-bucket-region", "eu-west-1")
+            }
+            ("GET", AWS_BUCKET_PATH) => {
+                let contents = if req.url.query().unwrap_or_default().contains("delimiter") {
+                    ""
+                } else {
+                    "<Contents><Key>AWSLogs/x.json.gz</Key><Size>9</Size></Contents>"
+                };
+                ResponseTemplate::new(200).set_body_raw(
+                    format!("<ListBucketResult><EncodingType>url</EncodingType>{contents}</ListBucketResult>")
+                        .into_bytes(),
+                    "application/xml",
+                )
+            }
+            ("GET", p) if p.starts_with("/e2e-aws-bucket/") => {
+                ResponseTemplate::new(206).set_body_raw(b"x".to_vec(), "binary/octet-stream")
+            }
             // Graylog.
             ("GET", "/graylog/api/system") => reply(200, json!({"version": "6.1.4"})),
             ("GET", "/graylog/api/system/pipelines/rule") => {
@@ -409,6 +458,7 @@ struct Env {
     tools: Tools,
     _main: MockServer,
     _indexer: MockServer,
+    _aws: MockServer,
     saved: Vec<(&'static str, Option<ConnectorRow>)>,
     id1: Option<ConnectorRow>,
 }
@@ -417,14 +467,13 @@ async fn env(h: &Harness) -> Env {
     let tools = Tools::new();
     let main = stand_in(0).await;
     let indexer = stand_in(1).await;
-    Mock::given(wiremock::matchers::any())
-        .respond_with(tools.clone())
-        .mount(&main)
-        .await;
-    Mock::given(wiremock::matchers::any())
-        .respond_with(tools.clone())
-        .mount(&indexer)
-        .await;
+    let aws = stand_in(2).await;
+    for server in [&main, &indexer, &aws] {
+        Mock::given(wiremock::matchers::any())
+            .respond_with(tools.clone())
+            .mount(server)
+            .await;
+    }
     let id1 = point_id1(h, &indexer.uri()).await;
     let mut saved = Vec::new();
     for (name, url) in [
@@ -439,6 +488,7 @@ async fn env(h: &Harness) -> Env {
         tools,
         _main: main,
         _indexer: indexer,
+        _aws: aws,
         saved,
         id1,
     }
@@ -554,6 +604,9 @@ fn lines(seen: &[Seen]) -> Vec<String> {
         .map(|s| format!("{} {}", s.method, s.target))
         .collect()
 }
+
+/// The AWS instance's bucket, as the stand-in serves it.
+const AWS_BUCKET_PATH: &str = "/e2e-aws-bucket";
 
 const OSSEC: &str = "<!-- Wazuh - Manager -->\n<ossec_config>\n  <global>\n    \
                      <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n";
@@ -888,5 +941,316 @@ async fn office365_tenants_are_provisioned_and_rolled_back() {
     assert_eq!(puts, 2);
 
     unseed(&h, &code).await;
+    leave(&h, e).await;
+}
+
+// --- step 2: AWS --------------------------------------------------------------------
+
+/// The harness with botocore's endpoint override on the AWS stand-in and a
+/// short watch of the manager's log after a restart.
+fn aws_env_lines() -> String {
+    format!(
+        "AWS_ENDPOINT_URL=http://127.0.0.1:{}\nCOPILOT_AWS_PROFILE_CHECK_SECONDS=0.05,0.2\n",
+        port(2)
+    )
+}
+
+async fn set_key(h: &Harness, id: i64, value: &str) {
+    sqlx::query("UPDATE integration_auth_keys SET auth_value = ? WHERE id = ?")
+        .bind(value)
+        .bind(id)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+}
+
+async fn aws_meta(h: &Harness, code: &str) -> Vec<(String, String, Option<String>, String)> {
+    sqlx::query_as(
+        "SELECT graylog_index_id, graylog_stream_id, grafana_datasource_uid, \
+         grafana_dashboard_folder_id FROM customer_integrations_meta WHERE customer_code = ? AND \
+         integration_name = 'AWS'",
+    )
+    .bind(code)
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn aws_accounts_are_validated_provisioned_resynced_and_deleted() {
+    if !configured() {
+        return;
+    }
+    let extra = aws_env_lines();
+    let h = harness_or_skip!(None, &extra);
+    let e = env(&h).await;
+    h.seed().await;
+    let code = h.code("acme");
+    let beta = h.code("beta");
+    unseed(&h, &code).await;
+    unseed(&h, &beta).await;
+    seed_meta(&h, &code, "7").await;
+    let admin = h.token(&h.code("admin"), "admin");
+    let analyst = h.token(&h.code("analyst"), "analyst");
+    e.tools.with(|w| w.ossec = OSSEC.into());
+    let provision = |who: &str, body: Value| {
+        let who = who.to_string();
+        let h = &h;
+        async move {
+            h.call("POST", "/api/aws/provision", Some(&who), Some(body))
+                .await
+        }
+    };
+
+    // No token; another tenant's customer (Python's own check); no
+    // integration at all.
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/aws/provision",
+            None,
+            Some(json!({"customer_code": code})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _) = provision(&analyst, json!({"customer_code": beta})).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, body) = provision(&analyst, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(
+        body["message"],
+        json!("Customer integration settings not found.")
+    );
+
+    // Keys Pydantic refuses: every bad field named.
+    seed_integration(
+        &h,
+        &code,
+        7_850_011,
+        7_850_911,
+        "AWS",
+        None,
+        &[
+            ("ACCESS_KEY_ID", "AKIAE2E0000000000000"),
+            ("SECRET_ACCESS_KEY", "e2e/secret"),
+            ("AWS_ACCOUNT_ID", "123456789012"),
+            ("BUCKET_NAME", "Bad_Bucket"),
+            ("SERVICES", "cloudtrail,guardduty"),
+        ],
+    )
+    .await;
+    let (st, body) = provision(&admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        body["message"],
+        json!(
+            "The AWS integration's auth keys are not valid: BUCKET_NAME: Value error, BUCKET_NAME is not a valid S3 bucket name."
+        )
+    );
+    set_key(&h, 78_500_113, "e2e-aws-bucket").await;
+
+    // The key belongs to another account: refused before anything changes.
+    e.tools.with(|w| w.aws_account = "999999999999".into());
+    let (st, body) = provision(&admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        body["message"],
+        json!(
+            "AWS validation failed, nothing was changed: The access key belongs to AWS account 999999999999, not AWS_ACCOUNT_ID 123456789012. Correct AWS_ACCOUNT_ID or use a key from that account."
+        )
+    );
+    assert_eq!(lines(&e.tools.take()), ["POST /"]);
+    e.tools.with(|w| w.aws_account.clear());
+
+    // A failure after the manager was changed: rolled back newest-first.
+    e.tools.with(|w| {
+        w.fail.push((
+            "POST".into(),
+            "/grafanaapi/folders".into(),
+            409,
+            json!({"message": "a folder with the same name already exists"}),
+        ));
+    });
+    let (st, body) = provision(&admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("AWS deployment failed and was rolled back: "),
+        "{body}"
+    );
+    let l = lines(&e.tools.take());
+    // The pipeline rules are created, and not undone (as in Python).
+    assert_eq!(
+        l.iter()
+            .filter(|x| *x == "POST /graylog/api/system/pipelines/rule")
+            .count(),
+        7
+    );
+    let at = l
+        .iter()
+        .position(|x| x == "POST /grafanaapi/folders")
+        .unwrap();
+    let undo = &l[at + 1..];
+    assert_eq!(
+        undo.iter()
+            .filter(|x| x.starts_with("DELETE /graylog/api/streams/"))
+            .count(),
+        2,
+        "{undo:?}"
+    );
+    assert_eq!(
+        undo.iter()
+            .filter(|x| x.starts_with("DELETE /graylog/api/system/indices/index_sets/"))
+            .count(),
+        2
+    );
+    assert_eq!(undo.last().unwrap(), "PUT /wazuh/manager/restart");
+    assert!(!e.tools.with(|w| w.ossec.contains("e2e-aws-bucket")));
+    assert!(aws_meta(&h, &code).await.is_empty());
+
+    // Deployed: the buckets, a stream and an index set per service, the
+    // folder and the datasources, the row, `deployed`.
+    e.tools.with(|w| w.fail.clear());
+    let (st, body) = provision(&admin, json!({"customer_code": code, "instance_name": " "})).await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["message"],
+        json!(format!(
+            "Successfully provisioned AWS cloudtrail, guardduty for customer {code}."
+        ))
+    );
+    assert_eq!(body["warnings"], json!([]));
+    assert_eq!(body["aws_config"]["detected"], json!(false));
+    assert_eq!(
+        body["aws_config"]["contents"],
+        json!("[default]\nregion = eu-west-1\n")
+    );
+    let l = lines(&e.tools.take());
+    assert_eq!(l[0], "POST /");
+    assert_eq!(l[1], "HEAD /e2e-aws-bucket");
+    assert!(l.contains(&"PUT /wazuh/manager/configuration".to_string()));
+    assert!(l.contains(&"GET /wazuh/manager/configuration/validation".to_string()));
+    assert!(!l.contains(&"POST /graylog/api/system/pipelines/rule".to_string()));
+    assert_eq!(
+        l.iter()
+            .filter(|x| *x == "POST /grafanaapi/datasources")
+            .count(),
+        2
+    );
+    let ossec = e.tools.with(|w| w.ossec.clone());
+    assert!(ossec.contains("<wodle name=\"aws-s3\">"), "{ossec}");
+    assert_eq!(ossec.matches("<name>e2e-aws-bucket</name>").count(), 2);
+    let meta = aws_meta(&h, &code).await;
+    assert_eq!(meta.len(), 1);
+    assert!(meta[0].0.starts_with("cloudtrail:is-"), "{meta:?}");
+    assert!(meta[0].1.contains(",guardduty:st-"), "{meta:?}");
+    let deployed: (Option<bool>,) =
+        sqlx::query_as("SELECT deployed FROM customer_integrations WHERE id = 7850011")
+            .fetch_one(h.db.pool())
+            .await
+            .unwrap();
+    assert_eq!(deployed.0, Some(true));
+
+    // A re-sync with nothing to change: the manager is not written.
+    let (st, body) = provision(&admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    let l = lines(&e.tools.take());
+    assert!(
+        !l.contains(&"PUT /wazuh/manager/configuration".to_string()),
+        "{l:?}"
+    );
+    assert!(
+        !l.iter()
+            .any(|x| x.contains("index_sets") || x == "POST /graylog/api/streams")
+    );
+
+    // GuardDuty dropped from SERVICES: its bucket goes, then its stream —
+    // only its stream: Python reads the other ids off the row it just
+    // rewrote, which no longer names GuardDuty.
+    set_key(&h, 78_500_114, "cloudtrail").await;
+    let (st, body) = provision(&admin, json!({"customer_code": code})).await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["message"],
+        json!(format!(
+            "Successfully provisioned AWS cloudtrail for customer {code}."
+        ))
+    );
+    let l = lines(&e.tools.take());
+    assert!(
+        l.iter()
+            .any(|x| x.starts_with("DELETE /graylog/api/streams/")),
+        "{l:?}"
+    );
+    assert!(
+        !l.iter()
+            .any(|x| x.starts_with("DELETE /grafanaapi/datasources/uid/")
+                || x.starts_with("DELETE /graylog/api/system/indices/"))
+    );
+    assert_eq!(
+        e.tools
+            .with(|w| w.ossec.matches("<name>e2e-aws-bucket</name>").count()),
+        1
+    );
+
+    // The same account for another customer: refused.
+    seed_integration(
+        &h,
+        &beta,
+        7_850_012,
+        7_850_912,
+        "AWS",
+        None,
+        &[
+            ("ACCESS_KEY_ID", "AKIAE2E0000000000000"),
+            ("SECRET_ACCESS_KEY", "e2e/secret"),
+            ("AWS_ACCOUNT_ID", "123456789012"),
+            ("BUCKET_NAME", "other-bucket"),
+            ("SERVICES", "cloudtrail"),
+        ],
+    )
+    .await;
+    let (st, body) = provision(&admin, json!({"customer_code": beta})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        body["message"],
+        json!(format!(
+            "AWS account 123456789012 is already configured for customer {code}."
+        ))
+    );
+    assert!(e.tools.take().is_empty());
+
+    // The deployed instance deleted in Rust: its bucket off the manager, its
+    // stream, the index set, datasource and folder (the customer's last
+    // instance); the metadata row stays, as Python leaves it.
+    let (st, body) = h
+        .call(
+            "DELETE",
+            "/api/integrations/delete_integration",
+            Some(&admin),
+            Some(json!({"customer_code": code, "integration_name": "AWS"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["message"],
+        json!(format!(
+            "Customer integration {code} AWS successfully deleted."
+        ))
+    );
+    let l = lines(&e.tools.take());
+    assert!(
+        l.iter()
+            .any(|x| x.starts_with("DELETE /grafanaapi/folders/")),
+        "{l:?}"
+    );
+    assert_eq!(l.last().unwrap(), "PUT /wazuh/manager/restart");
+    assert!(!e.tools.with(|w| w.ossec.contains("e2e-aws-bucket")));
+    assert_eq!(aws_meta(&h, &code).await.len(), 1);
+
+    unseed(&h, &code).await;
+    unseed(&h, &beta).await;
     leave(&h, e).await;
 }

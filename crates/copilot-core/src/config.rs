@@ -178,6 +178,8 @@ pub struct CopilotConfig {
     pub response: crate::response_env::ResponseEnv,
     /// The Detections Catalog's settings (`copilot-searches`).
     pub catalog: crate::catalog_env::CatalogEnv,
+    /// The remaining provisioning's settings (`copilot-cloud-provisioning`).
+    pub cloud: crate::cloud_env::CloudEnv,
     /// `COPILOT_INTEGRATION_MODULES_URL` — tests only: the stand-in the
     /// integration modules and Mimecast's discovery are reached at.
     pub integration_modules_url: Option<String>,
@@ -444,6 +446,7 @@ impl CopilotConfig {
             copilot_api_key: env.get_raw("COPILOT_API_KEY").map(Secret::new),
             response: crate::response_env::ResponseEnv::from_env(env),
             catalog: crate::catalog_env::CatalogEnv::from_env(env),
+            cloud: crate::cloud_env::CloudEnv::from_env(env),
             integration_modules_url: env
                 .get("COPILOT_INTEGRATION_MODULES_URL")
                 .map(|v| v.trim().trim_end_matches('/').to_string())

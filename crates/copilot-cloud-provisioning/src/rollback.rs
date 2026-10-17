@@ -13,6 +13,17 @@ pub enum Undo {
     /// An Office 365 tenant's `<api_auth>` block
     /// (`decommission_office365_tenant`).
     Office365Tenant(String),
+    /// An AWS instance's `<bucket>` entries, put back as they were
+    /// (`apply_instance_buckets(previous, …, adopt_existing=True,
+    /// keep_only_logs_after=False)`).
+    AwsBuckets {
+        /// The instance's buckets before the change.
+        previous: Vec<copilot_integrations::etree::Element>,
+        /// The bucket.
+        bucket: String,
+        /// The account.
+        account: String,
+    },
     /// `delete_index_by_id(index_id)`.
     IndexSet(String),
     /// `delete_stream(stream_id)`.
@@ -78,6 +89,20 @@ async fn undo_one(tools: Tools<'_>, undo: &Undo) -> Result<(), PyExc> {
         Undo::Office365Tenant(tenant) => {
             copilot_integrations::office365::decommission_tenant(tools.wazuh, tenant).await
         }
+        Undo::AwsBuckets {
+            previous,
+            bucket,
+            account,
+        } => copilot_integrations::aws::manager::apply_instance_buckets(
+            tools.wazuh,
+            previous,
+            bucket,
+            account,
+            true,
+            false,
+        )
+        .await
+        .map(|_| ()),
         Undo::IndexSet(id) => cleanup::delete_index(tools.graylog, id).await,
         Undo::Stream(id) => cleanup::delete_stream(tools.graylog, id).await,
         Undo::Datasource { org, uid } => cleanup::delete_datasource(tools.grafana, org, uid).await,

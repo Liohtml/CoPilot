@@ -247,7 +247,7 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/network_connectors",
     // The integrations' provisioning (copilot-integration-provisioning; the
     // scheduler jobs handed to Python) but CrowdStrike, Defender for Endpoint
-    // and Bitdefender (collector files on the Python host) and AWS.
+    // and Bitdefender (collector files on the Python host).
     "POST /api/huntress/provision",
     "POST /api/darktrace/provision",
     "POST /api/duo/provision",
@@ -256,9 +256,11 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/mimecast/provision",
     "POST /api/sap_siem/provision",
     "POST /api/socfortress_mdr/provision",
-    // Office 365 (copilot-cloud-provisioning): the tenant's ossec.conf block,
-    // Graylog and Grafana objects, rolled back on failure.
+    // Office 365 and AWS (copilot-cloud-provisioning): the tenant's or the
+    // account's ossec.conf entries, Graylog and Grafana objects, rolled back
+    // on failure.
     "POST /api/office365/provision",
+    "POST /api/aws/provision",
     // SIEM (copilot-siem): dashboards (built-in and custom templates, panel
     // data), event sources and the event search.
     "/api/siem/dashboards",
@@ -432,6 +434,8 @@ pub struct App {
     pub objectstore: ObjectStore,
     /// The threat-intel routes' clients (`/api/threat_intel`).
     pub threat_intel: copilot_threat_intel::ThreatIntelState,
+    /// What the remaining provisioning reads from the environment.
+    pub cloud: copilot_core::cloud_env::CloudEnv,
     /// The response routes (`/api/active_response`, the Graylog webhook,
     /// `/api/sysmon_config`).
     pub response: copilot_response::ResponseState,
@@ -688,6 +692,7 @@ impl App {
             agents,
             objectstore,
             threat_intel,
+            cloud: cfg.cloud.clone(),
             response,
             shuffle,
             agent_reports,
@@ -897,13 +902,15 @@ impl App {
                     legacy: self.legacy.clone(),
                 },
             ))
-            // Full paths: `POST /api/office365/provision`.
+            // Full paths: `POST /api/office365/provision` and
+            // `POST /api/aws/provision`.
             .merge(copilot_cloud_provisioning::router(
                 copilot_cloud_provisioning::CloudState {
                     ctx: self.ctx.clone(),
                     graylog: self.graylog.clone(),
                     grafana: self.grafana.clone(),
                     wazuh: self.wazuh.clone(),
+                    env: self.cloud.clone(),
                 },
             ))
             // Full paths: `POST /api/grafana/dashboards` and
