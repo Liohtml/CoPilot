@@ -633,26 +633,12 @@ fn merged_headers(
         if let Some(message) = header_ascii_error(value) {
             return Err(HttpxError::new("UnicodeEncodeError", message));
         }
-        // `Headers.update`: every existing entry of that name is replaced
-        // by the one new value, at the first one's place.
+        // `Headers.update`: every existing entry of that name is popped, the
+        // new one appended (httpx 0.28.1: `self.pop(key)`, then
+        // `self._list.extend(...)`).
         let lower = name.to_ascii_lowercase();
-        match headers
-            .iter()
-            .position(|(k, _)| k.to_ascii_lowercase() == lower)
-        {
-            Some(i) => {
-                headers[i] = (name.clone(), value.clone());
-                let mut j = i + 1;
-                while j < headers.len() {
-                    if headers[j].0.to_ascii_lowercase() == lower {
-                        headers.remove(j);
-                    } else {
-                        j += 1;
-                    }
-                }
-            }
-            None => headers.push((name.clone(), value.clone())),
-        }
+        headers.retain(|(k, _)| k.to_ascii_lowercase() != lower);
+        headers.push((name.clone(), value.clone()));
     }
     for (name, value) in content {
         if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(name)) {
@@ -967,13 +953,15 @@ mod tests {
             &Method::POST,
         )
         .unwrap();
+        // Recorded with httpx 0.28.1 on the wire: a replaced default moves
+        // after the defaults it does not replace.
         assert_eq!(
             got,
             vec![
-                ("accept".to_string(), "application/json".to_string()),
-                ("Accept-Encoding".into(), "gzip, deflate".into()),
+                ("Accept-Encoding".to_string(), "gzip, deflate".to_string()),
                 ("Connection".into(), "keep-alive".into()),
                 ("User-Agent".into(), USER_AGENT.into()),
+                ("accept".into(), "application/json".into()),
                 ("x-apikey".into(), "k".into()),
                 ("Content-Length".into(), "3".into()),
             ]

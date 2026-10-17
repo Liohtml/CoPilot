@@ -494,6 +494,7 @@ dependencies = [
  "copilot-soc-management",
  "copilot-talon",
  "copilot-threat-intel",
+ "copilot-uba",
  "copilot-velociraptor",
  "copilot-waf",
  "copilot-wazuh",
@@ -1232,6 +1233,34 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "copilot-uba"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-connectors",
+ "copilot-core",
+ "copilot-db",
+ "copilot-graylog",
+ "copilot-incidents",
+ "copilot-jinja",
+ "copilot-sla",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-wazuh",
+ "copilot-web",
+ "http",
+ "pretty_assertions",
+ "regex",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

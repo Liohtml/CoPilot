@@ -257,6 +257,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/vulnerabilities",
     "/api/sca",
     "/api/syscollector",
+    // The SOCFortress UBA connector (copilot-uba).
+    "/api/uba",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -294,6 +296,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_siem::REQUIREMENTS);
     all.extend_from_slice(copilot_threat_intel::REQUIREMENTS);
     all.extend(copilot_agent_reports::requirements());
+    all.extend_from_slice(copilot_uba::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -553,7 +556,8 @@ impl App {
                     .chain(copilot_velociraptor::verify::verifiers(
                         agents.velociraptor.timeouts(),
                     ))
-                    .chain(copilot_shuffle::verifiers(&shuffle)),
+                    .chain(copilot_shuffle::verifiers(&shuffle))
+                    .chain(copilot_uba::verifiers()),
             ),
             wazuh,
             ingest,
@@ -886,6 +890,18 @@ impl App {
             .merge(copilot_shuffle::case_notification_router(
                 self.shuffle_state(),
             ))
+            .nest(
+                "/api/uba",
+                copilot_uba::router(copilot_uba::UbaState::new(
+                    self.ctx.clone(),
+                    self.graylog.clone(),
+                    self.wazuh.clone(),
+                ))
+                .layer(from_fn_with_state(
+                    self.wazuh.legacy.clone(),
+                    copilot_wazuh::decoded_slash_to_legacy,
+                )),
+            )
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
