@@ -41,8 +41,29 @@ from app.db.db_session import async_engine
 RUST_CAPABLE_JOBS = (
     "agent_sync",
     "invoke_alert_creation_collect",
+    # The integrations' collection jobs, crates/copilot-integration-modules. None is seeded by
+    # `initialize_job_metadata`: a provisioning route or POST /scheduler/add creates them, and
+    # re-enabling the row there hands the job back. `invoke_cato_integration_collect` is not
+    # here: `schedule_enabled_jobs` disables its row at every start while APScheduler's stored
+    # job keeps running, so the guard would stop it.
+    "invoke_carbonblack_integration_collection",
+    "invoke_darktrace_integration_collect",
+    "invoke_duo_integration_collect",
+    "invoke_huntress_integration_collect",
+    "invoke_mimecast_integration",
+    "invoke_mimecast_integration_ttp",
     "invoke_palace_lesson_drainer",
     "invoke_palace_lesson_sweeper",
+    "invoke_sap_siem_integration_brute_force_failed_logins",
+    "invoke_sap_siem_integration_brute_force_failed_logins_same_ip",
+    "invoke_sap_siem_integration_collection",
+    "invoke_sap_siem_integration_multiple_logins_same_ip_analysis",
+    "invoke_sap_siem_integration_same_user_failed_login_from_different_geo_location",
+    "invoke_sap_siem_integration_same_user_failed_login_from_different_ip",
+    "invoke_sap_siem_integration_same_user_successful_login_from_different_geo_location",
+    "invoke_sap_siem_integration_successful_login_after_multiple_failed_logins",
+    "invoke_sap_siem_integration_successful_user_login_with_different_ip",
+    "invoke_sap_siem_integration_suspicious_logins_analysis",
     "invoke_snapshot_schedules",
     "notify_sla_transitions",
     "prune_audit_log",

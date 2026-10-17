@@ -7,11 +7,13 @@ from app.integrations.models.customer_integration_settings import CustomerIntegr
 from app.integrations.modules.routes.huntress import collect_huntress_route
 from app.integrations.modules.schema.huntress import InvokeHuntressRequest
 from app.integrations.modules.schema.huntress import InvokeHuntressResponse
+from app.schedulers.handover import rust_handover
 from app.schedulers.utils.universal import get_scheduled_job_metadata
 
 load_dotenv()
 
 
+@rust_handover("invoke_huntress_integration_collect")
 async def invoke_huntress_integration_collect() -> InvokeHuntressResponse:
     """
     Invokes the Huntress integration collection.

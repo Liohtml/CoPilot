@@ -10,11 +10,13 @@ from app.integrations.models.customer_integration_settings import CustomerIntegr
 from app.integrations.modules.routes.darktrace import collect_darktrace_route
 from app.integrations.modules.schema.darktrace import InvokeDarktraceRequest
 from app.integrations.modules.schema.darktrace import InvokeDarktraceResponse
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 
 load_dotenv()
 
 
+@rust_handover("invoke_darktrace_integration_collect")
 async def invoke_darktrace_integration_collect() -> InvokeDarktraceResponse:
     """
     Invokes the Darktrace integration collection.

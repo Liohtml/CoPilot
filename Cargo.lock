@@ -480,6 +480,7 @@ dependencies = [
  "copilot-incidents",
  "copilot-influxdb",
  "copilot-ingest",
+ "copilot-integration-modules",
  "copilot-integrations",
  "copilot-intel-connectors",
  "copilot-monitoring-alerts",
@@ -896,6 +897,30 @@ dependencies = [
  "strum",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "copilot-integration-modules"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-integrations",
+ "copilot-scheduler",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-web",
+ "http",
+ "pretty_assertions",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
 ]
 
 [[package]]

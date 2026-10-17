@@ -10,11 +10,13 @@ from app.integrations.models.customer_integration_settings import CustomerIntegr
 from app.integrations.modules.routes.duo import collect_duo_route
 from app.integrations.modules.schema.duo import InvokeDuoRequest
 from app.integrations.modules.schema.duo import InvokeDuoResponse
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 
 load_dotenv()
 
 
+@rust_handover("invoke_duo_integration_collect")
 async def invoke_duo_integration_collect() -> InvokeDuoResponse:
     """
     Invokes the Duo integration collection.

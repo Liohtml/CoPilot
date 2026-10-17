@@ -10,11 +10,14 @@ from app.integrations.models.customer_integration_settings import CustomerIntegr
 from app.integrations.modules.routes.carbonblack import collect_carbonblack_route
 from app.integrations.modules.schema.carbonblack import InvokeCarbonBlackRequest
 from app.integrations.modules.schema.carbonblack import InvokeCarbonBlackResponse
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 
 load_dotenv()
 
 
+# The job's APScheduler id and metadata row are `invoke_carbonblack_integration_collection`.
+@rust_handover("invoke_carbonblack_integration_collection")
 async def invoke_carbonblack_integration_collect() -> InvokeCarbonBlackResponse:
     """
     Invokes the Huntress integration collection.

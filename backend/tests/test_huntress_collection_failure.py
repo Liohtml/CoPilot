@@ -151,6 +151,10 @@ def test_successful_post_sends_the_unmasked_body(monkeypatch):
 
 # --- scheduled job ---------------------------------------------------------------------------
 
+# The job function itself, without its `@rust_handover` guard (which takes a MySQL named lock and
+# reads the job's metadata row: `test_scheduler_handover.py` covers it).
+_collect_job = invoke_huntress_module.invoke_huntress_integration_collect.__wrapped__
+
 
 def _install_fake_db(monkeypatch, customer_codes):
     class _Result:
@@ -181,7 +185,7 @@ def test_job_returns_when_every_customer_collects(monkeypatch):
 
     monkeypatch.setattr(invoke_huntress_module, "collect_huntress_route", _route)
 
-    result = asyncio.run(invoke_huntress_module.invoke_huntress_integration_collect())
+    result = asyncio.run(_collect_job())
 
     assert result.success is True
     assert "2 customer(s)" in result.message
@@ -197,7 +201,7 @@ def test_job_raises_when_the_route_reports_failure(monkeypatch):
     monkeypatch.setattr(invoke_huntress_module, "collect_huntress_route", _route)
 
     with pytest.raises(RuntimeError) as excinfo:
-        asyncio.run(invoke_huntress_module.invoke_huntress_integration_collect())
+        asyncio.run(_collect_job())
 
     assert "cyfox" in str(excinfo.value)
 
@@ -215,7 +219,7 @@ def test_one_customers_failure_does_not_skip_the_others(monkeypatch):
     monkeypatch.setattr(invoke_huntress_module, "collect_huntress_route", _route)
 
     with pytest.raises(RuntimeError) as excinfo:
-        asyncio.run(invoke_huntress_module.invoke_huntress_integration_collect())
+        asyncio.run(_collect_job())
 
     assert attempted == ["broken", "healthy"]
     assert "1 of 2" in str(excinfo.value)

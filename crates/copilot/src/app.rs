@@ -273,6 +273,14 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The Detections Catalog and CoPilot Searches (copilot-searches): every
     // route of the module.
     "/api/copilot_searches",
+    // The integration modules (copilot-integration-modules): the Huntress,
+    // Mimecast, Duo, Cato and SAP SIEM collections and the SAP SIEM analyses,
+    // and of /api/mimecast exactly these two routes (`/provision` and the
+    // `/invoke/scheduler/*` routes, which add APScheduler jobs, are not
+    // these).
+    "/api/integrations/modules",
+    "POST /api/mimecast/invoke",
+    "POST /api/mimecast/ttp/urls",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -313,6 +321,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_searches::REQUIREMENTS);
     all.extend(copilot_agent_reports::requirements());
     all.extend_from_slice(copilot_uba::REQUIREMENTS);
+    all.extend_from_slice(copilot_integration_modules::REQUIREMENTS);
     all.push(TableRequirement {
         table: "audit_log",
         columns: &[
@@ -405,6 +414,9 @@ pub struct App {
     pub searches: copilot_searches::SearchesState,
     /// The Customer Portal routes and their branding cache.
     pub portal: copilot_customer_portal::PortalState,
+    /// The integration modules (`/api/integrations/modules/*`, the two
+    /// Mimecast routes) and their collection jobs.
+    pub modules: copilot_integration_modules::ModulesState,
 }
 
 impl App {
@@ -482,10 +494,14 @@ impl App {
             epss: copilot_agents::services::epss::EpssClient::new()
                 .context("building the EPSS client")?,
         };
+        let modules = copilot_integration_modules::ModulesState::new(
+            ctx.clone(),
+            cfg.integration_modules_url.clone(),
+        );
         let scheduler = Scheduler::new(
             ctx.db.clone(),
             OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
-            scheduled_jobs(&ctx, &talon, &wazuh, &ingest, &agents, cfg),
+            scheduled_jobs(&ctx, &talon, &wazuh, &ingest, &agents, &modules, cfg),
         );
         let graylog =
             GraylogClient::new(ctx.connectors.clone()).context("building the Graylog client")?;
@@ -615,6 +631,7 @@ impl App {
             intel,
             searches,
             portal,
+            modules,
         })
     }
 
@@ -967,6 +984,10 @@ impl App {
                     copilot_wazuh::decoded_slash_to_legacy,
                 )),
             )
+            // Full paths: `/api/integrations/modules/*` beside
+            // copilot-integrations' routes, and `POST /api/mimecast/invoke`,
+            // `/ttp/urls`.
+            .merge(copilot_integration_modules::router(self.modules.clone()))
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
@@ -1024,13 +1045,15 @@ impl App {
 /// Every job this build can take over from APScheduler (`handover.py`'s
 /// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`,
 /// `notify_sla_transitions`, `invoke_snapshot_schedules`,
-/// `resize_wazuh_index_fields`, `invoke_alert_creation_collect`, `agent_sync`.
+/// `resize_wazuh_index_fields`, `invoke_alert_creation_collect`, `agent_sync`,
+/// and the integrations' collection jobs (`copilot_integration_modules::jobs`).
 pub fn scheduled_jobs(
     ctx: &AppContext,
     talon: &TalonConnector,
     wazuh: &WazuhState,
     ingest: &IngestState,
     agents: &AgentsState,
+    modules: &copilot_integration_modules::ModulesState,
     cfg: &CopilotConfig,
 ) -> Vec<copilot_scheduler::JobSpec> {
     let mut jobs = copilot_ai_analyst::palace_jobs::job_specs(ctx, talon);
@@ -1042,6 +1065,7 @@ pub fn scheduled_jobs(
     jobs.extend(copilot_wazuh::jobs::job_specs(wazuh));
     jobs.push(copilot_ingest::job_spec(ingest));
     jobs.extend(copilot_agents::jobs::job_specs(agents));
+    jobs.extend(copilot_integration_modules::jobs::job_specs(modules));
     jobs
 }
 

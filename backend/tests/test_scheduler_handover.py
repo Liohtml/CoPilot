@@ -150,20 +150,55 @@ def test_a_skipped_run_is_not_stamped(monkeypatch):
     assert stamped == ["prune_audit_log", "prune_audit_log"]
 
 
+# A job whose APScheduler id (and metadata row) is not its function's name: the guard follows the
+# id; a manual run resolves the function's name, which the Rust service does not run.
+RENAMED_JOBS = {"invoke_carbonblack_integration_collection": "invoke_carbonblack_integration_collect"}
+
+# Jobs `initialize_job_metadata` does not seed: a provisioning route (or POST /scheduler/add)
+# creates them with their row, enabled.
+ROUTE_CREATED_JOBS = {
+    "invoke_carbonblack_integration_collection",
+    "invoke_darktrace_integration_collect",
+    "invoke_duo_integration_collect",
+    "invoke_huntress_integration_collect",
+    "invoke_mimecast_integration",
+    "invoke_mimecast_integration_ttp",
+    "invoke_sap_siem_integration_brute_force_failed_logins",
+    "invoke_sap_siem_integration_brute_force_failed_logins_same_ip",
+    "invoke_sap_siem_integration_collection",
+    "invoke_sap_siem_integration_multiple_logins_same_ip_analysis",
+    "invoke_sap_siem_integration_same_user_failed_login_from_different_geo_location",
+    "invoke_sap_siem_integration_same_user_failed_login_from_different_ip",
+    "invoke_sap_siem_integration_same_user_successful_login_from_different_geo_location",
+    "invoke_sap_siem_integration_successful_login_after_multiple_failed_logins",
+    "invoke_sap_siem_integration_successful_user_login_with_different_ip",
+    "invoke_sap_siem_integration_suspicious_logins_analysis",
+}
+
+
 def test_the_guarded_jobs_are_still_picklable_references():
     """APScheduler stores `module:function`; it must resolve to the guarded function."""
     for job_id in handover.RUST_CAPABLE_JOBS:
         function = scheduler_module.get_function_by_name(job_id)
         assert getattr(function, "__rust_handover_job_id__", None) == job_id
         assert ref_to_obj(obj_to_ref(function)) is function
-        assert get_callable_name(function) == job_id, "job.name (the run route's lookup) is unchanged"
+        assert get_callable_name(function) == RENAMED_JOBS.get(job_id, job_id), "job.name (the run route's lookup) is unchanged"
         assert asyncio.iscoroutinefunction(function)
 
 
 def test_every_rust_capable_job_is_seeded():
     from tests.test_scheduler_job_registration import _known_job_ids
 
-    assert set(handover.RUST_CAPABLE_JOBS) <= set(_known_job_ids())
+    assert set(handover.RUST_CAPABLE_JOBS) <= set(_known_job_ids()) | ROUTE_CREATED_JOBS
+    assert not ROUTE_CREATED_JOBS & set(_known_job_ids()), "a seeded job is not route-created"
+    assert ROUTE_CREATED_JOBS <= set(handover.RUST_CAPABLE_JOBS)
+
+
+def test_the_cato_job_stays_in_apscheduler():
+    """`schedule_enabled_jobs` disables its row at every start while the stored job keeps running."""
+    assert "invoke_cato_integration_collect" not in handover.RUST_CAPABLE_JOBS
+    function = scheduler_module.get_function_by_name("invoke_cato_integration_collect")
+    assert not hasattr(function, "__rust_handover_job_id__")
 
 
 class _Result:
