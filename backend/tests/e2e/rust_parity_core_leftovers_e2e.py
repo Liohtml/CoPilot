@@ -13,18 +13,24 @@ stand-ins that record what arrives:
 * the AI module (`POST /copilot-ai-module/wazuh-rule-exclusion`, as COPILOT_INTEGRATION_MODULES_URL
   addresses it);
 * GitHub (`/raw/…` for raw.githubusercontent.com, `/api/…` for api.github.com): the Atomic Red
-  Team index, the folder listing, each technique's YAML and markdown.
+  Team index, the folder listing, each technique's YAML and markdown;
+* the Wazuh indexer (the host logs: `_alias`, then one `_search` per index);
+* the CarbonBlack module (`POST /copilot-carbonblack-module/collect`, on the AI module's stand-in).
 
 Python reaches the stand-ins because `requests.Session.request` (and the other clients, as
 sections need them) are patched here to rewrite the public hosts; Rust because its instance is
 started with the `COPILOT_*_URL` overrides (parity harness only).
 
-The `license`, `license_cache` and `disabledrule` rows and the `Wazuh-Manager` connector are
-deployment-wide: put aside first, restored at the end. Rows created by both backends are twins (a `py`/`rs` pair of keys) compared column by
+The `license`, `license_cache` and `disabledrule` rows, the `Wazuh-Manager`, `Wazuh-Indexer` and
+`Event Shipper` connectors and the CarbonBlack job's `scheduled_job_metadata` rows are
+deployment-wide: put aside first, restored at the end. Two things are masked in the indexer's
+requests: the time window's start (each backend reads its own clock) and the patch version
+elasticsearch-py names in its `User-Agent`. Rows created by both backends are twins (a `py`/`rs` pair of keys) compared column by
 column.
 
 Ports (all overridable): CORE_LEFTOVERS_PARITY_RUST_PORT, CORE_LEFTOVERS_LICENSE_STUB_PORT,
-CORE_LEFTOVERS_MANAGER_STUB_PORT, CORE_LEFTOVERS_AI_STUB_PORT, CORE_LEFTOVERS_GITHUB_STUB_PORT.
+CORE_LEFTOVERS_MANAGER_STUB_PORT, CORE_LEFTOVERS_AI_STUB_PORT, CORE_LEFTOVERS_GITHUB_STUB_PORT,
+CORE_LEFTOVERS_INDEXER_STUB_PORT.
 
     PARITY_SUITES=tests/e2e/rust_parity_core_leftovers_e2e.py scripts/rust-parity.sh
 """
@@ -72,6 +78,7 @@ LICENSE_PORT = int(os.environ.get("CORE_LEFTOVERS_LICENSE_STUB_PORT", "6441"))
 MANAGER_PORT = int(os.environ.get("CORE_LEFTOVERS_MANAGER_STUB_PORT", "6442"))
 AI_PORT = int(os.environ.get("CORE_LEFTOVERS_AI_STUB_PORT", "6443"))
 GITHUB_PORT = int(os.environ.get("CORE_LEFTOVERS_GITHUB_STUB_PORT", "6444"))
+INDEXER_PORT = int(os.environ.get("CORE_LEFTOVERS_INDEXER_STUB_PORT", "6445"))
 RUST = f"http://127.0.0.1:{RS_PORT}"
 
 SFX = uuid.uuid4().hex[:6]
@@ -233,6 +240,46 @@ async def seed():
         "INSERT INTO license (license_key, customer_name, customer_email, company_name) VALUES (:k, 'n', 'e@parity.test', 'c')",
         k=LICENSE_KEY,
     )
+    # The indexer and the Event Shipper connectors, the CarbonBlack job's rows: put aside.
+    SAVED["indexer"] = await rows("SELECT * FROM connectors WHERE connector_name IN ('Wazuh-Indexer', 'Event Shipper')")
+    await sql("DELETE FROM connectors WHERE connector_name IN ('Wazuh-Indexer', 'Event Shipper')")
+    for name, url, extra in (("Wazuh-Indexer", f"http://127.0.0.1:{INDEXER_PORT}", None), ("Event Shipper", "10.0.0.5", "12201")):
+        await sql(
+            "INSERT INTO connectors (connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
+            "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
+            "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
+            "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES "
+            "(:n, '4.8', :u, '2026-01-02 03:04:05', 'indexer', 'pw', NULL, 'desc', 'supports', 1, 1, 0, 0, 1, 0, 0, :x, 1)",
+            n=name,
+            u=url,
+            x=extra,
+        )
+    SAVED["cb_jobs"] = await rows("SELECT * FROM scheduled_job_metadata WHERE job_id = :j ORDER BY id", j=CB_JOB)
+    await sql("DELETE FROM scheduled_job_metadata WHERE job_id = :j", j=CB_JOB)
+    for i, (code, host) in enumerate(((CUST_B, HL_DUP), (CUST_A, HL_OK), (CUST_A, HL_SICK), (CUST_B, HL_OTHER), (CUST_A, HL_DUP))):
+        await sql(
+            "INSERT INTO agents (id, agent_id, ip_address, os, hostname, label, critical_asset, wazuh_last_seen, "
+            "wazuh_agent_version, wazuh_agent_status, customer_code, quarantined) VALUES "
+            "(:i, :a, '1', 'l', :h, 'l', 0, UTC_TIMESTAMP(), '1', 'active', :c, 0)",
+            i=7731001 + i,
+            a=f"hl{i}{SFX}",
+            h=host,
+            c=code,
+        )
+    await sql("INSERT INTO integration_services (id, service_name, auth_type) VALUES (7731100, 'CarbonBlack', 'API Key')")
+    await sql(
+        "INSERT INTO customer_integrations (id, customer_code, customer_name, integration_service_id, integration_service_name, "
+        "instance_name, deployed) VALUES (7731000, :c, 'cl', 1, 'CarbonBlack', NULL, 0)",
+        c=CUST_A,
+    )
+    await sql("INSERT INTO integration_subscriptions (id, customer_id, integration_service_id) VALUES (7731200, 7731000, 7731100)")
+    for i, (k, v) in enumerate((("API_URL", "https://cb.example"), ("API_KEY", "cbk"), ("API_ID", "cbid"), ("ORGANIZATION_KEY", "org"))):
+        await sql(
+            "INSERT INTO integration_auth_keys (id, subscription_id, auth_key_name, auth_value) VALUES (:i, 7731200, :k, :v)",
+            i=7731300 + i,
+            k=k,
+            v=v,
+        )
     # The disabled rules and the manager's connector: put aside, restored at the end.
     SAVED["disabledrule"] = await rows("SELECT * FROM disabledrule ORDER BY id")
     await sql("DELETE FROM disabledrule")
@@ -267,6 +314,21 @@ async def cleanup():
         await restore_table("license", SAVED.get("license", []))
     if "disabledrule" in SAVED:
         await restore_table("disabledrule", SAVED["disabledrule"])
+    await sql("DELETE FROM integration_auth_keys WHERE id BETWEEN 7731300 AND 7731399")
+    await sql("DELETE FROM integration_subscriptions WHERE id BETWEEN 7731200 AND 7731299")
+    await sql("DELETE FROM customer_integrations WHERE id BETWEEN 7731000 AND 7731099")
+    await sql("DELETE FROM integration_services WHERE id BETWEEN 7731100 AND 7731199")
+    await sql("DELETE FROM agents WHERE id BETWEEN 7731001 AND 7731099")
+    if "cb_jobs" in SAVED:
+        await sql("DELETE FROM scheduled_job_metadata WHERE job_id = :j", j=CB_JOB)
+        for row in SAVED["cb_jobs"]:
+            cols = [c for c in row if c != "id"]
+            await sql(f"INSERT INTO scheduled_job_metadata ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})", **row)
+    if "indexer" in SAVED:
+        await sql("DELETE FROM connectors WHERE connector_name IN ('Wazuh-Indexer', 'Event Shipper')")
+        for row in SAVED["indexer"]:
+            cols = list(row.keys())
+            await sql(f"INSERT INTO connectors ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})", **row)
     if "manager" in SAVED:
         await sql("DELETE FROM connectors WHERE connector_name = 'Wazuh-Manager'")
         for row in SAVED["manager"]:
@@ -288,11 +350,15 @@ def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers.carbonblack import router as carbonblack_router
+    from app.routers.healthcheck import router as healthcheck_router
     from app.routers.wazuh_manager import router as wazuh_manager_router
 
     api = APIRouter(prefix="/api")
     api.include_router(customers_router, prefix="/customers")
     api.include_router(wazuh_manager_router)
+    api.include_router(healthcheck_router)
+    api.include_router(carbonblack_router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_exception_handler(HTTPException, custom_http_exception_handler)
@@ -353,6 +419,9 @@ def redirect_python_httpx():
     shim = types.SimpleNamespace(**{k: getattr(httpx, k) for k in dir(httpx) if not k.startswith("_")})
     shim.AsyncClient = lambda *a, **kw: real(*a, transport=_ModuleRedirect(), **kw)
     rules.httpx = shim
+    from app.integrations.modules.services import carbonblack
+
+    carbonblack.httpx = shim
 
 
 def redirect_python_aiohttp():
@@ -803,6 +872,8 @@ async def customers_section(pair):
 
 # --- 2. the Wazuh manager's rule switches, the exclusion, Atomic Red Team ------------------
 RULE_ID = f"77{int(SFX, 16) % 10000:04d}"
+HL_OK, HL_SICK, HL_OTHER, HL_DUP = (f"hl-{n}-{SFX}" for n in ("ok", "sick", "other", "dup"))
+CB_JOB = "invoke_carbonblack_integration_collection"
 RULE_FILE = "0095-sshd_rules.xml"
 
 
@@ -853,6 +924,8 @@ AI_ANSWER = {}
 def ai_answer(rec, method, path, headers, body):
     if method == "POST" and path == "/copilot-ai-module/wazuh-rule-exclusion":
         return AI_ANSWER.get("answer") or ok({"wazuh_rule": "<rule id='1'/>", "explanation": "e", "message": "m", "success": True})
+    if method == "POST" and path == "/copilot-carbonblack-module/collect":
+        return ok({"success": True, "message": "collected"})
     return ok({"detail": "Not Found"}, 404)
 
 
@@ -1181,6 +1254,170 @@ async def wazuh_rules_section(pair, holder):
         await pair.same(f"GET /techniques/{tid}/atomic-tests", "GET", f"{T}/{tid}/atomic-tests", t_analyst)
 
 
+# --- 3. the host logs, the CarbonBlack test ---------------------------------------------
+INDICES = {
+    "wazuh-alerts-a": {"aliases": {}},
+    "graylog_deflector": {"aliases": {}},
+    "wazuh-alerts-b": {"aliases": {}},
+    "wazuh-alerts-c": {"aliases": {}},
+}
+
+
+def indexer_answer(rec, method, path, headers, body):
+    p = path.partition("?")[0]
+    if method == "GET" and p == "/*/_alias":
+        if rec.mode.get("alias") == "fail":
+            return ok({"error": "boom"}, 500)
+        return ok(INDICES)
+    if method == "POST" and p.endswith("/_search"):
+        text_body = body.decode()
+        index = p.split("/")[1]
+        hits = rec.mode.get("hits", "list")
+        if HL_SICK in text_body:
+            return ok({"error": {"type": "boom"}}, 500)
+        if index == "wazuh-alerts-b":
+            if hits == "list":
+                return ok({"hits": {"hits": [{"_index": index, "_source": {"x": 1}}]}})
+            if hits == "ints":
+                return ok({"hits": {"hits": [1, 2]}})
+            if hits == "str":
+                return ok({"hits": {"hits": "abc"}})
+        return ok({"hits": {"hits": []}})
+    return ok({"error": "no route"}, 404)
+
+
+STAMP = re.compile(r'"gte":"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?Z"')
+
+
+ES_AGENT = re.compile(r"\(Python 3\.11(?:\.\d+)?\)")
+
+
+def masked_searches(out):
+    """The indexer requests with the window's start (a clock reading) masked, and the
+    interpreter's patch version elasticsearch-py names in its `User-Agent` (the Rust port names
+    the minor one)."""
+    return [
+        {
+            **c,
+            "headers": [(k, ES_AGENT.sub("(Python 3.11)", v) if k == "user-agent" else v) for k, v in c["headers"]],
+            "body": STAMP.sub('"gte":"<start>"', c["body"]),
+        }
+        for c in out
+    ]
+
+
+async def same_masked(pair, name, method, path, tok=None, body=None, raw=None):
+    (p, pout), (q, qout) = await pair.both(method, path, tok, body, raw)
+    check(
+        f"{name} [{p.status_code}]",
+        p.status_code == q.status_code and body_of(p) == body_of(q),
+        f"python {p.status_code} {json.dumps(body_of(p))[:700]}\n        rust   {q.status_code} {json.dumps(body_of(q))[:700]}",
+    )
+    pout = {k: masked_searches(v) for k, v in pout.items()}
+    qout = {k: masked_searches(v) for k, v in qout.items()}
+    check(
+        f"{name}: the same upstream requests",
+        pout == qout,
+        f"python {json.dumps(pout)[:2000]}\n        rust   {json.dumps(qout)[:2000]}",
+    )
+
+
+async def cb_rows():
+    return [
+        {"enabled": r["enabled"], "stamped": r["last_success"] is not None}
+        for r in await rows("SELECT enabled, last_success FROM scheduled_job_metadata WHERE job_id = :j ORDER BY id", j=CB_JOB)
+    ]
+
+
+async def logs_and_carbonblack_section(pair):
+    print("\n== 3. /api/healthcheck/logs, /api/carbonblack/test ==")
+    t_admin = token(ADMIN, ["admin"])
+    t_analyst = token(ANALYST, ["analyst"])
+    t_portal = token(PORTAL, ["customer_user"])
+    indexer = RECS[4]
+    L = "/api/healthcheck/logs"
+    await pair.same("POST /logs: no token", "POST", L, body={"agent_name": HL_OK})
+    await pair.same("POST /logs: portal user", "POST", L, t_portal, {"agent_name": HL_OK})
+    await pair.same("POST /logs: malformed JSON, no token", "POST", L, raw=b"{")
+    for name, payload in (
+        ("no body", None),
+        ("a list", [1]),
+        ("no agent_name", {}),
+        ("wrong types", {"agent_name": 5, "size": "x", "log_field": None}),
+        ("a timerange in another unit", {"agent_name": HL_OK, "timerange": "5x"}),
+        ("a timerange without a number", {"agent_name": HL_OK, "timerange": "h"}),
+        ("a timerange that is not a str", {"agent_name": HL_OK, "timerange": 5}),
+        ("an empty timerange (IndexError)", {"agent_name": HL_OK, "timerange": "", "size": "x"}),
+    ):
+        await pair.same(f"POST /logs: {name}", "POST", L, t_admin, payload)
+    await pair.same("POST /logs: another tenant's host", "POST", L, t_analyst, {"agent_name": HL_OTHER})
+    await pair.same("POST /logs: a hostname whose first agent is another tenant's", "POST", L, t_analyst, {"agent_name": HL_DUP})
+    await pair.same("POST /logs: an unknown host (scoped)", "POST", L, t_analyst, {"agent_name": f"nosuch-{SFX}"})
+    await pair.same("POST /logs: an unknown host (admin)", "POST", L, t_admin, {"agent_name": f"nosuch-{SFX}"})
+    for name, payload, mode in (
+        ("healthy (the first index with a hit ends it)", {"agent_name": HL_OK}, {}),
+        (
+            "healthy, every field set",
+            {
+                "agent_name": HL_OK,
+                "timerange": "15m",
+                "size": 3,
+                "log_field": "rule_level",
+                "log_value": "3",
+                "timestamp_field": "timestamp",
+            },
+            {},
+        ),
+        ("weeks and a size of 0", {"agent_name": HL_OK, "timerange": "2w", "size": 0}, {}),
+        ("days, a negative size", {"agent_name": HL_OK, "timerange": "1d", "size": -1}, {}),
+        ("hits that are not documents", {"agent_name": HL_OK}, {"hits": "ints"}),
+        ("hits that are a string", {"agent_name": HL_OK}, {"hits": "str"}),
+        ("every search fails: unhealthy", {"agent_name": HL_SICK}, {}),
+        ("the analyst's own host", {"agent_name": HL_OK}, {}),
+        ("a digit int() refuses", {"agent_name": HL_OK, "timerange": "\u00b2h"}, {}),
+        ("days timedelta refuses", {"agent_name": HL_OK, "timerange": "1000000000d"}, {}),
+        ("an int too large for C", {"agent_name": HL_OK, "timerange": "99999999999999999999h"}, {}),
+        ("the index listing fails", {"agent_name": HL_OK}, {"alias": "fail"}),
+    ):
+        indexer.mode.clear()
+        indexer.mode.update(mode)
+        tok = t_analyst if "analyst" in name else t_admin
+        await same_masked(pair, f"POST /logs: {name}", "POST", L, tok, payload)
+    indexer.mode.clear()
+
+    C = "/api/carbonblack/test"
+    await pair.same("GET /carbonblack/test: no token", "GET", C)
+    await pair.same("GET /carbonblack/test: portal user", "GET", C, t_portal)
+
+    async def no_row():
+        await sql("DELETE FROM scheduled_job_metadata WHERE job_id = :j", j=CB_JOB)
+
+    async def row(enabled, n=1):
+        await no_row()
+        for _ in range(n):
+            await sql("INSERT INTO scheduled_job_metadata (job_id, time_interval, enabled) VALUES (:j, 5, :e)", j=CB_JOB, e=enabled)
+
+    await pair.same("GET /carbonblack/test: no job row (runs, nothing to stamp)", "GET", C, t_analyst, reset=no_row, snapshot=cb_rows)
+    await pair.same("GET /carbonblack/test: the row disabled (skipped)", "GET", C, t_admin, reset=lambda: row(0), snapshot=cb_rows)
+    await pair.same("GET /carbonblack/test: the row enabled (runs, stamped)", "GET", C, t_admin, reset=lambda: row(1), snapshot=cb_rows)
+    (p, pout), (q, qout) = await pair.both("GET", C, t_admin, reset=lambda: row(1))
+    posts = [c for c in pout["ai"] if c["path"] == "/copilot-carbonblack-module/collect"]
+    check(
+        "GET /carbonblack/test: the seeded customer's collection reaches the module, the same request from both",
+        p.status_code == q.status_code == 200 and len(posts) >= 1 and pout["ai"] == qout["ai"],
+        f"python {json.dumps(pout['ai'])[:1200]}\n        rust   {json.dumps(qout['ai'])[:1200]}",
+    )
+    await pair.same(
+        "GET /carbonblack/test: two rows (one_or_none raises after the run)",
+        "GET",
+        C,
+        t_admin,
+        reset=lambda: row(1, 2),
+        snapshot=cb_rows,
+    )
+    await no_row()
+
+
 async def both_twin_bodies(pair, method, path, payload, tok, reset):
     """`Pair.both` for twins: each backend gets its own twin's path and body."""
     got = {}
@@ -1202,6 +1439,7 @@ async def main():
         Recorder(manager_answer, MANAGER_PORT, "manager"),
         Recorder(ai_answer, AI_PORT, "ai"),
         Recorder(github_answer, GITHUB_PORT, "github"),
+        Recorder(indexer_answer, INDEXER_PORT, "indexer"),
     ]
     await seed()
     patch_python_clients()
@@ -1212,6 +1450,7 @@ async def main():
     try:
         await customers_section(pair)
         await wazuh_rules_section(pair, holder)
+        await logs_and_carbonblack_section(pair)
     finally:
         await py.aclose()
         await rs.aclose()

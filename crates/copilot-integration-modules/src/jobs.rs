@@ -305,6 +305,53 @@ async fn darktrace_job(st: Arc<ModulesState>) -> Result<serde_json::Value, JobEr
     Ok(returned("Darktrace integration invoked."))
 }
 
+/// `GET /api/carbonblack/test`: Python's route calls the guarded job
+/// function itself, as a scheduled tick — the run lock without waiting, the
+/// deciding row read under it (disabled: the call is skipped), every
+/// customer's collection, then `last_success` stamped through
+/// `one_or_none()` (several rows for the job: `MultipleResultsFound`, a bare
+/// 500 after the collections). A skipped call still answers success.
+pub async fn carbonblack_test(st: &ModulesState) -> Result<(), copilot_web::ApiError> {
+    let db = &st.ctx.db;
+    let Some(lock) =
+        copilot_db::scheduler::JobLock::acquire(db, CARBONBLACK, std::time::Duration::ZERO).await?
+    else {
+        tracing::info!(target: "copilot::integration_modules",
+            "Job {CARBONBLACK} is running elsewhere; skipping this tick");
+        return Ok(());
+    };
+    let outcome = async {
+        if let Some((false, _)) = copilot_db::scheduler::owner_row(db, CARBONBLACK).await? {
+            tracing::debug!(target: "copilot::integration_modules",
+                "Job {CARBONBLACK} is disabled here (handed over or paused); skipping this tick");
+            return Ok(());
+        }
+        collect_all(st, "CarbonBlack", Module::CarbonBlack, "CarbonBlack")
+            .await
+            .map_err(|e| copilot_web::ApiError::internal(e.0))?;
+        let rows: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM scheduled_job_metadata WHERE job_id = ?")
+                .bind(CARBONBLACK)
+                .fetch_one(db.pool())
+                .await
+                .map_err(|e| copilot_web::ApiError::internal(e.to_string()))?;
+        match rows {
+            0 => {
+                tracing::info!(target: "copilot::integration_modules",
+                    "JobMetadata for '{CARBONBLACK}' not found.");
+                Ok(())
+            }
+            1 => Ok(copilot_db::scheduler::stamp_last_success(db, CARBONBLACK).await?),
+            _ => Err(copilot_web::ApiError::internal(
+                "MultipleResultsFound: Multiple rows were found when one or none was required",
+            )),
+        }
+    }
+    .await;
+    lock.release().await;
+    outcome
+}
+
 async fn carbonblack_job(st: Arc<ModulesState>) -> Result<serde_json::Value, JobError> {
     collect_all(&st, "CarbonBlack", Module::CarbonBlack, "CarbonBlack").await?;
     Ok(returned("Carbonblack integration invoked."))

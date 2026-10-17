@@ -21,8 +21,8 @@ use crate::services::{self, Tool};
 
 type Auth = Authorized<AdminOrAnalyst>;
 
-/// The router, to be nested at `/api/healthcheck`. `POST /logs` is not a
-/// route here and falls through to the legacy backend.
+/// The router, to be nested at `/api/healthcheck` (`POST /logs` is
+/// [`crate::logs`]'s, merged at its full path).
 pub fn router(ctx: AppContext) -> Router {
     Router::new()
         .route("/wazuh", get(wazuh_fleet))

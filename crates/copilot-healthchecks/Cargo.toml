@@ -1,6 +1,6 @@
 [package]
 name = "copilot-healthchecks"
-description = "Agent healthchecks from the agents table (/api/healthcheck), shared with the customer routes"
+description = "Agent healthchecks (/api/healthcheck): the agents table, shared with the customer routes, and the host logs in the Wazuh indexer"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,12 @@ license.workspace = true
 copilot-core = { workspace = true }
 copilot-db = { workspace = true }
 copilot-web = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-jinja = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-wazuh = { workspace = true }
+http = { workspace = true }
+sqlx = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

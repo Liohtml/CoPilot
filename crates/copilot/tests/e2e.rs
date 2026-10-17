@@ -1731,21 +1731,38 @@ async fn customer_and_healthcheck_reads() {
     );
     assert_eq!(legacy.received_requests().await.unwrap().len(), before);
 
-    // --- Unported routes still reach Python -------------------------------------
-    for (m, p) in [("POST", "/api/healthcheck/logs".to_string())] {
-        Mock::given(method(m))
-            .and(path(p.clone()))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
-            .expect(1)
-            .mount(&legacy)
-            .await;
-        let (st, body) = h.call(m, &p, Some(&admin), Some(json!({}))).await;
-        assert_eq!(
-            (st.as_u16(), body),
-            (200, json!({"from": "python"})),
-            "{m} {p}"
-        );
-    }
+    // --- The host logs are answered here too (the host before the indexer) ------
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/healthcheck/logs",
+            Some(&admin),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(st, 422);
+    let (st, body) = h
+        .call(
+            "POST",
+            "/api/healthcheck/logs",
+            Some(&admin),
+            Some(json!({"agent_name": "nosuch-e2e"})),
+        )
+        .await;
+    assert_eq!(
+        (st.as_u16(), msg(&body)),
+        (404, "Agent with hostname nosuch-e2e not found".into())
+    );
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/healthcheck/logs",
+            Some(&analyst),
+            Some(json!({"agent_name": "nosuch-e2e"})),
+        )
+        .await;
+    assert_eq!(st, 403);
+    assert_eq!(legacy.received_requests().await.unwrap().len(), before);
 }
 
 #[tokio::test]

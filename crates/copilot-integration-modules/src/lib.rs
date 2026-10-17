@@ -25,7 +25,9 @@
 //!   (the region's `HttpUrl` is added to a `str`, a `TypeError`);
 //! - [`jobs`] — the hand-over jobs (`copilot-scheduler`), one call per
 //!   customer with the integration, with each Python function's own failure
-//!   and `last_success` semantics.
+//!   and `last_success` semantics; `GET /api/carbonblack/test` runs the
+//!   CarbonBlack job as Python's route does (its guard's lock and row
+//!   check, then the job).
 //!
 //! The module and Mimecast URLs are Python's constants;
 //! `COPILOT_INTEGRATION_MODULES_URL` points them all at one stand-in (tests

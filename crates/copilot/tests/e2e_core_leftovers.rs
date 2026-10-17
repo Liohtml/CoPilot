@@ -442,9 +442,16 @@ struct SavedConnector {
 /// The `Wazuh-Manager` row pointed at `url` (the row found is restored by
 /// [`restore_manager`]).
 async fn point_manager(h: &Harness, url: &str) -> Vec<SavedConnector> {
+    point_connector(h, "Wazuh-Manager", url).await
+}
+
+/// The connector row `name` pointed at `url`, created when missing (the
+/// row found is restored by [`restore_connector`]).
+async fn point_connector(h: &Harness, name: &str, url: &str) -> Vec<SavedConnector> {
     let saved = sqlx::query_as::<_, SavedConnector>(
-        "SELECT connector_name, connector_url FROM connectors WHERE connector_name = 'Wazuh-Manager'",
+        "SELECT connector_name, connector_url FROM connectors WHERE connector_name = ?",
     )
+    .bind(name)
     .fetch_all(h.db.pool())
     .await
     .unwrap();
@@ -456,30 +463,37 @@ async fn point_manager(h: &Harness, url: &str) -> Vec<SavedConnector> {
              connector_accepts_host_only, connector_accepts_api_key, \
              connector_accepts_username_password, connector_accepts_file, \
              connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES \
-             ('Wazuh-Manager', '4.8', ?, '2026-01-02 03:04:05', 'wazuh', 'pw', NULL, 'desc', \
+             (?, '4.8', ?, '2026-01-02 03:04:05', 'wazuh', 'pw', NULL, 'desc', \
              'supports', 1, 1, 0, 0, 1, 0, 0, NULL, 1)",
         )
+        .bind(name)
         .bind(url)
         .execute(h.db.pool())
         .await
         .unwrap();
     } else {
-        sqlx::query(
-            "UPDATE connectors SET connector_url = ? WHERE connector_name = 'Wazuh-Manager'",
-        )
-        .bind(url)
-        .execute(h.db.pool())
-        .await
-        .unwrap();
+        sqlx::query("UPDATE connectors SET connector_url = ? WHERE connector_name = ?")
+            .bind(url)
+            .bind(name)
+            .execute(h.db.pool())
+            .await
+            .unwrap();
     }
     saved
 }
 
 async fn restore_manager(h: &Harness, saved: Vec<SavedConnector>) {
+    restore_connector(h, "Wazuh-Manager", saved).await;
+}
+
+async fn restore_connector(h: &Harness, name: &str, saved: Vec<SavedConnector>) {
     match saved.first() {
         None => {
-            h.exec("DELETE FROM connectors WHERE connector_name = 'Wazuh-Manager'")
-                .await;
+            sqlx::query("DELETE FROM connectors WHERE connector_name = ?")
+                .bind(name)
+                .execute(h.db.pool())
+                .await
+                .unwrap();
         }
         Some(row) => {
             sqlx::query("UPDATE connectors SET connector_url = ? WHERE connector_name = ?")
@@ -887,5 +901,245 @@ async fn wazuh_rule_routes_follow_python() {
         "DELETE FROM disabledrule WHERE rule_id = '{rule_id}'"
     ))
     .await;
+    cleanup(&h).await;
+}
+
+// --- /api/healthcheck/logs, /api/carbonblack/test ------------------------------------------
+
+#[tokio::test]
+async fn host_logs_and_carbonblack_test_follow_python() {
+    use wiremock::matchers::body_string_contains;
+    if !configured() {
+        return;
+    }
+    let extra = format!(
+        "COPILOT_INTEGRATION_MODULES_URL=http://127.0.0.1:{}\n",
+        port(2)
+    );
+    let h = harness_or_skip!(None, &extra);
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&format!("admin{s}"), "admin");
+    let analyst = h.token(&format!("analyst{s}"), "analyst");
+    let portal = h.token(&format!("portal{s}"), "customer_user");
+    for (host, code) in [("hl-ok", "acme"), ("hl-sick", "acme"), ("hl-other", "beta")] {
+        h.exec(&format!(
+            "INSERT INTO agents (agent_id, ip_address, os, hostname, label, critical_asset, \
+             wazuh_last_seen, wazuh_agent_version, wazuh_agent_status, customer_code, quarantined) \
+             VALUES ('{host}{s}', '1', 'l', '{host}{s}', 'l', 0, UTC_TIMESTAMP(), '1', 'active', \
+             '{code}{s}', 0)"
+        ))
+        .await;
+    }
+    let indexer = stand_in(4).await;
+    Mock::given(method("GET"))
+        .and(path("/*/_alias"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "wazuh-alerts-a": {"aliases": {}}, "wazuh-alerts-b": {"aliases": {}},
+            "wazuh-alerts-c": {"aliases": {}}
+        })))
+        .mount(&indexer)
+        .await;
+    for index in ["wazuh-alerts-a", "wazuh-alerts-b", "wazuh-alerts-c"] {
+        let hit = index == "wazuh-alerts-b";
+        Mock::given(method("POST"))
+            .and(path(format!("/{index}/_search")))
+            .and(body_string_contains(format!("hl-ok{s}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "hits": {"hits": if hit { json!([{"_source": {"x": 1}}]) } else { json!([]) }}
+            })))
+            .mount(&indexer)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/{index}/_search")))
+            .and(body_string_contains(format!("hl-sick{s}")))
+            .respond_with(ResponseTemplate::new(500).set_body_json(json!({"error": "boom"})))
+            .mount(&indexer)
+            .await;
+    }
+    let saved = point_connector(&h, "Wazuh-Indexer", &indexer.uri()).await;
+    let logs = "/api/healthcheck/logs";
+
+    let (st, _) = h
+        .call(
+            "POST",
+            logs,
+            Some(&portal),
+            Some(json!({"agent_name": format!("hl-ok{s}")})),
+        )
+        .await;
+    assert_eq!(st, 403);
+    let (st, out) = h
+        .call(
+            "POST",
+            logs,
+            Some(&admin),
+            Some(json!({"agent_name": "x", "timerange": "5x", "size": "a"})),
+        )
+        .await;
+    assert_eq!(st, 422, "{out}");
+    let (st, out) = h
+        .call(
+            "POST",
+            logs,
+            Some(&admin),
+            Some(json!({"agent_name": "x", "timerange": ""})),
+        )
+        .await;
+    assert_eq!((st.as_u16(), out), (500, json!("Internal Server Error")));
+    // Another tenant's host: refused before the indexer is asked.
+    let (st, _) = h
+        .call(
+            "POST",
+            logs,
+            Some(&analyst),
+            Some(json!({"agent_name": format!("hl-other{s}")})),
+        )
+        .await;
+    assert_eq!(st, 403);
+    let (st, out) = h
+        .call(
+            "POST",
+            logs,
+            Some(&analyst),
+            Some(json!({"agent_name": format!("hl-ok{s}"), "timerange": "15m", "size": 3})),
+        )
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(
+        out,
+        json!({"logs_summary": [], "healthy": true, "success": true,
+               "message": "Host is healthy. At least one log was found within the specified time range of 15m"})
+    );
+    let searches: Vec<_> = indexer
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.url.path().ends_with("/_search"))
+        .collect();
+    // The first index with a hit ends the search.
+    assert_eq!(
+        searches
+            .iter()
+            .map(|r| r.url.path().to_string())
+            .collect::<Vec<_>>(),
+        vec!["/wazuh-alerts-a/_search", "/wazuh-alerts-b/_search"]
+    );
+    assert_eq!(searches[0].url.query(), Some("size=3"));
+    let body: Value = serde_json::from_slice(&searches[0].body).unwrap();
+    assert_eq!(
+        body["query"]["bool"]["must"][1],
+        json!({"match": {"syslog_level": "INFO"}})
+    );
+    assert_eq!(
+        body["query"]["bool"]["must"][2],
+        json!({"match_phrase": {"agent_name": format!("hl-ok{s}")}})
+    );
+    assert_eq!(body["sort"], json!([{"timestamp_utc": {"order": "desc"}}]));
+    // Failing searches are skipped: unhealthy.
+    let (st, out) = h
+        .call(
+            "POST",
+            logs,
+            Some(&admin),
+            Some(json!({"agent_name": format!("hl-sick{s}")})),
+        )
+        .await;
+    assert_eq!(st, 200, "{out}");
+    assert_eq!(out["healthy"], json!(false));
+    assert_eq!(
+        out["message"],
+        json!("Host is unhealthy. No logs were found within the specified time range of 24h")
+    );
+    restore_connector(&h, "Wazuh-Indexer", saved).await;
+
+    // The CarbonBlack test: Python's guard, then the job.
+    const JOB: &str = "invoke_carbonblack_integration_collection";
+    #[derive(sqlx::FromRow)]
+    struct JobRow {
+        job_id: String,
+        last_success: Option<chrono::NaiveDateTime>,
+        time_interval: i32,
+        extra_data: Option<String>,
+        enabled: bool,
+        job_description: Option<String>,
+    }
+    let saved_jobs = sqlx::query_as::<_, JobRow>(
+        "SELECT job_id, last_success, time_interval, extra_data, enabled, job_description \
+         FROM scheduled_job_metadata WHERE job_id = ? ORDER BY id",
+    )
+    .bind(JOB)
+    .fetch_all(h.db.pool())
+    .await
+    .unwrap();
+    let set_job = |enabled: i32| {
+        format!(
+            "INSERT INTO scheduled_job_metadata (job_id, last_success, time_interval, enabled) \
+             VALUES ('{JOB}', NULL, 5, {enabled})"
+        )
+    };
+    let stamped = || async {
+        sqlx::query_scalar::<_, Option<chrono::NaiveDateTime>>(
+            "SELECT last_success FROM scheduled_job_metadata WHERE job_id = ? ORDER BY id LIMIT 1",
+        )
+        .bind(JOB)
+        .fetch_one(h.db.pool())
+        .await
+        .unwrap()
+    };
+    let ok_body = json!({"success": true, "message": "CarbonBlack provisioned successfully"});
+    h.exec(&format!(
+        "DELETE FROM scheduled_job_metadata WHERE job_id = '{JOB}'"
+    ))
+    .await;
+    let (st, _) = h
+        .call("GET", "/api/carbonblack/test", Some(&portal), None)
+        .await;
+    assert_eq!(st, 403);
+    // Disabled: skipped, still a success.
+    h.exec(&set_job(0)).await;
+    let (st, out) = h
+        .call("GET", "/api/carbonblack/test", Some(&analyst), None)
+        .await;
+    assert_eq!((st.as_u16(), out), (200, ok_body.clone()));
+    assert_eq!(stamped().await, None);
+    // Enabled: run and stamped.
+    h.exec(&format!(
+        "UPDATE scheduled_job_metadata SET enabled = 1 WHERE job_id = '{JOB}'"
+    ))
+    .await;
+    let (st, out) = h
+        .call("GET", "/api/carbonblack/test", Some(&admin), None)
+        .await;
+    assert_eq!((st.as_u16(), out), (200, ok_body.clone()));
+    assert!(stamped().await.is_some());
+    // Two rows: `one_or_none()` raises after the run.
+    h.exec(&set_job(1)).await;
+    let (st, _) = h
+        .call("GET", "/api/carbonblack/test", Some(&admin), None)
+        .await;
+    assert_eq!(st, 500);
+    h.exec(&format!(
+        "DELETE FROM scheduled_job_metadata WHERE job_id = '{JOB}'"
+    ))
+    .await;
+    for r in saved_jobs {
+        sqlx::query(
+            "INSERT INTO scheduled_job_metadata (job_id, last_success, time_interval, \
+             extra_data, enabled, job_description) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(r.job_id)
+        .bind(r.last_success)
+        .bind(r.time_interval)
+        .bind(r.extra_data)
+        .bind(r.enabled)
+        .bind(r.job_description)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    }
+    h.exec(&format!("DELETE FROM agents WHERE hostname LIKE 'hl-%{s}'"))
+        .await;
     cleanup(&h).await;
 }

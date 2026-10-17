@@ -6,16 +6,18 @@
 //! requested window; the Wazuh manager (`agent_id` `000`) is left out of the
 //! fleet lists.
 //!
-//! `POST /api/healthcheck/logs` searches the Wazuh indexer and stays in the
-//! Python backend until the indexer connector is ported; it is simply not a
-//! route here, so the legacy proxy serves it.
+//! `POST /api/healthcheck/logs` asks the Wazuh indexer whether the host
+//! logged anything recently ([`logs`], on `copilot-wazuh`'s sync client); the
+//! host's tenant is checked first, as in Python.
 //!
 //! - [`schema`]   — `ExtendedAgentModel`, `AgentHealthCheckResponse`, time window
 //! - [`services`] — the classification (pure), also used by `copilot-customers`
 //! - [`routes`]   — `/wazuh`, `/wazuh/{agent_id}`, `/velociraptor`, `/velociraptor/{agent_id}`
+//! - [`logs`]     — `POST /logs` (`get_host_logs`)
 
 #![warn(missing_docs)]
 
+pub mod logs;
 pub mod routes;
 pub mod schema;
 pub mod services;

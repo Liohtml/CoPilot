@@ -6,7 +6,7 @@
 //!                      │ /api/customer_portal/* (but /sla)                    │
 //!                      │                    → copilot-customer-portal         │
 //!                      │ /api/customers/*       → copilot-customers           │
-//!                      │ GET /api/healthcheck/* → copilot-healthchecks        │
+//!                      │ /api/healthcheck/*     → copilot-healthchecks        │
 //!                      │ /api/version/*, /api/audit/* → copilot-platform      │
 //!                      │ /api/auth/token*, /refresh, /2fa/*, users, /login,   │
 //!                      │ /register, /reset-password*, /me/customers,          │
@@ -93,7 +93,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // Every route of the customers router (copilot-customers): the reads, and
     // creating, updating and deleting customers and their meta rows.
     "/api/customers",
-    "GET /api/healthcheck",
+    // The agent healthchecks and the host logs (copilot-healthchecks).
+    "/api/healthcheck",
     "/api/version",
     "/api/audit",
     "/api/auth/token",
@@ -180,6 +181,7 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/graylog/metrics",
     "GET /api/graylog/event_notifications",
     "GET /api/graylog/streams",
+    "GET /api/graylog/pipelines",
     "GET /api/graylog/pipeline",
     "POST /api/graylog/receiver",
     // The InfluxDB connector (copilot-influxdb): alerts and metrics.
@@ -258,6 +260,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/duo/provision",
     "POST /api/cato/provision",
     "POST /api/carbonblack/provision",
+    // The CarbonBlack job run by hand (copilot-integration-modules).
+    "GET /api/carbonblack/test",
     "POST /api/mimecast/provision",
     "POST /api/sap_siem/provision",
     "POST /api/socfortress_mdr/provision",
@@ -777,6 +781,8 @@ impl App {
                 "/api/healthcheck",
                 copilot_healthchecks::router(self.ctx.clone()),
             )
+            // `POST /api/healthcheck/logs`, at its full path (the indexer).
+            .merge(copilot_healthchecks::logs::router(self.wazuh.clone()))
             .nest(
                 "/api/version",
                 copilot_platform::version_router(platform.clone()),
