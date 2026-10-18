@@ -64,13 +64,16 @@ tar czf copilot-data-backup.tgz data/
 git pull                     # or download docker-compose*.yml and .env.example of the release
 docker compose pull
 
-# 2. Bring the database to the last Python schema (does nothing if it is there)
+# 2. Stop the running backend, then bring the database to the last Python
+#    schema (does nothing if it is there already)
+docker compose stop copilot-backend
 docker compose --profile legacy up -d copilot-backend-legacy
 docker compose logs -f copilot-backend-legacy    # wait for "Application startup complete", then Ctrl-C
 docker compose rm -sf copilot-backend-legacy
 
-# 3. Start the Rust backend
-docker compose up -d
+# 3. Start the Rust backend (--remove-orphans drops the `copilot-rs` container
+#    of the earlier staged-rollout layout, if you ran it)
+docker compose up -d --remove-orphans
 ```
 
 Step 2 runs the last Python release (the `legacy` profile, with its scheduler
@@ -78,6 +81,12 @@ off) so that its Alembic migrations bring an older database up to date; a
 database that is already there is left as it is. If you skip it and the
 database is older, `copilot-backend` refuses to start and its log names the
 revision it found — run step 2, then `docker compose up -d` again.
+
+If you ran the previous release's staged rollout
+(`-f docker-compose.rust.yml`, with a `copilot-rs` service): its
+`COPILOT_SCHEDULER_OWNER`, `COPILOT_RS_JOBS` and `COPILOT_RS_PALACE_JOBS` lines in
+`.env` no longer matter for the default layout, where the Rust backend owns the
+schedule.
 
 What else happens on the first start of the Rust backend:
 
