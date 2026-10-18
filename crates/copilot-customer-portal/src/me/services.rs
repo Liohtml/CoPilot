@@ -10,6 +10,7 @@ use copilot_incidents::store;
 use copilot_jinja::unicode::casefold;
 use copilot_web::form::py_strip;
 use copilot_web::{ApiError, AppContext, CurrentUser};
+use http::StatusCode;
 
 use super::schema::{PortalCustomer, PortalMeResponse};
 
@@ -64,13 +65,17 @@ pub fn sort_customers(customers: &mut [PortalCustomer]) {
     });
 }
 
-/// `get_portal_profile`. A role id `RoleEnum` does not know is Python's
-/// `ValueError` (the route's 500).
+/// `get_portal_profile`. A user without a role `RoleEnum` knows (no role
+/// id, or one with no member) is refused: Python's `RoleEnum(role_id)`
+/// raised there on every such request (the route's 500), and such a user
+/// sees no customer anyway (RUST_MIGRATION.md §4).
 pub async fn profile(ctx: &AppContext, user: &CurrentUser) -> Result<PortalMeResponse, ApiError> {
-    let role = user
-        .role_id
-        .and_then(Role::from_id)
-        .ok_or_else(|| ApiError::internal(format!("{:?} is not a valid RoleEnum", user.role_id)))?;
+    let role = user.role_id.and_then(Role::from_id).ok_or_else(|| {
+        ApiError::http(
+            StatusCode::FORBIDDEN,
+            format!("Access denied - user {} has no role", user.username),
+        )
+    })?;
     let codes = user.access(ctx).await?.to_python_list();
     Ok(PortalMeResponse {
         success: true,

@@ -14,7 +14,7 @@ use http::{HeaderMap, StatusCode};
 
 use copilot_core::time::now_utc;
 use copilot_web::validate::Validator;
-use copilot_web::{AnyPortalOrSoc, ApiError, ApiResult, Authorized, QueryPairs};
+use copilot_web::{AnyPortalOrSoc, ApiResult, Authorized, QueryPairs};
 
 use super::schema::PortalAgentsResponse;
 use super::services::{self, AgentFilters};
@@ -98,10 +98,11 @@ async fn page(
     v.finish()?;
     tracing::info!(page = %page, user = %auth.username, "fetching portal agents page");
     let scope = effective_scope(auth.access(&st.ctx).await?, q.customer_codes().as_deref());
-    // `(page - 1) * page_size` is bound as Python binds it; MySQL refuses an
-    // `OFFSET` beyond 64 bits (a bare 500 there too).
-    let offset = u64::try_from(page.saturating_sub(1).saturating_mul(page_size))
-        .map_err(|_| ApiError::internal("OFFSET out of range"))?;
+    // `(page - 1) * page_size`, clamped to the filtered total by the service:
+    // past it every page is empty, so a valid request answers as before, and
+    // a page whose offset MySQL refuses (beyond 64 bits — Python's bare 500)
+    // is that empty page too (RUST_MIGRATION.md §4).
+    let offset = u128::try_from(page.saturating_sub(1).saturating_mul(page_size)).unwrap_or(0);
     let page_size = i64::try_from(page_size).unwrap_or(MAX_PAGE_SIZE as i64);
     let result = services::list(&st.ctx.db, &scope, &filters, offset, page_size).await?;
     Ok(Json(PortalAgentsResponse {

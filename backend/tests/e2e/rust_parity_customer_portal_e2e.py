@@ -1101,10 +1101,25 @@ async def main():  # noqa: C901 - one scenario after the other
             ("bad values", "page=0&page_size=101&critical=%20true"),
             ("Pydantic ints", "page=1.0&page_size=+5"),
             ("unparsable", "page=x&page_size=1e2&critical=2"),
-            ("a huge page", "page=" + "9" * 30),
+            ("an offset just within 64 bits", "page=184467440737095516&page_size=100"),
         ):
             for key in ("portal_a", "admin"):
                 await both(f"agents: {key}: {label}", "GET", f"{AG}?{query}", T[key])
+        # An offset MySQL refuses (beyond 64 bits): Python's 500; Rust answers the empty page
+        # past the end, as for any page there (RUST_MIGRATION.md §4).
+        for key in ("portal_a", "admin"):
+            for label, query in (
+                ("a huge page", "page=" + "9" * 30),
+                ("an offset just past 64 bits", "page=184467440737095518&page_size=100"),
+            ):
+                pr = await send(py, "GET", f"{AG}?{query}", T[key], None, None, None)
+                rr = await send(rs, "GET", f"{AG}?{query}", T[key], None, None, None)
+                end = await send(rs, "GET", f"{AG}?page=1000000000", T[key], None, None, None)
+                check(
+                    f"agents: {key}: {label} [diff by design (500, 200): the page past the end]",
+                    pr.status_code == 500 and rr.status_code == 200 and rr.json() == end.json() and rr.json()["agents"] == [],
+                    f"python {pr.status_code} {pr.text[:300]}\n        rust   {rr.status_code} {rr.text[:300]}",
+                )
         X = AG + "/export"
         for key in ("portal_a", "portal_ab", "unassigned", "admin"):
             await both(f"CSV: {key}", "GET", X, T[key], headers={"Accept-Encoding": "identity"}, kind="csv")
@@ -1120,8 +1135,20 @@ async def main():  # noqa: C901 - one scenario after the other
         # ==================================================================
         print("\n=== J. /me ===")
         M = P + "/me"
-        for key in ("portal_a", "portal_b", "portal_ab", "norole", "analyst", "admin"):
+        for key in ("portal_a", "portal_b", "portal_ab", "analyst", "admin"):
             await both(f"me: {key}", "GET", M, T[key])
+        # A user without a role: Python's `RoleEnum(None)` (the route's 500 on every request);
+        # Rust refuses it (RUST_MIGRATION.md §4).
+        pr = await send(py, "GET", M, T["norole"], None, None, None)
+        rr = await send(rs, "GET", M, T["norole"], None, None, None)
+        check(
+            "me: a user without a role [diff by design (500, 403)]",
+            pr.status_code == 500
+            and pr.json() == {"success": False, "message": "Failed to load the portal profile"}
+            and rr.status_code == 403
+            and rr.json() == {"success": False, "message": f"Access denied - user {uname('norole')} has no role"},
+            f"python {pr.status_code} {pr.text[:300]}\n        rust   {rr.status_code} {rr.text[:300]}",
+        )
         await both("me: no token", "GET", M)
         await sql("DELETE FROM user_customer_access WHERE user_id = :u AND customer_code = :c", u=USERS["portal_ab"][0], c=B)
         await both("me: portal user of both, after losing B", "GET", M, T["portal_ab"])
