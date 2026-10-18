@@ -22,6 +22,10 @@ services:
             - COPILOT_PY_SCHEDULER=${COPILOT_SCHEDULER_OWNER:+false}
 
     copilot-backend:
+        # The migrations and the startup tasks stay on here: the Rust backend owns
+        # the schema (a migration after the Alembic baseline is only its), and the
+        # Python backend's lifespan runs the same idempotent seeding under the same
+        # MySQL named lock, one after the other.
         environment:
             - COPILOT_LEGACY_URL=http://copilot-backend-legacy:5000
             # "rust": this service owns the schedule (APScheduler off above).

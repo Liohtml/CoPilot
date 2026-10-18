@@ -201,6 +201,7 @@ Other changes you may notice:
 | Symptom | Look at |
 |---|---|
 | `copilot-backend` restarts, its log names an Alembic revision | the database is older than the last Python schema: run step 2 of the upgrade |
+| `copilot-backend` restarts, its log names MinIO or the root login | the startup tasks create MinIO's buckets and, with `ENVIRONMENT=PRODUCTION` (the default), the database and its user through `MYSQL_ROOT_PASSWORD`: check MinIO is up and `.env`'s root password |
 | `copilot-backend` never starts, `copilot-backend-init` exited non-zero | `docker compose logs copilot-backend-init`: the data directory could not be handed to uid 10001 (a read-only or root-squashed mount) |
 | a connector file upload or a collector's provisioning fails with a permission error | the data directory is not writable by uid 10001: run `docker compose up -d` again (the init step fixes it), or check the mount |
 | a licensed feature reports itself disabled | `COPILOT_API_KEY`: the published image carries it; a locally built image needs `--build-arg COPILOT_API_KEY=…` |

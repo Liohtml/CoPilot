@@ -65,7 +65,17 @@ BACKEND_NAME = "copilot-backend"
 BACKEND_PORT = "5000"
 
 # What the Rust service cannot start or work without; each must reach it (from `.env`).
-REQUIRED = ("JWT_SECRET", "MYSQL_URL", "MYSQL_USER", "MYSQL_PASSWORD", "MINIO_URL", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD")
+# MYSQL_ROOT_PASSWORD: the startup tasks' PRODUCTION bootstrap (ENVIRONMENT defaults to it).
+REQUIRED = (
+    "JWT_SECRET",
+    "MYSQL_URL",
+    "MYSQL_USER",
+    "MYSQL_PASSWORD",
+    "MYSQL_ROOT_PASSWORD",
+    "MINIO_URL",
+    "MINIO_ROOT_USER",
+    "MINIO_ROOT_PASSWORD",
+)
 # What the deployment fixes in the Rust service's own `environment:` (the paths are the Python
 # backend's, so files, rows and the connector rows' paths stay valid across a rollback).
 FIXED = {

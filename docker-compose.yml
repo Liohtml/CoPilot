@@ -19,10 +19,16 @@ services:
             # one layout that hands it back to APScheduler.
             - COPILOT_SCHEDULER_OWNER=rust
             # The schema migrations (an Alembic-head database is adopted, an older
-            # one refused) and the startup tasks (MinIO buckets, the connector,
-            # role and integration catalogs, the admin and scheduler users, the
-            # built-in templates, the portal's default settings), as Python's
-            # lifespan ran them. Both default on; .env may turn them off.
+            # one refused) and the startup tasks (with ENVIRONMENT=PRODUCTION, the
+            # default, the database and its user through MYSQL_ROOT_PASSWORD; MinIO's
+            # buckets — a MinIO not reachable yet fails that start, and `restart`
+            # tries again —; the connector, role and integration catalogs, the admin
+            # and scheduler users, the built-in templates, the portal's default
+            # settings, the scheduler rows), as Python's lifespan ran them. Both
+            # default on, in every layout: this service owns the schema. Where the
+            # Python backend runs too, its lifespan runs the same idempotent tasks
+            # after or before these, never at the same time (both take one MySQL
+            # named lock).
             - COPILOT_RUN_MIGRATIONS=${COPILOT_RUN_MIGRATIONS:-true}
             - COPILOT_STARTUP_TASKS=${COPILOT_STARTUP_TASKS:-true}
             # The backend's data directory, at the Python backend's own path: the
@@ -92,7 +98,9 @@ services:
             - scoutsuite-reports:/opt/copilot/backend/scoutsuite-report
         env_file: .env
         environment:
-            # copilot-backend owns the schedule in this file: never both.
+            # copilot-backend owns the schedule in this file: never both. Its
+            # lifespan still runs Python's startup (an Alembic no-op at the frozen
+            # head, the idempotent seeding), serialized with the Rust backend's.
             - COPILOT_PY_SCHEDULER=false
         depends_on:
             - copilot-mysql

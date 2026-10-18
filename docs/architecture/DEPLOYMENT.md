@@ -126,7 +126,23 @@ idempotent; `COPILOT_RUN_MIGRATIONS` / `COPILOT_STARTUP_TASKS` turn them off):
   catalog and sidebar warm-ups, the Office 365 pipeline-rule check
 
 `backend/copilot.py`'s lifespan does the same for the Python backend (the
-reference implementation; see `CLAUDE.md`).
+reference implementation; see `CLAUDE.md`). Both take one MySQL named lock
+(`GET_LOCK(CONCAT('copilot_startup:', SHA1(DATABASE())), 600)`) around these
+steps, so two processes starting together run them one after the other.
+
+Who runs them, per layout: the Rust backend in every layout where it runs
+(migrations and startup tasks on — it owns the schema: a migration after the
+Alembic baseline is only Rust's). Where the Python backend runs too (the
+`legacy` standby, the staged rollout) its lifespan runs Python's own startup as
+well — Alembic finds nothing to do at the frozen head, the seeding is
+idempotent — under the same lock; the Python backend has no switch for it. In
+the rollback only Python runs it. Two consequences: with
+`ENVIRONMENT=PRODUCTION` (the default) the Rust backend needs
+`MYSQL_ROOT_PASSWORD` at every start (`scripts/check-compose.py` requires it in
+`.env.example`), and an unreachable MinIO fails a start (as in Python;
+`restart: always` tries again). Each process removes the `scheduler` user when
+it stops and the next start of either creates it again; nothing reads that row
+in the Rust backend, and in the Python one only an unused helper.
 
 If deployment seems healthy but features fail, validate this startup chain first
 (`docker compose exec copilot-backend copilot doctor`).

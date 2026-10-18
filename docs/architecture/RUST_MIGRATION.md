@@ -2164,6 +2164,14 @@ rewrite: they talk to the same API.
   sets `COPILOT_PY_SCHEDULER` from the same variable (`${…:+false}`), so the two
   can never both own it; `scripts/check-compose.py` counts exactly one owner in
   each of the five layouts.
+- **The migrations and the startup tasks are the Rust backend's in every
+  layout** (`COPILOT_RUN_MIGRATIONS` / `COPILOT_STARTUP_TASKS` default on, and
+  `docker-compose.yml` passes them through from `.env`). The Rust backend owns
+  the schema, so turning them off where Python runs too would leave a
+  post-baseline migration unapplied; the Python backend's lifespan, which has
+  no switch, runs its own idempotent startup under the same named lock, one
+  after the other. With `ENVIRONMENT=PRODUCTION` that makes
+  `MYSQL_ROOT_PASSWORD` required by the Rust service (checked).
 - **The rollback is an overlay, not a second service name.** The frontends'
   nginx configs proxy to `copilot-backend:5000`; a Python service that also
   answered to that name while Rust runs would split requests between them.
