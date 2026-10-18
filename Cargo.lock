@@ -511,6 +511,7 @@ dependencies = [
  "copilot-threat-intel",
  "copilot-uba",
  "copilot-velociraptor",
+ "copilot-verifiers",
  "copilot-waf",
  "copilot-wazuh",
  "copilot-wazuh-rules",
@@ -1750,6 +1751,27 @@ dependencies = [
  "tokio-rustls",
  "tracing",
  "yaml_serde",
+]
+
+[[package]]
+name = "copilot-verifiers"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "copilot-auth",
+ "copilot-connectors",
+ "copilot-db",
+ "copilot-grafana",
+ "copilot-graylog",
+ "copilot-influxdb",
+ "copilot-jinja",
+ "copilot-portainer",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-web",
+ "http",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

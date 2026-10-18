@@ -145,9 +145,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customers/{customer_code}/notification_routes",
     "/api/customers/{customer_code}/notification_dispatch_log",
     "/api/customers/{customer_code}/shuffle_integrations",
-    // The connector list, rows, updates, verification and the YAML upload; a
-    // connector whose tool has no Rust verifier is updated and verified by
-    // Python.
+    // The connector list, rows, updates, verification and the YAML upload;
+    // every connector Python knows verifies in Rust (copilot-verifiers holds
+    // the last twelve), so none is handed to Python.
     "/api/connectors",
     // The Wazuh indexer: every route of its three routers.
     "/api/alerts",
@@ -766,7 +766,11 @@ impl App {
                     .chain(copilot_shuffle::verifiers(&shuffle))
                     .chain(copilot_intel_connectors::verify::verifiers())
                     .chain(copilot_uba::verifiers())
-                    .chain(copilot_sublime::verifiers(&sublime.client)),
+                    .chain(copilot_sublime::verifiers(&sublime.client))
+                    .chain(copilot_verifiers::verifiers(&copilot_verifiers::Tools {
+                        grafana: grafana.clone(),
+                        influxdb: influxdb.clone(),
+                    })),
             ),
             wazuh,
             ingest,

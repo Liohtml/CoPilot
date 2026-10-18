@@ -64,6 +64,7 @@ copilot-cloud-provisioning = { workspace = true }
 copilot-assessments = { workspace = true }
 copilot-wazuh-rules = { workspace = true }
 copilot-case-templates = { workspace = true }
+copilot-verifiers = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

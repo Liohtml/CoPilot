@@ -861,3 +861,415 @@ async fn portal_me_without_a_role_and_agents_past_the_end() {
     h.exec(&format!("DELETE FROM `user` WHERE username = '{roleless}'"))
         .await;
 }
+
+// --- the connector verifications -----------------------------------------------------------
+
+/// The twelve connectors whose verification Python still answered.
+const VERIFIED_NOW: [&str; 12] = [
+    "Graylog",
+    "Graylog-Network",
+    "InfluxDB",
+    "Grafana",
+    "Wazuh Worker Provisioning",
+    "HAProxy Provisioning",
+    "Event Shipper",
+    "Alert Creation Provisioning",
+    "VirusTotal",
+    "Portainer",
+    "Resend",
+    "Talon",
+];
+
+/// Every connector Python verified is verified in Rust now: the tool asked
+/// as Python's function asks it, `connector_verified` written, the Python
+/// backend never asked.
+#[tokio::test]
+async fn every_connector_is_verified_in_rust() {
+    let legacy = MockServer::start().await;
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&legacy)
+        .await;
+    let h = harness_or_skip!(Some(&legacy));
+    h.seed().await;
+    let admin = h.token(&h.code("admin"), "admin");
+    backup_connectors(&h, &VERIFIED_NOW).await;
+    let tool = MockServer::start().await;
+    let gelf = Gelf::start().await;
+    let t = tool.uri();
+    let ok = |body: Value| ResponseTemplate::new(200).set_body_json(body);
+    for (m, p, resp) in [
+        (
+            "GET",
+            "/graylog/api/authz/roles/user/u",
+            ok(json!({"roles": []})),
+        ),
+        (
+            "GET",
+            "/glnet/api/authz/roles/user/u",
+            ResponseTemplate::new(401).set_body_string("nope"),
+        ),
+        ("GET", "/influx/ping", ResponseTemplate::new(204)),
+        (
+            "POST",
+            "/influx/api/v2/query",
+            ResponseTemplate::new(200).insert_header("content-type", "text/csv; charset=utf-8"),
+        ),
+        (
+            "POST",
+            "/grafanaapi/admin/users",
+            ok(json!({"id": 9, "message": "User created"})),
+        ),
+        (
+            "DELETE",
+            "/grafanaapi/admin/users/9",
+            ok(json!({"message": "User deleted"})),
+        ),
+        (
+            "GET",
+            "/w1/provision_worker/healthcheck",
+            ok(json!({"ok": true})),
+        ),
+        (
+            "GET",
+            "/w2/provision_worker/healthcheck",
+            ResponseTemplate::new(500).set_body_string("down"),
+        ),
+        ("GET", "/ha/provision_worker/healthcheck", ok(json!({}))),
+        (
+            "GET",
+            "/ac/provision_alert/healthcheck",
+            ResponseTemplate::new(503).set_body_string("busy"),
+        ),
+        (
+            "GET",
+            "/vt/files/99017f6eebbac24f351415dd410d522d",
+            ok(json!({"data": {}})),
+        ),
+        ("GET", "/talon/health", ok(json!({"status": "ok"}))),
+        (
+            "GET",
+            "/pt/api/v1/apps/authentication",
+            ResponseTemplate::new(401).set_body_string("no"),
+        ),
+        ("POST", "/api/auth", ok(json!({"jwt": "jwt-token"}))),
+        (
+            "GET",
+            "/resend/domains",
+            ResponseTemplate::new(401)
+                .set_body_json(json!({"name": "restricted_api_key", "message": "restricted"})),
+        ),
+    ] {
+        Mock::given(method(m))
+            .and(path(p))
+            .respond_with(resp)
+            .mount(&tool)
+            .await;
+    }
+    let gport = gelf.port.to_string();
+    let rows: [(
+        &str,
+        String,
+        Option<&str>,
+        Option<&str>,
+        Option<&str>,
+        Option<&str>,
+    ); 12] = [
+        (
+            "Graylog",
+            format!("{t}/graylog"),
+            Some("u"),
+            Some("p"),
+            None,
+            None,
+        ),
+        (
+            "Graylog-Network",
+            format!("{t}/glnet"),
+            Some("u"),
+            Some("p"),
+            None,
+            None,
+        ),
+        (
+            "InfluxDB",
+            format!("{t}/influx"),
+            None,
+            None,
+            Some("tok"),
+            Some("SOCFORTRESS,telegraf"),
+        ),
+        (
+            "Grafana",
+            format!("{t}/grafana"),
+            Some("admin"),
+            Some("pw"),
+            None,
+            None,
+        ),
+        (
+            "Wazuh Worker Provisioning",
+            format!("{t}/w1, {t}/w2 ,,"),
+            None,
+            None,
+            None,
+            None,
+        ),
+        (
+            "HAProxy Provisioning",
+            format!("{t}/ha"),
+            None,
+            None,
+            None,
+            None,
+        ),
+        (
+            "Alert Creation Provisioning",
+            format!("{t}/ac"),
+            None,
+            None,
+            None,
+            None,
+        ),
+        (
+            "VirusTotal",
+            format!("{t}/vt"),
+            None,
+            None,
+            Some("vt-key"),
+            None,
+        ),
+        ("Talon", format!("{t}/talon"), None, None, None, None),
+        (
+            "Event Shipper",
+            "127.0.0.1".into(),
+            None,
+            None,
+            None,
+            Some(gport.as_str()),
+        ),
+        (
+            "Portainer",
+            format!("{t}/pt"),
+            Some("u"),
+            Some("p"),
+            Some("k"),
+            None,
+        ),
+        (
+            "Resend",
+            format!("{t}/resend"),
+            None,
+            None,
+            Some("re_key"),
+            None,
+        ),
+    ];
+    for (name, url, user, pass, key, extra) in &rows {
+        connector_row(&h, name, url, *user, *pass, *key, *extra).await;
+    }
+    let url_of = |n: &str| rows.iter().find(|r| r.0 == n).unwrap().1.clone();
+    let want: [(&str, bool, String); 12] = [
+        ("Graylog", true, "Graylog connection successful".into()),
+        (
+            "Graylog-Network",
+            false,
+            format!(
+                "Connection to {} failed with error: nope",
+                url_of("Graylog-Network")
+            ),
+        ),
+        ("InfluxDB", true, "InfluxDB connection successful".into()),
+        ("Grafana", true, "Grafana connection successful".into()),
+        (
+            "Wazuh Worker Provisioning",
+            true,
+            "1 of 2 hosts connected successfully".into(),
+        ),
+        (
+            "HAProxy Provisioning",
+            true,
+            "Wazuh Worker Provisioning healthcheck successful".into(),
+        ),
+        (
+            "Alert Creation Provisioning",
+            false,
+            format!(
+                "Connection to {} failed",
+                url_of("Alert Creation Provisioning")
+            ),
+        ),
+        (
+            "VirusTotal",
+            true,
+            "VirusTotal healthcheck successful".into(),
+        ),
+        ("Talon", true, "Talon connection successful".into()),
+        (
+            "Event Shipper",
+            true,
+            "Event shipper healthcheck successful".into(),
+        ),
+        (
+            "Portainer",
+            true,
+            "Portainer connection successful via JWT".into(),
+        ),
+        (
+            "Resend",
+            true,
+            "Resend connection successful (send-only restricted key). Sending works; management \
+             endpoints are not accessible with this key."
+                .into(),
+        ),
+    ];
+    for (name, successful, message) in want {
+        let id: i64 = sqlx::query_scalar("SELECT id FROM connectors WHERE connector_name = ?")
+            .bind(name)
+            .fetch_one(h.db.pool())
+            .await
+            .unwrap();
+        let (st, body) = h
+            .call(
+                "POST",
+                &format!("/api/connectors/verify/{id}"),
+                Some(&admin),
+                None,
+            )
+            .await;
+        // A failed verification is the route's 500 naming the message.
+        if successful {
+            assert_eq!(st, 200, "{name}: {body}");
+            assert_eq!(
+                body,
+                json!({"connectionSuccessful": true, "message": message}),
+                "{name}"
+            );
+        } else {
+            assert_eq!(st, 500, "{name}: {body}");
+            assert_eq!(
+                body,
+                json!({"success": false, "message": format!("Failed to verify connector: {message}")}),
+                "{name}"
+            );
+        }
+        let verified = h
+            .scalar_i64(&format!(
+                "SELECT connector_verified FROM connectors WHERE id = {id}"
+            ))
+            .await;
+        assert_eq!(verified, i64::from(successful), "{name}");
+    }
+    let seen = tool.received_requests().await.unwrap();
+    let find = |p: &str| seen.iter().find(|r| r.url.path() == p).unwrap();
+    assert_eq!(
+        header(find("/graylog/api/authz/roles/user/u"), "authorization"),
+        "Basic dTpw"
+    );
+    let ping = find("/influx/ping");
+    assert_eq!(header(ping, "authorization"), "Token tok");
+    assert_eq!(header(ping, "user-agent"), "influxdb-client-python/1.50.0");
+    assert_eq!(header(ping, "accept"), "*/*");
+    assert_eq!(
+        header(
+            find("/vt/files/99017f6eebbac24f351415dd410d522d"),
+            "x-apikey"
+        ),
+        "vt-key"
+    );
+    let auth = find("/api/auth");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&auth.body).unwrap(),
+        json!({"username": "u", "password": "p"})
+    );
+    assert_eq!(
+        header(find("/resend/domains"), "authorization"),
+        "Bearer re_key"
+    );
+    assert_eq!(
+        header(find("/grafanaapi/admin/users"), "authorization"),
+        "Basic YWRtaW46cHc="
+    );
+    assert_eq!(
+        gelf.take().await,
+        [
+            json!({"integration": "event_shipper", "customer_code": "n/a",
+            "message": "Healthcheck successful"})
+        ]
+    );
+
+    // A missing row read before its `None` check (Grafana, InfluxDB) and a
+    // URL the Grafana client refuses are Python's 404.
+    h.exec(
+        "UPDATE connectors SET connector_url = 'grafana.local' WHERE connector_name = 'Grafana'",
+    )
+    .await;
+    let id: i64 = sqlx::query_scalar("SELECT id FROM connectors WHERE connector_name = 'Grafana'")
+        .fetch_one(h.db.pool())
+        .await
+        .unwrap();
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("/api/connectors/verify/{id}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 404, "{body}");
+    // An InfluxDB status record fails `InfluxDBAlert`'s validation.
+    tool.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/influx/ping"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&tool)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/influx/api/v2/query"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/csv; charset=utf-8")
+                .set_body_string(
+                    "#datatype,string,long,dateTime:RFC3339,string,string,string,string\r\n\
+                     #group,false,false,false,false,false,false,false\r\n\
+                     #default,_result,,,,,,\r\n\
+                     ,result,table,time,message,checkID,checkName,level\r\n\
+                     ,,0,2026-10-18T01:00:00Z,CPU high,0a1,CPU CHECK,crit\r\n\r\n",
+                ),
+        )
+        .mount(&tool)
+        .await;
+    let id: i64 = sqlx::query_scalar("SELECT id FROM connectors WHERE connector_name = 'InfluxDB'")
+        .fetch_one(h.db.pool())
+        .await
+        .unwrap();
+    let (st, body) = h
+        .call(
+            "POST",
+            &format!("/api/connectors/verify/{id}"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 500, "{body}");
+    let text = body["message"].as_str().unwrap();
+    assert!(
+        text.starts_with(&format!(
+            "Failed to verify connector: Connection to {t}/influx failed with error: 500: Failed \
+             to fetch alerts from InfluxDB: 3 validation errors for InfluxDBAlert\ncheck_name\n  \
+             Field required"
+        )),
+        "{text}"
+    );
+
+    for name in VERIFIED_NOW {
+        sqlx::query("DELETE FROM connectors WHERE connector_name = ?")
+            .bind(name)
+            .execute(h.db.pool())
+            .await
+            .unwrap();
+    }
+    restore_connectors(&h).await;
+    legacy.verify().await;
+}
