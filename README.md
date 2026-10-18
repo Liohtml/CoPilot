@@ -23,6 +23,7 @@ SOCFortress CoPilot
 
 - [Getting Started](#getting-started)
   - [Install / Upgrade](#install--upgrade)
+  - [The Rust backend](#the-rust-backend)
 - [Connectors](#connectors)
 - [Help](#help)
 - [License](#license)
@@ -56,6 +57,15 @@ Quick upgrade reminder (from your CoPilot directory):
 docker compose pull
 docker compose up -d
 ```
+
+### The Rust backend
+
+CoPilot's backend is a Rust service (`crates/`, image `ghcr.io/socfortress/copilot-rs`), still `copilot-backend` on port 5000 in `docker-compose.yml`: the same API, the same database, the same tokens. It runs the schema migrations, the startup tasks and the scheduled jobs that the Python backend (`backend/`) used to run; the Python backend stays in the repository as the reference implementation the parity tests compare against, and as an opt-in Compose profile for a rollback.
+
+- **Run / upgrade / roll back:** [`docs/getting-started/rust-backend.md`](docs/getting-started/rust-backend.md). Upgrading a deployment whose database predates the last Python schema takes one extra step (the last Python release runs once).
+- **What changed for operators:** the same page, and the [differences by design](docs/architecture/RUST_MIGRATION.md#4-differences-by-design) — most of them close tenant leaks.
+- **Layouts:** `docker compose up -d` (Rust alone) · `--profile legacy` (the Python backend as a standby) · `-f docker-compose.rust.yml` (staged rollout: Rust in front of Python) · `-f docker-compose.legacy.yml` (rollback: Python in Rust's place). See [`docs/architecture/DEPLOYMENT.md`](docs/architecture/DEPLOYMENT.md).
+- **Check a deployment:** `docker compose exec copilot-backend copilot doctor`.
 
 ## Connectors
 
