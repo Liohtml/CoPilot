@@ -1486,6 +1486,58 @@ async def agent_checks(p, t):
         [("file", "a.txt", None, b"x")],
         before=lambda: S3.fault(lambda m, path, q: m == "HEAD", (404, {}, b""), 1),
     )
+    # A scoped analyst under their customer: its code, or an agent id of theirs, first.
+    await upload(
+        "under the analyst's customer",
+        [("bucket_name", bucket), ("object_name", f"{CUST_A}/a.txt")],
+        [("file", "a.txt", None, b"x")],
+        who="analyst",
+    )
+    await upload(
+        "under the analyst's agent",
+        [("bucket_name", bucket), ("object_name", f"{agent_a}/F.1/a.bin")],
+        [("file", "a.bin", None, b"x")],
+        who="analyst",
+    )
+
+    # §4: anywhere else is refused to a scoped analyst before MinIO is asked (Python wrote any
+    # bucket and object for any analyst).
+    async def refused(label, obj, who="analyst"):
+        S3.faults = []
+        start = S3.snapshot()
+        form = lambda: multipart(
+            fields=[("bucket_name", bucket), ("object_name", obj)],
+            files=[("file", "a.txt", None, b"x")],
+        )  # noqa: E731
+        r1, _ = await p.call(p.py, "POST", f"{DS}/upload", t[who], **form())
+        wrote = changes(start, S3.snapshot(), ())
+        S3.restore(start)
+        r2, out2 = await p.call(p.rs, "POST", f"{DS}/upload", t[who], **form())
+        ok = (
+            r1.status_code == 200
+            and bool(wrote)
+            and r2.status_code == 403
+            and body_of(r2) == {"message": f"Access denied to object {obj}", "success": False}
+            and not out2
+            and S3.snapshot() == start
+        )
+        check(
+            f"upload: {label} ({who}) [diff by design (200, 403)]",
+            ok,
+            f"python {r1.status_code} {r1.text[:200]} wrote {wrote}\n        rust   {r2.status_code} {r2.text[:200]} sent {len(out2)}",
+        )
+
+    await refused("under another tenant's customer", f"{CUST_B}/a.txt")
+    await refused("under another tenant's agent", f"{agent_b}/F.1/a.bin")
+    await refused("under no customer", "dir/a.txt")
+    await refused("anywhere, without customers", f"{CUST_A}/nobody.txt", who="nobody")
+    # A dot-dot segment further on: miniopy-async refuses it on both backends.
+    await upload(
+        "a dot-dot segment after the analyst's customer",
+        [("bucket_name", bucket), ("object_name", f"{CUST_A}/../{CUST_B}/a.txt")],
+        [("file", "a.txt", None, b"x")],
+        who="analyst",
+    )
 
 
 async def unreachable_checks(p, t):

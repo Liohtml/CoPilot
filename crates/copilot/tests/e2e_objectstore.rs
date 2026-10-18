@@ -1912,7 +1912,54 @@ async fn agent_artifacts_follow_the_agents_tenant() {
     );
 
     // Upload: any bucket, created when missing; a large file goes in parts.
+    // §4: a scoped analyst writes only under their customers — a customer
+    // code or an agent id of theirs first —, refused before MinIO is asked.
     let bucket = format!("e2e-upload-{s}");
+    standin.take();
+    let own = format!("acme{s}/small.bin");
+    for object in [
+        "dir/small.bin".to_string(),
+        format!("beta{s}/x"),
+        format!("{beta_agent}/F.1/x"),
+        format!("/acme{s}/x"),
+        format!("nobody{s}/x"),
+    ] {
+        let r = upload(
+            &h,
+            &format!("{DS}/upload"),
+            &t.analyst,
+            &[
+                ("file", Some(("small.bin", "")), b"abc"),
+                ("bucket_name", None, bucket.as_bytes()),
+                ("object_name", None, object.as_bytes()),
+            ],
+        )
+        .await;
+        assert_eq!(
+            (r.status, r.json()),
+            (
+                StatusCode::FORBIDDEN,
+                json!({"message": format!("Access denied to object {object}"), "success": false})
+            )
+        );
+    }
+    assert!(standin.take().is_empty());
+    let r = upload(
+        &h,
+        &format!("{DS}/upload"),
+        &t.analyst,
+        &[
+            ("file", Some(("small.bin", "")), b"abc"),
+            ("bucket_name", None, bucket.as_bytes()),
+            (
+                "object_name",
+                None,
+                format!("{acme_agent}/F.9/a.bin").as_bytes(),
+            ),
+        ],
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{:?}", r.json());
     standin.take();
     let r = upload(
         &h,
@@ -1921,7 +1968,7 @@ async fn agent_artifacts_follow_the_agents_tenant() {
         &[
             ("file", Some(("small.bin", "")), b"abc"),
             ("bucket_name", None, bucket.as_bytes()),
-            ("object_name", None, b"dir/small.bin"),
+            ("object_name", None, own.as_bytes()),
         ],
     )
     .await;
@@ -1932,7 +1979,7 @@ async fn agent_artifacts_follow_the_agents_tenant() {
             "success": true,
             "message": "File small.bin uploaded successfully",
             "bucket_name": bucket,
-            "object_key": "dir/small.bin",
+            "object_key": own,
             "file_name": "small.bin",
             "file_size": 3,
             "file_hash": copilot_objectstore::sigv4::sha256_hex(b"abc"),
@@ -1945,9 +1992,9 @@ async fn agent_artifacts_follow_the_agents_tenant() {
         calls(&seen),
         [
             format!("GET /{bucket}?location="),
-            format!("PUT /{bucket}"),
+            format!("HEAD /{bucket}"),
             format!("GET /{bucket}?location="),
-            format!("PUT /{bucket}/dir/small.bin"),
+            format!("PUT /{bucket}/acme{s}/small.bin"),
         ]
     );
     let large: Vec<u8> = (0..(6 * 1024 * 1024 + 7))
@@ -2008,7 +2055,7 @@ async fn agent_artifacts_follow_the_agents_tenant() {
         &[
             ("file", Some(("small.bin", "")), b"abc"),
             ("bucket_name", None, b"Bad_Bucket"),
-            ("object_name", None, b"x"),
+            ("object_name", None, own.as_bytes()),
         ],
     )
     .await;
@@ -2042,7 +2089,11 @@ async fn unreachable_minio_fails_as_python_does() {
         &[
             ("file", Some(("small.bin", "")), b"abc"),
             ("bucket_name", None, b"e2e-down"),
-            ("object_name", None, b"x"),
+            (
+                "object_name",
+                None,
+                format!("acme{}/x", h.suffix).as_bytes(),
+            ),
         ],
     )
     .await;
