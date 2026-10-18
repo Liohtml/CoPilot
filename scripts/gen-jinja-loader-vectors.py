@@ -82,23 +82,49 @@ case(
 )
 case(
     "c.html",
-    dirs=[{"b.html": "{% for i in [1,2] %}{% block row scoped %}<{{ i }}>{% endblock %}{% endfor %}", "c.html": "{% extends 'b.html' %}{% block row %}({{ i }}){% endblock %}"}],
+    dirs=[
+        {
+            "b.html": "{% for i in [1,2] %}{% block row scoped %}<{{ i }}>{% endblock %}{% endfor %}",
+            "c.html": "{% extends 'b.html' %}{% block row %}({{ i }}){% endblock %}",
+        },
+    ],
 )
 case(
     "c.html",
-    dirs=[{"b.html": "B{% block a %}a{% endblock %}", "c.html": "pre{% if flag %}{% extends 'b.html' %}{% endif %}post{% block a %}A{% endblock %}"}],
+    dirs=[
+        {
+            "b.html": "B{% block a %}a{% endblock %}",
+            "c.html": "pre{% if flag %}{% extends 'b.html' %}{% endif %}post{% block a %}A{% endblock %}",
+        },
+    ],
     vars={"flag": True},
 )
 case(
     "c.html",
-    dirs=[{"b.html": "B{% block a %}a{% endblock %}", "c.html": "pre{% if flag %}{% extends 'b.html' %}{% endif %}post{% block a %}A{% endblock %}"}],
+    dirs=[
+        {
+            "b.html": "B{% block a %}a{% endblock %}",
+            "c.html": "pre{% if flag %}{% extends 'b.html' %}{% endif %}post{% block a %}A{% endblock %}",
+        },
+    ],
     vars={"flag": False},
 )
 case("c.html", dirs=[{"b.html": "B", "c.html": "{% extends 'b.html' %}{% extends 'b.html' %}"}])
 case("c.html", dirs=[{"c.html": "{% extends 'missing.html' %}"}])
 case("c.html", dirs=[{"c.html": "{% extends '../x.html' %}"}])
-case("c.html", dirs=[{"b.html": "<{{ self.t() }}>{% block t %}T{% endblock %}", "c.html": "{% extends 'b.html' %}{% block t %}{{ super.super }}x{% endblock %}"}])
-case("sub/c.html", dirs=[{"sub/b.html": "[{% block a %}{% endblock %}]", "sub/c.html": "{% extends 'sub/b.html' %}{% block a %}ok{% endblock %}"}])
+case(
+    "c.html",
+    dirs=[
+        {
+            "b.html": "<{{ self.t() }}>{% block t %}T{% endblock %}",
+            "c.html": "{% extends 'b.html' %}{% block t %}{{ super.super }}x{% endblock %}",
+        },
+    ],
+)
+case(
+    "sub/c.html",
+    dirs=[{"sub/b.html": "[{% block a %}{% endblock %}]", "sub/c.html": "{% extends 'sub/b.html' %}{% block a %}ok{% endblock %}"}],
+)
 case("c.html", dirs=[{"c.html": "{% extends 'b.html' %}"}, {"b.html": "from the second directory"}])
 case("nope.html", dirs=[{"a.html": "a"}, {"b.html": "b"}])
 case("nope.html", dirs=[{"a.html": "a"}])
@@ -112,7 +138,12 @@ MACROS = """{# macros #}
 """
 case(
     "page.html",
-    dirs=[{"macros.html": MACROS, "page.html": "{% from 'macros.html' import chip, row with context %}{{ chip('<i>') }}{{ row(1, true) }}|{{ exported }}"}],
+    dirs=[
+        {
+            "macros.html": MACROS,
+            "page.html": "{% from 'macros.html' import chip, row with context %}{{ chip('<i>') }}{{ row(1, true) }}|{{ exported }}",
+        },
+    ],
     vars={"period": {"from": "2024-01-01"}},
 )
 case(
@@ -131,7 +162,12 @@ case(
 )
 case(
     "page.html",
-    dirs=[{"macros.html": MACROS, "page.html": "{% import 'macros.html' as m %}{{ m.chip(1) }}|{{ m.exported }}|{{ m._hidden }}|{{ m.missing }}"}],
+    dirs=[
+        {
+            "macros.html": MACROS,
+            "page.html": "{% import 'macros.html' as m %}{{ m.chip(1) }}|{{ m.exported }}|{{ m._hidden }}|{{ m.missing }}",
+        },
+    ],
 )
 case(
     "page.html",
@@ -153,17 +189,34 @@ case(
 case("page.html", dirs=[{"page.html": "{% from 'macros.html' import x %}"}])
 case(
     "page.html",
-    dirs=[{"macros.html": "{% macro m() %}{{ v }}{% endmacro %}", "page.html": "{% for v in [1, 2] %}{% from 'macros.html' import m with context %}{{ m() }}{% endfor %}"}],
+    dirs=[
+        {
+            "macros.html": "{% macro m() %}{{ v }}{% endmacro %}",
+            "page.html": "{% for v in [1, 2] %}{% from 'macros.html' import m with context %}{{ m() }}{% endfor %}",
+        },
+    ],
     vars={"v": 0},
 )
 
 # --- include ----------------------------------------------------------------------------------
-case("page.html", dirs=[{"part.html": "[{{ x }}]", "page.html": "{% set x = 2 %}{% include 'part.html' %}{% include 'part.html' without context %}"}], vars={"x": 1})
+case(
+    "page.html",
+    dirs=[{"part.html": "[{{ x }}]", "page.html": "{% set x = 2 %}{% include 'part.html' %}{% include 'part.html' without context %}"}],
+    vars={"x": 1},
+)
 case("page.html", dirs=[{"page.html": "a{% include 'missing.html' ignore missing %}b"}])
 case("page.html", dirs=[{"part.html": "P", "page.html": "{% include ['nope.html', 'part.html'] %}"}])
 case("page.html", dirs=[{"page.html": "{% include ['nope.html', 'neither.html'] %}"}])
 case("page.html", dirs=[{"page.html": "{% include 'missing.html' %}"}])
-case("page.html", dirs=[{"part.html": "{% for i in items %}{{ i }}{% endfor %}", "page.html": "{% for items in [[1], [2, 3]] %}{% include 'part.html' %}{% endfor %}"}])
+case(
+    "page.html",
+    dirs=[
+        {
+            "part.html": "{% for i in items %}{{ i }}{% endfor %}",
+            "page.html": "{% for items in [[1], [2, 3]] %}{% include 'part.html' %}{% endfor %}",
+        },
+    ],
+)
 
 # --- the default Undefined --------------------------------------------------------------------
 for src in [
@@ -208,7 +261,12 @@ for src in [
 ]:
     case(
         string=src,
-        vars={"t": {"$dt": "2024-03-05T14:07:09"}, "t2": {"$dt": "2024-03-05T14:07:09.000250"}, "day": {"$date": "2024-03-05"}, "none_t": None},
+        vars={
+            "t": {"$dt": "2024-03-05T14:07:09"},
+            "t2": {"$dt": "2024-03-05T14:07:09.000250"},
+            "day": {"$date": "2024-03-05"},
+            "none_t": None,
+        },
         autoescape="on",
     )
 

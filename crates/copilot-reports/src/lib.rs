@@ -6,9 +6,11 @@
 //! - [`starlette`] — Starlette's `FileResponse` (stat headers, ranges) and
 //!   `Response`, through `copilot.py`'s `GZipMiddleware(minimum_size=1000)`
 //! - [`tempfile`]  — `NamedTemporaryFile(delete=False, suffix=…)` names
+//! - [`case`]      — the case DOCX (`copilot-docx`) and PDF reports
 
 #![warn(missing_docs)]
 
+pub mod case;
 pub mod pdfkit;
 pub mod starlette;
 pub mod tempfile;

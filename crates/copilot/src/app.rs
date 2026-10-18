@@ -127,8 +127,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // the indexer and Graylog-event alerts, /create/threshold, the Sigma ingest,
     // the exclusion draft and dry-run.
     "/api/incidents/alerts",
-    // The CSV case exports; the DOCX and PDF reports stay in Python.
-    "POST /api/incidents/report/generate-report-csv",
+    // The CSV case exports (copilot-incidents) and the case DOCX and PDF
+    // reports (copilot-reports).
+    "POST /api/incidents/report",
     // The report list, the visibility switch, download and delete (GET "",
     // PATCH /{id}/visibility, GET /{id}/download, DELETE /{id}); generation
     // (the PDF renderer) stays in Python.
@@ -1115,6 +1116,14 @@ impl App {
                     legacy: self.legacy.clone(),
                 }),
             )
+            // The case DOCX and PDF reports, at their full paths beside the
+            // nested `/api/incidents/report` router.
+            .merge(copilot_reports::case::router(
+                copilot_reports::case::CaseReportState {
+                    ctx: self.ctx.clone(),
+                    store: self.objectstore.clone(),
+                },
+            ))
             // Full paths beside the nested incidents routers (methods merge
             // on a shared path: DELETE /case/{case_id} joins its GET).
             .merge(copilot_incidents::datastore::router(
