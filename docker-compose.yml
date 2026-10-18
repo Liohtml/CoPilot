@@ -1,16 +1,99 @@
-version: "2"
-
 services:
+    # The CoPilot backend: the Rust binary (crates/copilot; image built from
+    # crates/copilot/Dockerfile). Same service name, host port and network name
+    # as the Python backend it replaces, so the frontends' nginx
+    # (proxy_pass http://copilot-backend:5000), Graylog's webhooks, Talon and
+    # every other caller keep working unchanged. It runs the schema migrations and
+    # the startup tasks Python's lifespan ran, and owns the schedule.
+    # See docs/architecture/DEPLOYMENT.md (upgrade, rollback, what changed).
     copilot-backend:
-        image: ghcr.io/socfortress/copilot-backend:latest
-        # Expose the Ports for Graylog Alerting and Docs
+        image: ghcr.io/socfortress/copilot-rs:latest
         ports:
             - "5000:5000"
+        env_file: .env
+        environment:
+            # This service owns the schedule: every job whose scheduled_job_metadata
+            # row is enabled runs here (Pause/Start in the Scheduler UI flip the
+            # row). Fixed on purpose: with no Python backend running, the hand-over
+            # mode would leave every job unscheduled. docker-compose.rust.yml is the
+            # one layout that hands it back to APScheduler.
+            - COPILOT_SCHEDULER_OWNER=rust
+            # The schema migrations (an Alembic-head database is adopted, an older
+            # one refused) and the startup tasks (MinIO buckets, the connector,
+            # role and integration catalogs, the admin and scheduler users, the
+            # built-in templates, the portal's default settings), as Python's
+            # lifespan ran them. Both default on; .env may turn them off.
+            - COPILOT_RUN_MIGRATIONS=${COPILOT_RUN_MIGRATIONS:-true}
+            - COPILOT_STARTUP_TASKS=${COPILOT_STARTUP_TASKS:-true}
+            # The backend's data directory, at the Python backend's own path: the
+            # Velociraptor connector's api.config.yaml (its row holds that path; the
+            # connector's YAML upload writes it here) and the CrowdStrike, Defender
+            # for Endpoint and Bitdefender collectors' files.
+            - COPILOT_BACKEND_DATA_DIR=/opt/copilot/backend/data
+            # ScoutSuite's scans run in this directory; their reports land in its
+            # scoutsuite-report/ (the volume below), which /scoutsuite-report serves.
+            - COPILOT_SCOUTSUITE_DIR=/opt/copilot/backend
+            # Mimecast's SIEM collection keeps its page token and its downloads here.
+            - COPILOT_MIMECAST_DIR=/opt/copilot/backend/data/mimecast
+        volumes:
+            # Read-write for the image's uid 10001: copilot-backend-init below
+            # hands the directory (MinIO's minio-data/ aside) to that user.
+            - ./data/data:/opt/copilot/backend/data
+            - scoutsuite-reports:/opt/copilot/backend/scoutsuite-report
+        depends_on:
+            copilot-backend-init:
+                condition: service_completed_successfully
+            copilot-mysql:
+                condition: service_started
+            copilot-minio:
+                condition: service_started
+        # A scheduled job in progress gets 10 s to finish after the server stops
+        # taking requests (Docker's default 10 s would kill it first).
+        stop_grace_period: 30s
+        restart: always
+
+    # One-shot, before every start of copilot-backend: the Rust image runs as the
+    # unprivileged uid 10001, while the Python backend ran as root and left its
+    # data directory and ScoutSuite's reports owned by root. This hands both to
+    # uid 10001 — only what is not that user's already, never following a
+    # symbolic link, and leaving MinIO's objects (./data/data/minio-data) alone —
+    # so the backend keeps no root privileges at run time. A rollback to the
+    # Python backend (root) reads and writes these files as before.
+    copilot-backend-init:
+        image: ghcr.io/socfortress/copilot-rs:latest
+        user: "0:0"
+        entrypoint: ["/bin/sh", "-c"]
+        command:
+            - >-
+                find /opt/copilot/backend/data -path /opt/copilot/backend/data/minio-data -prune
+                -o ! -user 10001 -exec chown -h 10001:10001 {} + &&
+                find /opt/copilot/backend/scoutsuite-report ! -user 10001
+                -exec chown -h 10001:10001 {} +
+        volumes:
+            - ./data/data:/opt/copilot/backend/data
+            - scoutsuite-reports:/opt/copilot/backend/scoutsuite-report
+        healthcheck:
+            disable: true
+        restart: "no"
+
+    # ! Opt-in: the Python backend (the reference implementation), for a rollback ! #
+    # `docker compose --profile legacy up -d` starts it next to the Rust backend as
+    # a standby: same database and data directory, not published, APScheduler off
+    # (copilot-backend owns the schedule). docker-compose.legacy.yml puts it in the
+    # Rust backend's place (a rollback); docker-compose.rust.yml puts it behind the
+    # Rust backend (the staged rollout, APScheduler back on unless .env says
+    # COPILOT_SCHEDULER_OWNER=rust).
+    copilot-backend-legacy:
+        profiles: ["legacy"]
+        image: ghcr.io/socfortress/copilot-backend:latest
         volumes:
             - ./data/copilot-backend-data/logs:/opt/logs
-            # Mount the copilot.db file to persist the database
             - ./data/data:/opt/copilot/backend/data
+            - scoutsuite-reports:/opt/copilot/backend/scoutsuite-report
         env_file: .env
+        environment:
+            # copilot-backend owns the schedule in this file: never both.
+            - COPILOT_PY_SCHEDULER=false
         depends_on:
             - copilot-mysql
         restart: always
@@ -200,6 +283,9 @@ services:
 
 volumes:
     mysql-data:
+    # ScoutSuite's reports (copilot-backend writes them; the legacy backend, when
+    # it runs, serves the same files).
+    scoutsuite-reports:
 
 networks:
     default:
