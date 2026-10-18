@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use copilot_db::scheduler::{self as sdb, JobLock};
@@ -258,16 +258,21 @@ async fn a_job_runs_here_only_while_handed_over() {
     assert_eq!(status[0].owner, Some(Owner::Rust));
     assert_eq!(status[0].interval_minutes, Some(5));
 
-    // A manual run of a job this side does not own is not run here.
-    sqlx::query("UPDATE scheduled_job_metadata SET enabled = 1 WHERE id = ?")
+    // A manual run is an operator's request: it runs here whoever owns the
+    // schedule (Python's manual run runs "whatever the row says" too), and
+    // stamps nothing for a job whose function does not stamp itself.
+    sqlx::query("UPDATE scheduled_job_metadata SET enabled = 1, last_success = NULL WHERE id = ?")
         .bind(row)
         .execute(h.db.pool())
         .await
         .unwrap();
+    let before = runs.load(Ordering::SeqCst);
     assert!(matches!(
         opted_in.run_now(id).await.unwrap(),
-        ManualRun::NotOwned(Owner::Legacy)
+        ManualRun::Ran(Ok(None))
     ));
+    assert_eq!(runs.load(Ordering::SeqCst), before + 1);
+    assert!(last_success(&h, row).await.is_none());
     forget(&h, id).await;
 }
 
@@ -312,7 +317,7 @@ async fn the_runner_stops_with_the_server() {
     let id = leak(format!("e2e_loop_{}", h.suffix));
     let (spec, runs) = counting_job(id, Arc::new(AtomicUsize::new(0)));
     let scheduler = Scheduler::new(h.db.clone(), OptIn::parse(Some(id), false), vec![spec]);
-    // Last run two minutes ago (by APScheduler, say), every five minutes.
+    // Every five minutes; a last success two minutes ago changes nothing.
     let row = put_meta(&h, id, true, 5, "d").await;
     sqlx::query(
         "UPDATE scheduled_job_metadata SET last_success = UTC_TIMESTAMP() - INTERVAL 2 MINUTE \
@@ -324,7 +329,8 @@ async fn the_runner_stops_with_the_server() {
     .unwrap();
     let cancel = CancellationToken::new();
     let handle = scheduler.spawn(cancel.clone());
-    // The rhythm continues from the last success: three minutes from now.
+    // APScheduler's grid: the first run one interval after the job was
+    // scheduled (`start_date = now + interval`).
     let mut next = None;
     for _ in 0..40 {
         next = scheduler.next_run(id);
@@ -334,7 +340,7 @@ async fn the_runner_stops_with_the_server() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     let until = (next.unwrap() - chrono::Utc::now()).num_seconds();
-    assert!((176..=181).contains(&until), "{until}");
+    assert!((296..=301).contains(&until), "{until}");
     cancel.cancel();
     tokio::time::timeout(Duration::from_secs(5), handle)
         .await
@@ -536,8 +542,9 @@ async fn scheduler_reads_answer_from_the_job_store() {
         .await;
     assert_eq!(st, 404);
 
-    // Unported writes have no route here (and no legacy backend in this test).
-    let (st, _) = h
+    // The writes are answered here: an unknown function is
+    // `get_function_by_name`'s ValueError before anything is written.
+    let (st, body) = h
         .call(
             "POST",
             "/api/scheduler/add?job_id=x&function_name=y&time_interval=1",
@@ -545,7 +552,13 @@ async fn scheduler_reads_answer_from_the_job_store() {
             None,
         )
         .await;
-    assert!(st == 404 || st == 405, "{st}");
+    assert_eq!(
+        (st.as_u16(), body["message"].clone()),
+        (
+            400,
+            json!(copilot_scheduler::functions::unknown_function("y"))
+        )
+    );
 
     for id in [&a, &b, &p, &bare] {
         forget(&h, id).await;
@@ -640,19 +653,25 @@ async fn prune_audit_log_runs_here_when_handed_over() {
     .await;
     let row = put_meta(&h, PRUNE, true, 1440, "Prunes audit_log").await;
 
-    // APScheduler owns it (row enabled): forwarded to Python.
-    Mock::given(method("POST"))
-        .and(path(format!("/api/scheduler/jobs/run/{PRUNE}")))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(json!({"success": true, "message": "Job executed successfully", "result": null, "by": "python"})),
-        )
-        .expect(1)
-        .mount(&legacy)
-        .await;
+    // APScheduler owns its schedule (row enabled): an operator's run is run
+    // here all the same — the same function, serialized by the run lock —
+    // and nothing reaches Python.
     let (st, body) = h.call("POST", &run, Some(&admin), None).await;
-    assert_eq!((st.as_u16(), body["by"].clone()), (200, json!("python")));
-    assert_eq!(audit_rows(&h, &marker).await, ["1900", "2000"]);
+    assert_eq!(
+        (st.as_u16(), body),
+        (
+            200,
+            json!({"success": true, "message": "Job executed successfully", "result": null})
+        )
+    );
+    assert_eq!(audit_rows(&h, &marker).await, ["2000"]);
+    assert!(legacy.received_requests().await.unwrap().is_empty());
+    h.exec(&format!(
+        "INSERT INTO audit_log (timestamp, actor_username, action, entity_type, entity_id, \
+         result) VALUES ('1900-01-01 00:00:00', 'e2e', 'case.create', 'case', '{marker}', \
+         'success')"
+    ))
+    .await;
 
     // Handed over (row disabled, opted in): runs here, no last_success (the
     // Python function does not stamp on a manual run either).
@@ -722,6 +741,16 @@ async fn prune_audit_log_runs_here_when_handed_over() {
     forget(&h, PRUNE).await;
 }
 
+/// The hook APScheduler's part of a write goes to: one operation, found.
+fn ops_mock(op: &str, job_id: &str, found: bool) -> Mock {
+    Mock::given(method("POST"))
+        .and(path("/api/scheduler/apscheduler_ops"))
+        .and(body_json(json!({"ops": [{"op": op, "job_id": job_id}]})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"success": true, "found": [found]})),
+        )
+}
+
 #[tokio::test]
 async fn pause_and_start_carry_the_hand_over_flag() {
     let legacy = MockServer::start().await;
@@ -737,22 +766,11 @@ async fn pause_and_start_carry_the_hand_over_flag() {
     ))
     .await;
     let analyst = h.token(&format!("hadmin{s}"), "analyst");
-    let ok =
-        |m: &str| ResponseTemplate::new(200).set_body_json(json!({"success": true, "message": m}));
+    ops_mock("pause", PRUNE, true).mount(&legacy).await;
+    ops_mock("pause", &other, true).mount(&legacy).await;
 
-    Mock::given(method("POST"))
-        .and(path(format!("/api/scheduler/pause/{PRUNE}")))
-        .respond_with(ok("Job paused successfully"))
-        .mount(&legacy)
-        .await;
-    Mock::given(method("POST"))
-        .and(path(format!("/api/scheduler/pause/{other}")))
-        .respond_with(ok("Job paused successfully"))
-        .mount(&legacy)
-        .await;
-
-    // Pause: APScheduler pauses it (Python's answer, passed through) and the
-    // row is disabled — the job is now this service's.
+    // Pause: APScheduler pauses it (the hook, with the caller's token) and
+    // the row is disabled — the job is now this service's.
     let (st, body) = h
         .call(
             "POST",
@@ -770,7 +788,12 @@ async fn pause_and_start_carry_the_hand_over_flag() {
     );
     assert!(!enabled_of(&h, row).await);
     assert_eq!(h.app.scheduler.owner(PRUNE).await.unwrap(), Owner::Rust);
-    // A job this build cannot run: forwarded, its row untouched.
+    let sent = legacy.received_requests().await.unwrap();
+    assert_eq!(
+        sent[0].headers.get("authorization").unwrap(),
+        &format!("Bearer {analyst}")
+    );
+    // A job this build cannot run: APScheduler pauses it, its row untouched.
     let (st, _) = h
         .call(
             "POST",
@@ -782,13 +805,8 @@ async fn pause_and_start_carry_the_hand_over_flag() {
     assert_eq!(st, 200);
     assert!(enabled_of(&h, other_row).await);
 
-    // Start refused by Python (not in its store): the flag is restored.
-    let refused = Mock::given(method("POST"))
-        .and(path(format!("/api/scheduler/start/{PRUNE}")))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(json!({"success": false, "message": "Job not found"})),
-        )
+    // Start refused by APScheduler (not in its store): the flag is restored.
+    let refused = ops_mock("resume", PRUNE, false)
         .up_to_n_times(1)
         .mount_as_scoped(&legacy)
         .await;
@@ -800,16 +818,15 @@ async fn pause_and_start_carry_the_hand_over_flag() {
             None,
         )
         .await;
-    assert_eq!((st.as_u16(), body["success"].clone()), (200, json!(false)));
+    assert_eq!(
+        (st.as_u16(), body),
+        (200, json!({"success": false, "message": "Job not found"}))
+    );
     assert!(!enabled_of(&h, row).await);
     drop(refused);
 
     // Start: handed back to APScheduler.
-    Mock::given(method("POST"))
-        .and(path(format!("/api/scheduler/start/{PRUNE}")))
-        .respond_with(ok("Job started successfully"))
-        .mount(&legacy)
-        .await;
+    ops_mock("resume", PRUNE, true).mount(&legacy).await;
     let (st, body) = h
         .call(
             "POST",
@@ -827,26 +844,6 @@ async fn pause_and_start_carry_the_hand_over_flag() {
     );
     assert!(enabled_of(&h, row).await);
     assert_eq!(h.app.scheduler.owner(PRUNE).await.unwrap(), Owner::Legacy);
-
-    // The unported writes go to Python untouched.
-    Mock::given(method("PUT"))
-        .and(path(format!("/api/scheduler/update/{PRUNE}")))
-        .respond_with(ok("Job updated successfully"))
-        .expect(1)
-        .mount(&legacy)
-        .await;
-    let (st, body) = h
-        .call(
-            "PUT",
-            &format!("/api/scheduler/update/{PRUNE}?time_interval=5"),
-            Some(&analyst),
-            None,
-        )
-        .await;
-    assert_eq!(
-        (st.as_u16(), body["message"].clone()),
-        (200, json!("Job updated successfully"))
-    );
 
     forget(&h, PRUNE).await;
     forget(&h, &other).await;

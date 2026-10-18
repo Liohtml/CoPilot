@@ -7,10 +7,12 @@
 //! is how a manual run finds the function) and `next_run_time`, rendered the
 //! way Pydantic renders an aware `datetime` (`2026-10-15T18:00:00Z`,
 //! `…+05:30`). The timezone comes from the pickled `tzinfo`: UTC under any
-//! of its names, a fixed `datetime.timezone`, the fixed `Etc/GMT±N` zones and
-//! pytz (whose pickle carries the offset) are converted here; a `zoneinfo`
-//! zone with daylight saving time would need a tz database, so such a time is
-//! [`NextRun::Unconvertible`] and the route lets Python answer.
+//! of its names, a fixed `datetime.timezone`, pytz (whose pickle carries the
+//! offset) and every `zoneinfo` zone — the fixed ones directly, the others
+//! through the IANA database compiled into chrono-tz, the pickled wall time
+//! and its `fold` choosing the offset as `ZoneInfo.utcoffset` does. A key
+//! chrono-tz does not know (or a wall time in a gap, which APScheduler never
+//! stores) is [`NextRun::Unconvertible`]: the route's bare 500.
 //!
 //! `apscheduler_vectors.json` (`scripts/gen-apscheduler-vectors.py`) pins
 //! the reader against blobs written by APScheduler itself.
@@ -102,6 +104,8 @@ const UTC_KEYS: &[&str] = &[
 enum Tz {
     Naive,
     Offset(i64),
+    /// A zone whose offset depends on the wall time.
+    Zone(chrono_tz::Tz),
     Unconvertible,
 }
 
@@ -153,7 +157,12 @@ fn tz_of(v: Option<&Value>) -> Tz {
             });
         if is_unpickle {
             return match args.first().and_then(Value::as_str) {
-                Some(key) => zoneinfo_offset(key).map_or(Tz::Unconvertible, Tz::Offset),
+                Some(key) => match zoneinfo_offset(key) {
+                    Some(offset) => Tz::Offset(offset),
+                    None => key
+                        .parse::<chrono_tz::Tz>()
+                        .map_or(Tz::Unconvertible, Tz::Zone),
+                },
                 None => Tz::Unconvertible,
             };
         }
@@ -217,6 +226,7 @@ pub fn render_datetime(v: &Value) -> Result<Option<String>, PickleError> {
     }
     let year = u32::from(b[0]) * 256 + u32::from(b[1]);
     // `fold` rides on the month byte's high bit (protocol > 3).
+    let fold = b[2] & 0x80 != 0;
     let month = b[2] & 0x7f;
     let (day, hour, minute, second) = (b[3], b[4], b[5], b[6]);
     let micro = (u32::from(b[7]) << 16) | (u32::from(b[8]) << 8) | u32::from(b[9]);
@@ -224,17 +234,60 @@ pub fn render_datetime(v: &Value) -> Result<Option<String>, PickleError> {
     if micro != 0 {
         out.push_str(&format!(".{micro:06}"));
     }
-    match tz_of(a.get(1)) {
-        Tz::Naive => {}
-        Tz::Offset(0) => out.push('Z'),
-        Tz::Offset(secs) => {
-            let sign = if secs < 0 { '-' } else { '+' };
-            let abs = secs.unsigned_abs();
-            out.push_str(&format!("{sign}{:02}:{:02}", abs / 3600, (abs % 3600) / 60));
+    let offset = match tz_of(a.get(1)) {
+        Tz::Naive => return Ok(Some(out)),
+        Tz::Offset(secs) => secs,
+        Tz::Zone(zone) => {
+            let Some(offset) = zone_offset(zone, year, month, day, hour, minute, second, fold)
+            else {
+                return Ok(None);
+            };
+            offset
         }
         Tz::Unconvertible => return Ok(None),
+    };
+    if offset == 0 {
+        out.push('Z');
+    } else {
+        let sign = if offset < 0 { '-' } else { '+' };
+        let abs = offset.unsigned_abs();
+        out.push_str(&format!("{sign}{:02}:{:02}", abs / 3600, (abs % 3600) / 60));
     }
     Ok(Some(out))
+}
+
+/// `ZoneInfo.utcoffset(dt)` of a wall time: the one offset, or — repeated
+/// by a transition back — the first (`fold=0`) or the second (`fold=1`).
+#[allow(clippy::too_many_arguments)]
+fn zone_offset(
+    zone: chrono_tz::Tz,
+    year: u32,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: u8,
+    fold: bool,
+) -> Option<i64> {
+    use chrono::{LocalResult, Offset, TimeZone};
+    let date = chrono::NaiveDate::from_ymd_opt(
+        i32::try_from(year).ok()?,
+        u32::from(month),
+        u32::from(day),
+    )?;
+    let naive = date.and_hms_opt(u32::from(hour), u32::from(minute), u32::from(second))?;
+    let pick = match zone.offset_from_local_datetime(&naive) {
+        LocalResult::Single(o) => o,
+        LocalResult::Ambiguous(first, second) => {
+            if fold {
+                second
+            } else {
+                first
+            }
+        }
+        LocalResult::None => return None,
+    };
+    Some(i64::from(pick.fix().local_minus_utc()))
 }
 
 #[cfg(test)]

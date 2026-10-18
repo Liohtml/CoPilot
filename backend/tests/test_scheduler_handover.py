@@ -158,6 +158,7 @@ RENAMED_JOBS = {"invoke_carbonblack_integration_collection": "invoke_carbonblack
 # creates them with their row, enabled.
 ROUTE_CREATED_JOBS = {
     "invoke_carbonblack_integration_collection",
+    "invoke_cato_integration_collect",
     "invoke_darktrace_integration_collect",
     "invoke_duo_integration_collect",
     "invoke_huntress_integration_collect",
@@ -194,11 +195,118 @@ def test_every_rust_capable_job_is_seeded():
     assert ROUTE_CREATED_JOBS <= set(handover.RUST_CAPABLE_JOBS)
 
 
-def test_the_cato_job_stays_in_apscheduler():
-    """`schedule_enabled_jobs` disables its row at every start while the stored job keeps running."""
-    assert "invoke_cato_integration_collect" not in handover.RUST_CAPABLE_JOBS
+def test_every_scheduled_job_can_be_handed_over():
+    """After the last wave every job of `get_function_by_name` is guarded (Cato and the refreshers included)."""
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(scheduler_module.get_function_by_name))
+    keys = {k.value for node in ast.walk(tree) if isinstance(node, ast.Dict) for k in node.keys}
+    assert keys == set(handover.RUST_CAPABLE_JOBS)
+
+
+def test_the_cato_row_is_no_longer_disabled_at_startup():
+    """`schedule_enabled_jobs` used to disable Cato's row at every start while its stored job kept running."""
+    source = inspect_source(scheduler_module.schedule_enabled_jobs)
+    disabled = source[source.index("job_ids_to_disable = [") : source.index("]")]
+    assert "invoke_cato_integration_collect" not in disabled
     function = scheduler_module.get_function_by_name("invoke_cato_integration_collect")
-    assert not hasattr(function, "__rust_handover_job_id__")
+    assert function.__rust_handover_job_id__ == "invoke_cato_integration_collect"
+
+
+def inspect_source(function):
+    import inspect
+
+    return inspect.getsource(function)
+
+
+@pytest.mark.parametrize(
+    "value,enabled",
+    [(None, True), ("true", True), ("false", False), (" FALSE ", False), ("0", False), ("off", False)],
+)
+def test_the_python_scheduler_switch(monkeypatch, value, enabled):
+    if value is None:
+        monkeypatch.delenv(handover.PY_SCHEDULER_ENV, raising=False)
+    else:
+        monkeypatch.setenv(handover.PY_SCHEDULER_ENV, value)
+    assert handover.py_scheduler_enabled() is enabled
+
+
+def test_with_apscheduler_off_every_scheduled_tick_is_skipped(fake_db, monkeypatch):
+    monkeypatch.setenv(handover.PY_SCHEDULER_ENV, "false")
+    job, calls = guarded_counter()
+    assert run(job()) is handover.JOB_SKIPPED
+    assert calls == [] and fake_db.waits == [], "skipped before the lock is even asked for"
+
+    async def manual():
+        with handover.manual_run():
+            return await job()
+
+    assert run(manual()) == "ran", "an operator's run still runs"
+
+
+def test_with_apscheduler_off_init_scheduler_seeds_the_rows_and_starts_nothing(monkeypatch):
+    monkeypatch.setenv(handover.PY_SCHEDULER_ENV, "false")
+    seeded = []
+
+    async def seed():
+        seeded.append(1)
+
+    monkeypatch.setattr(scheduler_module, "initialize_job_metadata", seed)
+    monkeypatch.setattr(scheduler_module, "scheduler_instance", None)
+    monkeypatch.setattr(scheduler_module, "_metadata_seeded_without_scheduler", False)
+    assert run(scheduler_module.init_scheduler()) is None
+    assert run(scheduler_module.init_scheduler()) is None
+    assert seeded == [1], "seeded once"
+    with pytest.raises(scheduler_module.SchedulerDisabledError):
+        run(scheduler_module.get_scheduler_instance())
+
+
+class _CatoSession:
+    """The two reads `_repair_cato_row` makes: the stored job's next_run_time, the deciding row."""
+
+    def __init__(self, stored, row):
+        self.stored, self.row, self.commits = stored, row, 0
+
+    async def execute(self, stmt, params=None):
+        session = self
+
+        class R:
+            def first(self):
+                return session.stored
+
+            def scalars(self):
+                return self
+
+        r = R()
+        if params is None:
+            r.first = lambda: session.row
+        return r
+
+    async def commit(self):
+        self.commits += 1
+
+    async def rollback(self):
+        pass
+
+
+@pytest.mark.parametrize(
+    "stored,enabled,repaired",
+    [
+        ((1700000000.0,), False, True),  # the old startup list's doing: the stored job kept running
+        ((None,), False, False),  # paused in APScheduler too: a pause or a hand-over
+        (None, False, False),  # no stored job
+        ((1700000000.0,), True, False),  # already enabled
+    ],
+)
+def test_the_cato_row_repair(stored, enabled, repaired):
+    from app.schedulers.models.scheduler import JobMetadata
+
+    row = JobMetadata(job_id="invoke_cato_integration_collect", time_interval=5, enabled=enabled, job_description=None)
+    session = _CatoSession(stored, row)
+    run(scheduler_module._repair_cato_row(session))
+    assert row.enabled is (enabled or repaired)
+    assert session.commits == (1 if repaired else 0)
 
 
 class _Result:
@@ -255,4 +363,4 @@ def test_startup_keeps_a_handed_over_job_disabled(monkeypatch):
     prune = _Session.rows["prune_audit_log"]
     assert prune.enabled is False, "a handed-over job stays with the Rust service across restarts"
     assert prune.time_interval == 1440, "the interval is still reset as before"
-    assert _Session.rows["refresh_wazuh_rules_cache"].enabled is True, "every other job is re-enabled as before"
+    assert _Session.rows["refresh_wazuh_rules_cache"].enabled is False, "every seeded job is Rust-capable now"

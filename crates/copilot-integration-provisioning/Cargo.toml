@@ -19,9 +19,9 @@ copilot-monitoring-alerts = { workspace = true }
 copilot-provisioning = { workspace = true }
 copilot-integrations = { workspace = true }
 copilot-wazuh = { workspace = true }
-copilot-gateway = { workspace = true }
 copilot-threat-intel = { workspace = true }
 copilot-portainer = { workspace = true }
+copilot-scheduler = { workspace = true }
 base64 = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

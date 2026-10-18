@@ -4,20 +4,37 @@
 //! APScheduler's `refresh_catalog_caches` (every 15 min, TTL-aware) and
 //! `refresh_wazuh_rules_cache` (every 30 min) and warmed at startup
 //! (`warm_catalog_caches`). Those jobs fill only Python's copies; this
-//! process serves `/api/copilot_searches` from its own, so it runs the same
-//! three things itself. It is a process-local task, not a hand-over job: a
-//! hand-over would let one scheduler run the job, and the other process's
-//! caches would go cold — the Python sidebar (`status/context.py`) still
-//! reads Python's Wazuh ruleset. Both processes refreshing their own copy of
-//! read-only upstream data is what Python's per-process caches already did
-//! with several workers.
+//! process serves `/api/copilot_searches` from its own. Two things refresh
+//! them:
+//!
+//! - **the two jobs** ([`job_specs`]): `refresh_catalog_caches` and
+//!   `refresh_wazuh_rules_cache` as this service's scheduler runs them — once
+//!   handed over (or under `COPILOT_SCHEDULER_OWNER=rust`) they refresh *this*
+//!   process's caches, so the Scheduler UI's *Run* and *Pause* act on the
+//!   caches the catalog serves;
+//! - **this process's own timer** ([`spawn`]): the startup warm-up, then the
+//!   same two refreshes every 15 and 30 minutes — but only while no scheduler
+//!   here decides about the job ([`copilot_scheduler::Scheduler::timer_runs`]:
+//!   its row enabled or absent under the hand-over, absent under the
+//!   ownership). Once the job is handed over, owned or paused, the timer
+//!   leaves it to the job (paused: nothing refreshes, the operator's choice).
+//!
+//! Both processes refreshing their own copy of read-only upstream data is
+//! what Python's per-process caches already did with several workers.
 
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
+use copilot_scheduler::{JobSpec, Scheduler};
+
 use crate::SearchesState;
 use crate::caches::{self, Kind};
+
+/// `refresh_catalog_caches`' job id.
+pub const CATALOG_JOB: &str = "refresh_catalog_caches";
+/// `refresh_wazuh_rules_cache`'s job id.
+pub const WAZUH_JOB: &str = "refresh_wazuh_rules_cache";
 
 /// `refresh_catalog_caches`' interval.
 pub const CATALOG_INTERVAL: Duration = Duration::from_secs(15 * 60);
@@ -61,12 +78,50 @@ pub async fn refresh_wazuh_rules_cache(st: &SearchesState) {
     }
 }
 
+/// The two jobs, for `copilot`'s `scheduled_jobs()` (`initialize_job_metadata`
+/// seeds them every 15 and 30 minutes). Neither raises, as in Python.
+pub fn job_specs(st: &SearchesState) -> Vec<JobSpec> {
+    let catalog = st.clone();
+    let wazuh = st.clone();
+    vec![
+        JobSpec::new(CATALOG_JOB, 15, move || {
+            let st = catalog.clone();
+            async move {
+                refresh_catalog_caches(&st).await;
+                Ok(())
+            }
+        }),
+        JobSpec::new(WAZUH_JOB, 30, move || {
+            let st = wazuh.clone();
+            async move {
+                refresh_wazuh_rules_cache(&st).await;
+                Ok(())
+            }
+        }),
+    ]
+}
+
+/// Whether the timer's tick of `job_id` runs (no scheduler: always).
+async fn timer_runs(gate: Option<&Scheduler>, job_id: &'static str) -> bool {
+    match gate {
+        None => true,
+        Some(s) => {
+            let runs = s.timer_runs(job_id).await;
+            if !runs {
+                tracing::debug!(job_id, "the scheduled job refreshes this cache; timer idle");
+            }
+            runs
+        }
+    }
+}
+
 /// Start the warm-up and the two loops (until `cancel`), unless
 /// `COPILOT_CATALOG_REFRESH` is off: then the caches load on demand only, as
 /// Python's would without its startup warm-up and its two jobs (the parity
 /// suites start the binary so, since their Python side never runs those; an
-/// air-gapped deployment may).
-pub fn spawn(st: SearchesState, cancel: CancellationToken) {
+/// air-gapped deployment may). With `gate`, a loop's tick runs only while
+/// [`Scheduler::timer_runs`] says the job does not refresh the cache itself.
+pub fn spawn(st: SearchesState, cancel: CancellationToken, gate: Option<Scheduler>) {
     if !st.settings.refresh {
         tracing::info!("COPILOT_CATALOG_REFRESH is off: the catalog caches load on demand");
         return;
@@ -86,11 +141,16 @@ pub fn spawn(st: SearchesState, cancel: CancellationToken) {
     });
     let catalog = st.clone();
     let stop = cancel.clone();
+    let catalog_gate = gate.clone();
     tokio::spawn(async move {
         loop {
             tokio::select! {
                 () = stop.cancelled() => return,
-                () = tokio::time::sleep(CATALOG_INTERVAL) => refresh_catalog_caches(&catalog).await,
+                () = tokio::time::sleep(CATALOG_INTERVAL) => {
+                    if timer_runs(catalog_gate.as_ref(), CATALOG_JOB).await {
+                        refresh_catalog_caches(&catalog).await;
+                    }
+                }
             }
         }
     });
@@ -98,7 +158,11 @@ pub fn spawn(st: SearchesState, cancel: CancellationToken) {
         loop {
             tokio::select! {
                 () = cancel.cancelled() => return,
-                () = tokio::time::sleep(WAZUH_INTERVAL) => refresh_wazuh_rules_cache(&st).await,
+                () = tokio::time::sleep(WAZUH_INTERVAL) => {
+                    if timer_runs(gate.as_ref(), WAZUH_JOB).await {
+                        refresh_wazuh_rules_cache(&st).await;
+                    }
+                }
             }
         }
     });

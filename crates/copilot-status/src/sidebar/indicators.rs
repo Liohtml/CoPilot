@@ -355,12 +355,27 @@ const META_COLUMNS: &str = "scheduled_job_metadata.id, scheduled_job_metadata.jo
      scheduled_job_metadata.extra_data, scheduled_job_metadata.enabled, \
      scheduled_job_metadata.job_description";
 
-/// `scheduler.get_jobs()`'s ids: APScheduler's store (`apscheduler_jobs`)
-/// read as `SQLAlchemyJobStore.get_all_jobs()` reads it — by
-/// `next_run_time`, the paused jobs moved to the end. A row whose state this
-/// reader cannot decode keeps its place as a scheduled job (APScheduler
-/// drops a row it cannot restore). No table yet: no jobs.
-async fn scheduled_job_ids(db: &Db) -> Result<Vec<String>, String> {
+/// `scheduler.get_jobs()`'s ids: under `COPILOT_SCHEDULER_OWNER=rust` this
+/// service's scheduler's (its jobs in the same order); else
+/// [`stored_job_ids`].
+async fn scheduled_job_ids(st: &SidebarState) -> Result<Vec<String>, String> {
+    if let Some(s) = st
+        .scheduler
+        .get()
+        .filter(|s| s.mode() == copilot_scheduler::Mode::Rust)
+    {
+        s.ensure_loaded().await.map_err(db_err)?;
+        return Ok(s.listed().into_iter().map(|l| l.id.to_string()).collect());
+    }
+    stored_job_ids(&st.ctx.db).await
+}
+
+/// APScheduler's store (`apscheduler_jobs`) read as
+/// `SQLAlchemyJobStore.get_all_jobs()` reads it — by `next_run_time`, the
+/// paused jobs moved to the end. A row whose state this reader cannot decode
+/// keeps its place as a scheduled job (APScheduler drops a row it cannot
+/// restore). No table yet: no jobs.
+async fn stored_job_ids(db: &Db) -> Result<Vec<String>, String> {
     let Some(rows) = copilot_db::scheduler::stored_jobs(db)
         .await
         .map_err(db_err)?
@@ -393,7 +408,7 @@ async fn scheduled_job_ids(db: &Db) -> Result<Vec<String>, String> {
 pub async fn scheduler(st: &SidebarState) -> Built {
     let db = &st.ctx.db;
     let now = utcnow();
-    let job_ids: Vec<String> = scheduled_job_ids(db)
+    let job_ids: Vec<String> = scheduled_job_ids(st)
         .await?
         .into_iter()
         .filter(|id| id != AGENT_SYNC)
@@ -482,7 +497,7 @@ pub async fn agent_sync(st: &SidebarState) -> Built {
             "operations",
         ));
     }
-    if !scheduled_job_ids(db)
+    if !scheduled_job_ids(st)
         .await?
         .iter()
         .any(|id| id == AGENT_SYNC)

@@ -7,9 +7,10 @@ Each vector is an `apscheduler_jobs.job_state` blob exactly as `SQLAlchemyJobSto
 (`pickle.dumps(job.__getstate__(), HIGHEST_PROTOCOL)`, read back from a real store) and what
 the Scheduler routes make of it: the job's `id`, `name` and `func` reference, and
 `next_run_time` as Pydantic renders it in `JobsNextRunResponse` (`null` while paused).
-`tz_supported` is false for a timezone the Rust reader does not convert (a `zoneinfo` zone other
-than UTC and `Etc/GMT±N`, which would need a tz database); the routes let the Python backend
-answer for such a job.
+`tz_supported` is false for a timezone the Rust reader does not convert; every `zoneinfo` zone is
+converted (through the IANA database compiled into chrono-tz, the pickled wall time and its `fold`
+choosing the offset), so today every vector is supported. Each zone also carries a job pinned to a
+winter date and, for zones with a transition back, one to the repeated hour with `fold=1`.
 
 Regenerate after upgrading APScheduler, pydantic, pytz or tzlocal.
 """
@@ -57,6 +58,10 @@ SCHEDULER_ZONES = [
     ("pytz utc", pytz.utc),
     ("pytz Europe/Berlin", pytz.timezone("Europe/Berlin")),
     ("zoneinfo Europe/Berlin", zoneinfo.ZoneInfo("Europe/Berlin")),
+    ("zoneinfo America/New_York", zoneinfo.ZoneInfo("America/New_York")),
+    ("zoneinfo Europe/London", zoneinfo.ZoneInfo("Europe/London")),
+    ("zoneinfo Asia/Kolkata", zoneinfo.ZoneInfo("Asia/Kolkata")),
+    ("zoneinfo Australia/Lord_Howe", zoneinfo.ZoneInfo("Australia/Lord_Howe")),
 ]
 
 
@@ -67,17 +72,15 @@ UTC_KEYS |= {"Etc/GMT0", "GMT0", "Etc/GMT+0", "Etc/GMT-0", "GMT+0", "GMT-0", "Et
 
 
 def rust_reads_tz(tzinfo):
-    if isinstance(tzinfo, zoneinfo.ZoneInfo):
-        key = tzinfo.key
-        if key in UTC_KEYS:
-            return True
-        if key.startswith("Etc/GMT"):
-            try:
-                return 1 <= abs(int(key[len("Etc/GMT") :])) <= 14
-            except ValueError:
-                return False
-        return False
+    """Every zone this generator uses: fixed offsets, pytz (the pickle carries the offset) and
+    zoneinfo through chrono-tz."""
     return True
+
+
+def aware(tz, *fields, fold=0):
+    if hasattr(tz, "localize"):
+        return tz.localize(datetime.datetime(*fields))
+    return datetime.datetime(*fields, tzinfo=tz, fold=fold)
 
 
 async def vectors_for(label, tz):
@@ -99,12 +102,13 @@ async def vectors_for(label, tz):
         )
         scheduler.get_job("paused_job").pause()
         # A whole-second next run (Pydantic renders no fraction then).
-        scheduler.modify_job(
-            "a_job",
-            next_run_time=datetime.datetime(2026, 10, 15, 18, 0, 0, tzinfo=tz)
-            if not hasattr(tz, "localize")
-            else tz.localize(datetime.datetime(2026, 10, 15, 18, 0, 0)),
-        )
+        scheduler.modify_job("a_job", next_run_time=aware(tz, 2026, 10, 15, 18, 0, 0))
+        # A winter one, and the repeated hour of a transition back (fold=1), where zones differ.
+        scheduler.add_job(noop, "interval", minutes=60, id="winter_job", replace_existing=True)
+        scheduler.modify_job("winter_job", next_run_time=aware(tz, 2026, 12, 15, 18, 0, 0, 250000))
+        if isinstance(tz, zoneinfo.ZoneInfo):
+            scheduler.add_job(noop, "interval", minutes=60, id="fold_job", replace_existing=True)
+            scheduler.modify_job("fold_job", next_run_time=aware(tz, 2026, 11, 1, 1, 30, 0, fold=1))
         out = []
         with engine.connect() as conn:
             rows = conn.execute(text("SELECT id, job_state FROM apscheduler_jobs ORDER BY id")).fetchall()

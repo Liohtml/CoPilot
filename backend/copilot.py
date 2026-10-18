@@ -120,7 +120,6 @@ from app.routers import velociraptor
 from app.routers import version
 from app.routers import wazuh_indexer
 from app.routers import wazuh_manager
-from app.schedulers.scheduler import get_scheduler_instance
 from app.schedulers.scheduler import init_scheduler
 from app.schedulers.services.refresh_catalog_caches import warm_catalog_caches
 
@@ -164,9 +163,9 @@ async def lifespan(_app: FastAPI):
     # The public portal settings endpoint is read-only, so its default row is seeded here.
     await ensure_default_portal_settings(async_engine)
 
-    # Initialize the scheduler
+    # Initialize the scheduler (None while COPILOT_PY_SCHEDULER=false: the Rust service owns it)
     scheduler = await init_scheduler()
-    if not scheduler.running:
+    if scheduler is not None and not scheduler.running:
         logger.info("Scheduler is not running, starting now...")
         scheduler.start()
 
@@ -199,8 +198,8 @@ async def lifespan(_app: FastAPI):
     await session_log.stop()
 
     logger.info("Shutting down scheduler")
-    scheduler = await get_scheduler_instance()
-    if scheduler.running:
+    scheduler = await init_scheduler()
+    if scheduler is not None and scheduler.running:
         logger.info("Scheduler is running, shutting down now...")
         scheduler.shutdown()
     await ensure_scheduler_user_removed(async_engine)

@@ -157,12 +157,11 @@ async fn provision_integration(
         .map_err(PyExc::unhandled)?;
     integrations::provision(&st.ctx, tools(&st), integration, &code).await?;
     integrations::hand_jobs(
-        st.legacy.as_ref(),
+        &st.scheduler,
         &auth.user,
         integrations::jobs(integration, &request),
     )
-    .await
-    .map_err(PyExc::unhandled)?;
+    .await?;
     Ok(model_response(&copilot_upstream::model::kwargs(vec![
         ("success", PyValue::Bool(true)),
         ("message", PyValue::Str(integration.message.into())),

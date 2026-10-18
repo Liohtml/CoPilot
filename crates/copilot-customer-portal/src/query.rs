@@ -22,35 +22,9 @@ pub struct Bounds {
 }
 
 /// Pydantic's `str` → `int`; a value beyond `i128` saturates (only bounds
-/// and offsets read it).
+/// and offsets read it) — `copilot_web::query::pydantic_int`.
 pub fn pyd_int(raw: &str) -> Option<i128> {
-    let s = raw.trim();
-    let s = match s.split_once('.') {
-        Some((int, frac)) if !frac.is_empty() && frac.bytes().all(|b| b == b'0') => int,
-        Some(_) => return None,
-        None => s,
-    };
-    let (negative, digits) = match s.as_bytes().first() {
-        Some(b'-') => (true, &s[1..]),
-        Some(b'+') => (false, &s[1..]),
-        _ => (false, s),
-    };
-    let bytes = digits.as_bytes();
-    if bytes.is_empty()
-        || bytes[0] == b'_'
-        || bytes[bytes.len() - 1] == b'_'
-        || digits.contains("__")
-        || !bytes.iter().all(|b| b.is_ascii_digit() || *b == b'_')
-    {
-        return None;
-    }
-    let mut value: i128 = 0;
-    for b in bytes.iter().filter(|b| **b != b'_') {
-        value = value
-            .saturating_mul(10)
-            .saturating_add(i128::from(b - b'0'));
-    }
-    Some(if negative { -value } else { value })
+    copilot_web::query::pydantic_int(raw)
 }
 
 /// `int = Query(default, ge=…, le=…)`: the last value, or `default`.

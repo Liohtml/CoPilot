@@ -169,15 +169,58 @@ impl OptIn {
     }
 }
 
+/// Who owns the schedule (`COPILOT_SCHEDULER_OWNER`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Mode {
+    /// Unset: the hand-over. APScheduler (in the Python process) owns the
+    /// schedule; this service runs a job only once it is handed over — opted
+    /// in (`COPILOT_RS_JOBS`) and its deciding row disabled.
+    #[default]
+    Handover,
+    /// `rust`: this service owns the schedule. It runs every job whose
+    /// deciding row is enabled, with the row's interval; Pause and Start only
+    /// switch rows; nothing needs `COPILOT_RS_JOBS`. The Python backend must
+    /// run without APScheduler (`COPILOT_PY_SCHEDULER=false`).
+    Rust,
+}
+
+/// The variable naming the schedule's owner.
+pub const OWNER_ENV: &str = "COPILOT_SCHEDULER_OWNER";
+
+impl Mode {
+    /// Parse `COPILOT_SCHEDULER_OWNER`: unset or empty is the hand-over,
+    /// `rust` (any case) the ownership; anything else is refused (the binary
+    /// does not start on a value it would have to guess at).
+    pub fn parse(raw: Option<&str>) -> Result<Self, String> {
+        match raw.map(str::trim) {
+            None | Some("") => Ok(Mode::Handover),
+            Some(v) if v.eq_ignore_ascii_case("rust") => Ok(Mode::Rust),
+            Some(v) => Err(format!(
+                "{OWNER_ENV}={v:?}: expected `rust`, or unset for the hand-over to APScheduler"
+            )),
+        }
+    }
+
+    /// Short name for logs and `copilot doctor`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Mode::Handover => "handover",
+            Mode::Rust => "rust",
+        }
+    }
+}
+
 /// Who runs a job's scheduled ticks right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Owner {
-    /// This service (opted in, row disabled).
+    /// This service (hand-over: opted in, row disabled; ownership: row
+    /// enabled).
     Rust,
     /// APScheduler (row enabled, or no row: the Python scheduler runs a job
-    /// regardless of metadata).
+    /// regardless of metadata). Never under [`Mode::Rust`].
     Legacy,
-    /// Nobody: the row is disabled and this service is not opted in.
+    /// Nobody: the row is disabled and this service is not opted in (or, under
+    /// [`Mode::Rust`], the row is disabled or absent).
     Paused,
 }
 
@@ -191,6 +234,16 @@ impl Owner {
             None | Some(true) => Owner::Legacy,
             Some(false) if opted_in => Owner::Rust,
             Some(false) => Owner::Paused,
+        }
+    }
+
+    /// [`Owner::decide`] under `mode`: with [`Mode::Rust`] the row alone
+    /// decides — enabled is this service's, anything else nobody's.
+    pub fn decide_in(mode: Mode, opted_in: bool, row_enabled: Option<bool>) -> Self {
+        match mode {
+            Mode::Handover => Self::decide(opted_in, row_enabled),
+            Mode::Rust if row_enabled == Some(true) => Owner::Rust,
+            Mode::Rust => Owner::Paused,
         }
     }
 
@@ -240,5 +293,32 @@ mod tests {
         assert_eq!(Owner::decide(true, Some(false)), Owner::Rust);
         assert_eq!(Owner::decide(false, Some(false)), Owner::Paused);
         assert_eq!(Owner::decide(true, None), Owner::Legacy);
+    }
+
+    #[test]
+    fn under_rust_ownership_the_row_alone_decides() {
+        for opted_in in [false, true] {
+            assert_eq!(
+                Owner::decide_in(Mode::Rust, opted_in, Some(true)),
+                Owner::Rust
+            );
+            assert_eq!(
+                Owner::decide_in(Mode::Rust, opted_in, Some(false)),
+                Owner::Paused
+            );
+            assert_eq!(Owner::decide_in(Mode::Rust, opted_in, None), Owner::Paused);
+        }
+        assert_eq!(
+            Owner::decide_in(Mode::Handover, false, Some(true)),
+            Owner::Legacy
+        );
+    }
+
+    #[test]
+    fn the_owner_variable() {
+        assert_eq!(Mode::parse(None), Ok(Mode::Handover));
+        assert_eq!(Mode::parse(Some(" ")), Ok(Mode::Handover));
+        assert_eq!(Mode::parse(Some("Rust")), Ok(Mode::Rust));
+        assert!(Mode::parse(Some("python")).is_err());
     }
 }

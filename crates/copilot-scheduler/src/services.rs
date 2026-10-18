@@ -1,51 +1,56 @@
 //! What the Scheduler routes read, composed as `routes/scheduler.py` does.
+//!
+//! `scheduler.get_jobs()` is APScheduler's store under the hand-over
+//! ([`all_jobs`] decodes `apscheduler_jobs`), and this service's grid under
+//! the ownership (the jobs with a row, paused when it is disabled).
 
-use copilot_db::Db;
 use copilot_db::scheduler as db;
 use copilot_web::ApiError;
 
+use crate::functions;
+use crate::job::Mode;
 use crate::jobstore::{ApsJob, NextRun, decode_job};
-use crate::schema::{JobOut, PAUSED_NEXT_RUN_ERROR};
+use crate::runner::Scheduler;
+use crate::schema::{JobOut, PAUSED_NEXT_RUN_ERROR, pydantic_utc};
+use crate::trigger;
 
-/// Why the Rust side cannot answer a request itself.
-#[derive(Debug)]
-pub enum Unanswerable {
-    /// A handled error, answered here.
-    Api(ApiError),
-    /// Only the Python backend can answer exactly (a job state this reader
-    /// cannot decode, a timezone it cannot convert).
-    Delegate(String),
+fn undecodable(id: &str, e: impl std::fmt::Display) -> ApiError {
+    ApiError::internal(format!("apscheduler_jobs row {id:?}: {e}"))
 }
 
-impl From<ApiError> for Unanswerable {
-    fn from(e: ApiError) -> Self {
-        Unanswerable::Api(e)
+/// A job of this service's grid as the routes need it.
+fn grid_job(id: &str, next_run: Option<trigger::Micros>) -> ApsJob {
+    ApsJob {
+        id: id.to_string(),
+        name: functions::by_key(id).map_or(id, |f| f.name).to_string(),
+        func: String::new(),
+        next_run: match next_run.and_then(trigger::to_utc) {
+            Some(t) => NextRun::At(pydantic_utc(t)),
+            None => NextRun::Paused,
+        },
     }
 }
 
-impl From<copilot_db::DbError> for Unanswerable {
-    fn from(e: copilot_db::DbError) -> Self {
-        Unanswerable::Api(e.into())
-    }
-}
-
-/// APScheduler creates its table on its first start: until then only the
-/// Python backend (which creates it) can answer.
-fn no_store() -> Unanswerable {
-    Unanswerable::Delegate("APScheduler's job store (apscheduler_jobs) does not exist yet".into())
-}
-
-/// `scheduler.get_jobs()`: every job in the store, in
+/// `scheduler.get_jobs()`: under the hand-over every job in the store, in
 /// `SQLAlchemyJobStore.get_all_jobs()` order — by `next_run_time` (MySQL puts
 /// the paused jobs' NULLs first), then the paused ones moved to the end
-/// (`_fix_paused_jobs_sorting`).
-pub async fn all_jobs(db: &Db) -> Result<Vec<ApsJob>, Unanswerable> {
-    let rows = db::stored_jobs(db).await?.ok_or_else(no_store)?;
+/// (`_fix_paused_jobs_sorting`); no store yet is no job. Under the ownership
+/// the grid, in the same order.
+pub async fn all_jobs(s: &Scheduler) -> Result<Vec<ApsJob>, ApiError> {
+    if s.mode() == Mode::Rust {
+        s.ensure_loaded().await?;
+        return Ok(s
+            .listed()
+            .into_iter()
+            .map(|l| grid_job(l.id, l.next_run))
+            .collect());
+    }
+    let Some(rows) = db::stored_jobs(s.db()).await? else {
+        return Ok(Vec::new());
+    };
     let mut jobs = Vec::with_capacity(rows.len());
     for row in rows {
-        let job = decode_job(&row.job_state)
-            .map_err(|e| Unanswerable::Delegate(format!("job {:?}: {e}", row.id)))?;
-        jobs.push(job);
+        jobs.push(decode_job(&row.job_state).map_err(|e| undecodable(&row.id, e))?);
     }
     fix_paused_jobs_sorting(&mut jobs);
     Ok(jobs)
@@ -85,63 +90,70 @@ pub fn filter_and_limit(
 
 /// `GET /scheduler` payloads, one metadata lookup per job like the route.
 pub async fn list(
-    db: &Db,
+    s: &Scheduler,
     search: Option<&str>,
     limit: Option<i64>,
-) -> Result<Vec<JobOut>, Unanswerable> {
-    let jobs = filter_and_limit(all_jobs(db).await?, search, limit);
+) -> Result<Vec<JobOut>, ApiError> {
+    let jobs = filter_and_limit(all_jobs(s).await?, search, limit);
     let mut out = Vec::with_capacity(jobs.len());
     for job in &jobs {
-        let meta = db::metadata_first(db, &job.id).await?;
+        let meta = db::metadata_first(s.db(), &job.id).await?;
         out.push(JobOut::build(job, meta.as_ref()));
     }
     Ok(out)
 }
 
 /// `find_job_by_id`: the first job whose id equals `job_id` exactly.
-pub async fn find_job(db: &Db, job_id: &str) -> Result<ApsJob, Unanswerable> {
-    all_jobs(db)
+pub async fn find_job(s: &Scheduler, job_id: &str) -> Result<ApsJob, ApiError> {
+    all_jobs(s)
         .await?
         .into_iter()
         .find(|j| j.id == job_id)
-        .ok_or_else(|| Unanswerable::Api(ApiError::not_found("Job not found")))
+        .ok_or_else(|| ApiError::not_found("Job not found"))
 }
 
 /// `get_job_payload`.
-pub async fn detail(db: &Db, job_id: &str) -> Result<JobOut, Unanswerable> {
-    let job = find_job(db, job_id).await?;
-    let meta = db::metadata_first(db, job_id).await?;
+pub async fn detail(s: &Scheduler, job_id: &str) -> Result<JobOut, ApiError> {
+    let job = find_job(s, job_id).await?;
+    let meta = db::metadata_first(s.db(), job_id).await?;
     Ok(JobOut::build(&job, meta.as_ref()))
 }
 
-/// `job.next_run_time` as the route answers it from APScheduler's store.
-pub fn stored_next_run(job: &ApsJob) -> Result<String, Unanswerable> {
+/// `job.next_run_time` as the route answers it.
+pub fn stored_next_run(job: &ApsJob) -> Result<String, ApiError> {
     match &job.next_run {
         NextRun::At(s) => Ok(s.clone()),
         // `JobsNextRunResponse(next_run_time=None)` raises a ValidationError,
         // which the ValueError handler turns into a 400.
-        NextRun::Paused => Err(Unanswerable::Api(ApiError::bad_request(
-            PAUSED_NEXT_RUN_ERROR,
-        ))),
-        NextRun::Unconvertible => Err(Unanswerable::Delegate(format!(
-            "job {:?}: next run time in a timezone this service does not convert",
+        NextRun::Paused => Err(ApiError::bad_request(PAUSED_NEXT_RUN_ERROR)),
+        NextRun::Unconvertible => Err(ApiError::internal(format!(
+            "job {:?}: a next run time in no time zone this service knows",
             job.id
         ))),
     }
 }
 
-/// `scheduler.get_job(job_id)` (the store's lookup, so the column's
-/// collation decides) — `None` when there is no such job.
-pub async fn lookup(db: &Db, job_id: &str) -> Result<Option<ApsJob>, Unanswerable> {
-    let Some(row) = db::lookup_stored_job(db, job_id)
-        .await?
-        .ok_or_else(no_store)?
-    else {
+/// `scheduler.get_job(job_id)` (the store's lookup, so the column's collation
+/// decides; under the ownership the rows') — `None` when there is no such
+/// job.
+pub async fn lookup(s: &Scheduler, job_id: &str) -> Result<Option<ApsJob>, ApiError> {
+    if s.mode() == Mode::Rust {
+        s.ensure_loaded().await?;
+        let Some(id) = db::metadata_job_id_like(s.db(), job_id).await? else {
+            return Ok(None);
+        };
+        return Ok(s
+            .listed()
+            .into_iter()
+            .find(|l| l.id == id)
+            .map(|l| grid_job(l.id, l.next_run)));
+    }
+    let Some(row) = db::lookup_stored_job(s.db(), job_id).await?.flatten() else {
         return Ok(None);
     };
     decode_job(&row.job_state)
         .map(Some)
-        .map_err(|e| Unanswerable::Delegate(format!("job {:?}: {e}", row.id)))
+        .map_err(|e| undecodable(&row.id, e))
 }
 
 #[cfg(test)]
@@ -204,5 +216,12 @@ mod tests {
             ids(&filter_and_limit(jobs.clone(), Some(""), Some(2))).len(),
             2
         );
+    }
+
+    #[test]
+    fn a_grid_job_is_listed_under_its_callable() {
+        let j = grid_job("invoke_carbonblack_integration_collection", None);
+        assert_eq!(j.name, "invoke_carbonblack_integration_collect");
+        assert_eq!(j.next_run, NextRun::Paused);
     }
 }

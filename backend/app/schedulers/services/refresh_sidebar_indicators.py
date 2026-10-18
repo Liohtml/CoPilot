@@ -11,7 +11,10 @@ only the two genuinely per-user indicators (whose alerts, whose cases).
 
 from loguru import logger
 
+from app.schedulers.handover import rust_handover
 
+
+@rust_handover("refresh_sidebar_indicators")
 async def refresh_sidebar_indicators() -> None:
     """Recompute the cached deployment-wide sidebar indicators.
 

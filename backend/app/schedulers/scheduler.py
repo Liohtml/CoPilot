@@ -7,6 +7,7 @@ from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -14,7 +15,9 @@ from app.audit.services.retention import prune_audit_log
 from app.db.db_session import async_engine
 from app.db.db_session import sync_engine
 from app.schedulers.handover import JOB_SKIPPED
+from app.schedulers.handover import PY_SCHEDULER_ENV
 from app.schedulers.handover import RUST_CAPABLE_JOBS
+from app.schedulers.handover import py_scheduler_enabled
 from app.schedulers.models.scheduler import CreateSchedulerRequest
 from app.schedulers.models.scheduler import JobMetadata
 from app.schedulers.services.agent_sync import agent_sync
@@ -134,13 +137,32 @@ def scheduler_listener(event):
 
 # Global variable to hold the scheduler instance
 scheduler_instance = None
+# Whether `initialize_job_metadata` ran in a process whose APScheduler is off.
+_metadata_seeded_without_scheduler = False
+
+
+class SchedulerDisabledError(RuntimeError):
+    """APScheduler is off in this process (`COPILOT_PY_SCHEDULER=false`)."""
 
 
 async def init_scheduler():
-    global scheduler_instance
+    """Start APScheduler; `None` when it is off here (`COPILOT_PY_SCHEDULER=false`).
+
+    Off, the Rust service owns the schedule (`COPILOT_SCHEDULER_OWNER=rust`): it runs every job
+    whose `scheduled_job_metadata` row is enabled. The rows are still seeded here, once, because
+    they are what it schedules.
+    """
+    global scheduler_instance, _metadata_seeded_without_scheduler
     if scheduler_instance is not None:
         logger.info("Returning existing scheduler instance.")
         return scheduler_instance
+
+    if not py_scheduler_enabled():
+        if not _metadata_seeded_without_scheduler:
+            logger.info(f"{PY_SCHEDULER_ENV}=false: APScheduler is not started; the Rust service owns the schedule.")
+            await initialize_job_metadata()
+            _metadata_seeded_without_scheduler = True
+        return None
 
     logger.info("Initializing new scheduler...")
     try:
@@ -172,10 +194,17 @@ async def init_scheduler():
 async def get_scheduler_instance():
     """
     Retrieves the current scheduler instance. Initializes one if it does not exist.
+
+    Raises `SchedulerDisabledError` while APScheduler is off in this process.
     """
     global scheduler_instance
     if scheduler_instance is None:
-        return await init_scheduler()
+        scheduler = await init_scheduler()
+        if scheduler is None:
+            raise SchedulerDisabledError(
+                f"APScheduler is off in this process ({PY_SCHEDULER_ENV}=false): the Rust service owns the schedule",
+            )
+        return scheduler
     return scheduler_instance
 
 
@@ -350,8 +379,13 @@ async def schedule_enabled_jobs(scheduler):
             "invoke_office365_threat_intel_alert",
             "wazuh_index_fields_resize",
             "invoke_huntress_integration_collection",
-            "invoke_cato_integration_collect",
         ]
+        # `invoke_cato_integration_collect` was disabled here too, at every start, while the job
+        # APScheduler stored at provisioning kept running: a disabled row did not stop it. Since the
+        # job can be handed over to the Rust service, a disabled row means "not APScheduler's" for
+        # it as for every other job, so its row is no longer disabled at startup — and a row that an
+        # earlier start disabled is enabled again, once (see `_repair_cato_row`).
+        await _repair_cato_row(session)
 
         # Disable each job in the list
         for job_id in job_ids_to_disable:
@@ -389,6 +423,32 @@ async def schedule_enabled_jobs(scheduler):
                 logger.info(f"Scheduled job: {job_metadata.job_id}")
             except ValueError as e:
                 logger.error(f"Error scheduling job: {e}")
+
+
+CATO_JOB_ID = "invoke_cato_integration_collect"
+
+
+async def _repair_cato_row(session):
+    """Enable Cato's row where only an earlier start's disabling list disabled it.
+
+    That list disabled the row while leaving the job APScheduler stored at provisioning scheduled,
+    so a disabled row with a scheduled stored job (`next_run_time` set) is that list's doing. A
+    pause — the Scheduler UI's, here or through the Rust service — pauses the stored job too
+    (`next_run_time` NULL), and a job handed over is paused that way, so neither is touched.
+    """
+    try:
+        stored = (await session.execute(text("SELECT next_run_time FROM apscheduler_jobs WHERE id = :i"), {"i": CATO_JOB_ID})).first()
+    except Exception as exc:  # noqa: BLE001 — no job store yet (first start): nothing to repair
+        await session.rollback()
+        logger.debug(f"No APScheduler job store to check {CATO_JOB_ID} against: {exc}")
+        return
+    if stored is None or stored[0] is None:
+        return
+    row = (await session.execute(select(JobMetadata).where(JobMetadata.job_id == CATO_JOB_ID).order_by(JobMetadata.id))).scalars().first()
+    if row is not None and not row.enabled:
+        logger.info(f"Enabling {CATO_JOB_ID}'s row, disabled by an earlier start while its stored job kept running")
+        row.enabled = True
+        await session.commit()
 
 
 def get_function_by_name(function_name: str):

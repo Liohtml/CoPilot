@@ -1,6 +1,6 @@
 [package]
 name = "copilot-scheduler"
-description = "Scheduled jobs: a tokio runner for the jobs handed over from APScheduler, and /api/scheduler"
+description = "Scheduled jobs: APScheduler's scheduler on tokio (the hand-over of each job, then the ownership of the schedule), /api/scheduler and Mimecast's scheduler routes"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -19,6 +19,8 @@ tokio-util = { workspace = true }
 axum = { workspace = true }
 http = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
+reqwest = { workspace = true }
 
 [lints]
 workspace = true

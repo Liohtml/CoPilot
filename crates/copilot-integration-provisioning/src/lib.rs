@@ -18,7 +18,7 @@
 //! - [`store`]   — the statements
 //! - [`network`] — Fortinet, SonicWall and SentinelOne, one data table
 //! - [`integrations`] — the seven Graylog-and-Grafana integrations, one data
-//!   table, the scheduler jobs handed to Python; SOCFortress MDR
+//!   table, the scheduler jobs registered through `copilot-scheduler`; SOCFortress MDR
 //! - [`collectors`] — CrowdStrike, Defender for Endpoint and Bitdefender, one
 //!   data table: the Graylog and Grafana objects, then the collector's files
 //! - [`customer`] — the customer provisioning (`POST /api/customer_provisioning
@@ -45,7 +45,6 @@ pub mod store;
 use axum::extract::FromRef;
 use copilot_core::cloud_env::CloudEnv;
 use copilot_db::schema::TableRequirement;
-use copilot_gateway::LegacyProxy;
 use copilot_grafana::GrafanaClient;
 use copilot_graylog::GraylogClient;
 use copilot_portainer::PortainerClient;
@@ -66,8 +65,8 @@ pub struct ProvisioningState {
     pub grafana: GrafanaClient,
     /// The Wazuh indexer (node count, OpenSearch version).
     pub wazuh: WazuhState,
-    /// The Python backend, which registers the integrations' scheduler jobs.
-    pub legacy: Option<LegacyProxy>,
+    /// The scheduler, which registers the integrations' jobs.
+    pub scheduler: copilot_scheduler::Scheduler,
     /// What the collectors read from the environment (the backend's data
     /// directory, the GravityZone URL of the tests).
     pub env: CloudEnv,

@@ -15,18 +15,15 @@
 //! 4. `create_integration_meta` (`copilot-integrations`' checks: the customer,
 //!    its meta row, an existing row refused with the 400; an insert that fails
 //!    is swallowed), the `deployed` flag;
-//! 5. the APScheduler jobs, which only the Python process can register: they
-//!    are handed to it (`POST /api/scheduler/provisioning_jobs` with the
-//!    caller's token, [`hand_jobs`]), one `add_scheduler_jobs` per job as the
-//!    Python route calls it.
+//! 5. the scheduler jobs, one `add_scheduler_jobs` per job as the Python
+//!    route calls it ([`hand_jobs`], `copilot-scheduler`: under the hand-over
+//!    APScheduler's `add_job` goes to the Python process, the rows are
+//!    written here).
 //!
 //! Nothing is rolled back, as in Python. One deliberate difference: the
 //! body's `customer_code` must be one of the caller's customers (403, §4).
 
-use std::time::Duration;
-
 use copilot_auth::pyvalue::PyValue;
-use copilot_gateway::LegacyProxy;
 use copilot_grafana_dashboards::templates::{self as dashboards, DashboardClass};
 use copilot_graylog::client::DEFAULT_CONNECTOR;
 use copilot_integrations::integrations::schema::{
@@ -367,9 +364,6 @@ pub static INTEGRATIONS: &[Integration] = &[
     },
 ];
 
-/// The path of the Python half of the job registration.
-pub const JOBS_PATH: &str = "/api/scheduler/provisioning_jobs";
-
 fn py(e: PyExc) -> ApiError {
     e.unhandled()
 }
@@ -556,46 +550,34 @@ pub fn jobs(integration: &Integration, request: &PyValue) -> Vec<PyValue> {
         .collect()
 }
 
-/// `add_scheduler_jobs(...)` for each job, in the Python process: what it
-/// answers but 2xx (or no answer, or no Python backend configured) is
-/// Python's own failure there, a bare 500.
+/// `add_scheduler_jobs(...)` for each job, in the route's order, through
+/// this service's scheduler (`copilot_scheduler::writes`): the rows and the
+/// grid here; APScheduler's `add_job` handed to the Python process while it
+/// owns the schedule, nothing reaching it under `COPILOT_SCHEDULER_OWNER=rust`.
+/// A failure is the one Python's `add_scheduler_jobs` raises (APScheduler's
+/// own, or no Python backend: the bare 500).
 pub async fn hand_jobs(
-    legacy: Option<&LegacyProxy>,
+    scheduler: &copilot_scheduler::Scheduler,
     user: &CurrentUser,
     jobs: Vec<PyValue>,
-) -> PyResult<()> {
-    let Some(legacy) = legacy else {
-        return Err(PyExc::Other(
-            "RuntimeError",
-            "no Python backend to register the scheduler jobs".into(),
-        ));
-    };
-    let body = copilot_upstream::json::py_dumps(
-        &kwargs(vec![("jobs", PyValue::List(jobs))]),
-        copilot_upstream::json::Dumps::DEFAULT,
-    )
-    .map_err(|e| PyExc::ValueError(e.to_string()))?;
-    let mut req = legacy
-        .client()
-        .post(legacy.upstream_url(JOBS_PATH))
-        .timeout(Duration::from_secs(60))
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .body(body);
-    if !user.bearer.is_empty() {
-        req = req.bearer_auth(&user.bearer);
-    }
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| PyExc::Other("ConnectionError", e.to_string()))?;
-    if resp.status().is_success() {
-        Ok(())
-    } else {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!(%status, body = %text, "registering the provisioning jobs failed");
-        Err(PyExc::Other("SchedulerError", format!("{status}: {text}")))
-    }
+) -> Result<(), ApiError> {
+    let requests: Vec<copilot_scheduler::writes::JobRequest> = jobs
+        .iter()
+        .map(|j| copilot_scheduler::writes::JobRequest {
+            function_name: field(j, "function_name").py_str(),
+            job_id: field(j, "job_id").py_str(),
+            time_interval: match field(j, "time_interval") {
+                PyValue::Int(n) => n.parse::<i128>().unwrap_or(if n.starts_with('-') {
+                    i128::MIN
+                } else {
+                    i128::MAX
+                }),
+                PyValue::Bool(b) => i128::from(*b),
+                _ => 0,
+            },
+        })
+        .collect();
+    copilot_scheduler::writes::add_scheduler_jobs(scheduler, user, &requests).await
 }
 
 /// `POST /api/socfortress_mdr/provision`: the `COLLECTOR_UUID` key of the

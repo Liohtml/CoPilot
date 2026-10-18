@@ -21,7 +21,12 @@ run of such a job — here and there — happens under one MySQL named lock:
 
 A run started by hand (`POST /scheduler/jobs/run/{id}`) is an operator's request: it waits up
 to `MANUAL_LOCK_WAIT_SECONDS` for the lock and then runs whatever the row says. With the Rust
-service in front, such a request reaches this process only for jobs Rust does not run.
+service in front such a request never reaches this process: Rust answers every Scheduler route,
+runs a manual run itself and hands only APScheduler's own operations (add, reschedule, remove,
+pause, resume) to `POST /scheduler/apscheduler_ops` while APScheduler still owns the schedule.
+
+`COPILOT_PY_SCHEDULER=false` (with `COPILOT_SCHEDULER_OWNER=rust` on the Rust service) ends the
+coexistence: `init_scheduler()` starts no APScheduler and the guard skips every scheduled tick.
 
 `RUST_CAPABLE_JOBS` lists the jobs the Rust service knows; a Rust test reads this tuple and
 fails when the two lists drift apart.
@@ -30,23 +35,24 @@ fails when the two lists drift apart.
 import contextlib
 import contextvars
 import functools
+import os
 
 from loguru import logger
 from sqlalchemy import text
 
 from app.db.db_session import async_engine
 
-# Job ids (== function names) the Rust service can run. Keep in step with the job registry in
-# crates/copilot-scheduler (pinned by a Rust test that parses this tuple).
+# Job ids (== function names) the Rust service can run: every job of `get_function_by_name`. Keep
+# in step with the job registry in crates/copilot-scheduler (pinned by a Rust test that parses this
+# tuple line by line). The integrations' collection jobs are created with their row by a
+# provisioning route or by POST /scheduler/add rather than seeded by `initialize_job_metadata`.
+# The four cache refreshers refresh the caches of whichever process runs them: with the Rust
+# service in front, the caches it serves are its own.
 RUST_CAPABLE_JOBS = (
     "agent_sync",
     "invoke_alert_creation_collect",
-    # The integrations' collection jobs, crates/copilot-integration-modules. None is seeded by
-    # `initialize_job_metadata`: a provisioning route or POST /scheduler/add creates them, and
-    # re-enabling the row there hands the job back. `invoke_cato_integration_collect` is not
-    # here: `schedule_enabled_jobs` disables its row at every start while APScheduler's stored
-    # job keeps running, so the guard would stop it.
     "invoke_carbonblack_integration_collection",
+    "invoke_cato_integration_collect",
     "invoke_darktrace_integration_collect",
     "invoke_duo_integration_collect",
     "invoke_huntress_integration_collect",
@@ -67,8 +73,23 @@ RUST_CAPABLE_JOBS = (
     "invoke_snapshot_schedules",
     "notify_sla_transitions",
     "prune_audit_log",
+    "refresh_catalog_caches",
+    "refresh_sidebar_health",
+    "refresh_sidebar_indicators",
+    "refresh_wazuh_rules_cache",
     "resize_wazuh_index_fields",
 )
+
+# `COPILOT_PY_SCHEDULER=false`: this process starts no APScheduler and the guard below skips every
+# scheduled tick — the Rust service owns the schedule (`COPILOT_SCHEDULER_OWNER=rust` there; the
+# two are set together, and `copilot doctor` reports a mismatch it can see in APScheduler's store).
+PY_SCHEDULER_ENV = "COPILOT_PY_SCHEDULER"
+
+
+def py_scheduler_enabled() -> bool:
+    """Whether this process runs APScheduler (read at every call, like the guard's row)."""
+    return os.getenv(PY_SCHEDULER_ENV, "true").strip().lower() not in ("false", "0", "no", "off")
+
 
 # Seconds a run started by hand waits for a run in progress (here or in Rust) to finish.
 MANUAL_LOCK_WAIT_SECONDS = 10
@@ -171,6 +192,9 @@ def rust_handover(job_id: str):
         @functools.wraps(func)
         async def guarded(*args, **kwargs):
             manual = _manual_run.get()
+            if not manual and not py_scheduler_enabled():
+                logger.debug(f"Job {job_id}: APScheduler is off in this process ({PY_SCHEDULER_ENV}=false); skipping this tick")
+                return JOB_SKIPPED
             async with job_run_lock(job_id, MANUAL_LOCK_WAIT_SECONDS if manual else 0) as (held, conn):
                 if not held:
                     if manual:

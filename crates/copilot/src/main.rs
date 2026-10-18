@@ -8,6 +8,7 @@
 //! copilot doctor          check configuration, database, schema, Talon, legacy backend
 //! copilot routes          list the route prefixes this build serves itself
 //! copilot jobs            list the scheduled jobs this build can run, and who runs them
+//!                         (`doctor` also checks APScheduler against COPILOT_SCHEDULER_OWNER)
 //! copilot palace drain    run one palace-lesson drainer tick now
 //! copilot palace sweep    run one one-off-lesson sweeper tick now
 //! ```
@@ -158,13 +159,21 @@ async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
     let router = app.router(cfg.max_body_bytes);
     let cancel = CancellationToken::new();
 
-    // One loop per opted-in job; each runs only while its
-    // scheduled_job_metadata row is disabled (copilot-scheduler).
+    // The scheduler (copilot-scheduler): the opted-in jobs while handed over,
+    // or every job with an enabled row under COPILOT_SCHEDULER_OWNER=rust.
     let jobs = app.scheduler.spawn(cancel.clone());
-    // This process's catalog caches: warmed now, refreshed off-request.
-    copilot_searches::refresher::spawn(app.searches.clone(), cancel.clone());
-    // This process's sidebar indicators: warmed now, refreshed off-request.
-    copilot_status::sidebar::refresher::spawn(app.sidebar.clone(), cancel.clone());
+    // This process's catalog caches and sidebar indicators: warmed now, then
+    // refreshed off-request by their own timers while their jobs do not.
+    copilot_searches::refresher::spawn(
+        app.searches.clone(),
+        cancel.clone(),
+        Some(app.scheduler.clone()),
+    );
+    copilot_status::sidebar::refresher::spawn(
+        app.sidebar.clone(),
+        cancel.clone(),
+        Some(app.scheduler.clone()),
+    );
     // This process's runtime-lag watchdog (`/api/performance`).
     copilot_status::performance::monitor::spawn(cancel.clone());
     // ScoutSuite's report directory, as copilot.py creates it at startup.
@@ -276,6 +285,12 @@ async fn doctor(cfg: CopilotConfig) -> anyhow::Result<()> {
         }
         None => println!("legacy      none (unported routes answer 404)"),
     }
+    for line in copilot_scheduler::doctor::report(&app.scheduler, true).await {
+        if line.failure {
+            failures += 1;
+        }
+        println!("scheduler   {}", line.text);
+    }
     for line in job_lines(&app.scheduler).await {
         println!("job         {line}");
     }
@@ -346,6 +361,7 @@ async fn job_lines(scheduler: &copilot_scheduler::Scheduler) -> Vec<String> {
 async fn jobs(cfg: CopilotConfig) -> anyhow::Result<()> {
     let db = connect_and_check(&cfg).await?;
     let app = App::new(&cfg, db)?;
+    println!("owner: {}", app.scheduler.mode().as_str());
     for id in app.scheduler.opt_in().unknown(&app.scheduler.job_ids()) {
         println!("warning: COPILOT_RS_JOBS names {id:?}, which this build cannot run");
     }

@@ -3,8 +3,8 @@
 //! `scheduled_job_metadata` row is disabled and `COPILOT_RS_JOBS` names it.
 //!
 //! None is seeded by `initialize_job_metadata`; the provisioning routes (and
-//! `POST /api/scheduler/add`) create them, still in Python — they act on
-//! APScheduler, and re-enabling the row there hands the job back.
+//! `POST /api/scheduler/add`) create them with their row — enabling it, which
+//! hands a handed-over job back to APScheduler, as in Python.
 //!
 //! Each keeps its Python function's semantics:
 //!
@@ -27,10 +27,15 @@
 //! - The two SAP SIEM jobs whose analyses Python commented out read the
 //!   customers and do nothing else.
 //!
-//! `invoke_cato_integration_collect` is not here: `schedule_enabled_jobs`
-//! disables its row at every Python start while APScheduler's stored job
-//! keeps running it, so the hand-over rule (a disabled row is not Python's)
-//! would stop the collection on a Python-only deployment.
+//! - `invoke_cato_integration_collect` reads its customers by the service name
+//!   `CATO`, the row's interval per customer (no row: the f-string's
+//!   `AttributeError` fails the run once a customer has the integration —
+//!   the interval itself is passed to a model that ignores it), ignores each
+//!   collection's answer and stamps `last_success` itself. It used to stay in
+//!   APScheduler: `schedule_enabled_jobs` disabled its row at every Python
+//!   start while the job APScheduler stored kept running. That start no
+//!   longer disables it (and enables a row only that list disabled), so a
+//!   disabled row means "not APScheduler's" for Cato as for every job.
 
 use std::sync::Arc;
 
@@ -56,6 +61,8 @@ pub const DARKTRACE: &str = "invoke_darktrace_integration_collect";
 /// `invoke_carbonblack_integration_collection` (the function is
 /// `invoke_carbonblack_integration_collect`).
 pub const CARBONBLACK: &str = "invoke_carbonblack_integration_collection";
+/// `invoke_cato_integration_collect`.
+pub const CATO: &str = "invoke_cato_integration_collect";
 /// `invoke_mimecast_integration`.
 pub const MIMECAST: &str = "invoke_mimecast_integration";
 /// `invoke_mimecast_integration_ttp`.
@@ -72,6 +79,7 @@ pub const SAP_MULTIPLE_LOGINS: &str =
 pub fn job_ids() -> Vec<&'static str> {
     let mut ids = vec![
         HUNTRESS,
+        CATO,
         DUO,
         DARKTRACE,
         CARBONBLACK,
@@ -300,6 +308,31 @@ async fn duo_job(st: Arc<ModulesState>) -> Result<serde_json::Value, JobError> {
     Ok(returned("Duo integration invoked."))
 }
 
+/// `invoke_cato_integration_collect()`: per customer the row's interval
+/// (`get_scheduled_job_metadata(...).time_interval` in the request's
+/// f-string, which `InvokeCatoRequest` then ignores), the collection, its
+/// answer ignored.
+async fn cato_job(st: Arc<ModulesState>) -> Result<serde_json::Value, JobError> {
+    tracing::info!(target: "copilot::integration_modules", "Invoking cato integration collection.");
+    let codes = lookups::customers_with_integration(&st.ctx.db, "CATO")
+        .await
+        .map_err(failed)?;
+    for code in &codes {
+        if lookups::job_metadata(&st.ctx.db, CATO)
+            .await
+            .map_err(failed)?
+            .is_none()
+        {
+            return Err(failed(
+                PyExc::AttributeError("'NoneType' object has no attribute 'time_interval'".into())
+                    .into(),
+            ));
+        }
+        collect::collect(&st, Module::Cato, code, "CATO").await;
+    }
+    Ok(returned("cato integration invoked."))
+}
+
 async fn darktrace_job(st: Arc<ModulesState>) -> Result<serde_json::Value, JobError> {
     collect_all(&st, "Darktrace", Module::Darktrace, "Darktrace").await?;
     Ok(returned("Darktrace integration invoked."))
@@ -390,7 +423,8 @@ pub fn job_specs(st: &ModulesState) -> Vec<JobSpec> {
         Box::pin(async move { huntress(&st).await })
     })];
     // The older jobs stamp `last_success` themselves, a manual run included.
-    let stamping: [(&'static str, i64, JobRun); 8] = [
+    let stamping: [(&'static str, i64, JobRun); 9] = [
+        (CATO, 5, |st| Box::pin(cato_job(st))),
         (DUO, 5, |st| Box::pin(duo_job(st))),
         (DARKTRACE, 5, |st| Box::pin(darktrace_job(st))),
         (CARBONBLACK, 5, |st| Box::pin(carbonblack_job(st))),
@@ -434,8 +468,8 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), ids.len());
-        assert_eq!(ids.len(), 16);
-        assert!(!ids.contains(&"invoke_cato_integration_collect"));
+        assert_eq!(ids.len(), 17);
+        assert!(ids.contains(&"invoke_cato_integration_collect"));
     }
 
     /// `RUST_CAPABLE_JOBS` of `backend/app/schedulers/handover.py` (tests

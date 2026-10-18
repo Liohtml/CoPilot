@@ -26,6 +26,7 @@
 //! | `BRANDING_CACHE_CHECK_SECONDS` | `5` | how stale cached branding may get when another process wrote it (the change check, `copilot-customer-portal`); `0` disables the check |
 //! | `COPILOT_RS_PALACE_JOBS` | `false` | run the palace-lesson drainer/sweeper here instead of in APScheduler |
 //! | `COPILOT_RS_JOBS` | *(unset)* | scheduled jobs this service may take over (ids, comma-separated, or `all`); each runs only while its `scheduled_job_metadata` row is disabled |
+//! | `COPILOT_SCHEDULER_OWNER` | *(unset)* | `rust`: this service owns the schedule — every job whose row is enabled runs here, no `COPILOT_RS_JOBS` needed; set `COPILOT_PY_SCHEDULER=false` on the Python backend with it (any other value stops the binary) |
 //! | `AUDIT_LOG_RETENTION_DAYS` | `90` | `prune_audit_log`'s window, read as Python reads it (`<= 0` keeps everything) |
 //! | `COPILOT_MAX_BODY_BYTES` | `268435456` | request body cap (nginx's `client_max_body_size 256m`) |
 //! | `COPILOT_LOG_FORMAT` | `text` | `json` for structured logs |
@@ -149,6 +150,8 @@ pub struct CopilotConfig {
     /// `COPILOT_RS_JOBS`, as set: the scheduled jobs this process may take
     /// over (parsed by `copilot-scheduler`).
     pub rust_jobs: Option<String>,
+    /// `COPILOT_SCHEDULER_OWNER`, as set (parsed by `copilot-scheduler`).
+    pub scheduler_owner: Option<String>,
     /// `AUDIT_LOG_RETENTION_DAYS`, as set (`os.getenv` semantics).
     pub audit_log_retention_days: Option<String>,
     /// Request body cap.
@@ -410,6 +413,7 @@ impl CopilotConfig {
             branding_cache_check: python_seconds(env, "BRANDING_CACHE_CHECK_SECONDS", 5),
             palace_jobs: env.get_bool("COPILOT_RS_PALACE_JOBS"),
             rust_jobs: env.get("COPILOT_RS_JOBS"),
+            scheduler_owner: env.get("COPILOT_SCHEDULER_OWNER"),
             audit_log_retention_days: env.get_raw("AUDIT_LOG_RETENTION_DAYS"),
             max_body_bytes: usize::try_from(max_body).unwrap_or(usize::MAX),
             json_logs: env

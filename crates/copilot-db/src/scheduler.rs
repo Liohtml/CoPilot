@@ -40,6 +40,159 @@ pub async fn owner_row(db: &Db, job_id: &str) -> Result<Option<(bool, i64)>, DbE
     Ok(row.map(|(enabled, minutes)| (enabled, i64::from(minutes))))
 }
 
+/// The deciding rows of many jobs at once: `job id → (enabled, interval)`
+/// for each id that has a row. One statement, each id compared with the
+/// column as [`owner_row`] compares it (its collation decides).
+pub async fn owner_rows(
+    db: &Db,
+    job_ids: &[&str],
+) -> Result<std::collections::HashMap<String, (bool, i64)>, DbError> {
+    let mut out = std::collections::HashMap::new();
+    if job_ids.is_empty() {
+        return Ok(out);
+    }
+    let one = "SELECT ? AS k, m.enabled, m.time_interval FROM scheduled_job_metadata AS m \
+               WHERE m.id = (SELECT s.id FROM scheduled_job_metadata AS s WHERE s.job_id = ? \
+               ORDER BY s.id LIMIT 1)";
+    let sql = vec![one; job_ids.len()].join(" UNION ALL ");
+    let mut q = sqlx::query_as::<_, (String, bool, i32)>(&sql);
+    for id in job_ids {
+        q = q.bind(*id).bind(*id);
+    }
+    for (k, enabled, minutes) in q.fetch_all(db.pool()).await? {
+        out.insert(k, (enabled, i64::from(minutes)));
+    }
+    Ok(out)
+}
+
+/// `manage_job_metadata(session, job_id, "add", …)` (`POST /scheduler/add`):
+/// a new row, enabled, whatever rows the job already has.
+pub async fn insert_metadata(
+    db: &Db,
+    job_id: &str,
+    minutes: i64,
+    extra_data: Option<&str>,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "INSERT INTO scheduled_job_metadata (job_id, last_success, time_interval, extra_data, \
+         enabled, job_description) VALUES (?, NULL, ?, ?, 1, NULL)",
+    )
+    .bind(job_id)
+    .bind(minutes)
+    .bind(extra_data)
+    .execute(db.pool())
+    .await?;
+    Ok(())
+}
+
+/// `manage_job_metadata(session, job_id, "update", time_interval=…,
+/// extra_data=…)`: the first row `filter_by(job_id=…)` reads gets both
+/// values; `false` when the job has no row (Python's `setattr(None, …)`).
+pub async fn update_metadata_first(
+    db: &Db,
+    job_id: &str,
+    minutes: i64,
+    extra_data: Option<&str>,
+) -> Result<bool, DbError> {
+    let Some(row) = metadata_first(db, job_id).await? else {
+        return Ok(false);
+    };
+    sqlx::query("UPDATE scheduled_job_metadata SET time_interval = ?, extra_data = ? WHERE id = ?")
+        .bind(minutes)
+        .bind(extra_data)
+        .bind(row.id)
+        .execute(db.pool())
+        .await?;
+    Ok(true)
+}
+
+/// `manage_job_metadata(session, job_id, "delete")`: the first row
+/// `filter_by(job_id=…)` reads; `false` when there is none (Python's
+/// `session.delete(None)`).
+pub async fn delete_metadata_first(db: &Db, job_id: &str) -> Result<bool, DbError> {
+    let Some(row) = metadata_first(db, job_id).await? else {
+        return Ok(false);
+    };
+    sqlx::query("DELETE FROM scheduled_job_metadata WHERE id = ?")
+        .bind(row.id)
+        .execute(db.pool())
+        .await?;
+    Ok(true)
+}
+
+/// What [`upsert_metadata`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Upsert {
+    /// The job had no row: one was inserted, enabled.
+    Inserted,
+    /// Its one row got the interval and was enabled.
+    Updated,
+    /// Several rows: `one_or_none()`'s `MultipleResultsFound`, nothing written.
+    Multiple,
+}
+
+/// `add_job_metadata(request)` (`add_scheduler_jobs`' bookkeeping): the
+/// job's one row (`one_or_none()`) gets the interval and is enabled, or a row
+/// is inserted.
+pub async fn upsert_metadata(db: &Db, job_id: &str, minutes: i64) -> Result<Upsert, DbError> {
+    let ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT scheduled_job_metadata.id FROM scheduled_job_metadata \
+         WHERE scheduled_job_metadata.job_id = ?",
+    )
+    .bind(job_id)
+    .fetch_all(db.pool())
+    .await?;
+    match ids.as_slice() {
+        [] => {
+            sqlx::query(
+                "INSERT INTO scheduled_job_metadata (job_id, last_success, time_interval, \
+                 extra_data, enabled, job_description) VALUES (?, NULL, ?, NULL, 1, NULL)",
+            )
+            .bind(job_id)
+            .bind(minutes)
+            .execute(db.pool())
+            .await?;
+            Ok(Upsert::Inserted)
+        }
+        [id] => {
+            sqlx::query(
+                "UPDATE scheduled_job_metadata SET time_interval = ?, enabled = 1 WHERE id = ?",
+            )
+            .bind(minutes)
+            .bind(id)
+            .execute(db.pool())
+            .await?;
+            Ok(Upsert::Updated)
+        }
+        _ => Ok(Upsert::Multiple),
+    }
+}
+
+/// Every row's job id, in id order (the ownership's job set: a job with a
+/// row is a job).
+pub async fn metadata_job_ids(db: &Db) -> Result<Vec<String>, DbError> {
+    Ok(
+        sqlx::query_scalar("SELECT job_id FROM scheduled_job_metadata ORDER BY id")
+            .fetch_all(db.pool())
+            .await?,
+    )
+}
+
+/// `apscheduler_jobs`' `(id, next_run_time)` — what `copilot doctor` watches
+/// to tell whether APScheduler is running. `None` without the table.
+pub async fn stored_next_run_times(db: &Db) -> Result<Option<Vec<(String, Option<f64>)>>, DbError> {
+    match sqlx::query_as::<_, (String, Option<f64>)>(
+        "SELECT id, next_run_time FROM apscheduler_jobs ORDER BY id",
+    )
+    .fetch_all(db.pool())
+    .await
+    {
+        Ok(rows) => Ok(Some(rows)),
+        Err(e) if missing_table(&e) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// `last_success` of the deciding row (naive UTC), if any.
 pub async fn last_success(db: &Db, job_id: &str) -> Result<Option<chrono::NaiveDateTime>, DbError> {
     Ok(sqlx::query_scalar::<_, Option<chrono::NaiveDateTime>>(
@@ -174,6 +327,35 @@ pub async fn lookup_stored_job(
         Err(e) if missing_table(&e) => Ok(None),
         Err(e) => Err(e.into()),
     }
+}
+
+/// `find_job_by_id(scheduler, job_id)`: whether a stored job's id equals
+/// `job_id` exactly (Python compares the strings, not the column's
+/// collation). `None` while APScheduler has not created its table.
+pub async fn stored_job_exact(db: &Db, job_id: &str) -> Result<Option<bool>, DbError> {
+    match sqlx::query_scalar::<_, String>(
+        "SELECT apscheduler_jobs.id FROM apscheduler_jobs WHERE apscheduler_jobs.id = ?",
+    )
+    .bind(job_id)
+    .fetch_all(db.pool())
+    .await
+    {
+        Ok(ids) => Ok(Some(ids.iter().any(|id| id == job_id))),
+        Err(e) if missing_table(&e) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// The first row's job id whose `job_id` matches `job_id` under the column's
+/// collation (the ownership's `scheduler.get_job`: a lookup the store's
+/// collation decides, as `SQLAlchemyJobStore.lookup_job` does).
+pub async fn metadata_job_id_like(db: &Db, job_id: &str) -> Result<Option<String>, DbError> {
+    Ok(sqlx::query_scalar::<_, String>(
+        "SELECT job_id FROM scheduled_job_metadata WHERE job_id = ? ORDER BY id LIMIT 1",
+    )
+    .bind(job_id)
+    .fetch_optional(db.pool())
+    .await?)
 }
 
 /// The cross-process run lock of one job (`GET_LOCK`), held on a pooled

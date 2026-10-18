@@ -10,12 +10,14 @@ from app.integrations.models.customer_integration_settings import CustomerIntegr
 from app.integrations.modules.routes.cato import collect_cato_route
 from app.integrations.modules.schema.cato import InvokeCatoRequest
 from app.integrations.modules.schema.cato import InvokeCatoResponse
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 from app.schedulers.utils.universal import get_scheduled_job_metadata
 
 load_dotenv()
 
 
+@rust_handover("invoke_cato_integration_collect")
 async def invoke_cato_integration_collect() -> InvokeCatoResponse:
     """
     Invokes the cato integration collection.

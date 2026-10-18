@@ -103,6 +103,10 @@ pub struct SidebarState {
     pub env: Arc<SidebarEnv>,
     /// This process's cached indicators and version.
     pub cache: Arc<services::SidebarCache>,
+    /// This service's scheduler, once built (it holds the sidebar's own jobs,
+    /// so it is set after this state): under `COPILOT_SCHEDULER_OWNER=rust`
+    /// the scheduler indicators list its jobs, not APScheduler's idle store.
+    pub scheduler: Arc<std::sync::OnceLock<copilot_scheduler::Scheduler>>,
 }
 
 impl std::fmt::Debug for SidebarState {

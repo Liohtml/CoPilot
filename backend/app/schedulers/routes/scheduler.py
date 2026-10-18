@@ -1,5 +1,6 @@
 import asyncio
 from typing import List
+from typing import Literal
 from typing import Optional
 
 from fastapi import APIRouter
@@ -264,6 +265,56 @@ async def add_provisioning_jobs(request: ProvisioningJobsRequest):
     for job in request.jobs:
         await add_scheduler_jobs(job)
     return {"success": True, "message": "Jobs added successfully"}
+
+
+class ApschedulerOp(BaseModel):
+    op: Literal["add", "reschedule", "remove", "pause", "resume"]
+    job_id: str
+    function_name: Optional[str] = None
+    time_interval: Optional[int] = None
+    # `add` as POST /add calls it (APScheduler's job defaults) rather than as `add_scheduler_jobs`.
+    defaults: bool = False
+
+
+class ApschedulerOpsRequest(BaseModel):
+    ops: List[ApschedulerOp]
+
+
+@scheduler_router.post("/apscheduler_ops", include_in_schema=False, description="APScheduler's part of a Scheduler write")
+async def apscheduler_ops(request: ApschedulerOpsRequest):
+    """
+    The APScheduler operations of the Scheduler's write routes, each exactly as the route calls it.
+
+    The Rust service answers those routes (and the integrations' provisioning) and does their
+    `scheduled_job_metadata` work itself; while APScheduler owns the schedule it hands this part
+    here, in the route's order, with the caller's token. `found` is `find_job_by_id`'s answer for
+    every operation but `add` (always true).
+    """
+    scheduler = await get_scheduler_instance()
+    found = []
+    for op in request.ops:
+        if op.op == "add":
+            job_function = get_function_by_name(op.function_name)
+            options = {} if op.defaults else {"coalesce": True, "max_instances": 1}
+            scheduler.add_job(job_function, "interval", minutes=op.time_interval, id=op.job_id, replace_existing=True, **options)
+            if not scheduler.running:
+                scheduler.start()
+            found.append(True)
+            continue
+        job = await find_job_by_id(scheduler, op.job_id)
+        if job is None:
+            found.append(False)
+            continue
+        if op.op == "reschedule":
+            job.reschedule(trigger="interval", minutes=op.time_interval)
+        elif op.op == "remove":
+            scheduler.remove_job(op.job_id)
+        elif op.op == "pause":
+            job.pause()
+        else:
+            job.resume()
+        found.append(True)
+    return {"success": True, "found": found}
 
 
 @scheduler_router.post("/jobs/run/{job_id}", description="Run a job")

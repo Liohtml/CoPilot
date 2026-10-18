@@ -12,7 +12,7 @@
 //!                      │ /register, /reset-password*, /me/customers,          │
 //!                      │ /sso/*, /passkey/*, /security/*                      │
 //!                      │                    → copilot-identity                │
-//!                      │ GET /api/scheduler/*, run/start/pause                │
+//!                      │ /api/scheduler/*, Mimecast's /invoke/scheduler/*     │
 //!                      │                    → copilot-scheduler (+ its jobs)  │
 //!                      │ /api/notifications/*, notification routes, Shuffle   │
 //!                      │ integrations, dispatch log, channel catalog          │
@@ -73,7 +73,7 @@ use copilot_objectstore::{DataStoreState, ObjectStore};
 use copilot_platform::PlatformState;
 use copilot_platform::version::VersionChecker;
 use copilot_portainer::{PortainerClient, PortainerState};
-use copilot_scheduler::{OptIn, Scheduler, SchedulerState};
+use copilot_scheduler::{Mode, OptIn, Scheduler, SchedulerOptions, SchedulerState};
 use copilot_talon::{TalonConnector, TalonState};
 use copilot_velociraptor::VelociraptorClient;
 use copilot_waf::{WafClient, WafEnv, WafState};
@@ -135,10 +135,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "GET /api/incidents/customer_reports",
     "PATCH /api/incidents/customer_reports",
     "DELETE /api/incidents/customer_reports",
-    "GET /api/scheduler",
-    "POST /api/scheduler/jobs/run",
-    "POST /api/scheduler/start",
-    "POST /api/scheduler/pause",
+    // The Scheduler (copilot-scheduler): every route, the writes included;
+    // APScheduler's own calls handed to Python only while it owns the
+    // schedule (COPILOT_SCHEDULER_OWNER unset).
+    "/api/scheduler",
     "/api/notifications",
     "/api/notification_channels",
     "/api/internal_notification_routes",
@@ -312,12 +312,14 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/copilot_searches",
     // The integration modules (copilot-integration-modules): the Huntress,
     // Mimecast, Duo, Cato and SAP SIEM collections and the SAP SIEM analyses,
-    // and of /api/mimecast exactly these two routes (`/provision` and the
-    // `/invoke/scheduler/*` routes, which add APScheduler jobs, are not
-    // these).
+    // and of /api/mimecast these two routes (`/provision` is
+    // copilot-integration-provisioning's, `/invoke/scheduler/*` the
+    // scheduler's).
     "/api/integrations/modules",
     "POST /api/mimecast/invoke",
     "POST /api/mimecast/ttp/urls",
+    // Mimecast's two scheduler routes (copilot-scheduler).
+    "POST /api/mimecast/invoke/scheduler",
     // The licence (copilot-license) and the error log (copilot-status).
     "/api/license",
     "/api/logs",
@@ -611,11 +613,6 @@ impl App {
             ctx.clone(),
             cfg.integration_modules_url.clone(),
         );
-        let scheduler = Scheduler::new(
-            ctx.db.clone(),
-            OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
-            scheduled_jobs(&ctx, &talon, &wazuh, &ingest, &agents, &modules, cfg),
-        );
         let graylog =
             GraylogClient::new(ctx.connectors.clone()).context("building the Graylog client")?;
         let influxdb =
@@ -713,7 +710,20 @@ impl App {
                 cfg.version_check_url.clone(),
             )),
             cache: Arc::default(),
+            scheduler: Arc::default(),
         };
+        let scheduler = Scheduler::with_options(
+            ctx.db.clone(),
+            OptIn::parse(cfg.rust_jobs.as_deref(), cfg.palace_jobs),
+            scheduled_jobs(
+                &ctx, &talon, &wazuh, &ingest, &agents, &modules, &searches, &sidebar, cfg,
+            ),
+            SchedulerOptions {
+                mode: Mode::parse(cfg.scheduler_owner.as_deref()).map_err(anyhow::Error::msg)?,
+                legacy: legacy.clone(),
+            },
+        );
+        let _ = sidebar.scheduler.set(scheduler.clone());
         let patch_tuesday =
             copilot_patch_tuesday::PatchTuesdayState::new(ctx.clone(), legacy.clone());
         let mcp = copilot_mcp::McpState::new(ctx.clone(), threat_intel.clone(), legacy.clone());
@@ -909,9 +919,13 @@ impl App {
                 copilot_scheduler::router(SchedulerState {
                     ctx: self.ctx.clone(),
                     scheduler: self.scheduler.clone(),
-                    legacy: self.legacy.clone(),
                 }),
             )
+            // `POST /api/mimecast/invoke/scheduler/{siem,ttp}`, full paths.
+            .merge(copilot_scheduler::mimecast_router(SchedulerState {
+                ctx: self.ctx.clone(),
+                scheduler: self.scheduler.clone(),
+            }))
             // Full paths beside the two nested incidents routers: alert
             // creation and ingest, and the indexer reads of /db_operations.
             .merge(copilot_ingest::router(self.ingest.clone()))
@@ -1019,7 +1033,7 @@ impl App {
                     graylog: self.graylog.clone(),
                     grafana: self.grafana.clone(),
                     wazuh: self.wazuh.clone(),
-                    legacy: self.legacy.clone(),
+                    scheduler: self.scheduler.clone(),
                     env: self.cloud.clone(),
                     portainer: self.portainer.clone(),
                     worker_http: self.worker_http.clone(),
@@ -1296,11 +1310,14 @@ impl App {
     }
 }
 
-/// Every job this build can take over from APScheduler (`handover.py`'s
-/// `RUST_CAPABLE_JOBS`): the palace drainer and sweeper, `prune_audit_log`,
+/// Every job of `get_function_by_name` (`handover.py`'s `RUST_CAPABLE_JOBS`):
+/// the palace drainer and sweeper, `prune_audit_log`,
 /// `notify_sla_transitions`, `invoke_snapshot_schedules`,
 /// `resize_wazuh_index_fields`, `invoke_alert_creation_collect`, `agent_sync`,
-/// and the integrations' collection jobs (`copilot_integration_modules::jobs`).
+/// the integrations' collection jobs (`copilot_integration_modules::jobs`,
+/// Cato's included) and the four cache refreshers, which refresh this
+/// process's catalog and sidebar.
+#[allow(clippy::too_many_arguments)]
 pub fn scheduled_jobs(
     ctx: &AppContext,
     talon: &TalonConnector,
@@ -1308,6 +1325,8 @@ pub fn scheduled_jobs(
     ingest: &IngestState,
     agents: &AgentsState,
     modules: &copilot_integration_modules::ModulesState,
+    searches: &copilot_searches::SearchesState,
+    sidebar: &copilot_status::sidebar::SidebarState,
     cfg: &CopilotConfig,
 ) -> Vec<copilot_scheduler::JobSpec> {
     let mut jobs = copilot_ai_analyst::palace_jobs::job_specs(ctx, talon);
@@ -1320,6 +1339,8 @@ pub fn scheduled_jobs(
     jobs.push(copilot_ingest::job_spec(ingest));
     jobs.extend(copilot_agents::jobs::job_specs(agents));
     jobs.extend(copilot_integration_modules::jobs::job_specs(modules));
+    jobs.extend(copilot_searches::refresher::job_specs(searches));
+    jobs.extend(copilot_status::sidebar::refresher::job_specs(sidebar));
     jobs
 }
 
