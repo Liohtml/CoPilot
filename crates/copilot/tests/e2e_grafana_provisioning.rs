@@ -1047,25 +1047,36 @@ async fn streams_ok(w: &World) {
         .await;
 }
 
+/// The Huntress collection job's id and function.
+const HUNTRESS_COLLECT: &str = "invoke_huntress_integration_collect";
+
 #[tokio::test]
 async fn integrations_are_provisioned_as_python_provisions_them() {
     if !configured() {
         return;
     }
+    // The jobs are registered by copilot-scheduler in this process; only
+    // APScheduler's own `add_job` reaches the Python backend (the hand-over).
     let legacy = stand_in(LEGACY).await;
     Mock::given(method("POST"))
-        .and(path("/api/scheduler/provisioning_jobs"))
+        .and(path("/api/scheduler/apscheduler_ops"))
         .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(json!({"success": true, "message": "Jobs added successfully"})),
+            ResponseTemplate::new(200).set_body_json(json!({"success": true, "found": [true]})),
         )
         .mount(&legacy)
         .await;
     let h = harness_or_skip!(Some(&legacy));
+    sqlx::query("DELETE FROM scheduled_job_metadata WHERE job_id = ?")
+        .bind(HUNTRESS_COLLECT)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
     let w = world(&h, "Graylog").await;
     h.seed().await;
     let acme = h.code("acme");
     let analyst = h.token(&h.code("analyst"), "analyst");
+    // A run that stopped half-way leaves its rows: the seed ids are fixed.
+    unseed_integrations(&h, &acme).await;
     seed_integration(&h, 7640200, &acme, "Huntress", &[("API_KEY", "k")]).await;
     seed_integration(
         &h,
@@ -1176,9 +1187,25 @@ async fn integrations_are_provisioned_as_python_provisions_them() {
     );
     assert_eq!(
         serde_json::from_slice::<Value>(&hooks[0].body).unwrap(),
-        json!({"jobs": [{"function_name": "invoke_huntress_integration_collect",
-            "job_id": "invoke_huntress_integration_collect", "time_interval": 7}]})
+        json!({"ops": [{"op": "add", "job_id": HUNTRESS_COLLECT,
+            "function_name": HUNTRESS_COLLECT, "time_interval": 7}]})
     );
+    // `add_scheduler_jobs`' row, enabled, written here.
+    assert_eq!(
+        sqlx::query_as::<_, (i32, bool)>(
+            "SELECT time_interval, enabled FROM scheduled_job_metadata WHERE job_id = ?"
+        )
+        .bind(HUNTRESS_COLLECT)
+        .fetch_all(h.db.pool())
+        .await
+        .unwrap(),
+        vec![(7, true)]
+    );
+    sqlx::query("DELETE FROM scheduled_job_metadata WHERE job_id = ?")
+        .bind(HUNTRESS_COLLECT)
+        .execute(h.db.pool())
+        .await
+        .unwrap();
 
     // A second run finds the meta row: the 400 after the tools were asked,
     // and no job handed over.

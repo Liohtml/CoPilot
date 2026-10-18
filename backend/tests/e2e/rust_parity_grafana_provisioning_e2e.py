@@ -735,7 +735,7 @@ def cleanup():
 
 def build_python_app():
     """The real routers, served by uvicorn in a thread: the Python side of every check, and the
-    Rust instances' legacy backend (the scheduler's `/provisioning_jobs`). The APScheduler instance
+    Rust instances' legacy backend (the scheduler's `/apscheduler_ops`). The APScheduler instance
     is the real one on the real `apscheduler_jobs` store, started paused: jobs are stored, none
     fires."""
     from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore

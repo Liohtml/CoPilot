@@ -581,7 +581,10 @@ by `COPILOT_SCHEDULER_OWNER` on the Rust service:
   them ahead of the clock, skipped ticks included), so APScheduler running
   under the ownership, or idle under the hand-over, is a FAIL line, and a
   stored job whose id names no function is listed as one only APScheduler
-  could run. Rolling back is unsetting both switches; a job paused under the
+  could run. Under Compose, `COPILOT_SCHEDULER_OWNER=rust` in `.env` is the
+  one switch: `docker-compose.rust.yml` sets `COPILOT_PY_SCHEDULER=false` on
+  `copilot-backend` whenever it is set, so unsetting it, or rolling back by
+  dropping the overlay, starts APScheduler again; a job paused under the
   ownership has a disabled row, which the hand-over reads as paused too.
 
 The Python half (`app/schedulers/handover.py`) is a guard on the job

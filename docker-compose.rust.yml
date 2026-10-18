@@ -10,6 +10,10 @@
 services:
     copilot-backend:
         ports: !reset []
+        environment:
+            # APScheduler stays off here while copilot-rs owns the schedule
+            # (COPILOT_SCHEDULER_OWNER=rust in .env); without this file it runs again.
+            - COPILOT_PY_SCHEDULER=${COPILOT_SCHEDULER_OWNER:+false}
         volumes:
             # ScoutSuite's reports: copilot-rs runs the scans, this service's
             # static /scoutsuite-report mount serves them.
@@ -47,6 +51,10 @@ services:
             # in the Scheduler UI; Start hands it back.
             - COPILOT_RS_JOBS=${COPILOT_RS_JOBS:-}
             - COPILOT_RS_PALACE_JOBS=${COPILOT_RS_PALACE_JOBS:-false}
+            # "rust": this service owns the schedule — every job whose
+            # scheduled_job_metadata row is enabled runs here, APScheduler is off in
+            # copilot-backend (above), Pause/Start flip the row. Unset: the hand-over.
+            - COPILOT_SCHEDULER_OWNER=${COPILOT_SCHEDULER_OWNER:-}
         depends_on:
             - copilot-mysql
             - copilot-backend

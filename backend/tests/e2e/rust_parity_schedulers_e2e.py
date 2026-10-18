@@ -877,7 +877,8 @@ def main():
         touched_here = (DUO, HUNTRESS, MIMECAST, MIMECAST_TTP)
         check(
             "  APScheduler's store was never touched by the owner",
-            {k: v for k, v in after_store.items() if k not in touched_here} == {k: v for k, v in before_store.items() if k not in touched_here},
+            {k: v for k, v in after_store.items() if k not in touched_here}
+            == {k: v for k, v in before_store.items() if k not in touched_here},
         )
         stop(owner_proc)
         owner_proc = None

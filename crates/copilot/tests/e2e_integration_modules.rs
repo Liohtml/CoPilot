@@ -955,37 +955,33 @@ async fn collection_jobs_run_here_when_handed_over() {
     .await;
     let scheduler = &h.app.scheduler;
 
-    // Python's while its row is enabled.
+    // A manual run executes here whoever owns the schedule — APScheduler
+    // while the row is enabled, this service once handed over —, as Python's
+    // manual run runs whatever the row says: the function's return value is
+    // the run's result, and the Huntress job stamps nothing itself.
     let huntress = job_row(&h, HUNTRESS_JOB, true, None).await;
-    assert!(matches!(
-        scheduler.run_now(HUNTRESS_JOB).await.unwrap(),
-        ManualRun::NotOwned(_)
-    ));
-    assert!(sent(&stub, HUNTRESS).await.is_empty());
-
-    // Handed over: the function's return value is the run's result, and
-    // the Huntress job stamps nothing itself.
-    sqlx::query("UPDATE scheduled_job_metadata SET enabled = 0 WHERE id = ?")
-        .bind(huntress)
-        .execute(h.db.pool())
-        .await
-        .unwrap();
     let customers = h
         .scalar_i64(
             "SELECT COUNT(*) FROM customer_integrations \
              WHERE integration_service_name = 'Huntress'",
         )
         .await;
-    match scheduler.run_now(HUNTRESS_JOB).await.unwrap() {
-        ManualRun::Ran(Ok(result)) => assert_eq!(
-            result,
-            Some(json!({"success": true,
-                        "message": format!("Huntress integration invoked for {customers} customer(s).")}))
-        ),
-        other => panic!("{other:?}"),
+    let invoked = Some(json!({"success": true,
+        "message": format!("Huntress integration invoked for {customers} customer(s).")}));
+    for (enabled, sends) in [(true, 1), (false, 2)] {
+        sqlx::query("UPDATE scheduled_job_metadata SET enabled = ? WHERE id = ?")
+            .bind(enabled)
+            .bind(huntress)
+            .execute(h.db.pool())
+            .await
+            .unwrap();
+        match scheduler.run_now(HUNTRESS_JOB).await.unwrap() {
+            ManualRun::Ran(Ok(result)) => assert_eq!(result, invoked),
+            other => panic!("{other:?}"),
+        }
+        assert!(!stamped(&h, huntress).await);
+        assert_eq!(sent(&stub, HUNTRESS).await.len(), sends);
     }
-    assert!(!stamped(&h, huntress).await);
-    assert_eq!(sent(&stub, HUNTRESS).await.len(), 1);
 
     // One customer failing fails the run with every failure named.
     integration(&h, 3, &beta, "Huntress", &[("API_KEY", "hk-b")]).await;
