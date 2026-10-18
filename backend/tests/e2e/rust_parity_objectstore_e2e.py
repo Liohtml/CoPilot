@@ -602,6 +602,7 @@ def start_rust(port, s3_port):
         "COPILOT_BIND": "127.0.0.1",
         # The catalog caches load on demand, as this Python side never warms them.
         "COPILOT_CATALOG_REFRESH": "false",
+        "COPILOT_STARTUP_TASKS": "false",  # the startup seeds no row of the shared database
         "COPILOT_PORT": str(port),
         "MINIO_ROOT_USER": S3_USER,
         "MINIO_ROOT_PASSWORD": S3_SECRET,

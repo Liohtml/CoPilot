@@ -1,0 +1,31 @@
+[package]
+name = "copilot-startup"
+description = "The startup tasks of backend/copilot.py's lifespan: the PRODUCTION database bootstrap, the migrations under the startup lock, MinIO's buckets, the connector, role, integration and network-connector catalogs, the admin and scheduler users, the built-in templates, the portal settings, the scheduler rows and the Office 365 rule check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-objectstore = { workspace = true }
+copilot-migrate = { workspace = true }
+copilot-cloud-provisioning = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+rand = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[lints]
+workspace = true

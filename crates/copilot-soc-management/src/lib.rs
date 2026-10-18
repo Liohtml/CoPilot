@@ -34,7 +34,7 @@ use copilot_web::AppContext;
 pub const NOTIFY_SLA_TRANSITIONS: &str = "notify_sla_transitions";
 
 /// Every column this crate reads or writes beyond `copilot-sla`'s and the
-/// incidents' (Alembic owns the schema).
+/// incidents' (the schema is `copilot-migrate`'s).
 pub const REQUIREMENTS: &[TableRequirement] = &[
     TableRequirement {
         table: "soc_sla_alert_tracking",

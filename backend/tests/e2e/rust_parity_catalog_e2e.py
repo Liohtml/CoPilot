@@ -1308,6 +1308,7 @@ def start_rust(gh_api, gh_raw):
         # The catalog refresher stays on here; the sidebar's, which follows it by default,
         # would send its own warm-up requests to the indexer and MinIO stand-ins.
         "COPILOT_SIDEBAR_REFRESH": "false",
+        "COPILOT_STARTUP_TASKS": "false",  # the startup seeds no row of the shared database
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
     }
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)

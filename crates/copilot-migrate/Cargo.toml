@@ -1,0 +1,23 @@
+[package]
+name = "copilot-migrate"
+description = "Schema ownership: the migration runner (baseline = the Alembic head d15ab1ed7e1e, then forward-only SQL migrations with checksums) and the startup lock shared with the Python backend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[lints]
+workspace = true

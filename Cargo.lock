@@ -508,6 +508,7 @@ dependencies = [
  "copilot-intel-connectors",
  "copilot-license",
  "copilot-mcp",
+ "copilot-migrate",
  "copilot-monitoring-alerts",
  "copilot-notifications",
  "copilot-objectstore",
@@ -524,6 +525,7 @@ dependencies = [
  "copilot-siem",
  "copilot-sla",
  "copilot-soc-management",
+ "copilot-startup",
  "copilot-status",
  "copilot-sublime",
  "copilot-talon",
@@ -1277,6 +1279,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-migrate"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "copilot-core",
+ "copilot-db",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "copilot-monitoring-alerts"
 version = "0.2.0"
 dependencies = [
@@ -1672,6 +1691,29 @@ dependencies = [
  "strum",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "copilot-startup"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "copilot-auth",
+ "copilot-cloud-provisioning",
+ "copilot-core",
+ "copilot-db",
+ "copilot-migrate",
+ "copilot-objectstore",
+ "hex",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]

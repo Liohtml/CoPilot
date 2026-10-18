@@ -50,7 +50,7 @@ pub use routes::{alerts, case_templates, customer_reports, db_operations, report
 
 use copilot_db::schema::TableRequirement;
 
-/// Every column this crate reads or writes (Alembic owns the schema).
+/// Every column this crate reads or writes (the schema is `copilot-migrate`'s).
 pub const REQUIREMENTS: &[TableRequirement] = &[
     TableRequirement {
         table: "incident_management_alert",

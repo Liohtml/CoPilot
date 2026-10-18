@@ -25,6 +25,12 @@ on:
       - "backend/app/incidents/templates/**"
       - "backend/app/soc_management/templates/**"
       - "backend/app/connectors/grafana/reporting/**"
+      # Pinned by copilot-startup (the deployment instructions it compiles in,
+      # the startup lock and the lifespan's order).
+      - "backend/app/integrations/markdown/**"
+      - "backend/app/network_connectors/markdown/**"
+      - "backend/app/db/startup_lock.py"
+      - "backend/copilot.py"
       - "scripts/check-alembic-head.py"
       - ".github/workflows/rust.yml"
   push:
@@ -41,6 +47,10 @@ on:
       - "backend/app/incidents/templates/**"
       - "backend/app/soc_management/templates/**"
       - "backend/app/connectors/grafana/reporting/**"
+      - "backend/app/integrations/markdown/**"
+      - "backend/app/network_connectors/markdown/**"
+      - "backend/app/db/startup_lock.py"
+      - "backend/copilot.py"
       - ".github/workflows/rust.yml"
 
 permissions:
@@ -132,6 +142,15 @@ jobs:
         env:
           COPILOT_TEST_DATABASE_URL: mysql://copilot:copilot@127.0.0.1:3306/copilot
         run: cargo test -p copilot --test e2e --locked -- --test-threads=1
+
+      - name: End-to-end (schema and startup)
+        env:
+          COPILOT_TEST_DATABASE_URL: mysql://copilot:copilot@127.0.0.1:3306/copilot
+          # Throwaway databases (the runner on an empty one, the seeding) and
+          # the PRODUCTION bootstrap through root.
+          COPILOT_TEST_ADMIN_DATABASE_URL: mysql://root:root@127.0.0.1:3306/copilot
+          COPILOT_TEST_MYSQL_ROOT_PASSWORD: root
+        run: cargo test -p copilot --test e2e_startup --locked -- --test-threads=1
 
   advisories:
     name: dependency advisories (non-blocking)

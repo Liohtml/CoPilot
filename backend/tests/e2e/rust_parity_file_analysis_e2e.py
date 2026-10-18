@@ -614,6 +614,7 @@ def start_rust(port, sandbox="remote", wkhtmltopdf=WRAPPER):
         "JWT_SECRET": os.environ["JWT_SECRET"],
         "COPILOT_BIND": "127.0.0.1",
         "COPILOT_CATALOG_REFRESH": "false",
+        "COPILOT_STARTUP_TASKS": "false",  # the startup seeds no row of the shared database
         "COPILOT_PORT": str(port),
         "CONNECTOR_CACHE_TTL_SECONDS": "0",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),

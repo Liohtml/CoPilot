@@ -4,8 +4,11 @@
 //! see `docs/architecture/RUST_MIGRATION.md`.
 //!
 //! ```text
-//! copilot serve           serve the API (default)
-//! copilot doctor          check configuration, database, schema, Talon, legacy backend
+//! copilot serve           serve the API (default): the startup tasks and the migrations
+//!                         first (copilot-startup, copilot-migrate), then the routes
+//! copilot migrate         bring the schema to this build's last migration, then exit
+//! copilot doctor          check configuration, database, schema, migrations, the startup's
+//!                         preconditions, Talon, legacy backend
 //! copilot routes          list the route prefixes this build serves itself
 //! copilot jobs            list the scheduled jobs this build can run, and who runs them
 //!                         (`doctor` also checks APScheduler against COPILOT_SCHEDULER_OWNER)
@@ -49,6 +52,9 @@ struct Cli {
 enum Command {
     /// Serve the API.
     Serve,
+    /// Bring the schema to this build's last migration (the baseline on an
+    /// empty database, adopting one at the Alembic head), then exit.
+    Migrate,
     /// Check configuration and every dependency, then exit.
     Doctor,
     /// Print the route prefixes this build answers itself.
@@ -110,8 +116,9 @@ fn main() -> anyhow::Result<()> {
         .context("tokio runtime")?;
     runtime.block_on(async move {
         match command {
-            Command::Serve => serve(cfg).await,
-            Command::Doctor => doctor(cfg).await,
+            Command::Serve => serve(cfg, env).await,
+            Command::Migrate => migrate(cfg).await,
+            Command::Doctor => doctor(cfg, env).await,
             Command::Palace { job } => palace(cfg, job).await,
             Command::Jobs => jobs(cfg).await,
             Command::Routes => Ok(()),
@@ -121,6 +128,13 @@ fn main() -> anyhow::Result<()> {
 
 /// Wait for MySQL (it may still be starting), then verify the schema.
 async fn connect_and_check(cfg: &CopilotConfig) -> anyhow::Result<Db> {
+    let db = connect(cfg).await?;
+    check_schema(&db).await?;
+    Ok(db)
+}
+
+/// Wait for MySQL (it may still be starting).
+async fn connect(cfg: &CopilotConfig) -> anyhow::Result<Db> {
     let db = Db::connect_lazy(&cfg.database).context("database configuration")?;
     let mut attempt = 0u32;
     loop {
@@ -134,28 +148,59 @@ async fn connect_and_check(cfg: &CopilotConfig) -> anyhow::Result<Db> {
             Err(e) => return Err(e).context("database unreachable"),
         }
     }
-    let missing = missing_columns(&db, &schema_requirements()).await?;
+    Ok(db)
+}
+
+/// Verify the columns this build needs.
+async fn check_schema(db: &Db) -> anyhow::Result<()> {
+    let missing = missing_columns(db, &schema_requirements()).await?;
     if !missing.is_empty() {
         bail!(
-            "the database schema lacks {} column(s) this build needs ({}). The schema is owned by \
-             the Python backend's Alembic migrations: start it once (or run `alembic upgrade head`) \
-             before starting this service.",
+            "the database schema lacks {} column(s) this build needs ({}). The schema is this \
+             binary's (copilot-migrate): run `copilot migrate`, or start `serve` with \
+             COPILOT_RUN_MIGRATIONS on.",
             missing.len(),
             missing.join(", ")
         );
     }
-    match alembic_revision(&db).await? {
+    match alembic_revision(db).await? {
         Some(rev) if rev == TESTED_ALEMBIC_HEAD => {}
         Some(rev) => tracing::warn!(revision = %rev, tested = TESTED_ALEMBIC_HEAD,
             "database is at a different Alembic revision than this build was tested against"),
-        None => tracing::warn!("no alembic_version table: the schema was not created by Alembic"),
+        None => tracing::warn!(
+            "no alembic_version table: a Python backend started for a rollback \
+            would run every Alembic migration on this database"
+        ),
     }
-    Ok(db)
+    Ok(())
 }
 
-async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
-    let db = connect_and_check(&cfg).await?;
+async fn serve(cfg: CopilotConfig, env: EnvFile) -> anyhow::Result<()> {
+    // copilot.py's lifespan (copilot-startup): the PRODUCTION bootstrap, then
+    // the migrations and the seeding under the startup lock.
+    let startup = copilot_startup::Startup::new(&env);
+    startup
+        .bootstrap(&cfg.database)
+        .await
+        .context("startup: the database bootstrap")?;
+    let db = connect(&cfg).await?;
+    let lock = startup
+        .schema(&cfg.database)
+        .await
+        .context("startup: the schema")?;
+    check_schema(&db).await?;
     let app = App::new(&cfg, db.clone())?;
+    startup
+        .seed(
+            lock,
+            copilot_startup::SeedDeps {
+                db: &db,
+                objectstore: &app.objectstore,
+                connectors: Some(&app.ctx.connectors),
+            },
+        )
+        .await
+        .context("startup")?;
     let router = app.router(cfg.max_body_bytes);
     let cancel = CancellationToken::new();
 
@@ -178,6 +223,14 @@ async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
     copilot_status::performance::monitor::spawn(cancel.clone());
     // ScoutSuite's report directory, as copilot.py creates it at startup.
     copilot_scoutsuite::ensure_report_dir(&app.scoutsuite);
+    // The Office 365 pipeline rules, checked once per start on a task.
+    startup.spawn_office365_check(copilot_cloud_provisioning::CloudState {
+        ctx: app.ctx.clone(),
+        graylog: app.graylog.clone(),
+        grafana: app.grafana.clone(),
+        wazuh: app.wazuh.clone(),
+        env: app.cloud.clone(),
+    });
 
     let addr = SocketAddr::new(cfg.bind, cfg.port);
     let listener = tokio::net::TcpListener::bind(addr)
@@ -202,6 +255,7 @@ async fn serve(cfg: CopilotConfig) -> anyhow::Result<()> {
 
     // A run in progress gets copilot_scheduler::runner::SHUTDOWN_GRACE.
     let _ = tokio::time::timeout(Duration::from_secs(15), jobs).await;
+    startup.shutdown(&db).await;
     db.close().await;
     tracing::info!("stopped");
     Ok(())
@@ -228,9 +282,50 @@ async fn wait_for_signal() {
     }
 }
 
-async fn doctor(cfg: CopilotConfig) -> anyhow::Result<()> {
+async fn migrate(cfg: CopilotConfig) -> anyhow::Result<()> {
+    let report = copilot_startup::migrate_now(&cfg.database)
+        .await
+        .context("migrations")?;
+    for action in &report.actions {
+        match action {
+            copilot_migrate::Action::Adopted(m) => {
+                println!(
+                    "adopted     {m} (the database was at Alembic {})",
+                    copilot_migrate::ALEMBIC_HEAD
+                );
+            }
+            copilot_migrate::Action::Applied { migration, ms } => {
+                println!("applied     {migration} ({ms} ms)");
+            }
+        }
+    }
+    if report.actions.is_empty() {
+        println!("up to date");
+    }
+    for w in &report.warnings {
+        println!("warning     {w}");
+    }
+    Ok(())
+}
+
+async fn doctor(cfg: CopilotConfig, env: EnvFile) -> anyhow::Result<()> {
     let mut failures = 0;
     println!("config      ok (bind {}:{})", cfg.bind, cfg.port);
+    let startup = copilot_startup::Startup::new(&env);
+    match copilot_objectstore::ObjectStore::from_env(&cfg.minio) {
+        Ok(store) => {
+            for (text, failed) in
+                copilot_startup::doctor::preconditions(&startup, &cfg.database, &store).await
+            {
+                failures += usize::from(failed);
+                println!("startup     {text}");
+            }
+        }
+        Err(e) => {
+            failures += 1;
+            println!("startup     FAIL {e}");
+        }
+    }
     let db = Db::connect_lazy(&cfg.database)?;
     match db.ping().await {
         Ok(()) => println!("database    ok"),
@@ -249,6 +344,10 @@ async fn doctor(cfg: CopilotConfig) -> anyhow::Result<()> {
             }
         ),
         None => println!("alembic     none"),
+    }
+    for (text, failed) in copilot_startup::doctor::migrations(&cfg.database).await {
+        failures += usize::from(failed);
+        println!("migrations  {text}");
     }
     let missing = missing_columns(&db, &schema_requirements()).await?;
     if missing.is_empty() {

@@ -778,6 +778,7 @@ def start_rust():
         "COPILOT_BIND": "127.0.0.1",
         # The catalog caches load on demand, as this Python side never warms them.
         "COPILOT_CATALOG_REFRESH": "false",
+        "COPILOT_STARTUP_TASKS": "false",  # the startup seeds no row of the shared database
         "COPILOT_PORT": str(RS_PORT),
         "COPILOT_LEGACY_URL": f"http://127.0.0.1:{PY_PORT}",
         "CONNECTOR_CACHE_TTL_SECONDS": "0",

@@ -305,6 +305,7 @@ def rust_env(port, extra):
         "COPILOT_BIND": "127.0.0.1",
         # The catalog caches (and the sidebar) load on demand: no warm-up, no timers.
         "COPILOT_CATALOG_REFRESH": "false",
+        "COPILOT_STARTUP_TASKS": "false",  # the startup seeds no row of the shared database
         "COPILOT_PORT": str(port),
         "AUDIT_LOG_RETENTION_DAYS": os.environ["AUDIT_LOG_RETENTION_DAYS"],
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),

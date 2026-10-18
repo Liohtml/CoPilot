@@ -72,7 +72,7 @@ const TRACKING_COLUMNS: &[&str] = &[
     "pause_credit_seconds",
 ];
 
-/// Every column this crate reads or writes (Alembic owns the schema).
+/// Every column this crate reads or writes (the schema is `copilot-migrate`'s).
 pub const REQUIREMENTS: &[TableRequirement] = &[
     TableRequirement {
         table: "soc_sla_alert_tracking",

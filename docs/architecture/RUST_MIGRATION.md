@@ -39,10 +39,15 @@ file.
   it answers itself; every other path **or method** is streamed unchanged to
   the Python backend (`COPILOT_LEGACY_URL`): bodies, SSE, downloads,
   status codes and headers pass through, nothing is buffered or re-encoded.
-- **Same database.** Both services use the same MySQL. **Alembic stays the
-  only owner of the schema** until the Python backend is retired: the Rust
-  service never creates or alters a table, and refuses to start when a column
-  it needs is missing (`copilot_db::schema`, `copilot doctor`).
+- **Same database.** Both services use the same MySQL. **Since phase 5 the
+  schema is the Rust binary's** (`copilot-migrate`): its baseline is the
+  schema at the Alembic head `d15ab1ed7e1e`, where the Python migrations are
+  frozen (`scripts/check-alembic-head.py` fails on a new one), later changes
+  are Rust migrations, and `alembic_version` stays at that head, so a Python
+  backend started against the database for a rollback runs nothing. The
+  binary runs `copilot.py`'s startup tasks itself (`copilot-startup`) and
+  still refuses to start when a column it needs is missing
+  (`copilot_db::schema`, `copilot doctor`).
 - **Same tokens.** Since phase 2 the Rust service issues them too (login,
   refresh, 2FA, SSO, passkeys). A token from either backend is accepted by
   the other (HS256 over the raw `JWT_SECRET`, PyJWT's claims and rules —
@@ -135,8 +140,10 @@ tower-http, reqwest (rustls), serde, thiserror, tracing, sha2/hmac/base64.
 | `copilot-docx` | docxtpl 0.20.2 (`DocxTemplate`: `patch_xml`, `render_xml_part`, `resolve_listing`, `fix_tables`, `fix_docpr_ids`, headers, footers, footnotes, core properties) over python-docx 1.2 (the OPC package read and written back part by part) and lxml 6 / libxml2 2.14 (`remove_blank_text`, the escapes, `tostring`), `zipfile` | the case DOCX report's renderer: the package, the XML tree, Python `re`'s patterns (`pyre.rs`, on fancy-regex), the rendering through `copilot-jinja`; pinned by `docx_vectors.json` (`scripts/gen-docx-vectors.py`: every member of the documents Python writes). A rendered body only lxml's recovering parser can repair is `DocxError::Recover`, which the route hands to Python |
 | `copilot-reports` | `app/incidents/routes/incident_report.py` (`/generate-report-docx`, `/generate-report-pdf`), `routes/customer_report.py` (`/generate/background`) and `services/{customer_report,customer_report_charts,customer_report_branding,reports_pdf}.py`, the incident report templates, `soc_management/services/{report,formatting}.py` and `GET /report`, `connectors/grafana/services/reporting.py`'s `generate_report` and `reporting/report-template.html`; pdfkit 1.0, Starlette's `FileResponse`, Playwright 1.59's Chromium driver | the case DOCX (`copilot-docx`) and PDF reports, the customer reports' background generation (the row, every layout and theme, the SLA section, the charts — drawn in Rust, each PNG carrying its call —, MinIO), the SOC operations report, the Grafana panel report (the licence, then a headless Chromium over the DevTools protocol on the pipe, as Playwright drives it: `chromium/`); wkhtmltopdf as pdfkit runs it (`pdfkit.rs`). Parity: `rust_parity_reports_e2e.py`; e2e: `e2e_reports.rs` |
 | `copilot-verifiers` | the `verify_*` functions of `app/connectors/{graylog,influxdb,grafana,portainer,resend,talon}/utils/universal.py`, `app/integrations/utils/event_shipper.py` and `app/utils.py` (the Wazuh worker, HAProxy and alert-creation provisioning healthchecks, VirusTotal), and `get_connector_service`'s names | the last twelve connector verifiers (`Graylog`, `Graylog-Network`, `InfluxDB`, `Grafana`, `Wazuh Worker Provisioning`, `HAProxy Provisioning`, `Alert Creation Provisioning`, `VirusTotal`, `Talon`, `Event Shipper`, `Portainer`, `Resend`) registered with `copilot_connectors::Verifiers`: each tool asked as Python asks it (`requests` through `PyHttp`, httpx 0.28, `InfluxClient`'s ping and alerts query, `GrafanaClient`, the GELF frame), Python's `{connectionSuccessful, message}` texts; no state |
+| `copilot-migrate` | `app/db/db_setup.py:apply_migrations`, `backend/alembic/` (frozen at `d15ab1ed7e1e`) | the schema (phase 5): the baseline (`migrations/0001_baseline.sql`, the schema `alembic upgrade head` creates on an empty database, written by `scripts/gen-baseline-schema.sh` and pinned to the e2e fixture), forward-only SQL migrations with their SHA-256 in `copilot_rs_schema_history`, the pure decision on a database (`plan.rs`: create, adopt, apply, or refuse), the runner (`runner.rs`, statement by statement: `sql.rs`), the startup lock both backends take (`lock.rs`), the frozen Alembic history (`alembic_revisions.json`, `scripts/gen-startup-vectors.py`) |
+| `copilot-startup` | `copilot.py`'s `lifespan`; `app/db/db_setup.py` and `db_populate.py`, `app/data_store/data_store_setup.py`, the system users of `app/auth/services/universal.py`, `app/notifications/services/template_seeds.py`, `ensure_default_portal_settings`, `initialize_job_metadata`, `ensure_office365_pipeline_rules` | the startup tasks in `lifespan`'s order (`COPILOT_STARTUP_TASKS`): the PRODUCTION bootstrap through root, MinIO's buckets (`copilot-objectstore`), the connector, role, integration and network-connector catalogs, the admin and scheduler users (the latter removed at the end of `serve`), the built-in templates, the portal settings, the scheduler rows, the Office 365 rule check on a task (`copilot-cloud-provisioning`); the catalogs as data (`catalog.rs`, `templates.rs`, `markdown/` — copies of the backend's files, pinned by a test), pinned to Python's own lists by `startup_vectors.json` (`scripts/gen-startup-vectors.py`); `copilot doctor`'s startup and migration lines |
 | `copilot-gateway` | — | legacy proxy (its notification bridge sink is no longer wired); deleted when the migration ends |
-| `copilot` | `copilot.py` | binary: `serve`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
+| `copilot` | `copilot.py` | binary: `serve` (the startup tasks and the migrations first), `migrate`, `doctor`, `routes`, `jobs`, `palace drain|sweep` |
 
 Each module keeps CoPilot's `routes / services / schema` split.
 
@@ -178,7 +185,8 @@ follows the user's live `role_id` and `user_customer_access`, fail-closed
 (`enforce_owned_object_access`: an object with no resolvable owner is a 403 for
 scoped callers).
 
-**Database.** No schema change. Timestamps are written as MySQL stores
+**Database.** The schema is `copilot-migrate`'s (**Schema and startup**,
+below). Timestamps are written as MySQL stores
 Python's `datetime.utcnow()` (rounded to the second), so a row reads back
 identically whichever service wrote it. Same-second ties are broken
 explicitly: lists by ascending id (what MySQL returns for the Python queries),
@@ -1371,8 +1379,9 @@ layer leaves it alone.
 The default templates and the Sysmon config upload are Rust too (see
 **Incidents** and **Response routes**). Still Python, each for a reason: the
 DOCX/PDF case reports and the customer report generation (docxtpl,
-wkhtmltopdf) and the startup `create_buckets()` (the sidebar's MinIO
-indicator moved with the sidebar; File Analysis' state store with its module,
+wkhtmltopdf), which moved with the reports (the startup `create_buckets()`
+moved with the startup tasks, **Schema and startup** below; the sidebar's
+MinIO indicator with the sidebar; File Analysis' state store with its module,
 **File analysis** below). The parity suite (`rust_parity_objectstore_e2e.py`)
 points both backends at one recording S3 stand-in, verifies every
 request's signature with the shared secret and compares the canonical
@@ -1880,6 +1889,96 @@ inspector, CAPE, VirusTotal, the gRPC Velociraptor, a wkhtmltopdf script) and
 compares the answers, every outbound request, the bucket's end state (job ids
 and timestamps masked) and the reads of a job the other backend wrote.
 
+**Schema and startup (phase 5).** The binary owns the schema
+(`copilot-migrate`) and runs `copilot.py`'s `lifespan` itself
+(`copilot-startup`), so it runs against an empty MySQL with no Python
+process ever having started.
+
+- *The baseline* is version 1 of the Rust migrations: the schema
+  `alembic upgrade head` creates on an empty database at `d15ab1ed7e1e` —
+  its 116 tables, `alembic_version` and the five roles —, the
+  `mysqldump` `scripts/gen-baseline-schema.sh` takes the way
+  `scripts/dump-schema.sh` writes the e2e fixture (a unit test compares the
+  two; `e2e_startup.rs` compares what the runner creates, `SHOW CREATE
+  TABLE` by table, with the fixture). Later schema changes are Rust
+  migrations: plain SQL files, forward-only, numbered, each recorded with its
+  SHA-256 in `copilot_rs_schema_history` (version, name, checksum, `applied` /
+  `adopted`, success, time, duration). Alembic is frozen: its 99 revisions
+  are listed in `alembic_revisions.json` and `scripts/check-alembic-head.py`
+  reports a new Python migration as an error. Porting those 99 migrations is
+  out of scope: a database Python left at an older revision is upgraded by
+  starting the last Python release once.
+- *What the runner does* depends only on what it finds (`plan.rs`, pure): an
+  empty database gets the baseline (the history row is written `success = 0`
+  first and set once every statement ran — DDL is not transactional, so a
+  failure leaves the row as the marker); a database at `d15ab1ed7e1e` without
+  a history is *adopted* (the baseline recorded, no table touched); a recorded
+  one gets the migrations it lacks, in order. Refused, each with its sentence:
+  an older Alembic revision (naming it, and the last Python release), a
+  revision no release has, an empty or branched `alembic_version`, tables
+  without any version, an unfinished migration, a migration this build lacks
+  (a newer release migrated it), one whose file changed, one missing below a
+  later one. `copilot migrate` runs it; `serve` runs it at start unless
+  `COPILOT_RUN_MIGRATIONS=false` (then it only checks the columns, as before);
+  `copilot doctor` prints the history, a pending migration, an adoption or a
+  baseline to come, or the refusal.
+- *The startup tasks*, in `lifespan`'s order, gated by
+  `COPILOT_STARTUP_TASKS` (default on): with `ENVIRONMENT=PRODUCTION`
+  (`copilot.py`'s exact comparison and default) root (`MYSQL_ROOT_PASSWORD`;
+  unset stops the start, as Python's import does) makes sure of the database
+  and the user — the ones this service connects as, `IF NOT EXISTS` (§4) —
+  before anything else connects; then the migrations; `create_buckets()`
+  (`copilot-objectstore`'s `create_bucket_if_not_exists`, a fresh client per
+  bucket: an unreachable MinIO stops the start, as in Python); the
+  connectors — the 18 of `get_connectors_list()` in its order (their ids:
+  Python code addresses connectors by id), each from its `<NAME>_URL`,
+  `_USERNAME`, `_PASSWORD`, `_API_KEY`, `_SUPPORTS`, `_VERIFIED` and
+  extra-data variable as `load_connector_data` reads them (`os.getenv`: an
+  empty value is a value, `bool("false")` is true), an existing row only
+  flagged when its connector gained an extra field — and the four retired
+  ones deleted; the five roles with their fixed ids; the 13 integrations
+  (their deployment instructions compiled in, a stored placeholder replaced)
+  and their 53 keys, the three network connectors and their seven; the admin
+  (24 characters, logged once as Python logs it) and scheduler (12) users,
+  bcrypt `$2b$12$`; the nine built-in templates; the portal's global row; the
+  12 scheduler rows `initialize_job_metadata` seeds (intervals reset,
+  `enabled` kept: every one can be handed over; two rows for one job are
+  `one_or_none()`'s error). Then, on a task and never fatal,
+  `ensure_office365_pipeline_rules` (`copilot-cloud-provisioning`). At the
+  end of `serve` the scheduler user is removed. Each step is Python's
+  check-then-insert, one transaction per step as Python's session; the
+  templates and the portal row only log a failure, as in Python. Not ported:
+  `run_integrity_check` (it re-hashes the Python image's compiled
+  licence-enforcement modules; the binary has none), `configure_thread_limit`,
+  the query metrics and the session log (process-local, the Rust process has
+  its own `/api/performance`), `warm_catalog_caches` (the Rust refreshers warm
+  this process's caches).
+- *Race-free next to Python.* None of the seeded tables has a unique key, and
+  Alembic creating the schema while Rust creates the baseline would leave
+  neither. Every process takes one MySQL named lock before the schema and
+  the seeding (`GET_LOCK(CONCAT('copilot_startup:', SHA1(DATABASE())),
+  600)`, `copilot_migrate::lock`), and the Python backend takes the same lock
+  around `apply_migrations()` through `init_scheduler()`
+  (`app/db/startup_lock.py`, the one Python change of this part): two
+  processes starting against one database run those steps one after the
+  other, so an empty database gets one schema and one set of rows whichever
+  starts first (parity: both orders). The bootstrap runs before the lock (the
+  database may not exist yet): `IF NOT EXISTS` makes it race-free, and
+  Python's check-then-create fails only into its own logged error. The
+  process keeps no state from these tasks: the scheduler user's password is
+  not kept (Python holds it in memory for a `scheduler_login` nothing calls).
+- Every parity suite's own Rust instance, and the one `scripts/rust-parity.sh`
+  starts, runs with `COPILOT_STARTUP_TASKS=false` (the shared database's rows
+  are the suites' own); migrations stay on and adopt it. A new suite that
+  starts a Rust instance on the shared database sets it too.
+
+Parity: `rust_parity_startup_e2e.py` (Python's real `lifespan` and `copilot
+serve` on two empty databases: the whole schema, every seeded row while
+running and after the stop, every MinIO and Graylog request and header; a
+second start on each, each on the other's database, both at once in both
+orders, an older Alembic revision, the PRODUCTION bootstrap through root);
+e2e: `e2e_startup.rs`.
+
 ---
 
 ## 4. Differences by design
@@ -2087,6 +2186,11 @@ not provoked.
 | `POST /agent_data_store/upload` by a scoped analyst | any bucket and object | only an object whose first segment is one of the caller's customer codes or an agent id of their customers' (else 403 `Access denied to object …` before MinIO); dot segments further on are still miniopy's 500 | tenant leak |
 | `POST /github-audit/config`'s answer | the GitHub token in clear (`config.github_token`) | masked like every other configuration answer (`***` and the last four; empty stays empty); the row keeps it | Python response artefact |
 | `GET /wazuh_manager/mitre/techniques/alerts`, `GET …/techniques/{id}/alerts` by a scoped caller | the index pattern searched across every tenant's indices | one more filter clause: `_index` matching `*<matcher>*` for each of the caller's customers' codes and names (the `/api/alerts` rule; matchers an index name cannot hold dropped); a caller with none gets the empty search's answer without the indexer being asked | tenant leak |
+| the start with `ENVIRONMENT=PRODUCTION` and `MYSQL_USER` / `MYSQL_DATABASE` (or `COPILOT_DATABASE_URL`) naming another user or database than `copilot` | root makes sure of the database `copilot` and the user `copilot` (hard-coded), then the backend connects as `MYSQL_USER`: a user that does not exist yet stops the start | root makes sure of the database and the user this service connects as (`CREATE … IF NOT EXISTS`, the database matched exactly where Python's `SHOW DATABASES LIKE` takes `_` as a wildcard) | Python fails, Rust works |
+| a database at an Alembic revision older than `d15ab1ed7e1e` | `alembic upgrade head` | refused, naming the revision and what to do (start the last Python release once: its start upgrades it, then this service adopts it); nothing touched | the 99 Python migrations are not ported (phase 5) |
+| the schema | Alembic's 116 tables | the same 116 (`SHOW CREATE TABLE` equal), plus `copilot_rs_schema_history`, the Rust migrations' history | schema ownership |
+| the integrations' and network connectors' deployment instructions | read from `app/integrations/markdown/` relative to the working directory: a backend started elsewhere stores the placeholder | compiled in (copies pinned to the backend's files) | Python fails, Rust works |
+| the start's log | the new MySQL user's password, the scheduler user's password and the admin's password model (hash included) | the admin's password only (an operator's one way to it), every other secret redacted | secrets in logs |
 
 ---
 
@@ -2109,11 +2213,17 @@ COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13306/copilot \
 MYSQL_PASSWORD=copilot scripts/rust-parity.sh     # Python venv in backend/.venv
 ```
 
-`crates/copilot/tests/fixtures/schema.sql` is the schema at the Alembic head
-(`scripts/dump-schema.sh`). CI (`.github/workflows/rust.yml`) runs fmt,
-clippy, tests, an MSRV check on 1.85, and the end-to-end suite on a MySQL
-service loaded from the fixture; `scripts/check-alembic-head.py` fails the
-build when a migration lands without a regenerated fixture.
+`crates/copilot/tests/fixtures/schema.sql` is the schema at this build's
+last migration (`scripts/dump-schema.sh`) — today the baseline, the Alembic
+head. CI (`.github/workflows/rust.yml`) runs fmt, clippy, tests, an MSRV check
+on 1.85, and the end-to-end suite on a MySQL service loaded from the fixture;
+`scripts/check-alembic-head.py` fails the build on a new Alembic migration
+(Alembic is frozen: schema changes are Rust migrations) or a fixture,
+baseline or `TESTED_ALEMBIC_HEAD` at another revision. `e2e_startup.rs` runs
+the runner on an empty database and compares the result with the fixture; it
+needs a user that can create databases (`COPILOT_TEST_ADMIN_DATABASE_URL`,
+else the test user) and, for the PRODUCTION bootstrap, root's password
+(`COPILOT_TEST_MYSQL_ROOT_PASSWORD`); CI runs it next to `e2e` with root for both.
 
 ---
 
@@ -2128,7 +2238,7 @@ Python backend today: ~200 k lines in 930 files.
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
 | **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (with the exclusion draft and dry-run) moved in phase 4, the DOCX/PDF reports and customer report generation for a PDF renderer (the MinIO routes moved in phase 4) |
 | 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run) and the three indexer reads of `/db_operations` — **done** (`copilot-ingest`, `rust_parity_ingest_e2e.py`) —, the incidents' MinIO routes — **done** (`copilot-objectstore`: case files, report templates, `DELETE /case/{id}`, the customer reports' download and delete, `/api/agent_data_store`; `rust_parity_objectstore_e2e.py`; the default-template upload and the Sysmon config upload in wave 6; `file_analysis`'s state store in wave 7, with its module; Velociraptor's collection upload and the agents' report files moved with their modules) — and DOCX/PDF reports — **done** in wave 7 (`copilot-reports` on `copilot-docx`: the case DOCX and PDF, the customer reports with their charts and SLA section, the SOC operations report and Grafana's panel report on headless Chromium; `rust_parity_reports_e2e.py`) —, the connector-bound scheduler jobs (`invoke_snapshot_schedules`, `resize_wazuh_index_fields`, `invoke_alert_creation_collect` and `agent_sync` **done**); `agents` (9.8 k) — **done** (`/api/agents`: `copilot-agents` on `copilot-velociraptor`, the `agent_sync` job, `rust_parity_agents_e2e.py`; `/api/vulnerabilities`, `/api/sca` and `/api/syscollector`: `copilot-agent-reports`, `rust_parity_agent_reports_e2e.py`) —, `soc_management` (4.4 k) — **done**, its PDF report with the reports (`copilot-soc-management`: dashboard, policies, calendars, the portal's SLA page, `notify_sla_transitions`; `rust_parity_soc_e2e.py`), the rest of `customer_portal` (2.1 k) — **done** (`copilot-customer-portal`: the global settings and branding with their logos and a branding cache each process checks against the tables, the Overview, the dashboard counters, the agents page and CSV, `/me`; `rust_parity_customer_portal_e2e.py`), `customer_waf` — **done** (`copilot-waf`; `rust_parity_provisioning_e2e.py`), the monitoring-alert catalog — **done** (`copilot-monitoring-alerts`: every alert, custom alerts, the Event Shipper test, on both Graylogs; `rust_parity_monitoring_alert_e2e.py`), the response routes — `/api/active_response`, the Graylog webhook, `/api/sysmon_config` (its upload in wave 6) and `/api/copilot_action` **done** (`copilot-response`, `rust_parity_response_e2e.py`) —, the Shuffle connector with the case notification **done** (`copilot-shuffle`, the same suite) —, `siem` (1.7 k) — **done** (`copilot-siem`: dashboards, custom templates, panel data, event sources, the event search; `rust_parity_siem_e2e.py`), `threat_intel` (2.1 k) — **done** (`copilot-threat-intel`: EPSS, SOCFortress intel and AI, the process-name analysis, VirusTotal lookups and file analysis, the licence check; `rust_parity_siem_e2e.py`), `file_analysis` — **done** in wave 7 (`copilot-file-analysis`: the 12 routes, the orchestrator, the MinIO state store both backends read, the CAPE sandbox, the PDF report; `rust_parity_file_analysis_e2e.py`) —, `customer_provisioning` — **done** (the provisioning itself in waves 5 and 6: `/provision/dashboards` `copilot-grafana-dashboards`, `POST /provision` and `/provision/wazuh_worker` `copilot-integration-provisioning`, `rust_parity_remaining_provisioning_e2e.py`), `stack_provisioning` — **done** (`copilot-provisioning`; the Fortinet / SonicWall / SentinelOne provisioning in wave 5: `copilot-integration-provisioning`, `rust_parity_grafana_provisioning_e2e.py`), then `connectors` (29.6 k: Wazuh — the connector reads, the cross-process cache check, the indexer, the manager routes the UI uses and the two indexer jobs **done** (`copilot-connectors`, `copilot-wazuh`) —, Graylog, Velociraptor — `/api/artifacts` with its two MinIO collections and `/api/flows` **done** (`copilot-velociraptor`) —, …) and `integrations` (37.5 k), one vendor at a time — **Graylog, InfluxDB, Grafana and Portainer done** (`copilot-graylog`, `copilot-influxdb`, `copilot-grafana`, `copilot-portainer` on `copilot-upstream`, `rust_parity_graylog_e2e.py`; Grafana's PDF report **done** with the reports, Portainer's stack creation **done** in wave 6 with the customer provisioning; the dashboard provisioning — `POST /api/grafana/dashboards`, `POST /api/customer_provisioning/provision/dashboards` — **done** in wave 5: `copilot-grafana-dashboards`, the templates compiled in from `backend/`, `rust_parity_grafana_provisioning_e2e.py`); the integrations core — `/api/integrations` but `/modules/*`, the alert creation settings and `/api/network_connectors` — **done** (`copilot-integrations`, `rust_parity_integrations_e2e.py`; the delete of a deployed AWS instance moved with AWS provisioning in wave 6), the integrations' provisioning — **done** in wave 5 but CrowdStrike, Defender for Endpoint, Bitdefender, Office365 and AWS (`copilot-integration-provisioning`, the scheduler jobs handed to Python; `rust_parity_grafana_provisioning_e2e.py`); Office365's and AWS's, with the delete of a deployed AWS instance — **done** in wave 6 (`copilot-cloud-provisioning`, `rust_parity_remaining_provisioning_e2e.py`); CrowdStrike's, Defender for Endpoint's and Bitdefender's, their collectors' files included — **done** in wave 6 (`copilot-integration-provisioning`'s `collectors.rs`, the same suite); OpenCTI and Cortex — **done** (`copilot-intel-connectors`, `rust_parity_intel_connectors_e2e.py`); the integration modules — `/api/integrations/modules/*` (Huntress, Mimecast, Duo, Cato, SAP SIEM and its analyses), Mimecast's `/invoke` and `/ttp/urls` and the collection jobs but Cato's — **done** (`copilot-integration-modules`, `rust_parity_integration_modules_e2e.py`; Mimecast and SAP SIEM provisioning still Python); Sublime — **done** in wave 6 (its tables created by migration `d6c01a2b3c4d`; `copilot-sublime`, `rust_parity_ext_tools_e2e.py`); ScoutSuite — **done** in wave 6 but the static `/scoutsuite-report` mount (`copilot-scoutsuite`, the CLI in the Rust image, the reports a shared volume; `rust_parity_ext_tools_e2e.py`); the SOCFortress UBA connector — `/api/uba`, setup, mode and rollback included — **done** (`copilot-uba`, `rust_parity_uba_e2e.py`); `integrations/copilot_searches` (the Detections Catalog, 7.7 k) — **done** (`copilot-searches` on `copilot-yaml`, `rust_parity_catalog_e2e.py`; its caches refreshed by each process for itself); the GitHub organization audit and the Nuclei scans — `/api/github-audit`, `/api/nuclei` — **done** (`copilot-assessments`, `rust_parity_github_audit_e2e.py`; no scheduled audits exist to port: `auto_audit_enabled` and `audit_schedule_cron` are stored only); the platform's own surfaces — `/api/logs`, `/api/license` (the licence check shared with `threat_intel`), `status/sidebar` and `/api/performance` (reporting the Rust process) — **done** (`copilot-status`, `copilot-license`, `rust_parity_platform_e2e.py`); Microsoft Patch Tuesday — **done** in wave 6 (`copilot-patch-tuesday`, `rust_parity_ext_tools_e2e.py`); CoPilot MCP — **done** in wave 6 (`copilot-mcp` on `copilot-threat-intel`'s query, the same suite); `POST /healthcheck/logs` once the connectors it reads are ported (**done** in wave 6, below); the core leftovers (wave 6) — the customer writes (`copilot-customers`) **done**, the Wazuh rule switches, the exclusion and the Atomic Red Team listings (`copilot-wazuh-rules`) **done**, `POST /api/healthcheck/logs` and `GET /api/carbonblack/test` **done** (`GET /api/graylog/pipelines` was already `copilot-graylog`'s) (`rust_parity_core_leftovers_e2e.py`), the uploads — the connector YAML file (`copilot-connectors`; Python's when the data directory is not writable here), the default case report templates (`copilot-incidents`) and the Sysmon config (`copilot-response`, on an expat-exact parser) — **done** (`rust_parity_core_leftovers_e2e.py` section 4, `rust_parity_objectstore_e2e.py`), the case-template library and `/suggest` (`copilot-case-templates`) **done** (`rust_parity_core_leftovers_e2e.py` section 5); the Scheduler's remainder (wave 7) — every `/api/scheduler` route (the writes and `/provisioning_jobs`, APScheduler's own calls handed to Python while it owns the schedule), Mimecast's `/invoke/scheduler/{siem,ttp}`, the last six jobs (Cato's, the four cache refreshers, `wazuh_index_fields_resize` as `resize_wazuh_index_fields`' old id) and the ownership switch (`COPILOT_SCHEDULER_OWNER=rust`, APScheduler off with `COPILOT_PY_SCHEDULER=false`) — **done** (`copilot-scheduler`, `rust_parity_schedulers_e2e.py`); the fix sweep — **done**: what Python never ran made to work (Mimecast's SIEM and TTP collections, SAP SIEM with one key, the portal's `/me` without a role and `/agents` past the end, the rollback of a failed provisioning run, the datasource on the `Wazuh-Indexer` row by name, the AWS metadata row deleted), the tenant leaks the earlier waves kept and flagged closed (Grafana dashboard organizations, the vulnerability syncs and background reports, the catalog's custom rules, the data store upload; the GitHub audit token no longer echoed), the last twelve connector verifiers (`copilot-verifiers`: no connector update or verification reaches Python), the two MITRE alert searches (`copilot-wazuh-rules`, narrowed to a scoped caller's indices), and the e2e stand-ins' port races (`rust_parity_connectors_e2e.py` sections D2b and E5, the suites of each module) | largest surface; each is independent |
-| 5 | schema ownership → sqlx migrations (baseline = Alembic head), Python retired, `copilot-gateway` deleted | |
+| 5 | schema ownership → Rust migrations (baseline = Alembic head) — **done** (`copilot-migrate`: the baseline, forward-only checksummed migrations, adoption of a database at the head, the refusals, `copilot migrate`, doctor's lines) — and the startup tasks — **done** (`copilot-startup`: `lifespan`'s steps in its order under the startup lock both backends take, `COPILOT_STARTUP_TASKS` / `COPILOT_RUN_MIGRATIONS`; `rust_parity_startup_e2e.py`, `e2e_startup.rs`) —, Python retired | `copilot-gateway` stays, opt-in, for a staged rollout or a rollback |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the
 rewrite: they talk to the same API.

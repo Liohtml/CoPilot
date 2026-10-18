@@ -1,16 +1,19 @@
 //! Schema compatibility checks.
 //!
-//! **Alembic owns the schema** for as long as the Python backend runs: it
-//! migrates at its own startup, and the Rust service never creates or alters
-//! a table. Each feature crate declares the columns it reads and writes
-//! ([`TableRequirement`]); `copilot doctor` and the server's startup check
-//! verify them against `information_schema` and report the Alembic revision,
-//! so a Rust build deployed against an older database fails loudly instead
+//! **The schema is the binary's** (`copilot-migrate`, phase 5): its baseline
+//! is the Alembic head [`TESTED_ALEMBIC_HEAD`], at which the Python
+//! migrations are frozen, and later changes are Rust migrations, applied by
+//! `copilot migrate` or at `serve`'s start. Each feature crate declares the
+//! columns it reads and writes ([`TableRequirement`]); `copilot doctor` and
+//! the server's start verify them against `information_schema` after the
+//! migrations (or instead of them, `COPILOT_RUN_MIGRATIONS=false`), so a
+//! build deployed against a database it did not migrate fails loudly instead
 //! of at the first query.
 
 use crate::{Db, DbError};
 
-/// The Alembic head this Rust tree was written and tested against.
+/// The Alembic head the Python migrations are frozen at: the Rust
+/// migrations' baseline (`copilot_migrate::ALEMBIC_HEAD`).
 pub const TESTED_ALEMBIC_HEAD: &str = "d15ab1ed7e1e";
 
 /// Columns a module needs in one table.

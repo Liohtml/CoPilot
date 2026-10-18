@@ -330,6 +330,7 @@ def start_rust(port):
         "JWT_SECRET": os.environ["JWT_SECRET"],
         "COPILOT_BIND": "127.0.0.1",
         "COPILOT_CATALOG_REFRESH": "false",
+        "COPILOT_STARTUP_TASKS": "false",  # the startup seeds no row of the shared database
         "COPILOT_PORT": str(port),
         "MINIO_ROOT_USER": S3_USER,
         "MINIO_ROOT_PASSWORD": S3_SECRET,

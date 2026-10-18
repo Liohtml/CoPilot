@@ -279,6 +279,33 @@ async fn check_pipeline_rules(tools: Tools<'_>) -> PyResult<()> {
     Ok(())
 }
 
+/// `ensure_office365_pipeline_rules()`, which `copilot.py` runs on a task at
+/// every start (`copilot-startup` here): where Office 365 is in use — its
+/// processing pipeline exists on the default Graylog — the missing rules are
+/// created and a broken earlier version repaired, so existing deployments get
+/// the fixes without re-provisioning. Never fatal: a missing or unreachable
+/// Graylog is a warning. Whether the pipeline was found.
+pub async fn ensure_office365_pipeline_rules(tools: Tools<'_>) -> bool {
+    let run = async {
+        let pipelines = graylog::pipelines(tools.graylog).await?;
+        if !pipelines.iter().any(|p| p.title == PIPELINE_TITLE) {
+            return Ok(false);
+        }
+        check_pipeline_rules(tools).await?;
+        Ok::<bool, PyExc>(true)
+    };
+    match run.await {
+        Ok(found) => found,
+        Err(exc) => {
+            tracing::warn!(
+                "Could not check the Office 365 pipeline rules at startup: {}",
+                exc.text()
+            );
+            false
+        }
+    }
+}
+
 /// The OFFICE365 PROCESSING PIPELINE's source.
 pub fn pipeline_source() -> String {
     format!(

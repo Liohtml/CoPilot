@@ -435,6 +435,7 @@ def start_rust():
         "COPILOT_PORT": str(RS_PORT),
         # The catalog caches load on demand, as this Python side never warms them.
         "COPILOT_CATALOG_REFRESH": "false",
+        "COPILOT_STARTUP_TASKS": "false",  # the startup seeds no row of the shared database
         "BRANDING_CACHE_CHECK_SECONDS": "1",
         "TZ": os.environ.get("TZ", "UTC"),
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),

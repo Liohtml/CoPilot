@@ -72,7 +72,7 @@ impl CaseTemplatesState {
     }
 }
 
-/// Every column this crate reads (Alembic owns the schema).
+/// Every column this crate reads (the schema is `copilot-migrate`'s).
 pub const REQUIREMENTS: &[TableRequirement] = &[
     TableRequirement {
         table: "incident_management_case_template",

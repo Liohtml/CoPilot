@@ -9,9 +9,9 @@
 //! the columns they need as [`schema::TableRequirement`]s.
 //!
 //! ## Schema ownership
-//! Alembic (`backend/alembic/`) remains the single owner of the schema until
-//! the Python backend is retired; see [`schema`]. Timestamps are naive UTC
-//! `DATETIME`s (`copilot_core::time`).
+//! The schema is the binary's since phase 5 (`copilot-migrate`: the Alembic
+//! head as its baseline, Rust migrations after it); see [`schema`].
+//! Timestamps are naive UTC `DATETIME`s (`copilot_core::time`).
 //!
 //! ## Testing
 //! Unit tests need no database. The integration suites (`tests/`) run when
