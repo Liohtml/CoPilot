@@ -1,0 +1,41 @@
+[package]
+name = "copilot-file-analysis"
+description = "File analysis: /api/file-analysis (uploads and endpoint collections, the inspector, the CAPE sandbox, VirusTotal reputation, the MinIO state store and the PDF report)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-objectstore = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-velociraptor = { workspace = true }
+copilot-jinja = { workspace = true }
+copilot-customer-portal = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+sha2 = { workspace = true }
+md-5 = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+uuid = { workspace = true }
+rand = { workspace = true }
+flate2 = { workspace = true }
+crc32fast = { workspace = true }
+num-bigint-dig = { workspace = true }
+num-traits = { workspace = true }
+
+[lints]
+workspace = true

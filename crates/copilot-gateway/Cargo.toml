@@ -1,0 +1,27 @@
+[package]
+name = "copilot-gateway"
+description = "Strangler-fig gateway: streams every not-yet-ported route to the Python backend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-web = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }
+tower = { workspace = true }
+
+[lints]
+workspace = true

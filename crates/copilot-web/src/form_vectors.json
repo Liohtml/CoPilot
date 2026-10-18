@@ -1,0 +1,977 @@
+{
+ "starlette": "1.0.0",
+ "python_multipart": "0.0.27",
+ "options": [
+  {
+   "input": "",
+   "value": "",
+   "options": []
+  },
+  {
+   "input": "multipart/form-data; boundary=abc",
+   "value": "multipart/form-data",
+   "options": [
+    [
+     "boundary",
+     "abc"
+    ]
+   ]
+  },
+  {
+   "input": "Multipart/Form-Data; Boundary=abc",
+   "value": "Multipart/Form-Data",
+   "options": [
+    [
+     "boundary",
+     "abc"
+    ]
+   ]
+  },
+  {
+   "input": "multipart/form-data; boundary=\"a b\"",
+   "value": "multipart/form-data",
+   "options": [
+    [
+     "boundary",
+     "a b"
+    ]
+   ]
+  },
+  {
+   "input": "application/x-www-form-urlencoded",
+   "value": "application/x-www-form-urlencoded",
+   "options": []
+  },
+  {
+   "input": " Application/X-WWW-Form-Urlencoded ",
+   "value": "application/x-www-form-urlencoded",
+   "options": []
+  },
+  {
+   "input": "application/x-www-form-urlencoded; charset=UTF-8",
+   "value": "application/x-www-form-urlencoded",
+   "options": [
+    [
+     "charset",
+     "UTF-8"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name=\"username\"",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "username"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name=\"file\"; filename=\"C:\\dir\\a.txt\"",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "file"
+    ],
+    [
+     "filename",
+     "a.txt"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name=\"file\"; filename=\"\\\\server\\share\\b.txt\"",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "file"
+    ],
+    [
+     "filename",
+     "\\server\\share\\b.txt"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name=user; filename=\"\"",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "user"
+    ],
+    [
+     "filename",
+     ""
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name=\"a;b\"",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "a;b"
+    ]
+   ]
+  },
+  {
+   "input": "form-data;name=\"x\"",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "x"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; NAME=\"x\"",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "x"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name=\"x\\\"y\"",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "x\"y"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name=\"x\\\\y\"",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "x\\y"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name=<x>",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "x"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     ""
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name=",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     ""
+    ]
+   ]
+  },
+  {
+   "input": "form-data; ; name=x",
+   "value": "form-data",
+   "options": [
+    [
+     "",
+     ""
+    ],
+    [
+     "name",
+     "x"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name = \"spaced\" ",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "spaced"
+    ]
+   ]
+  },
+  {
+   "input": "form-data; name*=UTF-8''%C3%A4",
+   "value": "form-data",
+   "options": [
+    [
+     "name",
+     "Ã¤"
+    ]
+   ]
+  },
+  {
+   "input": "text/plain",
+   "value": "text/plain",
+   "options": []
+  },
+  {
+   "input": "text/plain;",
+   "value": "text/plain",
+   "options": [
+    [
+     "",
+     ""
+    ]
+   ]
+  }
+ ],
+ "forms": [
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "username=alice&password=secret",
+   "items": [
+    [
+     "username",
+     "alice"
+    ],
+    [
+     "password",
+     "secret"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "username=alice;password=x",
+   "items": [
+    [
+     "username",
+     "alice"
+    ],
+    [
+     "password",
+     "x"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "a=1;b=2&c=3",
+   "items": [
+    [
+     "a",
+     "1;b=2"
+    ],
+    [
+     "c",
+     "3"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "username=al%69ce&password=p%C3%A4ss+word",
+   "items": [
+    [
+     "username",
+     "alice"
+    ],
+    [
+     "password",
+     "päss word"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "username=%E4",
+   "items": [
+    [
+     "username",
+     "�"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "username=Ã¤&password=ä",
+   "items": [
+    [
+     "username",
+     "Ã¤"
+    ],
+    [
+     "password",
+     "ä"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "username",
+   "items": [
+    [
+     "username",
+     ""
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "username&password=x",
+   "items": [
+    [
+     "username",
+     ""
+    ],
+    [
+     "password",
+     "x"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "&&username=a&&",
+   "items": [
+    [
+     "username",
+     "a"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": ";;a=1;;",
+   "items": [
+    [
+     "a",
+     "1"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "=x",
+   "items": [
+    [
+     "",
+     "x"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "a=1&a=2",
+   "items": [
+    [
+     "a",
+     "1"
+    ],
+    [
+     "a",
+     "2"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "a=%zz%4&b=%",
+   "items": [
+    [
+     "a",
+     "%zz%4"
+    ],
+    [
+     "b",
+     "%"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "a=%C3%28%F0%9F%98%80%ED%A0%80x",
+   "items": [
+    [
+     "a",
+     "�(😀���x"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "",
+   "items": []
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "username=a=b",
+   "items": [
+    [
+     "username",
+     "a=b"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded",
+   "body": "user+name=a+b%2Bc",
+   "items": [
+    [
+     "user name",
+     "a b+c"
+    ]
+   ]
+  },
+  {
+   "content_type": "Application/X-WWW-Form-Urlencoded",
+   "body": "username=a",
+   "items": [
+    [
+     "username",
+     "a"
+    ]
+   ]
+  },
+  {
+   "content_type": "application/x-www-form-urlencoded; charset=latin-1",
+   "body": "username=a",
+   "items": [
+    [
+     "username",
+     "a"
+    ]
+   ]
+  },
+  {
+   "content_type": "APPLICATION/X-WWW-FORM-URLENCODED; charset=utf-8",
+   "body": "username=a",
+   "items": []
+  },
+  {
+   "content_type": null,
+   "body": "username=a",
+   "items": []
+  },
+  {
+   "content_type": "text/plain",
+   "body": "username=a",
+   "items": []
+  },
+  {
+   "content_type": "application/json",
+   "body": "{\"username\": \"a\"}",
+   "items": []
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n--XyZ\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\ns3cret\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "username",
+     "alice"
+    ],
+    [
+     "password",
+     "s3cret"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "\r\n--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "username",
+     "alice"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "\r\njunk\r\n--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "username",
+     "alice"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "junk--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n--XyZ--\r\n",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\näö\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "username",
+     "äö"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; charset=latin-1; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nä\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "username",
+     "ä"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; charset=utf-8; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nÃ¤\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "username",
+     "ä"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; charset=nonsense; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nÃ¤\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "username",
+     "Ã¤"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"f\"; filename=\"a.txt\"\r\nContent-Type: text/plain\r\n\r\nbody\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "f",
+     {
+      "filename": "a.txt"
+     }
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; filename=\"a.txt\"\r\n\r\nx\r\n--XyZ--\r\n",
+   "error": "The Content-Disposition header field \"name\" must be provided."
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Type: text/plain\r\n\r\nx\r\n--XyZ--\r\n",
+   "error": "The Content-Disposition header field \"name\" must be provided."
+  },
+  {
+   "content_type": "multipart/form-data",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\na\r\n--XyZ--\r\n",
+   "error": "Missing boundary in multipart."
+  },
+  {
+   "content_type": "multipart/form-data; charset=utf-8",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\na\r\n--XyZ--\r\n",
+   "error": "Missing boundary in multipart."
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nnever closed",
+   "items": []
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--XyZ--\r\nepilogue\r\nmore",
+   "items": [
+    [
+     "a",
+     "1"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ--\r\n",
+   "items": []
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ--",
+   "items": []
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ-x",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\nContent-Type: text/plain\r\nX-Other: 1\r\n\r\nx\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "a",
+     "x"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\nBad Header: x\r\n\r\nv\r\n--XyZ--\r\n",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n: x\r\n\r\nv\r\n--XyZ--\r\n",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\nX-H0: v\r\nX-H1: v\r\nX-H2: v\r\nX-H3: v\r\nX-H4: v\r\nX-H5: v\r\nX-H6: v\r\nX-H7: v\r\n\r\nv\r\n--XyZ--\r\n",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\nX-H0: v\r\nX-H1: v\r\nX-H2: v\r\nX-H3: v\r\nX-H4: v\r\nX-H5: v\r\nX-H6: v\r\n\r\nv\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "a",
+     "v"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nline\r\n--XyZX still data\r\n--XyZ-not\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "a",
+     "line\r\n--XyZX still data\r\n--XyZ-not"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n--XyZ\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "a",
+     "--XyZ"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n\r\n--XyZ\r\nContent-Disposition: form-data; name=\"b\"\r\n\r\n2\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "a",
+     ""
+    ],
+    [
+     "b",
+     "2"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\nContent-Disposition: form-data; name=\"a\"\n\nv\n--XyZ--\n",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\rX",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\rX",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZx\r\n",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\rx",
+   "error": "There was an error parsing the body"
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "",
+   "items": []
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--XyZ--",
+   "items": [
+    [
+     "a",
+     "1"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--XyZ\r\n",
+   "items": [
+    [
+     "a",
+     "1"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition:form-data; name=\"a\"\r\n\r\nv\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "a",
+     "v"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\ncontent-disposition: form-data; name=\"a\"\r\n\r\nv\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "a",
+     "v"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition:    form-data; name=\"a\"\r\n\r\nv\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "a",
+     "v"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\nContent-Disposition: form-data; name=\"b\"\r\n\r\nv\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "b",
+     "v"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=XyZ",
+   "body": "--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--XyZ\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n2\r\n--XyZ--\r\n",
+   "items": [
+    [
+     "a",
+     "1"
+    ],
+    [
+     "a",
+     "2"
+    ]
+   ]
+  },
+  {
+   "content_type": "multipart/form-data; boundary=\"quoted b\"",
+   "body": "--quoted b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--quoted b--\r\n",
+   "items": [
+    [
+     "a",
+     "1"
+    ]
+   ]
+  }
+ ],
+ "json_errors": [
+  {
+   "doc": "  ",
+   "pos": 2
+  },
+  {
+   "doc": "\n\n  \t",
+   "pos": 5
+  },
+  {
+   "doc": "{",
+   "pos": 1
+  },
+  {
+   "doc": "{\"a\": 1",
+   "pos": 7
+  },
+  {
+   "doc": "{bad",
+   "pos": 1
+  },
+  {
+   "doc": "[1,2",
+   "pos": 4
+  },
+  {
+   "doc": "{\"a\":}",
+   "pos": 5
+  },
+  {
+   "doc": "{\"a\": 1,}",
+   "pos": 8
+  },
+  {
+   "doc": "nul",
+   "pos": 0
+  },
+  {
+   "doc": "tru",
+   "pos": 0
+  },
+  {
+   "doc": "\"abc",
+   "pos": 0
+  },
+  {
+   "doc": "{\"a\" 1}",
+   "pos": 5
+  },
+  {
+   "doc": "1 2",
+   "pos": 2
+  },
+  {
+   "doc": "[1,]",
+   "pos": 3
+  },
+  {
+   "doc": "{\"ä\": x}",
+   "pos": 6
+  },
+  {
+   "doc": "{\"a\":\n x}",
+   "pos": 7
+  },
+  {
+   "doc": "{\n  \"a\": 1,\n  \"b\": [1, 2,\n}",
+   "pos": 26
+  },
+  {
+   "doc": "NaN",
+   "pos": null
+  },
+  {
+   "doc": "\"\\x\"",
+   "pos": 1
+  },
+  {
+   "doc": "[1e]",
+   "pos": 2
+  },
+  {
+   "doc": "{\"a\": \"b\nc\"}",
+   "pos": 8
+  },
+  {
+   "doc": "﻿{}",
+   "pos": null
+  },
+  {
+   "doc": "{}",
+   "pos": null
+  },
+  {
+   "doc": "[]",
+   "pos": null
+  },
+  {
+   "doc": "x",
+   "pos": 0
+  },
+  {
+   "doc": "{\"a\": 1}}",
+   "pos": 8
+  },
+  {
+   "doc": "-",
+   "pos": 0
+  },
+  {
+   "doc": "01",
+   "pos": 1
+  }
+ ],
+ "json_content_types": [
+  {
+   "input": "application/json",
+   "json": true
+  },
+  {
+   "input": "application/json; charset=utf-8",
+   "json": true
+  },
+  {
+   "input": "Application/JSON",
+   "json": true
+  },
+  {
+   "input": "application/vnd.api+json",
+   "json": true
+  },
+  {
+   "input": "application/ld+json; x=y",
+   "json": true
+  },
+  {
+   "input": "application/jsonx",
+   "json": false
+  },
+  {
+   "input": "text/json",
+   "json": false
+  },
+  {
+   "input": "application",
+   "json": false
+  },
+  {
+   "input": "application/json/x",
+   "json": false
+  },
+  {
+   "input": " application/json ",
+   "json": true
+  },
+  {
+   "input": "*/*",
+   "json": false
+  },
+  {
+   "input": "application/x-www-form-urlencoded",
+   "json": false
+  },
+  {
+   "input": "APPLICATION/JSON;",
+   "json": true
+  },
+  {
+   "input": "application/merge-patch+json",
+   "json": true
+  }
+ ]
+}

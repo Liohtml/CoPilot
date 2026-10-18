@@ -1,0 +1,206 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
+license = "AGPL-3.0-only"
+repository = "https://github.com/Liohtml/CoPilot"
+authors = ["SOCFortress", "CoPilot contributors"]
+
+# Versions are kept in lock-step with Talon 2.0 (liohtml/talahon) so both
+# workspaces build against the same async runtime, HTTP stack and lint set.
+[workspace.dependencies]
+# --- internal crates ---
+copilot-core = { path = "crates/copilot-core" }
+copilot-db = { path = "crates/copilot-db" }
+copilot-auth = { path = "crates/copilot-auth" }
+copilot-web = { path = "crates/copilot-web" }
+copilot-talon = { path = "crates/copilot-talon" }
+copilot-ai-analyst = { path = "crates/copilot-ai-analyst" }
+copilot-customer-portal = { path = "crates/copilot-customer-portal" }
+copilot-customers = { path = "crates/copilot-customers" }
+copilot-healthchecks = { path = "crates/copilot-healthchecks" }
+copilot-platform = { path = "crates/copilot-platform" }
+copilot-gateway = { path = "crates/copilot-gateway" }
+copilot-identity = { path = "crates/copilot-identity" }
+copilot-webauthn = { path = "crates/copilot-webauthn" }
+copilot-jinja = { path = "crates/copilot-jinja" }
+copilot-docx = { path = "crates/copilot-docx" }
+copilot-reports = { path = "crates/copilot-reports" }
+copilot-incidents = { path = "crates/copilot-incidents" }
+copilot-sla = { path = "crates/copilot-sla" }
+copilot-soc-management = { path = "crates/copilot-soc-management" }
+copilot-scheduler = { path = "crates/copilot-scheduler" }
+copilot-markdown = { path = "crates/copilot-markdown" }
+copilot-notifications = { path = "crates/copilot-notifications" }
+copilot-connectors = { path = "crates/copilot-connectors" }
+copilot-wazuh = { path = "crates/copilot-wazuh" }
+copilot-upstream = { path = "crates/copilot-upstream" }
+copilot-graylog = { path = "crates/copilot-graylog" }
+copilot-influxdb = { path = "crates/copilot-influxdb" }
+copilot-grafana = { path = "crates/copilot-grafana" }
+copilot-portainer = { path = "crates/copilot-portainer" }
+copilot-waf = { path = "crates/copilot-waf" }
+copilot-provisioning = { path = "crates/copilot-provisioning" }
+copilot-ingest = { path = "crates/copilot-ingest" }
+copilot-velociraptor = { path = "crates/copilot-velociraptor" }
+copilot-agents = { path = "crates/copilot-agents" }
+copilot-objectstore = { path = "crates/copilot-objectstore" }
+copilot-integrations = { path = "crates/copilot-integrations" }
+copilot-siem = { path = "crates/copilot-siem" }
+copilot-threat-intel = { path = "crates/copilot-threat-intel" }
+copilot-response = { path = "crates/copilot-response" }
+copilot-shuffle = { path = "crates/copilot-shuffle" }
+copilot-agent-reports = { path = "crates/copilot-agent-reports" }
+copilot-monitoring-alerts = { path = "crates/copilot-monitoring-alerts" }
+copilot-intel-connectors = { path = "crates/copilot-intel-connectors" }
+copilot-uba = { path = "crates/copilot-uba" }
+copilot-yaml = { path = "crates/copilot-yaml" }
+copilot-searches = { path = "crates/copilot-searches" }
+copilot-integration-modules = { path = "crates/copilot-integration-modules" }
+copilot-grafana-dashboards = { path = "crates/copilot-grafana-dashboards" }
+copilot-integration-provisioning = { path = "crates/copilot-integration-provisioning" }
+copilot-license = { path = "crates/copilot-license" }
+copilot-status = { path = "crates/copilot-status" }
+copilot-patch-tuesday = { path = "crates/copilot-patch-tuesday" }
+copilot-mcp = { path = "crates/copilot-mcp" }
+copilot-sublime = { path = "crates/copilot-sublime" }
+copilot-scoutsuite = { path = "crates/copilot-scoutsuite" }
+copilot-cloud-provisioning = { path = "crates/copilot-cloud-provisioning" }
+copilot-assessments = { path = "crates/copilot-assessments" }
+copilot-wazuh-rules = { path = "crates/copilot-wazuh-rules" }
+copilot-case-templates = { path = "crates/copilot-case-templates" }
+copilot-file-analysis = { path = "crates/copilot-file-analysis" }
+copilot-verifiers = { path = "crates/copilot-verifiers" }
+copilot-migrate = { path = "crates/copilot-migrate" }
+copilot-startup = { path = "crates/copilot-startup" }
+copilot-standalone = { path = "crates/copilot-standalone" }
+
+# --- async runtime ---
+tokio = { version = "1.47", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio-stream = { version = "0.1", features = ["sync", "fs"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# --- serialization ---
+serde = { version = "1", features = ["derive"] }
+# preserve_order: responses keep Pydantic's field order.
+serde_json = { version = "1", features = ["preserve_order"] }
+
+# --- errors / logging ---
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+
+# --- time ---
+chrono = { version = "0.4", features = ["serde"] }
+# The parser behind Pydantic's `datetime` fields: the same version pydantic-core
+# pins, so request timestamps parse (and fail) exactly as in the Python backend.
+speedate = "=0.17.0"
+# IANA zones for business-hours SLA calendars (`zoneinfo` in the Python backend).
+chrono-tz = "0.10"
+# `EnumMessage::get_documentation()`: speedate's error sentences (its own strum).
+strum = "0.27"
+
+# --- storage ---
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "mysql", "chrono", "json", "macros"] }
+
+# --- networking ---
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "http2"] }
+axum = { version = "0.8", features = ["macros"] }
+tower = { version = "0.5", features = ["util", "limit", "timeout"] }
+tower-http = { version = "0.6", features = ["trace", "limit", "cors", "timeout", "compression-gzip"] }
+url = "2"
+bytes = "1"
+http = "1"
+http-body = "=1.1.0"
+# `ReasonPhrase`: the status line's own reason, which `requests`' HTTPError
+# and InfluxDB errors quote (the version reqwest uses).
+hyper = { version = "1", default-features = false, features = ["http1", "client"] }
+# gzip/deflate answers of the InfluxDB query API (aiohttp asks for them).
+flate2 = "1"
+
+# --- text ---
+regex = "1"
+# The report charts' glyph outlines (DejaVu Sans, read at run time).
+ttf-parser = { version = "=0.25.1", default-features = false, features = ["std"] }
+# docxtpl's lookaround patterns (`copilot-docx`), as Python's `re` backtracks.
+fancy-regex = "=0.19.2"
+# `rustls-native-certs`: STARTTLS trusts the system store, like `ssl.create_default_context()`.
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "rustls-native-certs", "hostname"] }
+
+# --- crypto / ids ---
+subtle = "2"
+sha2 = "0.10"
+hmac = "0.12"
+# Content-MD5 of the S3 requests that carry one (miniopy-async's `md5sum_hash`).
+md-5 = "=0.10.6"
+hex = "0.4"
+base64 = "0.22"
+rand = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+zeroize = { version = "1", features = ["derive"] }
+bcrypt = "0.17"
+# Fernet (`cryptography.fernet`) for the stored TOTP secrets: AES-128-CBC.
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+# TOTP is HMAC-SHA1 (RFC 6238, pyotp's default).
+sha1 = "0.10"
+# pyotp compares codes after NFKC normalisation.
+unicode-normalization = "0.1"
+# EmailStr (email-validator): general categories and UTS #46, from the ICU data
+# `url` already ships.
+icu_properties = "2.1"
+idna = "1"
+# The 2FA enrolment QR code, rendered to PNG without an image stack.
+qrcode = { version = "0.14", default-features = false }
+miniz_oxide = "0.9"
+crc32fast = "1"
+# Passkeys (py_webauthn) and SSO ID tokens (PyJWT RS256): the public-key
+# operations, without OpenSSL. `num-bigint-dig` is the bignum `rsa` already
+# brings in; RSA verification is done on it directly (`copilot_auth::rsa`).
+num-bigint-dig = "0.8"
+num-integer = "0.1"
+num-traits = "0.2"
+unicode-ident = "1"
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+p384 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+p521 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+x509-cert = { version = "0.2", default-features = false, features = ["std"] }
+ecdsa = { version = "0.16", default-features = false, features = ["der", "verifying"] }
+pkcs1 = { version = "0.7", default-features = false }
+
+# --- cli ---
+clap = { version = "4", features = ["derive", "env"] }
+
+# --- testing ---
+tempfile = "3"
+wiremock = "0.6"
+pretty_assertions = "1"
+rqrr = { version = "0.9", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 1

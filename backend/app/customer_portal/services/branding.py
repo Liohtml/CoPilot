@@ -24,6 +24,7 @@ from typing import Optional
 
 from loguru import logger
 from sqlalchemy import select
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models.users import User
@@ -50,6 +51,27 @@ async def get_branding_override(session: AsyncSession, customer_code: str) -> Op
 async def list_branding_overrides(session: AsyncSession) -> List[CustomerPortalBranding]:
     result = await session.execute(select(CustomerPortalBranding).order_by(CustomerPortalBranding.customer_code))
     return list(result.scalars().all())
+
+
+# What the cache's change check compares (``branding_cache._check``): one row per
+# branding row, every field resolution reads, the logo as its length and CRC-32 so
+# no logo leaves MySQL. The Rust service runs the same statement
+# (``crates/copilot-customer-portal/src/branding/services.rs``).
+BRANDING_FINGERPRINT = text(
+    "SELECT 's', id, NULL, NULL, title, logo_mime_type, brand_color, updated_at, "
+    "CAST(CHAR_LENGTH(logo_base64) AS SIGNED), CAST(CRC32(logo_base64) AS SIGNED) "
+    "FROM customer_portal_settings "
+    "UNION ALL "
+    "SELECT 'b', id, customer_code, CAST(enabled AS SIGNED), title, logo_mime_type, brand_color, updated_at, "
+    "CAST(CHAR_LENGTH(logo_base64) AS SIGNED), CAST(CRC32(logo_base64) AS SIGNED) "
+    "FROM customer_portal_branding "
+    "ORDER BY 1, 2",
+)
+
+
+async def branding_fingerprint(session: AsyncSession) -> tuple:
+    """The branding tables' fingerprint: changes with any write that can change a resolution."""
+    return tuple(tuple(row) for row in (await session.execute(BRANDING_FINGERPRINT)).all())
 
 
 def _normalize(value: Optional[str]) -> Optional[str]:
@@ -108,7 +130,8 @@ def build_effective_branding(
 async def resolve_effective_branding(session: AsyncSession, customer_code: Optional[str]) -> EffectiveBranding:
     """Resolve the branding for one customer (or the global defaults when None).
 
-    Read through ``branding_cache``: every write path invalidates it after its commit.
+    Read through ``branding_cache``: every write path invalidates it after its commit,
+    and a write by another process is seen within ``BRANDING_CACHE_CHECK_SECONDS``.
     """
 
     async def load() -> EffectiveBranding:
@@ -116,7 +139,7 @@ async def resolve_effective_branding(session: AsyncSession, customer_code: Optio
         override = await get_branding_override(session, customer_code) if customer_code else None
         return build_effective_branding(global_settings, override, customer_code)
 
-    return await branding_cache.get_or_load(customer_code, load)
+    return await branding_cache.get_or_load(customer_code, load, lambda: branding_fingerprint(session))
 
 
 async def resolve_branding_for_user(session: AsyncSession, user: User) -> EffectiveBranding:

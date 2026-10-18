@@ -1,0 +1,32 @@
+[package]
+name = "copilot-soc-management"
+description = "SOC Management (/api/soc_management): the SLA dashboard, policy and calendar editors, the Customer Portal SLA page and the SLA notifier"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-sla = { workspace = true }
+copilot-scheduler = { workspace = true }
+serde = { workspace = true }
+# raw_value: floats are written as Python's `repr()` writes them.
+serde_json = { workspace = true, features = ["raw_value"] }
+tracing = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+http = { workspace = true }
+# Pydantic's `date` parsing (the calendar holidays), as copilot-web parses datetimes.
+speedate = { workspace = true }
+strum = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,187 @@
+{
+ "packaging": "26.3",
+ "sorted": [
+  {
+   "input": "0",
+   "rank": 0
+  },
+  {
+   "input": "0.0.0",
+   "rank": 0
+  },
+  {
+   "input": "0.1.98rc1",
+   "rank": 1
+  },
+  {
+   "input": "0.1.98",
+   "rank": 2
+  },
+  {
+   "input": "0.1.98.0",
+   "rank": 2
+  },
+  {
+   "input": "0.1.98.post0",
+   "rank": 3
+  },
+  {
+   "input": "0.1.99",
+   "rank": 4
+  },
+  {
+   "input": "v0.1.99",
+   "rank": 4
+  },
+  {
+   "input": "0.1.100",
+   "rank": 5
+  },
+  {
+   "input": "0.2",
+   "rank": 6
+  },
+  {
+   "input": "0.2.0",
+   "rank": 6
+  },
+  {
+   "input": "1.0dev",
+   "rank": 7
+  },
+  {
+   "input": "1.0.dev1",
+   "rank": 8
+  },
+  {
+   "input": "1.0a",
+   "rank": 9
+  },
+  {
+   "input": "1.0a1.dev2",
+   "rank": 10
+  },
+  {
+   "input": "1.0a1",
+   "rank": 11
+  },
+  {
+   "input": "1.0.alpha2",
+   "rank": 12
+  },
+  {
+   "input": "1.0b1",
+   "rank": 13
+  },
+  {
+   "input": "1.0-beta.3",
+   "rank": 14
+  },
+  {
+   "input": "1.0rc1",
+   "rank": 15
+  },
+  {
+   "input": "1.0RC1",
+   "rank": 15
+  },
+  {
+   "input": "1.0_rc_1",
+   "rank": 15
+  },
+  {
+   "input": "1.0c2",
+   "rank": 16
+  },
+  {
+   "input": "1.0pre3",
+   "rank": 17
+  },
+  {
+   "input": "1.0preview4",
+   "rank": 18
+  },
+  {
+   "input": "1.0",
+   "rank": 19
+  },
+  {
+   "input": "1.0.0",
+   "rank": 19
+  },
+  {
+   "input": " 1.0 ",
+   "rank": 19
+  },
+  {
+   "input": "V1.0",
+   "rank": 19
+  },
+  {
+   "input": "1.0+ABC",
+   "rank": 20
+  },
+  {
+   "input": "1.0+abc.def",
+   "rank": 21
+  },
+  {
+   "input": "1.0+abc.5",
+   "rank": 22
+  },
+  {
+   "input": "1.0+local",
+   "rank": 23
+  },
+  {
+   "input": "1.0+5",
+   "rank": 24
+  },
+  {
+   "input": "1.0post",
+   "rank": 25
+  },
+  {
+   "input": "1.0.post1.dev3",
+   "rank": 26
+  },
+  {
+   "input": "1.0.post1",
+   "rank": 27
+  },
+  {
+   "input": "1.0-1",
+   "rank": 27
+  },
+  {
+   "input": "1.0.rev2",
+   "rank": 28
+  },
+  {
+   "input": "1.0r3",
+   "rank": 29
+  },
+  {
+   "input": "2026.10.15",
+   "rank": 30
+  },
+  {
+   "input": "1!0.1",
+   "rank": 31
+  }
+ ],
+ "invalid": [
+  "",
+  "1..0",
+  "1.0 beta",
+  "1.0+",
+  "1.0+a..b",
+  "1.0-",
+  "1.0-dev-1x",
+  "1.0.",
+  "1.0.0-alpha.1+x y",
+  "abc",
+  "latest",
+  "v"
+ ]
+}

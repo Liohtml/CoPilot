@@ -1,0 +1,37 @@
+[package]
+name = "copilot-agents"
+description = "Agents: /api/agents (the agents table, Wazuh and Velociraptor sync, deletion, vulnerability and SCA reads and CSV exports) and the agent_sync job"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-velociraptor = { workspace = true }
+copilot-incidents = { workspace = true }
+copilot-graylog = { workspace = true }
+copilot-scheduler = { workspace = true }
+copilot-platform = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+reqwest = { workspace = true }
+regex = { workspace = true }
+url = { workspace = true }
+# httpx decodes the gzip/deflate answers it asks for (the single-CVE EPSS lookup).
+flate2 = { workspace = true }
+
+[lints]
+workspace = true

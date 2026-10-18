@@ -40,6 +40,7 @@ from app.integrations.modules.schema.sap_siem import InvokeSapSiemAnalysis
 # )
 from app.integrations.sap_siem.schema.sap_siem import InvokeSapSiemRequest
 from app.integrations.sap_siem.schema.sap_siem import InvokeSAPSiemResponse
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 from app.schedulers.utils.universal import get_scheduled_job_metadata
 from app.utils import get_customer_meta_attribute
@@ -47,6 +48,7 @@ from app.utils import get_customer_meta_attribute
 load_dotenv()
 
 
+@rust_handover("invoke_sap_siem_integration_collection")
 async def invoke_sap_siem_integration_collection() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for collection.
@@ -85,6 +87,7 @@ async def invoke_sap_siem_integration_collection() -> InvokeSAPSiemResponse:
     return InvokeSAPSiemResponse(success=True, message="SAP SIEM integration invoked.")
 
 
+@rust_handover("invoke_sap_siem_integration_suspicious_logins_analysis")
 async def invoke_sap_siem_integration_suspicious_logins_analysis() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for suspicious logins analysis.
@@ -122,6 +125,7 @@ async def invoke_sap_siem_integration_suspicious_logins_analysis() -> InvokeSAPS
     return InvokeSAPSiemResponse(success=True, message="SAP SIEM integration invoked for suspicious logins analysis.")
 
 
+@rust_handover("invoke_sap_siem_integration_multiple_logins_same_ip_analysis")
 async def invoke_sap_siem_integration_multiple_logins_same_ip_analysis() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for multiple logins from the same IP analysis.
@@ -169,6 +173,7 @@ async def invoke_sap_siem_integration_multiple_logins_same_ip_analysis() -> Invo
     return InvokeSAPSiemResponse(success=True, message="SAP SIEM integration invoked for multiple logins from the same IP analysis.")
 
 
+@rust_handover("invoke_sap_siem_integration_successful_user_login_with_different_ip")
 async def invoke_sap_siem_integration_successful_user_login_with_different_ip() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for successful user login with different IP.
@@ -222,6 +227,7 @@ async def invoke_sap_siem_integration_successful_user_login_with_different_ip() 
     return InvokeSAPSiemResponse(success=True, message="SAP SIEM integration invoked for successful user login with different IP.")
 
 
+@rust_handover("invoke_sap_siem_integration_same_user_failed_login_from_different_ip")
 async def invoke_sap_siem_integration_same_user_failed_login_from_different_ip() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for same user failed login from different IP.
@@ -277,6 +283,7 @@ async def invoke_sap_siem_integration_same_user_failed_login_from_different_ip()
     return InvokeSAPSiemResponse(success=True, message="SAP SIEM integration invoked for same user failed login from different IP.")
 
 
+@rust_handover("invoke_sap_siem_integration_same_user_failed_login_from_different_geo_location")
 async def invoke_sap_siem_integration_same_user_failed_login_from_different_geo_location() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for same user failed login from different geo location.
@@ -335,6 +342,7 @@ async def invoke_sap_siem_integration_same_user_failed_login_from_different_geo_
     )
 
 
+@rust_handover("invoke_sap_siem_integration_same_user_successful_login_from_different_geo_location")
 async def invoke_sap_siem_integration_same_user_successful_login_from_different_geo_location() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for same user successful login from different geo location.
@@ -393,6 +401,7 @@ async def invoke_sap_siem_integration_same_user_successful_login_from_different_
     )
 
 
+@rust_handover("invoke_sap_siem_integration_brute_force_failed_logins")
 async def invoke_sap_siem_integration_brute_force_failed_logins() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for brute force failed logins.
@@ -442,6 +451,7 @@ async def invoke_sap_siem_integration_brute_force_failed_logins() -> InvokeSAPSi
     return InvokeSAPSiemResponse(success=True, message="SAP SIEM integration invoked for brute force failed logins.")
 
 
+@rust_handover("invoke_sap_siem_integration_brute_force_failed_logins_same_ip")
 async def invoke_sap_siem_integration_brute_force_failed_logins_same_ip() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for brute force failed logins from the same IP.
@@ -493,6 +503,7 @@ async def invoke_sap_siem_integration_brute_force_failed_logins_same_ip() -> Inv
     return InvokeSAPSiemResponse(success=True, message="SAP SIEM integration invoked for brute force failed logins from the same IP.")
 
 
+@rust_handover("invoke_sap_siem_integration_successful_login_after_multiple_failed_logins")
 async def invoke_sap_siem_integration_successful_login_after_multiple_failed_logins() -> InvokeSAPSiemResponse:
     """
     Invokes the SAP SIEM integration for successful login after multiple failed logins.

@@ -1,0 +1,49 @@
+[package]
+name = "copilot-reports"
+description = "Reports: the case PDF and DOCX, the customer reports with their charts and SLA section, the SOC operations report (wkhtmltopdf as pdfkit runs it), the Grafana panel report (headless Chromium as Playwright drives it)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-objectstore = { workspace = true }
+copilot-incidents = { workspace = true }
+copilot-jinja = { workspace = true }
+copilot-docx = { workspace = true }
+sqlx = { workspace = true }
+copilot-notifications = { workspace = true }
+copilot-soc-management = { workspace = true }
+copilot-sla = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-grafana = { workspace = true }
+copilot-license = { workspace = true }
+copilot-yaml = { workspace = true }
+thiserror = { workspace = true }
+base64 = { workspace = true }
+miniz_oxide = { workspace = true }
+crc32fast = { workspace = true }
+ttf-parser = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+md-5 = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+flate2 = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

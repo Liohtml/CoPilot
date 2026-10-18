@@ -1,0 +1,236 @@
+{
+ "cryptography": "48.0.0",
+ "pyotp": "2.9.0",
+ "fernet": {
+  "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "tokens": [
+   {
+    "plaintext": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+    "time": 1700000000,
+    "iv": "00000000000000000000000000000000",
+    "token": "gAAAAABlU_EAAAAAAAAAAAAAAAAAAAAAALxksp77SWefPC1Rek6aJG-FK9tY9E8jKVWcrVWEXFjPxNTpJjAjWNf2aJgjha7fTHRT1ynXG2-vDRnjwE6_UQBH0V2brtedxTSwJ3tSmJYs"
+   },
+   {
+    "plaintext": "",
+    "time": 1700000001,
+    "iv": "01010101010101010101010101010101",
+    "token": "gAAAAABlU_EBAQEBAQEBAQEBAQEBAQEBAd65-jdry49h2kXYfXzDGvz71KBC8dvOA6kwj99cs6EqGVOMFW-ZbAxa6b89FgariA=="
+   },
+   {
+    "plaintext": "xxxxxxxxxxxxxxxx",
+    "time": 1700000002,
+    "iv": "02020202020202020202020202020202",
+    "token": "gAAAAABlU_ECAgICAgICAgICAgICAgICAvvSaVeroJxmhs0whrqNnIKq7eY4UHgmh0xhHlDXT5SvZ3rurHrXWH4fbYT316fNISuOUsVRfKlzcRsQ3dxROg0="
+   },
+   {
+    "plaintext": "ä€",
+    "time": 1700000003,
+    "iv": "03030303030303030303030303030303",
+    "token": "gAAAAABlU_EDAwMDAwMDAwMDAwMDAwMDA2dI0xW-QbnL9BblcBiCbW0vWiG4lw4HH9M5CYJL8FoVFNvQhVg7foKfXbzl4Iyq_w=="
+   }
+  ],
+  "jwt_secret": "unit-test-secret",
+  "derived_key": "WVhSKdtNsVTkwcgaMjeUZLD-rX8AYt_7tVqmTXZH9Is=",
+  "derived_token": "gAAAAABlU_EAAAAAAAAAAAAAAAAAAAAAAB2WmrzuU0Y1w0peHQUscjbu7DFun89VdBDSYznqwV1Ip5rVbtIN84AZoMp0Odzzdw==",
+  "invalid": [
+   "gAAAAABlU_EAAAAAAAAAAAAAAAAAAAAAALxksp77SWefPC1Rek6aJG-FK9tY9E8jKVWcrVWEXFjPxNTpJjAjWNf2aJgjha7fTHRT1ynXG2-vDRnjwE6_UQBH0V2brtedxTSwJ3tSmJYt",
+   "gAAAAABlU_EAAAAAAAAAAAAAAAAAAAAAALxksp77SGefPC1Rek6aJG-FK9tY9E8jKVWcrVWEXFjPxNTpJjAjWNf2aJgjha7fTHRT1ynXG2-vDRnjwE6_UQBH0V2brtedxTSwJ3tSmJYs",
+   "gQAAAABlU_EAAAAAAAAAAAAAAAAAAAAAALxksp77SWefPC1Rek6aJG-FK9tY9E8jKVWcrVWEXFjPxNTpJjAjWNf2aJgjha7fTHRT1ynXG2-vDRnjwE6_UQBH0V2brtedxTSwJ3tSmJYs",
+   "gAAAAABlU_EAAAAAAAAAAAAAAAAAAAAAALxksp77SWefPC1Rek6aJG-FK9tY9E8jKVWcrVWEXFjPxNTpJjAjWNf2aJgjha7fTHRT1ynXG2-vDRnjwE6_UQBH0V2brtedxTSwJ3tS",
+   "",
+   "not a token",
+   "gAAAAABlU_EAAAAAAAAAAAAAAAAAAAAAAAUY4MRQnTMD5WvbCFaqUVsG2WROP8nRKg_jyNzCMipRd1potlVB-3encNRZURwO-w=="
+  ]
+ },
+ "totp": {
+  "codes": [
+   {
+    "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+    "counter": 1,
+    "code": "503347"
+   },
+   {
+    "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+    "counter": 37037036,
+    "code": "088309"
+   },
+   {
+    "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+    "counter": 41152263,
+    "code": "401544"
+   },
+   {
+    "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+    "counter": 66666666,
+    "code": "978524"
+   },
+   {
+    "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+    "counter": 666666666,
+    "code": "890933"
+   },
+   {
+    "secret": "jbswy3dpehpk3pxp",
+    "counter": 1,
+    "code": "996554"
+   },
+   {
+    "secret": "jbswy3dpehpk3pxp",
+    "counter": 37037036,
+    "code": "071271"
+   },
+   {
+    "secret": "jbswy3dpehpk3pxp",
+    "counter": 41152263,
+    "code": "742275"
+   },
+   {
+    "secret": "jbswy3dpehpk3pxp",
+    "counter": 66666666,
+    "code": "890699"
+   },
+   {
+    "secret": "jbswy3dpehpk3pxp",
+    "counter": 666666666,
+    "code": "752434"
+   },
+   {
+    "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+    "counter": 1,
+    "code": "287082"
+   },
+   {
+    "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+    "counter": 37037036,
+    "code": "081804"
+   },
+   {
+    "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+    "counter": 41152263,
+    "code": "005924"
+   },
+   {
+    "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+    "counter": 66666666,
+    "code": "279037"
+   },
+   {
+    "secret": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+    "counter": 666666666,
+    "code": "353130"
+   }
+  ],
+  "verify_secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+  "verify_now": 1700000015,
+  "verify": [
+   {
+    "code": "661763",
+    "valid": true
+   },
+   {
+    "code": "406058",
+    "valid": true
+   },
+   {
+    "code": "996875",
+    "valid": true
+   },
+   {
+    "code": "797823",
+    "valid": false
+   },
+   {
+    "code": "072814",
+    "valid": false
+   },
+   {
+    "code": "６６１７６３",
+    "valid": true
+   },
+   {
+    "code": " 661763",
+    "valid": false
+   },
+   {
+    "code": "66176",
+    "valid": false
+   },
+   {
+    "code": "6617630",
+    "valid": false
+   },
+   {
+    "code": "",
+    "valid": false
+   },
+   {
+    "code": "abcdef",
+    "valid": false
+   }
+  ],
+  "uris": [
+   {
+    "name": "alice",
+    "uri": "otpauth://totp/CoPilot:alice?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=CoPilot"
+   },
+   {
+    "name": "a b",
+    "uri": "otpauth://totp/CoPilot:a%20b?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=CoPilot"
+   },
+   {
+    "name": "ä@x.com",
+    "uri": "otpauth://totp/CoPilot:%C3%A4%40x.com?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=CoPilot"
+   },
+   {
+    "name": "x/y",
+    "uri": "otpauth://totp/CoPilot:x/y?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=CoPilot"
+   },
+   {
+    "name": "a:b",
+    "uri": "otpauth://totp/CoPilot:a%3Ab?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=CoPilot"
+   },
+   {
+    "name": "a+b&c=d",
+    "uri": "otpauth://totp/CoPilot:a%2Bb%26c%3Dd?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=CoPilot"
+   },
+   {
+    "name": "~_.-",
+    "uri": "otpauth://totp/CoPilot:~_.-?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=CoPilot"
+   },
+   {
+    "name": "O'Brien#1",
+    "uri": "otpauth://totp/CoPilot:O%27Brien%231?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=CoPilot"
+   }
+  ]
+ },
+ "backup_codes": [
+  {
+   "input": "abcd123456",
+   "normalized": "ABCD123456"
+  },
+  {
+   "input": "  ABcd ",
+   "normalized": "ABCD"
+  },
+  {
+   "input": "straße",
+   "normalized": "STRASSE"
+  },
+  {
+   "input": "\u001cX\u001f",
+   "normalized": "X"
+  },
+  {
+   "input": "ﬁx",
+   "normalized": "FIX"
+  },
+  {
+   "input": " q　",
+   "normalized": "Q"
+  },
+  {
+   "input": "ǆ",
+   "normalized": "Ǆ"
+  }
+ ]
+}

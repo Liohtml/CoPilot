@@ -1,0 +1,102 @@
+[package]
+name = "copilot"
+description = "SOCFortress CoPilot backend (Rust): serves ported modules, proxies the rest to the Python backend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "copilot"
+path = "src/main.rs"
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-talon = { workspace = true }
+copilot-ai-analyst = { workspace = true }
+copilot-customer-portal = { workspace = true }
+copilot-customers = { workspace = true }
+copilot-healthchecks = { workspace = true }
+copilot-platform = { workspace = true }
+copilot-gateway = { workspace = true }
+copilot-identity = { workspace = true }
+copilot-notifications = { workspace = true }
+copilot-webauthn = { workspace = true }
+copilot-incidents = { workspace = true }
+copilot-sla = { workspace = true }
+copilot-soc-management = { workspace = true }
+copilot-scheduler = { workspace = true }
+copilot-connectors = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-graylog = { workspace = true }
+copilot-influxdb = { workspace = true }
+copilot-grafana = { workspace = true }
+copilot-portainer = { workspace = true }
+copilot-waf = { workspace = true }
+copilot-provisioning = { workspace = true }
+copilot-ingest = { workspace = true }
+copilot-velociraptor = { workspace = true }
+copilot-agents = { workspace = true }
+copilot-objectstore = { workspace = true }
+copilot-integrations = { workspace = true }
+copilot-siem = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-searches = { workspace = true }
+copilot-response = { workspace = true }
+copilot-shuffle = { workspace = true }
+copilot-agent-reports = { workspace = true }
+copilot-monitoring-alerts = { workspace = true }
+copilot-intel-connectors = { workspace = true }
+copilot-uba = { workspace = true }
+copilot-integration-modules = { workspace = true }
+copilot-grafana-dashboards = { workspace = true }
+copilot-integration-provisioning = { workspace = true }
+copilot-license = { workspace = true }
+copilot-status = { workspace = true }
+copilot-patch-tuesday = { workspace = true }
+copilot-mcp = { workspace = true }
+copilot-sublime = { workspace = true }
+copilot-scoutsuite = { workspace = true }
+copilot-cloud-provisioning = { workspace = true }
+copilot-assessments = { workspace = true }
+copilot-wazuh-rules = { workspace = true }
+copilot-case-templates = { workspace = true }
+copilot-file-analysis = { workspace = true }
+copilot-reports = { workspace = true }
+copilot-verifiers = { workspace = true }
+copilot-migrate = { workspace = true }
+copilot-startup = { workspace = true }
+copilot-standalone = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+reqwest = { workspace = true }
+regex = { workspace = true }
+clap = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+copilot-docx = { workspace = true }
+copilot-velociraptor = { workspace = true, features = ["testing"] }
+base64 = { workspace = true }
+hex = { workspace = true }
+tempfile = { workspace = true }
+tower = { workspace = true }
+num-bigint-dig = { workspace = true }
+sha2 = { workspace = true }
+p256 = { workspace = true }
+wiremock = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+bytes = { workspace = true }
+
+[lints]
+workspace = true

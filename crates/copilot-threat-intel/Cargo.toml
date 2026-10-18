@@ -1,0 +1,38 @@
+[package]
+name = "copilot-threat-intel"
+description = "Threat intel: /api/threat_intel (EPSS, SOCFortress threat intel and AI, the cyber-news process-name analysis, VirusTotal lookups and file analysis) and the licence check they need"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-license = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-ingest = { workspace = true }
+copilot-incidents = { workspace = true }
+copilot-objectstore = { workspace = true }
+copilot-jinja = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+hyper = { workspace = true }
+reqwest = { workspace = true }
+bytes = { workspace = true }
+flate2 = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+rand = { workspace = true }
+hex = { workspace = true }
+url = { workspace = true }
+regex = { workspace = true }
+
+[lints]
+workspace = true

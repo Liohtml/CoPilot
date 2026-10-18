@@ -1,0 +1,41 @@
+# Staged rollout: the Rust backend in front of the Python one — the layout of
+# the migration's earlier phases (docs/architecture/RUST_MIGRATION.md).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d
+#
+# copilot-backend (Rust) keeps host port 5000 and its network name, answers every
+# route it serves itself and streams anything else to copilot-backend-legacy
+# (Python, started without --profile here, not published). The schedule goes back
+# to APScheduler (the hand-over: a job moves to Rust only when COPILOT_RS_JOBS
+# names it and it is paused in the Scheduler UI) unless .env sets
+# COPILOT_SCHEDULER_OWNER=rust, which keeps it in Rust and APScheduler off.
+# Use it to move a deployment one step at a time, or to give the schedule back to
+# APScheduler. Drop this file from the command line to return to the Rust backend
+# alone (then `docker compose rm -sf copilot-backend-legacy`).
+services:
+    copilot-backend-legacy:
+        # Started by default in this layout.
+        profiles: !reset []
+        environment:
+            # APScheduler stays off while copilot-backend owns the schedule
+            # (COPILOT_SCHEDULER_OWNER=rust in .env); it runs otherwise.
+            - COPILOT_PY_SCHEDULER=${COPILOT_SCHEDULER_OWNER:+false}
+
+    copilot-backend:
+        # The migrations and the startup tasks stay on here: the Rust backend owns
+        # the schema (a migration after the Alembic baseline is only its), and the
+        # Python backend's lifespan runs the same idempotent seeding under the same
+        # MySQL named lock, one after the other.
+        environment:
+            - COPILOT_LEGACY_URL=http://copilot-backend-legacy:5000
+            # "rust": this service owns the schedule (APScheduler off above).
+            # Unset: the hand-over — APScheduler owns it, and this service runs the
+            # jobs COPILOT_RS_JOBS names (ids, comma-separated, or "all";
+            # COPILOT_RS_PALACE_JOBS=true names the two palace jobs) once each is
+            # paused in the Scheduler UI; Start hands it back.
+            - COPILOT_SCHEDULER_OWNER=${COPILOT_SCHEDULER_OWNER:-}
+            - COPILOT_RS_JOBS=${COPILOT_RS_JOBS:-}
+            - COPILOT_RS_PALACE_JOBS=${COPILOT_RS_PALACE_JOBS:-false}
+        depends_on:
+            copilot-backend-legacy:
+                condition: service_started

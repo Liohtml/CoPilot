@@ -1,0 +1,406 @@
+{
+ "pydantic": "2.13.4",
+ "email_validator": "2.3.0",
+ "cases": [
+  {
+   "input": "a@b.com",
+   "email": "a@b.com"
+  },
+  {
+   "input": "Foo@Example.COM",
+   "email": "Foo@example.com"
+  },
+  {
+   "input": "first.last@sub.example.co.uk",
+   "email": "first.last@sub.example.co.uk"
+  },
+  {
+   "input": "user+tag@x.io",
+   "email": "user+tag@x.io"
+  },
+  {
+   "input": "x_y-z@a-b.c-d.org",
+   "email": "x_y-z@a-b.c-d.org"
+  },
+  {
+   "input": "a!#$%&'*+-/=?^_`{|}~@x.com",
+   "email": "a!#$%&'*+-/=?^_`{|}~@x.com"
+  },
+  {
+   "input": "INFO@x.com",
+   "email": "info@x.com"
+  },
+  {
+   "input": "Postmaster@X.COM",
+   "email": "postmaster@x.com"
+  },
+  {
+   "input": "John <j@x.com>",
+   "email": "j@x.com"
+  },
+  {
+   "input": "John Q Public <j@x.com>",
+   "email": "j@x.com"
+  },
+  {
+   "input": "\"John Doe\" <j@x.com>",
+   "email": "j@x.com"
+  },
+  {
+   "input": "\"J \\\"Q\\\" D\" <j@x.com>",
+   "email": "j@x.com"
+  },
+  {
+   "input": "  a@b.com  ",
+   "email": "a@b.com"
+  },
+  {
+   "input": "\ta@b.com\n",
+   "email": "a@b.com"
+  },
+  {
+   "input": "<j@x.com>",
+   "email": "j@x.com"
+  },
+  {
+   "input": "a@123.com",
+   "email": "a@123.com"
+  },
+  {
+   "input": "a@x.museum",
+   "email": "a@x.museum"
+  },
+  {
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@x.com",
+   "email": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@x.com"
+  },
+  {
+   "input": "a@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.com",
+   "email": "a@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.com"
+  },
+  {
+   "input": "a@xn--mnchen-3ya.de",
+   "email": "a@münchen.de"
+  },
+  {
+   "input": "a@münchen.de",
+   "email": "a@münchen.de"
+  },
+  {
+   "input": "a@MÜNCHEN.DE",
+   "email": "a@münchen.de"
+  },
+  {
+   "input": "ä@ö.de",
+   "email": "ä@ö.de"
+  },
+  {
+   "input": "té@x.com",
+   "email": "té@x.com"
+  },
+  {
+   "input": "a@x。com",
+   "email": "a@x.com"
+  },
+  {
+   "input": "a@ｘ.com",
+   "email": "a@x.com"
+  },
+  {
+   "input": "",
+   "error": "value is not a valid email address: An email address must have an @-sign."
+  },
+  {
+   "input": " ",
+   "error": "value is not a valid email address: An email address must have an @-sign."
+  },
+  {
+   "input": "nope",
+   "error": "value is not a valid email address: An email address must have an @-sign."
+  },
+  {
+   "input": "@x.com",
+   "error": "value is not a valid email address: There must be something before the @-sign."
+  },
+  {
+   "input": "a@",
+   "error": "value is not a valid email address: There must be something after the @-sign."
+  },
+  {
+   "input": "a@b",
+   "error": "value is not a valid email address: The part after the @-sign is not valid. It should have a period."
+  },
+  {
+   "input": "a@b.c",
+   "email": "a@b.c"
+  },
+  {
+   "input": "a@b.local",
+   "error": "value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email."
+  },
+  {
+   "input": "a@sub.localhost",
+   "error": "value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email."
+  },
+  {
+   "input": "a@x.test",
+   "error": "value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email."
+  },
+  {
+   "input": "a@x.invalid",
+   "error": "value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email."
+  },
+  {
+   "input": "a@x.onion",
+   "error": "value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email."
+  },
+  {
+   "input": "a@1.in-addr.arpa",
+   "error": "value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email."
+  },
+  {
+   "input": "a@test",
+   "error": "value is not a valid email address: The part after the @-sign is not valid. It should have a period."
+  },
+  {
+   "input": "a..b@x.com",
+   "error": "value is not a valid email address: An email address cannot have two periods in a row."
+  },
+  {
+   "input": ".a@x.com",
+   "error": "value is not a valid email address: An email address cannot start with a period."
+  },
+  {
+   "input": "a.@x.com",
+   "error": "value is not a valid email address: An email address cannot have a period immediately before the @-sign."
+  },
+  {
+   "input": "a b@x.com",
+   "error": "value is not a valid email address: The email address contains invalid characters before the @-sign: SPACE."
+  },
+  {
+   "input": "a@b c.com",
+   "error": "value is not a valid email address: The part after the @-sign contains invalid characters: SPACE."
+  },
+  {
+   "input": "a@-x.com",
+   "error": "value is not a valid email address: An email address cannot have a hyphen immediately after the @-sign."
+  },
+  {
+   "input": "a@x-.com",
+   "error": "value is not a valid email address: An email address cannot have a period and a hyphen next to each other."
+  },
+  {
+   "input": "a@x..com",
+   "error": "value is not a valid email address: An email address cannot have two periods in a row."
+  },
+  {
+   "input": "a@.x.com",
+   "error": "value is not a valid email address: An email address cannot have a period immediately after the @-sign."
+  },
+  {
+   "input": "a@x.com.",
+   "error": "value is not a valid email address: An email address cannot end with a period."
+  },
+  {
+   "input": "a@x.com-",
+   "error": "value is not a valid email address: An email address cannot end with a hyphen."
+  },
+  {
+   "input": "a@x.-com",
+   "error": "value is not a valid email address: An email address cannot have a period and a hyphen next to each other."
+  },
+  {
+   "input": "a@ab--cd.com",
+   "error": "value is not a valid email address: An email address cannot have two letters followed by two dashes immediately after the @-sign or after a period, except Punycode."
+  },
+  {
+   "input": "a@x.c0m",
+   "email": "a@x.c0m"
+  },
+  {
+   "input": "a@x.1",
+   "error": "value is not a valid email address: The part after the @-sign is not valid. It is not within a valid top-level domain."
+  },
+  {
+   "input": "a@x_y.com",
+   "error": "value is not a valid email address: The part after the @-sign contains invalid characters: '_'."
+  },
+  {
+   "input": "a@x/y.com",
+   "error": "value is not a valid email address: The part after the @-sign contains invalid characters: '/'."
+  },
+  {
+   "input": "a@b@c.com",
+   "error": "value is not a valid email address: The part after the @-sign contains invalid characters: '@'."
+  },
+  {
+   "input": "a<b@c.com",
+   "error": "value is not a valid email address: An open angle bracket at the start of the email address has to be followed by a close angle bracket at the end."
+  },
+  {
+   "input": "John <j@x.com",
+   "error": "value is not a valid email address: An open angle bracket at the start of the email address has to be followed by a close angle bracket at the end."
+  },
+  {
+   "input": "John <j@x.com> x",
+   "error": "value is not a valid email address: There can't be anything after the email address."
+  },
+  {
+   "input": "Jo.hn <j@x.com>",
+   "error": "value is not a valid email address: The display name contains invalid characters when not quoted: '.'."
+  },
+  {
+   "input": "Jo(hn) <j@x.com>",
+   "error": "value is not a valid email address: The display name contains invalid characters when not quoted: '(', ')'."
+  },
+  {
+   "input": "\"unterminated <j@x.com>",
+   "error": "value is not a valid email address: An email address must have an @-sign."
+  },
+  {
+   "input": "a\\b@x.com",
+   "error": "value is not a valid email address: The email address contains invalid characters before the @-sign: \"\\\"."
+  },
+  {
+   "input": "a\"b@x.com",
+   "error": "value is not a valid email address: An email address must have an @-sign."
+  },
+  {
+   "input": "\"quoted\"@x.com",
+   "error": "value is not a valid email address: Quoting the part before the @-sign is not allowed here."
+  },
+  {
+   "input": "\"a b\"@x.com",
+   "error": "value is not a valid email address: Quoting the part before the @-sign is not allowed here."
+  },
+  {
+   "input": "\"a\"b@x.com",
+   "error": "value is not a valid email address: Extra character(s) found after close quote: 'b'"
+  },
+  {
+   "input": "a@[1.2.3.4]",
+   "error": "value is not a valid email address: A bracketed IP address after the @-sign is not allowed here."
+  },
+  {
+   "input": "a@[IPv6:::1]",
+   "error": "value is not a valid email address: A bracketed IP address after the @-sign is not allowed here."
+  },
+  {
+   "input": "a@[foo]",
+   "error": "value is not a valid email address: The part after the @-sign in brackets is not an IPv4 address and has no address literal tag."
+  },
+  {
+   "input": "a@[foo:bar]",
+   "error": "value is not a valid email address: The part after the @-sign contains an invalid address literal tag in brackets."
+  },
+  {
+   "input": "a@[1.2.3]",
+   "error": "value is not a valid email address: The address in brackets after the @-sign is not valid: It is not an IPv4 address (Expected 4 octets in '1.2.3') or is missing an address literal tag."
+  },
+  {
+   "input": "a@[]",
+   "error": "value is not a valid email address: The part after the @-sign in brackets is not an IPv4 address and has no address literal tag."
+  },
+  {
+   "input": "a b@x.com",
+   "error": "value is not a valid email address: The email address contains unsafe characters: NO-BREAK SPACE."
+  },
+  {
+   "input": "a​@x.com",
+   "error": "value is not a valid email address: The email address contains unsafe characters: ZERO WIDTH SPACE."
+  },
+  {
+   "input": "a@x .com",
+   "error": "value is not a valid email address: The email address contains unsafe characters: NO-BREAK SPACE."
+  },
+  {
+   "input": "a@x.com​",
+   "error": "value is not a valid email address: The email address contains unsafe characters: ZERO WIDTH SPACE."
+  },
+  {
+   "input": "a\u0000@x.com",
+   "error": "value is not a valid email address: The email address contains invalid characters before the @-sign: U+0000."
+  },
+  {
+   "input": "a@x.com",
+   "error": "value is not a valid email address: The email address contains invalid characters before the @-sign: U+007F."
+  },
+  {
+   "input": "a\n@x.com",
+   "error": "value is not a valid email address: The email address contains invalid characters before the @-sign: U+000A."
+  },
+  {
+   "input": "a@x.c\u0001m",
+   "error": "value is not a valid email address: The part after the @-sign contains invalid characters: U+0001."
+  },
+  {
+   "input": "a @x.com",
+   "error": "value is not a valid email address: The email address contains unsafe characters: LINE SEPARATOR."
+  },
+  {
+   "input": "a‮@x.com",
+   "error": "value is not a valid email address: The email address contains unsafe characters: RIGHT-TO-LEFT OVERRIDE."
+  },
+  {
+   "input": "a＠x.com",
+   "error": "value is not a valid email address: The email address has the \"full-width\" at-sign (@) character instead of a regular at-sign."
+  },
+  {
+   "input": "a﹫x.com",
+   "error": "value is not a valid email address: The email address has the \"small commercial at\" character instead of a regular at-sign."
+  },
+  {
+   "input": "́a@x.com",
+   "error": "value is not a valid email address: The email address contains unsafe characters: COMBINING ACUTE ACCENT."
+  },
+  {
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@x.com",
+   "error": "value is not a valid email address: The email address is too long (2 characters too many)."
+  },
+  {
+   "input": "a@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.com",
+   "error": "value is not a valid email address: After the @-sign, periods cannot be separated by so many characters (1 character too many)."
+  },
+  {
+   "input": "a@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.com",
+   "error": "value is not a valid email address: The email address is too long after the @-sign (55 characters too many)."
+  },
+  {
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "value is not a valid email address: Length must not exceed 2048 characters"
+  },
+  {
+   "input": "a@x.commmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+   "error": "value is not a valid email address: The email address is too long after the @-sign (2 characters too many)."
+  },
+  {
+   "input": "a@xn--.com",
+   "error": "value is not a valid email address: An email address cannot have a period and a hyphen next to each other."
+  },
+  {
+   "input": "a@xn--a.com",
+   "error": "value is not a valid email address: The part after the @-sign is not valid IDNA (Codepoint U+0080 at position 1 of '\\x80' not allowed)."
+  },
+  {
+   "input": "a@xn--zz-.com",
+   "error": "value is not a valid email address: An email address cannot have a period and a hyphen next to each other."
+  },
+  {
+   "input": "John <a@b.local>",
+   "error": "value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email."
+  },
+  {
+   "input": "a@b,com",
+   "error": "value is not a valid email address: The part after the @-sign contains invalid characters: ','."
+  },
+  {
+   "input": "a;b@x.com",
+   "error": "value is not a valid email address: The email address contains invalid characters before the @-sign: ';'."
+  },
+  {
+   "input": "a@x.cóm",
+   "email": "a@x.cóm"
+  }
+ ]
+}

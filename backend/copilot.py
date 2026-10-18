@@ -40,6 +40,7 @@ from app.db.db_setup import ensure_admin_user
 from app.db.db_setup import ensure_scheduler_user
 from app.db.db_setup import ensure_scheduler_user_removed
 from app.db.query_metrics import install as install_query_metrics
+from app.db.startup_lock import StartupLock
 from app.integrations.office365.services.provision import (
     ensure_office365_pipeline_rules,
 )
@@ -120,7 +121,6 @@ from app.routers import velociraptor
 from app.routers import version
 from app.routers import wazuh_indexer
 from app.routers import wazuh_manager
-from app.schedulers.scheduler import get_scheduler_instance
 from app.schedulers.scheduler import init_scheduler
 from app.schedulers.services.refresh_catalog_caches import warm_catalog_caches
 
@@ -149,6 +149,10 @@ async def lifespan(_app: FastAPI):
     if environment == "PRODUCTION":
         await create_database_if_not_exists(db_url=SQLALCHEMY_DATABASE_URI_NO_DB, db_name="copilot")
         await create_copilot_user_if_not_exists(db_url=SQLALCHEMY_DATABASE_URI_NO_DB, db_user_name="copilot")
+    # Serialised with the Rust service's startup (app/db/startup_lock.py): the schema and the
+    # seeding below run under one MySQL named lock both backends take, so the two never create
+    # the schema or seed the same rows at once.
+    startup_lock = StartupLock.acquire()
     apply_migrations()
     await create_buckets()
     await add_connectors(async_engine)
@@ -164,11 +168,13 @@ async def lifespan(_app: FastAPI):
     # The public portal settings endpoint is read-only, so its default row is seeded here.
     await ensure_default_portal_settings(async_engine)
 
-    # Initialize the scheduler
+    # Initialize the scheduler (None while COPILOT_PY_SCHEDULER=false: the Rust service owns it)
     scheduler = await init_scheduler()
-    if not scheduler.running:
+    if scheduler is not None and not scheduler.running:
         logger.info("Scheduler is not running, starting now...")
         scheduler.start()
+    # The scheduler rows are seeded by `init_scheduler()` (`initialize_job_metadata`): released after it.
+    startup_lock.release()
 
     # Blocking connector calls now run in anyio's worker pool (#1072); the default
     # of 40 threads is raised here, inside the loop, where the limiter exists.
@@ -199,8 +205,8 @@ async def lifespan(_app: FastAPI):
     await session_log.stop()
 
     logger.info("Shutting down scheduler")
-    scheduler = await get_scheduler_instance()
-    if scheduler.running:
+    scheduler = await init_scheduler()
+    if scheduler is not None and scheduler.running:
         logger.info("Scheduler is running, shutting down now...")
         scheduler.shutdown()
     await ensure_scheduler_user_removed(async_engine)

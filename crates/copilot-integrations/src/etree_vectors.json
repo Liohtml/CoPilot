@@ -1,0 +1,429 @@
+[
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-b",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    </office365>\n</ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  </ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-x",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": null
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>",
+  "removed": null
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-b",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n  </ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n  <office365>\n    <enabled>no</enabled>\n  </office365>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n  <office365>\n    <enabled>no</enabled>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  </ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><enabled>no</enabled></office365>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><enabled>no</enabled></office365>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365><enabled>no</enabled></office365>\n  </ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id> t-a\n </tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id> t-a\n </tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  </ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth><client_id>no tenant</client_id></api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth><client_id>no tenant</client_id></api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth><client_id>no tenant</client_id></api_auth>\n  </office365>\n</ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name='office365'><office365><api_auth><tenant_id>t-a</tenant_id></api_auth></office365></wodle>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <wodle name=\"office365\"><office365><api_auth><tenant_id>t-a</tenant_id></api_auth></office365></wodle>\n</ossec_config>",
+  "removed": null
+ },
+ {
+  "doc": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- Wazuh - Manager -->\n<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-b",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    </office365>\n</ossec_config>"
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>\n<!-- end -->\n\n",
+  "tenant": "t-b",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    <api_auth>\n      <tenant_id>t-b</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n    </office365>\n</ossec_config>"
+ },
+ {
+  "doc": "<ossec_config><!-- one --><office365><!-- two --><api_auth><tenant_id>t-a</tenant_id></api_auth><?pi x?>after</office365>tail</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config><office365><api_auth><tenant_id>t-a</tenant_id></api_auth>after</office365>tail</ossec_config>",
+  "removed": "<ossec_config />"
+ },
+ {
+  "doc": "<ossec_config>a<!--c-->b<?p?>c<office365><api_auth><tenant_id>t-a</tenant_id></api_auth></office365>d<!--e-->f</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>abc<office365><api_auth><tenant_id>t-a</tenant_id></api_auth></office365>df</ossec_config>",
+  "removed": "<ossec_config>abc</ossec_config>"
+ },
+ {
+  "doc": "<?xml version='1.0'?><a/>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<a />",
+  "removed": null
+ },
+ {
+  "doc": "<?xml version=\"1.0\" standalone=\"yes\"?>\n<a>x</a>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<a>x</a>",
+  "removed": null
+ },
+ {
+  "doc": "<a b=\"x &amp; &lt;y&gt; &quot;z&quot; &apos;w&apos;\">&amp;&lt;&gt;&quot;&apos;</a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a b=\"x &amp; &lt;y&gt; &quot;z&quot; 'w'\">&amp;&lt;&gt;\"'</a>",
+  "removed": null
+ },
+ {
+  "doc": "<a b='1\t2\n3\r\n4  5'>x\r\ny\rz</a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a b=\"1 2 3 4  5\">x\ny\nz</a>",
+  "removed": null
+ },
+ {
+  "doc": "<a>&#65;&#x42;&#x1F600;&#10;&#13;&#9;</a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a>AB😀\n\r\t</a>",
+  "removed": null
+ },
+ {
+  "doc": "<a><![CDATA[<tenant_id>&amp;]]></a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a>&lt;tenant_id&gt;&amp;amp;</a>",
+  "removed": null
+ },
+ {
+  "doc": "<!DOCTYPE a [<!ENTITY t \"t-a\"><!ENTITY two \"&t;-&t;\">]><a><office365><api_auth><tenant_id>&t;</tenant_id></api_auth></office365>&two;</a>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<a><office365><api_auth><tenant_id>t-a</tenant_id></api_auth></office365>t-a-t-a</a>",
+  "removed": "<a />"
+ },
+ {
+  "doc": "<!DOCTYPE ossec_config>\n<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": true,
+  "tostring": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  </office365>\n</ossec_config>",
+  "removed": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  </ossec_config>"
+ },
+ {
+  "doc": "<a b=\"&#34;&#60;&#62;&#10;&#13;&#9;\"/>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a b=\"&quot;&lt;&gt;&#10;&#13;&#09;\" />",
+  "removed": null
+ },
+ {
+  "doc": "<a>é ü 漢字 😀</a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a>é ü 漢字 😀</a>",
+  "removed": null
+ },
+ {
+  "doc": "<a>]]</a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a>]]</a>",
+  "removed": null
+ },
+ {
+  "doc": "<a>></a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a>&gt;</a>",
+  "removed": null
+ },
+ {
+  "doc": "<a><b/><c></c><d x=\"1\" y=\"2\"/><e x=\"1\">t</e></a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a><b /><c /><d x=\"1\" y=\"2\" /><e x=\"1\">t</e></a>",
+  "removed": null
+ },
+ {
+  "doc": "<a xmlns=\"urn:x\"><b/></a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<ns0:a xmlns:ns0=\"urn:x\"><ns0:b /></ns0:a>",
+  "removed": null
+ },
+ {
+  "doc": "<p:a xmlns:p=\"urn:p\" p:x=\"1\"><p:b/><c/></p:a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<ns0:a xmlns:ns0=\"urn:p\" ns0:x=\"1\"><ns0:b /><c /></ns0:a>",
+  "removed": null
+ },
+ {
+  "doc": "<a xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"t\"><b xml:lang=\"en\"/></a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"t\"><b xml:lang=\"en\" /></a>",
+  "removed": null
+ },
+ {
+  "doc": "<a xmlns:q=\"urn:q\" xmlns:p=\"urn:p\"><q:b/><p:c/></a>",
+  "tenant": "t",
+  "parsed": true,
+  "tostring": "<a xmlns:ns0=\"urn:q\" xmlns:ns1=\"urn:p\"><ns0:b /><ns1:c /></a>",
+  "removed": null
+ },
+ {
+  "doc": "",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "not xml",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a></b>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a/><b/>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a/>junk",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a x=\"1\" x=\"2\"/>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a>&nope;</a>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a>& </a>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a>]]></a>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a><!-- x -- y --></a>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a><?xml version='1.0'?></a>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": " <?xml version='1.0'?><a/>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a>&#0;</a>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a>&#xD800;</a>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a>\u0001</a>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<p:a/>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a b=\"<\"/>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<a b=1/>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<1a/>",
+  "tenant": "t",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ },
+ {
+  "doc": "<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n  <office365>\n    <enabled>yes</enabled>\n    <api_auth>\n      <tenant_id>t-a</tenant_id>\n      <client_id>c</client_id>\n    </api_auth>\n  \n</ossec_config>",
+  "tenant": "t-a",
+  "parsed": false,
+  "tostring": null,
+  "removed": {
+   "error": 500
+  }
+ }
+]

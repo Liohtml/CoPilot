@@ -13,7 +13,10 @@ expired.
 
 from loguru import logger
 
+from app.schedulers.handover import rust_handover
 
+
+@rust_handover("refresh_sidebar_health")
 async def refresh_sidebar_health() -> None:
     """Recompute the cached InfluxDB health indicator.
 

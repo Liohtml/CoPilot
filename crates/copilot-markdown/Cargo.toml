@@ -1,0 +1,16 @@
+[package]
+name = "copilot-markdown"
+description = "markdown-it-py's gfm-like renderer (html off) as CoPilot's notification emails use it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

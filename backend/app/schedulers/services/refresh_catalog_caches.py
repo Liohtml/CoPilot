@@ -22,8 +22,10 @@ from loguru import logger
 
 from app.integrations.copilot_searches.services.copilot_searches import rules_cache
 from app.integrations.copilot_searches.services.mitre_coverage import mitre_matrix
+from app.schedulers.handover import rust_handover
 
 
+@rust_handover("refresh_catalog_caches")
 async def refresh_catalog_caches() -> None:
     """Load the catalog's GitHub-backed caches if their TTL has expired.
 
@@ -54,7 +56,9 @@ async def warm_catalog_caches() -> None:
         wazuh_rules_cache,
     )
 
-    await refresh_catalog_caches()
+    # The guards' unwrapped functions: the warm-up is a startup task of this process, not a
+    # scheduled tick, and warms its caches whoever owns the jobs.
+    await refresh_catalog_caches.__wrapped__()
 
     try:
         await wazuh_rules_cache.ensure_loaded()
@@ -68,7 +72,7 @@ async def warm_catalog_caches() -> None:
         refresh_sidebar_indicators,
     )
 
-    await refresh_sidebar_health()
+    await refresh_sidebar_health.__wrapped__()
     # Assembled last: it reads the caches warmed above, so the first sidebar load
     # after a restart already has everything.
-    await refresh_sidebar_indicators()
+    await refresh_sidebar_indicators.__wrapped__()

@@ -1,0 +1,69 @@
+name: Activity from Anonymous IP Addresses
+id: d8b0a4fe-07a8-41be-bd39-b14afa025d95
+version: 1
+schema_version: "1.0"
+date: "2022-10-09"
+author: Austin Songer @austinsonger
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: d8b0a4fe-07a8-41be-bd39-b14afa025d95
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: match
+description: >
+  Detects when a Microsoft Cloud App Security reported when users were active
+  from an IP address that has been identified as an anonymous proxy IP address.
+  MITRE ATT&CK: T1573.
+data_source:
+  - Office 365 Management Activity API
+  - "Workload: ThreatIntelligence"
+workload: ThreatIntelligence
+how_to_implement: >
+  Requires the Wazuh office365 module configured with an Azure AD application
+  subscribed to the Office 365 Management Activity API for the relevant
+  workload, ingested into the wazuh-* indices. The detection looks for events
+  where data_office365_eventSource equals 'SecurityComplianceCenter';
+  data_office365_eventName equals 'Activity from anonymous IP addresses';
+  data_office365_status equals 'success'.
+known_false_positives: >
+  User using a VPN or Proxy. Baseline expected activity in your environment and
+  tune this detection before relying on it for automated response.
+references:
+  - https://learn.microsoft.com/en-us/defender-cloud-apps/anomaly-detection-policy
+  - https://learn.microsoft.com/en-us/defender-cloud-apps/policy-template-reference
+  - https://attack.mitre.org/techniques/T1573/
+response:
+  message: >
+    Activity from Anonymous IP Addresses detected for user
+    $data_office365_UserId$. Matched data_office365_eventSource:
+    $data_office365_eventSource$. Matched data_office365_eventName:
+    $data_office365_eventName$. MITRE ATT&CK: T1573
+  risk_score: 50
+  severity: medium
+  risk_objects:
+    - field: data_office365_UserId
+      type: user
+      score: 50
+  threat_objects:
+    - field: data_office365_eventSource
+      type: other
+    - field: data_office365_eventName
+      type: other
+tags:
+  asset_type: Cloud Identity
+  mitre_attack_id:
+    - T1573
+  custom_tags:
+    - anonymous
+    - addresses
+    - o365
+    - threat_management
+    - command_and_control
+  product:
+    - Office 365
+  security_domain: cloud
+graylog:
+  query: data_office365_eventSource:/[Ss][Ee][Cc][Uu][Rr][Ii][Tt][Yy][Cc][Oo][Mm][Pp][Ll][Ii][Aa][Nn][Cc][Ee][Cc][Ee][Nn][Tt][Ee][Rr]/ AND data_office365_eventName:/[Aa][Cc][Tt][Ii][Vv][Ii][Tt][Yy] [Ff][Rr][Oo][Mm] [Aa][Nn][Oo][Nn][Yy][Mm][Oo][Uu][Ss] [Ii][Pp] [Aa][Dd][Dd][Rr][Ee][Ss][Ss][Ee][Ss]/ AND data_office365_status:/[Ss][Uu][Cc][Cc][Ee][Ss][Ss]/

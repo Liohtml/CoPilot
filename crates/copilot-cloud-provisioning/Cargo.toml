@@ -1,0 +1,47 @@
+[package]
+name = "copilot-cloud-provisioning"
+description = "Office 365 and AWS provisioning: POST /api/office365/provision and /api/aws/provision (the Wazuh manager's ossec.conf, Graylog index sets, streams and pipelines, Grafana datasources, folders and dashboards, rolled back on failure)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-graylog = { workspace = true }
+copilot-grafana = { workspace = true }
+copilot-grafana-dashboards = { workspace = true }
+copilot-monitoring-alerts = { workspace = true }
+copilot-integrations = { workspace = true }
+copilot-integration-provisioning = { workspace = true }
+copilot-wazuh = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+copilot-ingest = { workspace = true }
+copilot-jinja = { workspace = true }
+# botocore's four calls of the AWS validation: HTTP/1.1 over rustls with the
+# webpki roots (the versions the rest of the workspace already builds).
+bytes = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { version = "=0.1.21", features = ["tokio"] }
+http-body-util = "=0.1.5"
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "=1.0.9"
+sha2 = { workspace = true }
+hmac = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true

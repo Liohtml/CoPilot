@@ -8,9 +8,11 @@ from app.connectors.wazuh_indexer.routes.monitoring import (
     resize_wazuh_index_fields_route,
 )
 from app.db.db_session import get_db_session
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 
 
+@rust_handover("resize_wazuh_index_fields")
 async def resize_wazuh_index_fields():
     """
     Synchronizes agents by sending a request to the server and updating the job metadata.

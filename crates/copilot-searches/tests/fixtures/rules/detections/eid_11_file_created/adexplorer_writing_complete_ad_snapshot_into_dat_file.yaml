@@ -1,0 +1,168 @@
+name: ADExplorer Writing Complete AD Snapshot Into .dat File
+id: 0a1255c5-d732-4b62-ac02-b5152d34fb83
+version: 1
+schema_version: "1.0"
+date: "2025-07-09"
+author: Arnim Rupp (Nextron Systems), Thomas Patzke
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 0a1255c5-d732-4b62-ac02-b5152d34fb83
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detects the dual use tool ADExplorer writing a complete AD snapshot into a
+  .dat file. This can be used by attackers to extract data for Bloodhound,
+  usernames for password spraying or use the meta data for social engineering.
+  The snapshot doesn't contain password hashes but there have been cases, where
+  administrators put passwords in the comment field. MITRE ATT&CK: T1087.002,
+  T1069.002, T1482.
+
+data_source:
+  - Sysmon EventID 11 - File Created
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        - term:
+            data_win_system_eventID: "11"
+        
+        - bool:
+            should:
+              - wildcard:
+                  data_win_eventdata_image:
+                    value: "*\\\\ADExp.exe"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_image:
+                    value: "*\\\\ADExplorer.exe"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_image:
+                    value: "*\\\\ADExplorer64.exe"
+                    case_insensitive: true
+              - wildcard:
+                  data_win_eventdata_image:
+                    value: "*\\\\ADExplorer64a.exe"
+                    case_insensitive: true
+            minimum_should_match: 1
+        - wildcard:
+            data_win_eventdata_targetFilename:
+              value: "*.dat"
+              case_insensitive: true
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_eventdata_image
+    - data_win_eventdata_targetFilename
+    - data_win_eventdata_user
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires Sysmon file creation logging (EventID 11) enabled in the Sysmon
+  configuration for the monitored paths and the
+  Microsoft-Windows-Sysmon/Operational channel collected by the Wazuh agent. The
+  detection looks for events where data_win_eventdata_image matches
+  '*\ADExp.exe'; data_win_eventdata_image matches '*\ADExplorer.exe';
+  data_win_eventdata_image matches '*\ADExplorer64.exe', among other conditions.
+
+known_false_positives: >
+  Legitimate use of ADExplorer by administrators creating .dat snapshots.
+  Baseline expected activity in your environment and tune this detection before
+  relying on it for automated response.
+
+references:
+  - https://learn.microsoft.com/de-de/sysinternals/downloads/adexplorer
+  - https://github.com/c3c/ADExplorerSnapshot.py/tree/f700904defac330802bbfedd1d8ffd9248f4ee24
+  - https://www.packetlabs.net/posts/scattered-spider-is-a-young-ransomware-gang-exploiting-large-corporations/
+  - https://www.nccgroup.com/us/research-blog/lapsus-recent-techniques-tactics-and-procedures/
+  - https://trustedsec.com/blog/adexplorer-on-engagements
+  - https://attack.mitre.org/techniques/T1087/002/
+  - https://attack.mitre.org/techniques/T1069/002/
+  - https://attack.mitre.org/techniques/T1482/
+
+response:
+  message: >
+    ADExplorer Writing Complete AD Snapshot Into .dat File detected on host
+    $agent_name$. Matched data_win_eventdata_image: $data_win_eventdata_image$.
+    Matched data_win_eventdata_targetFilename:
+    $data_win_eventdata_targetFilename$. MITRE ATT&CK: T1087.002, T1069.002,
+    T1482
+  risk_score: 50
+  severity: medium
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 50
+  threat_objects:
+    - field: data_win_eventdata_image
+      type: process
+    - field: data_win_eventdata_targetFilename
+      type: file_name
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1087.002
+    - T1069.002
+    - T1482
+  custom_tags:
+    - adexplorer
+    - writing
+    - complete
+    - file_event
+    - sysmon
+    - discovery
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_win_system_eventID:"11" AND (data_win_eventdata_image:/.*\\[Aa][Dd][Ee][Xx][Pp]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*\\[Aa][Dd][Ee][Xx][Pp][Ll][Oo][Rr][Ee][Rr]\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*\\[Aa][Dd][Ee][Xx][Pp][Ll][Oo][Rr][Ee][Rr]64\.[Ee][Xx][Ee]/ OR data_win_eventdata_image:/.*\\[Aa][Dd][Ee][Xx][Pp][Ll][Oo][Rr][Ee][Rr]64[Aa]\.[Ee][Xx][Ee]/) AND data_win_eventdata_targetFilename:/.*\.[Dd][Aa][Tt]/

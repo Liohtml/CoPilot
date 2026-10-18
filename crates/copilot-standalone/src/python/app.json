@@ -1,0 +1,5847 @@
+{
+ "routes": [
+  {
+   "kind": "route",
+   "path": "/openapi.json",
+   "methods": [
+    "GET",
+    "HEAD"
+   ]
+  },
+  {
+   "kind": "route",
+   "path": "/docs",
+   "methods": [
+    "GET",
+    "HEAD"
+   ]
+  },
+  {
+   "kind": "route",
+   "path": "/docs/oauth2-redirect",
+   "methods": [
+    "GET",
+    "HEAD"
+   ]
+  },
+  {
+   "kind": "route",
+   "path": "/redoc",
+   "methods": [
+    "GET",
+    "HEAD"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/connectors",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/connectors/{connector_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/connectors/verify/{connector_id}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/connectors/{connector_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/connectors/upload/{connector_identifier}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/alerts/by-id",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/alerts",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/alerts/host",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/alerts/index",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/alerts/hosts/all",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/alerts/rules/all",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/alerts/rules/hosts/all",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/alerts/alerts/graylog/index",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/alerts/alerts/graylog",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_indexer/health",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_indexer/allocation",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_indexer/indices",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_indexer/indices/size-per-customer",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_indexer/shards",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_indexer/output_shard_number_to_be_set_based_on_nodes",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_indexer/resize_wazuh_index_fields",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/repositories",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/status",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/repositories/{repository}/snapshots",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/create",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/restore",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/schedules",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/schedules",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/schedules/{schedule_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/schedules/{schedule_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/snapshots/schedules/{schedule_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/token",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/token/customer-portal",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/refresh",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/register",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/login",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/users",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/users/{user_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/reset-password",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/reset-password/me",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/delete/{user_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/users/{user_id}/role/by-name",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/users/{user_id}/customers",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/users/{user_id}/customers",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/me/customers",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/status",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/settings",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/settings",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/allowed-emails",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/allowed-emails",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/allowed-emails/{email_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/azure/login",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/azure/callback",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/google/login",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/google/callback",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/sso/cloudflare/verify",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/2fa/status",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/2fa/setup",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/2fa/verify-setup",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/2fa/disable",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/2fa/validate",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/2fa/backup-codes/regenerate",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/passkey/status",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/passkey/me",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/passkey/me/status",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/passkey/{passkey_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/passkey/register/options",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/passkey/register/verify",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/passkey/login/options",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/passkey/login/verify",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/security/customers/{customer_code}/users",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/security/smtp-status",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/security/users/{user_id}/totp",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/security/users/{user_id}/temp-password-email/options",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/security/users/{user_id}/temp-password-email/preview",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/auth/security/users/{user_id}/send-temp-password",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/cato/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/rule/disabled",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/rule/disable",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/rule/enable",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/rule/exclude",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/rules",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/rules/files",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/rules/files/{filename}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/rules/files/{filename}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/groups",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/groups/{group_id}/files",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/groups/{group_id}/files/{filename}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/groups/{group_id}/configuration",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/groups",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/mitigations",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/references",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/software",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/tactics",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/techniques",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/atomic-tests",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/techniques/{technique_id}/atomic-tests",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/techniques/alerts",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/mitre/techniques/{technique_id}/alerts",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/wazuh_manager/management/restart",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/dashboard/agents",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/bulk/delete",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/bulk/delete/filter",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/hostname/{hostname}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/sync",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/critical",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/noncritical",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/wazuh/upgrade",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/vulnerabilities/cve/{cve}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/vulnerabilities/{vulnerability_severity}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/csv/vulnerabilities/{vulnerability_severity}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/sca",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/sca/{policy_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/csv/sca/{policy_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_hostname}/cases",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/wazuh/outdated",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/velociraptor/outdated",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/update",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/velociraptor/unpin",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/{agent_id}/delete",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/sync/vulnerabilities",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agents/sync/vulnerabilities/{customer_code}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/sync",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/sync/background",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/agent/{agent_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/sync/customer/{customer_code}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/sync/agent/{agent_name}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/delete",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/search",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/reports/generate",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/reports/generate/background",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/reports",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/reports/{report_id}/download",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/vulnerabilities/reports/{report_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/overview",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/overview/stream",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/reports/generate",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/reports",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/reports/{report_id}/download",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/reports/{report_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/policies",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/policies/{policy_id}/metadata",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/policies/{policy_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/packages/registry",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sca/packages/registry/{registry_key}/agents",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/syscollector/search/packages",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/syscollector/{agent_id}/packages",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/indices",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/inputs",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/inputs/running",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/inputs/configured",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/event/definitions",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/event/alerts",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/url_whitelist",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/index",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/input/stop",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/input/start",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/stream/stop",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/stream/start",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/messages",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/metrics",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/event_notifications",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/streams",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/pipelines",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/pipeline/full",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/pipeline/rules",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/pipeline/rules/{pipeline_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/receiver",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/analyzers",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/analyzers/run",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/artifacts",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/artifacts/{os_prefix}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/artifacts/artifact/{artifact_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/artifacts/artifact/{artifact_name}/parameters/{parameter_prefix}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/artifacts/hostname/{hostname}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/artifacts/collect",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/artifacts/command",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/artifacts/quarantine",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/artifacts/collect/file/agent/{agent_id}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/flows/{hostname}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/flows/retrieve",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/workflows",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/workflows/executions",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/workflows/execute",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/shuffle/integrations/credentials",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/shuffle/integrations/execute",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/shuffle/integrations/invoke-workflow",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/shuffle/singul/execute",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/shuffle/organizations/organizations",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/shuffle/organizations/organizations/{org_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/shuffle/organizations/organizations/name/{org_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config/{config_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config/{config_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config/{config_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config/{config_id}/audit",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/audit",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config/{config_id}/audit/summary",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/reports",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/reports/{report_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/reports/{report_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config/{config_id}/exclusions",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config/{config_id}/exclusions",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/exclusions/{exclusion_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/exclusions/{exclusion_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config/{config_id}/baselines",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/config/{config_id}/baselines",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/baselines/{baseline_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/github-audit/checks",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sublime/alert",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sublime/alerts",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/patch-tuesday",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/patch-tuesday/summary",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/patch-tuesday/cycles",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/patch-tuesday/search",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/patch-tuesday/priority/{priority_level}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/patch-tuesday/kev",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/meta",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/meta",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/meta",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/meta",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/full",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/agents",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/agents/healthcheck/wazuh",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/agents/healthcheck/velociraptor",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/healthcheck/wazuh",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/healthcheck/wazuh/{agent_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/healthcheck/velociraptor",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/healthcheck/velociraptor/{agent_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/healthcheck/logs",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/logs",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/logs/{user_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/logs/timerange",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/logs/{event_type}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/logs",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/logs/timerange",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/audit/actions",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/audit",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/audit/{audit_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/alerts",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/check-names",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/metrics/hosts",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/metrics/summary",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/metrics/cpu",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/metrics/memory",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/metrics/kernel",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/metrics/disks",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/metrics/processes",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/influxdb/metrics/network",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/version/check",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/status/sidebar",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/grafana/dashboards",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/reporting/orgs",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/reporting/dashboards/{org_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/reporting/dashboard/{dashboard_uid}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/reporting/dashboard_panels/{dashboard_uid}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/reporting/generate_iframe_links",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/reporting/generate-report",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/user/user/organization/add",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/provision/wazuh_worker",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/provision/dashboards",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/provision/subscriptions",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/provision/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/provision/dashboards",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/update/office365_org_id/{customer_code}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/edr_install_commands/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/decommission",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/default_settings",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/default_settings",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/default_settings",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_provisioning/default_settings",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/socfortress",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/virustotal",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/virustotal/file/submit",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/virustotal/analysis/{analysis_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/virustotal/file/{file_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/virustotal/file/analyze",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/process_name",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/ai/analyze-alert",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/ai/wazuh-exclusion-rule",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/ai/velociraptor-artifact-recommendation",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/threat_intel/epss",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/api/v1/alert_settings/{customer_code}/event_configs",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/api/v1/alert_settings/create",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/api/v1/alert_settings/{customer_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/api/v1/alert_settings/{customer_name}/event",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/api/v1/alert_settings/{customer_name}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/api/v1/alert_settings/{customer_name}/event/{order_label}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/available_integrations",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/available_integrations/{integration_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/customer_integrations",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/customer_integrations_meta",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/customer_integrations/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/customer_integrations_meta/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/create_integration",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/create_integration_meta",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/update_integration/{customer_code}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/available_integrations",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/delete_integration",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/integration_customer/{integration_name}/{auth_key_name}/{auth_key_value}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/meta_auto/{customer_code}/{integration_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/update_meta_auto",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/office365/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/aws/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_action/inventory",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_action/inventory/count",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_action/inventory/{copilot_action_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_action/metrics",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_action/technologies",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_action/invoke",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_mcp/servers",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_mcp/servers/{mcp_server}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_mcp/example-questions",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_mcp/categories",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_mcp/query",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/mimecast/invoke",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/mimecast/ttp/urls",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/mimecast/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/mimecast/invoke/scheduler/siem",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/mimecast/invoke/scheduler/ttp",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/linux",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/windows",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/powershell",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/cve",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/categories",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/id/{rule_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/name/{rule_name:path}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/by-ids",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/mitre/coverage",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/mitre/refresh",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/mitre/{technique_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/refresh",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/execute",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/graylog",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/provision/graylog/check",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/provision/graylog/bulk",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/provision/graylog",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/stories",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/stories/{story_name:path}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/wazuh-rules",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/wazuh-rules/{rule_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/coverage-gaps",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/coverage-gaps/{technique_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/compliance/frameworks",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/compliance/{framework}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/compliance/{framework}/{control:path}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/catalog/wazuh-rules/test",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/validate",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/backtest",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/custom-repos",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/custom-repos/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/custom-repos/{customer_code}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/custom-repos/{customer_code}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/custom-repos/test",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/copilot_searches/publish",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/{job_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/next_run/{job_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/add",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/provisioning_jobs",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/apscheduler_ops",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/jobs/run/{job_id}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/start/{job_id}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/pause/{job_id}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/update/{job_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scheduler/{job_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/monitoring_alert/available",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/monitoring_alert/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/monitoring_alert/provision/custom",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/monitoring_alert/provision/testing",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sap_siem/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_provisioning/graylog/available/content_packs",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_provisioning/graylog/provision/content_pack",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_provisioning/graylog/provision/fortinet",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_decommissioning/graylog/decommission/network_connector",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_provisioning/graylog/provision/sonicwall",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_provisioning/graylog/provision/sentinelone",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_provisioning/influxdb/available/checks",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_provisioning/influxdb/provision/check",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_provisioning/influxdb/provision/checks",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/stack_decommissioning/influxdb/check/{check_name}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agent_data_store/upload",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agent_data_store/agent/{agent_id}/artifacts",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agent_data_store/agent/{agent_id}/artifacts/{artifact_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agent_data_store/agent/{agent_id}/artifacts/{artifact_id}/download",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/agent_data_store/agent/{agent_id}/artifacts/{artifact_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/settings",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/settings",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/settings",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/settings/logo",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/settings/global",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/settings/effective",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/settings/effective/logo",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/branding",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/branding/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/branding/{customer_code}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/branding/{customer_code}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/overview",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/dashboard/stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/dashboard/alert-stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/dashboard/case-stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/ai_reports/settings/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/ai_reports/settings/{customer_code}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/ai_reports/availability",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/ai_reports/insights",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/ai_reports/alert/{alert_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/ai_reports/alert/{alert_id}/investigate",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/agents/export",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/agents",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/sla/settings/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/sla/settings/{customer_code}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/sla/availability",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/sla/overview",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_portal/me",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/active_response/describe/{active_response_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/active_response/supported",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/active_response/supported/{agent_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/active_response/invoke",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sysmon_config/upload",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sysmon_config/content/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sysmon_config",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sysmon_config/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/sysmon_config/deploy/{customer_code}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/graylog/invoke",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/huntress/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/subscription_features",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/retrieve_license_by_email",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/create_checkout_session",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/trial_license",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/cancel_subscription",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/verify_license",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/get_license",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/is_feature_enabled/{feature_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/get_license_features",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/replace_license_in_db",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/retrieve-docker-compose",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/license/invalidate_cache",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/huntress",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/mimecast",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/sap_siem",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/sap_siem/successful_user_login_with_different_ip",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/sap_siem/same_user_failed_login_from_different_ip",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/sap_siem/same_user_failed_login_from_different_geo_location",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/sap_siem/same_user_successful_login_from_different_geo_location",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/sap_siem/brute_force_failed_logins_multiple_ips",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/sap_siem/brute_force_failed_logins_same_ip",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/sap_siem/successful_login_after_multiple_failed_logins",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/duo",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/integrations/modules/cato",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/carbonblack/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/carbonblack/test",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/available_network_connectors",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/available_network_connectors/{network_connector_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/customer_network_connectors",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/customer_network_connectors_meta",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/customer_network_connectors/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/customer_network_connectors_meta/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/create_network_connector",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/create_network_connector_meta",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/update_network_connector/{customer_code}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/available_network_connectors",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/delete_network_connector",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/network_connectors/delete_network_connector_meta",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/crowdstrike/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/bitdefender/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/socfortress_mdr/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scoutsuite/report-generation-options",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scoutsuite/available-reports",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scoutsuite/generate-aws-report",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scoutsuite/generate-azure-report",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scoutsuite/generate-gcp-report",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/scoutsuite/delete-report/{report_name}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/nuclei/all_reports",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/nuclei/report/{host}/{report}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/nuclei/scan",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/nuclei/delete_report/{host}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/duo/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/portainer/node-details",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/portainer/stacks",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/portainer/stack-details",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/portainer/get-customer-stack-id",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/portainer/create-wazuh-customer-stack",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/portainer/start-wazuh-customer-stack",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/portainer/stop-wazuh-customer-stack",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/portainer/update-customer-stack-id",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/portainer/delete-wazuh-customer-stack",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/performance/summary",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/performance/endpoints",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/performance/stalls",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/performance/requests",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/performance/reset",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/performance/database",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/ai_trigger/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/ai_trigger",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/notification/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/notification",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/available-source/{index_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/available-indices/{source}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/socfortress/recommends/wazuh",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/configured/sources",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/configured/sources/{source}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/mappings/fields-assets-title-and-timefield",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/fields-assets-title-and-timefield",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/fields-assets-title-and-timefield",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/fields-assets-title-and-timefield",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/delete-fields-assets-title-and-timefield",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/field_name/{field_name}/{source}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/asset_name/{asset_name}/{source}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/timefield_name/{timefield_name}/{source}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert_title_name/{alert_title_name}/{source}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/status",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/status",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/verdict",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/verdict-state",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/escalated",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/comment",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/comment",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/comment/{comment_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/comment",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/comment",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/comment/{comment_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/available-users",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/assigned-to",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/assigned-to",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/context",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/context/{alert_context_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/asset",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/ioc",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/ioc/{ioc_value}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/ioc",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/tag",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/tag/{tag}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/tag",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/create",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/alert-link",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/alert-links",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/alert-unlink",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/from-alert",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/verdict-stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/filter-options",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/filter-options/assets",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/cases/filter-options",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/{alert_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alert/{alert_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/by-title/{title_filter}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/status/{status}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/assigned-to/{assigned_to}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/asset/{asset_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/title/{title}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/customer/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/source/{source}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/alerts/filter",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/cases",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/status",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/escalated",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/severity",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/assigned-to",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/customer-code",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/{case_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/status/{status}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/name/{name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/assigned-to/{assigned_to}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/asset/{asset_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/customer/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/data-store",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/data-store/{case_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/data-store/download/{case_id}/{file_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/data-store/upload",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/data-store/{case_id}/{file_name}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/{case_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/notification",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case-report-template",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case-report-template/do-default-template-exists",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case-report-template/default-template",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case-report-template/download/{file_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case-report-template/upload",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case-report-template/{file_name}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/{case_id}/tasks",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/{case_id}/tasks",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/tasks/{task_id}",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/tasks/{task_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/{case_id}/apply-template/{template_id}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/db_operations/case/{case_id}/timeline",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/index/names",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/alerts/not-created",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/alert/details",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/alert/timeline",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/create/manual",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/create/auto",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/create/threshold",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/create/velo-sigma",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/alert/{alert_id}/velo-sigma/exclusion-draft",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/alert/{alert_id}/velo-sigma/exclusion-dry-run",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/create/velo-sigma/exclusion",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/create/velo-sigma/exclusion/{exclusion_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/create/velo-sigma/exclusion",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/create/velo-sigma/exclusion/{exclusion_id}",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/create/velo-sigma/exclusion/{exclusion_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/alerts/velo-sigma/exclusion/{exclusion_id}/toggle",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/report/generate-report-csv",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/report/generate-report-csv/{customer_code}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/report/generate-report-docx",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/report/generate-report-pdf",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/settings",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/settings",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/tags",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/user/{user_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/user/{user_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/user/{user_id}/add",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/user/{user_id}/remove",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/role/{role_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/role/{role_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/role/{role_id}/add",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/role/{role_id}/remove",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/tag_access/me",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/library",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/library/{key}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/library/refresh",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/library/{key}/import",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/suggest",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/{template_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/{template_id}",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/{template_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/{template_id}/tasks",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/tasks/{task_id}",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/tasks/{task_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/case_templates/{template_id}/tasks/reorder",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/customer_reports/generate/background",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/customer_reports",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/customer_reports/{report_id}/download",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/customer_reports/{report_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/incidents/customer_reports/{report_id}/visibility",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/jobs",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/jobs/{job_id}",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/jobs/{job_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/jobs/alert/{alert_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/jobs/customer/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/reports",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/reports/alert/{alert_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/iocs",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/iocs/report/{report_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/iocs/alert/{alert_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/iocs/customer/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/iocs/{ioc_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/alerts_with_reports",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/alerts_with_reports/{alert_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/reports/{report_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/alert/{alert_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/reports/{report_id}/review",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/reports/{report_id}/review/mine",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/reports/{report_id}/replay",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/palace_lessons",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/reviews/{review_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/reviews/customer/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/reviews/customer/{customer_code}/stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/palace_lessons/customer/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/ai_analyst/palace_lessons/customer/{customer_code}/consolidation",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/notification_routes",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/notification_routes",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/notification_routes/{route_id}",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/notification_routes/{route_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/notification_routes/{route_id}/test",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/internal_notification_routes/{route_id}/test",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/send",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/send/preview",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/internal_notification_routes",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/internal_notification_routes/{route_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/internal_notification_routes",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/internal_notification_routes/{route_id}",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/internal_notification_routes/{route_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notification_channels",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notification_channels/resend/quota",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/notification_dispatch_log",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/shuffle/orgs",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/shuffle_integrations",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/shuffle_integrations",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/shuffle_integrations/{integration_id}",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/shuffle_integrations/{integration_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/shuffle_integrations/{integration_id}/apps",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customers/{customer_code}/shuffle_integrations/{integration_id}/verify",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/dispatch",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/templates",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/templates/preview",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/templates/{template_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/templates",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/templates/{template_id}",
+   "methods": [
+    "PATCH"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/templates/{template_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/notifications/events",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/darktrace/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/defender_for_endpoint/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/velociraptor/agents",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/velociraptor/enumerate",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/submit",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/upload",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/job/{job_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/result/{job_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/result/{job_id}/cape-report",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/result/{job_id}/report.pdf",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/analysis/{job_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/result/{job_id}/preview/{name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/history",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/file-analysis/search/{sha256}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/templates",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/templates/{category_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/enabled",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/enabled/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/enable",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/disable/{dashboard_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/custom",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/custom",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/custom/import",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/custom/preview",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/custom/{template_key}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/custom/{template_key}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/custom/{template_key}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/custom/{template_key}/export",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/dashboards/panel-data",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/event_sources/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/event_sources",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/event_sources/{event_source_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/event_sources/{event_source_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/events/{customer_code}/{source_name}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/events/{customer_code}/{source_name}/document",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/siem/events/{customer_code}/{source_name}/fields",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/talon/message",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/talon/investigate",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/talon/session/reset",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/talon/session/context",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/talon/status",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/talon/templates",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/talon/jobs/{alert_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/opencti/availability",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/opencti/about",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/opencti/observables/search",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/opencti/observables/lookup",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/opencti/indicators",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/opencti/entities/{entity_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/availability",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/status",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/entities",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/entity",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/entity/risk-history",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/entity/timeline",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/signals",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/alerts",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/alerts/{alert_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/alerts/{alert_id}/feedback",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/suppressions",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/suppressions",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/suppressions",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/signals/{signal_id}/evidence",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/identities/review",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/identities",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/identities/merge",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/identities/reviewed",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/identity-candidates/{candidate_id}/dismiss",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/identity-sources",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/identity-sources/{source_id}/test",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/identity-sources/{source_id}/sync",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/about",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/rules/catalog",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/backtests",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/backtests",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/backtests/{job_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/backtests/{job_id}/cancel",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/rules/stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/rule-settings",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/rule-settings/{rule_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/rule-settings/{rule_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/risk-policy",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/risk-policy",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/native-overrides",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/native-overrides/{rule_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/native-overrides/{rule_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/provisioning",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/provision",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/mode",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/rollback",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/rollback",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/rollbacks",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/uba/{customer_code}/rollbacks/{rollback_id}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/forwarding",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/forwarding",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/verify",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/sites",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/events",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/stats",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/threat-intel",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/blocks",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/blocks",
+   "methods": [
+    "POST"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/customer_waf/{customer_code}/{waf_id}/blocks",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/dashboard",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/sources",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/attention",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/items/{entity}/{item_id}/sla",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/report",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/policies",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/policies/overrides",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/policies",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/policies/{customer_code}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/calendars",
+   "methods": [
+    "GET"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/calendars",
+   "methods": [
+    "PUT"
+   ]
+  },
+  {
+   "kind": "api",
+   "path": "/api/soc_management/calendars/{customer_code}",
+   "methods": [
+    "DELETE"
+   ]
+  },
+  {
+   "kind": "mount",
+   "path": "/scoutsuite-report",
+   "methods": null
+  },
+  {
+   "kind": "api",
+   "path": "/",
+   "methods": [
+    "GET"
+   ]
+  }
+ ],
+ "pages": {
+  "docs_url": "/docs",
+  "redoc_url": "/redoc",
+  "openapi_url": "/openapi.json",
+  "oauth2_redirect_url": "/docs/oauth2-redirect",
+  "swagger_ui": "\n    <!DOCTYPE html>\n    <html>\n    <head>\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <link type=\"text/css\" rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css\">\n    <link rel=\"shortcut icon\" href=\"https://fastapi.tiangolo.com/img/favicon.png\">\n    <title>CoPilot API - Swagger UI</title>\n    </head>\n    <body>\n    <div id=\"swagger-ui\">\n    </div>\n    <script src=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js\"></script>\n    <!-- `SwaggerUIBundle` is now available on the page -->\n    <script>\n    const ui = SwaggerUIBundle({\n        url: '/openapi.json',\n    \"dom_id\": \"#swagger-ui\",\n\"layout\": \"BaseLayout\",\n\"deepLinking\": true,\n\"showExtensions\": true,\n\"showCommonExtensions\": true,\noauth2RedirectUrl: window.location.origin + '/docs/oauth2-redirect',\n    presets: [\n        SwaggerUIBundle.presets.apis,\n        SwaggerUIBundle.SwaggerUIStandalonePreset\n        ],\n    })\n    </script>\n    </body>\n    </html>\n    ",
+  "oauth2_redirect": "\n    <!doctype html>\n    <html lang=\"en-US\">\n    <head>\n        <title>Swagger UI: OAuth2 Redirect</title>\n    </head>\n    <body>\n    <script>\n        'use strict';\n        function run () {\n            var oauth2 = window.opener.swaggerUIRedirectOauth2;\n            var sentState = oauth2.state;\n            var redirectUrl = oauth2.redirectUrl;\n            var isValid, qp, arr;\n\n            if (/code|token|error/.test(window.location.hash)) {\n                qp = window.location.hash.substring(1).replace('?', '&');\n            } else {\n                qp = location.search.substring(1);\n            }\n\n            arr = qp.split(\"&\");\n            arr.forEach(function (v,i,_arr) { _arr[i] = '\"' + v.replace('=', '\":\"') + '\"';});\n            qp = qp ? JSON.parse('{' + arr.join() + '}',\n                    function (key, value) {\n                        return key === \"\" ? value : decodeURIComponent(value);\n                    }\n            ) : {};\n\n            isValid = qp.state === sentState;\n\n            if ((\n              oauth2.auth.schema.get(\"flow\") === \"accessCode\" ||\n              oauth2.auth.schema.get(\"flow\") === \"authorizationCode\" ||\n              oauth2.auth.schema.get(\"flow\") === \"authorization_code\"\n            ) && !oauth2.auth.code) {\n                if (!isValid) {\n                    oauth2.errCb({\n                        authId: oauth2.auth.name,\n                        source: \"auth\",\n                        level: \"warning\",\n                        message: \"Authorization may be unsafe, passed state was changed in server. The passed state wasn't returned from auth server.\"\n                    });\n                }\n\n                if (qp.code) {\n                    delete oauth2.state;\n                    oauth2.auth.code = qp.code;\n                    oauth2.callback({auth: oauth2.auth, redirectUrl: redirectUrl});\n                } else {\n                    let oauthErrorMsg;\n                    if (qp.error) {\n                        oauthErrorMsg = \"[\"+qp.error+\"]: \" +\n                            (qp.error_description ? qp.error_description+ \". \" : \"no accessCode received from the server. \") +\n                            (qp.error_uri ? \"More info: \"+qp.error_uri : \"\");\n                    }\n\n                    oauth2.errCb({\n                        authId: oauth2.auth.name,\n                        source: \"auth\",\n                        level: \"error\",\n                        message: oauthErrorMsg || \"[Authorization failed]: no accessCode received from the server.\"\n                    });\n                }\n            } else {\n                oauth2.callback({auth: oauth2.auth, token: qp, isValid: isValid, redirectUrl: redirectUrl});\n            }\n            window.close();\n        }\n\n        if (document.readyState !== 'loading') {\n            run();\n        } else {\n            document.addEventListener('DOMContentLoaded', function () {\n                run();\n            });\n        }\n    </script>\n    </body>\n    </html>\n        ",
+  "redoc": "\n    <!DOCTYPE html>\n    <html>\n    <head>\n    <title>CoPilot API - ReDoc</title>\n    <!-- needed for adaptive design -->\n    <meta charset=\"utf-8\"/>\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    \n    <link href=\"https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700\" rel=\"stylesheet\">\n    \n    <link rel=\"shortcut icon\" href=\"https://fastapi.tiangolo.com/img/favicon.png\">\n    <!--\n    ReDoc doesn't change outer page styles\n    -->\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n      }\n    </style>\n    </head>\n    <body>\n    <noscript>\n        ReDoc requires Javascript to function. Please enable it to browse the documentation.\n    </noscript>\n    <redoc spec-url=\"/openapi.json\"></redoc>\n    <script src=\"https://cdn.jsdelivr.net/npm/redoc@2/bundles/redoc.standalone.js\"> </script>\n    </body>\n    </html>\n    "
+ },
+ "import_time_marker": "__COPILOT_IMPORT_TIME__"
+}

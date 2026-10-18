@@ -1,0 +1,684 @@
+{
+ "parse": [
+  {
+   "doc": "<a/><b/>",
+   "result": "junk after document element: line 1, column 4"
+  },
+  {
+   "doc": "<a/>\n<b/>",
+   "result": "junk after document element: line 2, column 0"
+  },
+  {
+   "doc": "<!-- c -->\n<ossec_config>\n  <x>1</x>\n</ossec_config>\n\n<ossec_config>\n</ossec_config>\n",
+   "result": "junk after document element: line 6, column 0"
+  },
+  {
+   "doc": "<a>x&y</a>",
+   "result": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "doc": "<a>x&amp</a>",
+   "result": "not well-formed (invalid token): line 1, column 8"
+  },
+  {
+   "doc": "<a><b></a>",
+   "result": "mismatched tag: line 1, column 8"
+  },
+  {
+   "doc": "<a><b></c></a>",
+   "result": "mismatched tag: line 1, column 8"
+  },
+  {
+   "doc": "<a>",
+   "result": "no element found: line 1, column 3"
+  },
+  {
+   "doc": "",
+   "result": "no element found: line 1, column 0"
+  },
+  {
+   "doc": "   ",
+   "result": "no element found: line 1, column 3"
+  },
+  {
+   "doc": "<a b=c/>",
+   "result": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "doc": "<a b='1' b='2'/>",
+   "result": "duplicate attribute: line 1, column 9"
+  },
+  {
+   "doc": "<a>&foo;</a>",
+   "result": "undefined entity: line 1, column 3"
+  },
+  {
+   "doc": "<a>\u0001</a>",
+   "result": "not well-formed (invalid token): line 1, column 3"
+  },
+  {
+   "doc": "<a>é\u0001</a>",
+   "result": "not well-formed (invalid token): line 1, column 4"
+  },
+  {
+   "doc": "<a>\n é\u0002</a>",
+   "result": "not well-formed (invalid token): line 2, column 2"
+  },
+  {
+   "doc": "x<a/>",
+   "result": "not well-formed (invalid token): line 1, column 1"
+  },
+  {
+   "doc": "<a></a>x",
+   "result": "junk after document element: line 1, column 7"
+  },
+  {
+   "doc": "<a></a><!-- ok -->",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<a>]]></a>",
+   "result": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "doc": "<a><!-- -- --></a>",
+   "result": "not well-formed (invalid token): line 1, column 10"
+  },
+  {
+   "doc": "<?xml version='1.0'?><a/>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": " <?xml version='1.0'?><a/>",
+   "result": "XML or text declaration not at start of entity: line 1, column 1"
+  },
+  {
+   "doc": "<a><?xml version='1.0'?></a>",
+   "result": "XML or text declaration not at start of entity: line 1, column 3"
+  },
+  {
+   "doc": "<a>&#0;</a>",
+   "result": "reference to invalid character number: line 1, column 3"
+  },
+  {
+   "doc": "<a>&#x110000;</a>",
+   "result": "reference to invalid character number: line 1, column 3"
+  },
+  {
+   "doc": "<a b='<'/>",
+   "result": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "doc": "<p:a/>",
+   "result": "unbound prefix: line 1, column 0"
+  },
+  {
+   "doc": "<a></a ",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a",
+   "result": "unclosed token: line 1, column 0"
+  },
+  {
+   "doc": "<a b",
+   "result": "unclosed token: line 1, column 0"
+  },
+  {
+   "doc": "<a b=",
+   "result": "unclosed token: line 1, column 0"
+  },
+  {
+   "doc": "<a b='",
+   "result": "unclosed token: line 1, column 0"
+  },
+  {
+   "doc": "<!DOCTYPE a><a/>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<a></b>",
+   "result": "mismatched tag: line 1, column 5"
+  },
+  {
+   "doc": "<ossec_config>\r\n<x/>\r\n</ossec_config>\r\n<ossec_config/>",
+   "result": "junk after document element: line 4, column 0"
+  },
+  {
+   "doc": "abc<a/>",
+   "result": "not well-formed (invalid token): line 1, column 3"
+  },
+  {
+   "doc": "x\n<a/>",
+   "result": "syntax error: line 1, column 0"
+  },
+  {
+   "doc": " x <a/>",
+   "result": "syntax error: line 1, column 1"
+  },
+  {
+   "doc": "<a/>x",
+   "result": "junk after document element: line 1, column 4"
+  },
+  {
+   "doc": "<a/> x",
+   "result": "junk after document element: line 1, column 5"
+  },
+  {
+   "doc": "<a/>\n\n  junk",
+   "result": "junk after document element: line 3, column 2"
+  },
+  {
+   "doc": "<a/><?pi x?>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<a/><?pi x?><b/>",
+   "result": "junk after document element: line 1, column 12"
+  },
+  {
+   "doc": "<a/>&amp;",
+   "result": "not well-formed (invalid token): line 1, column 4"
+  },
+  {
+   "doc": "<a/><!DOCTYPE a>",
+   "result": "junk after document element: line 1, column 4"
+  },
+  {
+   "doc": "<a></a>]",
+   "result": "junk after document element: line 1, column 7"
+  },
+  {
+   "doc": "<a>a&b c</a>",
+   "result": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "doc": "<a>&</a>",
+   "result": "not well-formed (invalid token): line 1, column 4"
+  },
+  {
+   "doc": "<a>& </a>",
+   "result": "not well-formed (invalid token): line 1, column 4"
+  },
+  {
+   "doc": "<a>&#;</a>",
+   "result": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "doc": "<a>&#x;</a>",
+   "result": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "doc": "<a>&#12a;</a>",
+   "result": "not well-formed (invalid token): line 1, column 7"
+  },
+  {
+   "doc": "<a>&lt</a>",
+   "result": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "doc": "<a><b>x</b></c>",
+   "result": "mismatched tag: line 1, column 13"
+  },
+  {
+   "doc": "<a>\n<b>\n</a>",
+   "result": "mismatched tag: line 3, column 2"
+  },
+  {
+   "doc": "<a b='1'c='2'/>",
+   "result": "not well-formed (invalid token): line 1, column 8"
+  },
+  {
+   "doc": "<a b = '1' />",
+   "result": "OK <a b=\"1\" />"
+  },
+  {
+   "doc": "<a b>",
+   "result": "not well-formed (invalid token): line 1, column 4"
+  },
+  {
+   "doc": "<a b='x'",
+   "result": "unclosed token: line 1, column 0"
+  },
+  {
+   "doc": "<a 1='x'/>",
+   "result": "not well-formed (invalid token): line 1, column 3"
+  },
+  {
+   "doc": "<1a/>",
+   "result": "not well-formed (invalid token): line 1, column 1"
+  },
+  {
+   "doc": "<a><1b/></a>",
+   "result": "not well-formed (invalid token): line 1, column 4"
+  },
+  {
+   "doc": "< a/>",
+   "result": "not well-formed (invalid token): line 1, column 1"
+  },
+  {
+   "doc": "<a></ a>",
+   "result": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "doc": "<a></a b>",
+   "result": "not well-formed (invalid token): line 1, column 7"
+  },
+  {
+   "doc": "<a>x</a",
+   "result": "unclosed token: line 1, column 4"
+  },
+  {
+   "doc": "<a>x<",
+   "result": "unclosed token: line 1, column 4"
+  },
+  {
+   "doc": "<a><!--",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a><!-- x",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a><![CDATA[x",
+   "result": "unclosed CDATA section: line 1, column 13"
+  },
+  {
+   "doc": "<a><?pi",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a><?pi x",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a><!DOCTYPE b></a>",
+   "result": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "doc": "<a><!x></a>",
+   "result": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "doc": "<!-- x --><!-- y",
+   "result": "unclosed token: line 1, column 10"
+  },
+  {
+   "doc": "<?xml version='1.0'?>\n<?xml version='1.0'?><a/>",
+   "result": "XML or text declaration not at start of entity: line 2, column 0"
+  },
+  {
+   "doc": "<?xml version='2'?><a/>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<?xml?><a/>",
+   "result": "XML declaration not well-formed: line 1, column 5"
+  },
+  {
+   "doc": "<?xml version='1.0' encoding='utf-8' standalone='maybe'?><a/>",
+   "result": "XML declaration not well-formed: line 1, column 49"
+  },
+  {
+   "doc": "<a>\t\u000b</a>",
+   "result": "not well-formed (invalid token): line 1, column 4"
+  },
+  {
+   "doc": "<a b='\u0001'/>",
+   "result": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "doc": "<a\u0001/>",
+   "result": "not well-formed (invalid token): line 1, column 2"
+  },
+  {
+   "doc": "<a><b\u0001/></a>",
+   "result": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "doc": "<a>é&é;</a>",
+   "result": "undefined entity: line 1, column 4"
+  },
+  {
+   "doc": "<ossec_config>\n  <a>&</a>\n</ossec_config>",
+   "result": "not well-formed (invalid token): line 2, column 6"
+  },
+  {
+   "doc": "<ossec_config>\n  <a>x</b>\n</ossec_config>",
+   "result": "mismatched tag: line 2, column 8"
+  },
+  {
+   "doc": "<ossec_config>\n  <a>\n</ossec_config>",
+   "result": "mismatched tag: line 3, column 2"
+  },
+  {
+   "doc": "<a xmlns:p='u'><p:b/></a>",
+   "result": "OK <a xmlns:ns0=\"u\"><ns0:b /></a>"
+  },
+  {
+   "doc": "<a><q:b/></a>",
+   "result": "unbound prefix: line 1, column 3"
+  },
+  {
+   "doc": "<a q:x='1'/>",
+   "result": "unbound prefix: line 1, column 0"
+  },
+  {
+   "doc": "<a xmlns:p=''/>",
+   "result": "must not undeclare prefix: line 1, column 0"
+  },
+  {
+   "doc": "<a xmlns:xml='x'/>",
+   "result": "reserved prefix (xml) must not be undeclared or bound to another namespace name: line 1, column 0"
+  },
+  {
+   "doc": "<a>￾</a>",
+   "result": "not well-formed (invalid token): line 1, column 3"
+  },
+  {
+   "doc": "<a>￿</a>",
+   "result": "not well-formed (invalid token): line 1, column 3"
+  },
+  {
+   "doc": "﻿<a/>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<a/>﻿",
+   "result": "not well-formed (invalid token): line 1, column 4"
+  },
+  {
+   "doc": "<a><![CDATA[xyz",
+   "result": "unclosed CDATA section: line 1, column 15"
+  },
+  {
+   "doc": "<a><![CDATA[",
+   "result": "unclosed CDATA section: line 1, column 12"
+  },
+  {
+   "doc": "<a>&",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a>&a",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a>&#",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a>&#1",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a/></b>",
+   "result": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "doc": "<a/>x<b/>",
+   "result": "not well-formed (invalid token): line 1, column 5"
+  },
+  {
+   "doc": "<a/>1",
+   "result": "junk after document element: line 1, column 4"
+  },
+  {
+   "doc": "<a/>'x'",
+   "result": "junk after document element: line 1, column 4"
+  },
+  {
+   "doc": "<a/>'x",
+   "result": "unclosed token: line 1, column 4"
+  },
+  {
+   "doc": "<a/>[",
+   "result": "junk after document element: line 1, column 4"
+  },
+  {
+   "doc": "1<a/>",
+   "result": "not well-formed (invalid token): line 1, column 1"
+  },
+  {
+   "doc": "&<a/>",
+   "result": "not well-formed (invalid token): line 1, column 0"
+  },
+  {
+   "doc": "'x'<a/>",
+   "result": "not well-formed (invalid token): line 1, column 3"
+  },
+  {
+   "doc": "<a/ >",
+   "result": "not well-formed (invalid token): line 1, column 3"
+  },
+  {
+   "doc": "<a b='1'/ >",
+   "result": "not well-formed (invalid token): line 1, column 9"
+  },
+  {
+   "doc": "<a/><?xml version='1.0'?>",
+   "result": "junk after document element: line 1, column 4"
+  },
+  {
+   "doc": "<a></a\u0001>",
+   "result": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "doc": "<a></a\n>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<?xml version='1.0' ?><a/>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<?xml version = '1.0'?><a/>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<?xml version='1.0'encoding='utf-8'?><a/>",
+   "result": "XML declaration not well-formed: line 1, column 19"
+  },
+  {
+   "doc": "<?xml version='1.0' bogus='1'?><a/>",
+   "result": "XML declaration not well-formed: line 1, column 20"
+  },
+  {
+   "doc": "<?xmlx?><a/>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<?xml-stylesheet x?><a/>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<a><?xml-x y?></a>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<a><?p?></a>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<a><?p:q x?></a>",
+   "result": "not well-formed (invalid token): line 1, column 6"
+  },
+  {
+   "doc": "<a><!--x--y--></a>",
+   "result": "not well-formed (invalid token): line 1, column 10"
+  },
+  {
+   "doc": "<a><!---></a>",
+   "result": "unclosed token: line 1, column 3"
+  },
+  {
+   "doc": "<a><!----></a>",
+   "result": "OK <a />"
+  },
+  {
+   "doc": "<a b='&amp;&#10;&lt;'/>",
+   "result": "OK <a b=\"&amp;&#10;&lt;\" />"
+  },
+  {
+   "doc": "<a b='&x;'/>",
+   "result": "undefined entity: line 1, column 0"
+  },
+  {
+   "doc": "<a b='&'/>",
+   "result": "not well-formed (invalid token): line 1, column 7"
+  },
+  {
+   "doc": "<a\n b='1'\n b='2'/>",
+   "result": "duplicate attribute: line 3, column 1"
+  },
+  {
+   "doc": "<a\tb='1'/>",
+   "result": "OK <a b=\"1\" />"
+  },
+  {
+   "doc": "<a\nb='1'/>",
+   "result": "OK <a b=\"1\" />"
+  },
+  {
+   "doc": "<a>\r</a>",
+   "result": "OK <a>\n</a>"
+  },
+  {
+   "doc": "<a>\r\n\r\nx\u0001</a>",
+   "result": "not well-formed (invalid token): line 3, column 1"
+  },
+  {
+   "doc": "<a>x\ry\u0001</a>",
+   "result": "not well-formed (invalid token): line 2, column 1"
+  },
+  {
+   "doc": "<a/>  \r\n  <b/>",
+   "result": "junk after document element: line 2, column 2"
+  },
+  {
+   "doc": "<!-- Wazuh - Manager - Default configuration for ubuntu 22.04\n  More info at: https://documentation.wazuh.com\n -->\n\n<ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>\n",
+   "result": "OK <ossec_config>\n  <global>\n    <jsonout_output>yes</jsonout_output>\n  </global>\n</ossec_config>"
+  },
+  {
+   "doc": "<ossec_config>\n  <global>\n    <email_to>a@b</email_to>\n  </global>\n</ossec_config>\n\n<ossec_config>\n  <remote/>\n</ossec_config>\n",
+   "result": "junk after document element: line 7, column 0"
+  },
+  {
+   "doc": "<ossec_config>\n  <x>é ü — 😀</x>\n</ossec_config>\n<ossec_config/>",
+   "result": "junk after document element: line 4, column 0"
+  }
+ ],
+ "comments": [
+  {
+   "doc": "<ossec_config>\n  <!-- one -->\n  <global>yes</global><!--two--> tail\n</ossec_config>",
+   "unicode": "<ossec_config>\n  <!-- one -->\n  <global>yes</global><!--two--> tail\n</ossec_config>",
+   "ascii": "<ossec_config>\n  <!-- one -->\n  <global>yes</global><!--two--> tail\n</ossec_config>",
+   "indent": "<ossec_config>\n    <!-- one -->\n    <global>yes</global>\n    <!--two--> tail\n</ossec_config>"
+  },
+  {
+   "doc": "<w><!-- c --><bucket type='cloudtrail'><name>b</name></bucket></w>",
+   "unicode": "<w><!-- c --><bucket type=\"cloudtrail\"><name>b</name></bucket></w>",
+   "ascii": "<w><!-- c --><bucket type=\"cloudtrail\"><name>b</name></bucket></w>",
+   "indent": "<w>\n    <!-- c -->\n    <bucket type=\"cloudtrail\">\n      <name>b</name>\n    </bucket>\n  </w>"
+  },
+  {
+   "doc": "<w>\n<a>é<b>ü</b></a>\n<!--ç--></w>",
+   "unicode": "<w>\n<a>é<b>ü</b></a>\n<!--ç--></w>",
+   "ascii": "<w>\n<a>&#233;<b>&#252;</b></a>\n<!--&#231;--></w>",
+   "indent": "<w>\n    <a>é<b>ü</b>\n    </a>\n    <!--ç-->\n  </w>"
+  },
+  {
+   "doc": "<w><a x='1&#10;2' y='&quot;'>t</a><b/><c>  </c></w>",
+   "unicode": "<w><a x=\"1&#10;2\" y=\"&quot;\">t</a><b /><c>  </c></w>",
+   "ascii": "<w><a x=\"1&#10;2\" y=\"&quot;\">t</a><b /><c>  </c></w>",
+   "indent": "<w>\n    <a x=\"1&#10;2\" y=\"&quot;\">t</a>\n    <b />\n    <c>  </c>\n  </w>"
+  },
+  {
+   "doc": "<w>text<a/>between<b><c/></b>tail</w>",
+   "unicode": "<w>text<a />between<b><c /></b>tail</w>",
+   "ascii": "<w>text<a />between<b><c /></b>tail</w>",
+   "indent": "<w>text<a />between<b>\n      <c />\n    </b>tail</w>"
+  },
+  {
+   "doc": "<w>\n    <wodle name='aws-s3'>\n      <disabled>no</disabled>\n      <bucket type='guardduty'><name>x</name></bucket>\n    </wodle>\n  </w>",
+   "unicode": "<w>\n    <wodle name=\"aws-s3\">\n      <disabled>no</disabled>\n      <bucket type=\"guardduty\"><name>x</name></bucket>\n    </wodle>\n  </w>",
+   "ascii": "<w>\n    <wodle name=\"aws-s3\">\n      <disabled>no</disabled>\n      <bucket type=\"guardduty\"><name>x</name></bucket>\n    </wodle>\n  </w>",
+   "indent": "<w>\n    <wodle name=\"aws-s3\">\n      <disabled>no</disabled>\n      <bucket type=\"guardduty\">\n        <name>x</name>\n      </bucket>\n    </wodle>\n  </w>"
+  }
+ ],
+ "canonical": [
+  {
+   "a": "<a><b>x</b></a>",
+   "b": "<a>\n  <b> x </b>\n</a>",
+   "equal": true,
+   "equal_with_comments": true
+  },
+  {
+   "a": "<a><b>x</b></a>",
+   "b": "<a><b>y</b></a>",
+   "equal": false,
+   "equal_with_comments": false
+  },
+  {
+   "a": "<a x='1' y='2'/>",
+   "b": "<a y='2' x='1'></a>",
+   "equal": true,
+   "equal_with_comments": true
+  },
+  {
+   "a": "<a>t<!--c-->u</a>",
+   "b": "<a>tu</a>",
+   "equal": true,
+   "equal_with_comments": false
+  },
+  {
+   "a": "<a>t <!--c--> u</a>",
+   "b": "<a>t  u</a>",
+   "equal": true,
+   "equal_with_comments": false
+  },
+  {
+   "a": "<a><!--c--><b/></a>",
+   "b": "<a><b/></a>",
+   "equal": true,
+   "equal_with_comments": false
+  },
+  {
+   "a": "<a><!--c--><b/></a>",
+   "b": "<a><!--d--><b/></a>",
+   "equal": true,
+   "equal_with_comments": false
+  },
+  {
+   "a": "<a xml:space='preserve'> x </a>",
+   "b": "<a xml:space='preserve'>x</a>",
+   "equal": false,
+   "equal_with_comments": false
+  },
+  {
+   "a": "<a>&amp;</a>",
+   "b": "<a>&#38;</a>",
+   "equal": true,
+   "equal_with_comments": true
+  },
+  {
+   "a": "<a> x</a>",
+   "b": "<a>x</a>",
+   "equal": true,
+   "equal_with_comments": true
+  },
+  {
+   "a": "<a><b/>\n<c/></a>",
+   "b": "<a><b/><c/></a>",
+   "equal": true,
+   "equal_with_comments": true
+  },
+  {
+   "a": "<a><b/>x<c/></a>",
+   "b": "<a><b/><c/>x</a>",
+   "equal": false,
+   "equal_with_comments": false
+  }
+ ]
+}

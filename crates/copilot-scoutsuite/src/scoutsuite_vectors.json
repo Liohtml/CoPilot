@@ -1,0 +1,625 @@
+{
+ "options": {
+  "options": [
+   "aws",
+   "azure",
+   "gcp"
+  ],
+  "success": true,
+  "message": "ScoutSuite Report generation options retrieved successfully"
+ },
+ "aws": [
+  {
+   "body": {
+    "report_type": "aws",
+    "access_key_id": "AKIA",
+    "secret_access_key": "s3cr3t",
+    "report_name": "aws-report"
+   },
+   "outcome": {
+    "ok": {
+     "report_type": "aws",
+     "access_key_id": "AKIA",
+     "secret_access_key": "s3cr3t",
+     "report_name": "aws-report"
+    },
+    "command": [
+     "scout",
+     "aws",
+     "--access-key-id",
+     "AKIA",
+     "--secret-access-key",
+     "s3cr3t",
+     "--report-name",
+     "aws-report",
+     "--force",
+     "--no-browser"
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": "aws",
+    "access_key_id": "--flag",
+    "secret_access_key": "a b",
+    "report_name": "ü ✓",
+    "extra": 1
+   },
+   "outcome": {
+    "ok": {
+     "report_type": "aws",
+     "access_key_id": "--flag",
+     "secret_access_key": "a b",
+     "report_name": "ü ✓"
+    },
+    "command": [
+     "scout",
+     "aws",
+     "--access-key-id",
+     "--flag",
+     "--secret-access-key",
+     "a b",
+     "--report-name",
+     "ü ✓",
+     "--force",
+     "--no-browser"
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": "azure",
+    "access_key_id": "AKIA",
+    "secret_access_key": "s",
+    "report_name": "r"
+   },
+   "outcome": {
+    "http": [
+     400,
+     "Invalid report type."
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": "AWS",
+    "access_key_id": "AKIA",
+    "secret_access_key": "s",
+    "report_name": "r"
+   },
+   "outcome": {
+    "http": [
+     400,
+     "Invalid report type."
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": "azure",
+    "access_key_id": 1,
+    "secret_access_key": "s",
+    "report_name": "r"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "string_type",
+      "loc": [
+       "access_key_id"
+      ],
+      "msg": "Input should be a valid string"
+     }
+    ]
+   }
+  },
+  {
+   "body": {},
+   "outcome": {
+    "errors": [
+     {
+      "type": "missing",
+      "loc": [
+       "report_type"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "access_key_id"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "secret_access_key"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "report_name"
+      ],
+      "msg": "Field required"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": null,
+    "access_key_id": [
+     "x"
+    ],
+    "secret_access_key": true,
+    "report_name": 1.5
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "string_type",
+      "loc": [
+       "report_type"
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "string_type",
+      "loc": [
+       "access_key_id"
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "string_type",
+      "loc": [
+       "secret_access_key"
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "string_type",
+      "loc": [
+       "report_name"
+      ],
+      "msg": "Input should be a valid string"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": "aws",
+    "access_key_id": "",
+    "secret_access_key": "",
+    "report_name": ""
+   },
+   "outcome": {
+    "ok": {
+     "report_type": "aws",
+     "access_key_id": "",
+     "secret_access_key": "",
+     "report_name": ""
+    },
+    "command": [
+     "scout",
+     "aws",
+     "--access-key-id",
+     "",
+     "--secret-access-key",
+     "",
+     "--report-name",
+     "",
+     "--force",
+     "--no-browser"
+    ]
+   }
+  }
+ ],
+ "azure": [
+  {
+   "body": {
+    "report_type": "azure",
+    "username": "u@example.com",
+    "password": "p",
+    "tenant_id": "t",
+    "report_name": "azure-report"
+   },
+   "outcome": {
+    "ok": {
+     "report_type": "azure",
+     "username": "u@example.com",
+     "password": "p",
+     "tenant_id": "t",
+     "report_name": "azure-report"
+    },
+    "command": [
+     "scout",
+     "azure",
+     "--user-account",
+     "--tenant",
+     "t",
+     "--username",
+     "u@example.com",
+     "--password",
+     "p",
+     "--report-name",
+     "azure-report",
+     "--force",
+     "--no-browser"
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": "aws",
+    "username": "u",
+    "password": "p",
+    "tenant_id": "t",
+    "report_name": "r"
+   },
+   "outcome": {
+    "http": [
+     400,
+     "Invalid report type."
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": "azure",
+    "username": "u",
+    "password": "p",
+    "report_name": "r"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "missing",
+      "loc": [
+       "tenant_id"
+      ],
+      "msg": "Field required"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": "azure",
+    "username": {
+     "a": 1
+    },
+    "password": "p",
+    "tenant_id": "t",
+    "report_name": "r"
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "string_type",
+      "loc": [
+       "username"
+      ],
+      "msg": "Input should be a valid string"
+     }
+    ]
+   }
+  },
+  {
+   "body": {
+    "report_type": "aws",
+    "username": 5
+   },
+   "outcome": {
+    "errors": [
+     {
+      "type": "string_type",
+      "loc": [
+       "username"
+      ],
+      "msg": "Input should be a valid string"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "password"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "tenant_id"
+      ],
+      "msg": "Field required"
+     },
+     {
+      "type": "missing",
+      "loc": [
+       "report_name"
+      ],
+      "msg": "Field required"
+     }
+    ]
+   }
+  }
+ ],
+ "gcp": [
+  {
+   "contents": "7b2274797065223a2022736572766963655f6163636f756e74222c202270726f6a6563745f6964223a202270726f6a222c2022707269766174655f6b65795f6964223a20226b6964222c2022707269766174655f6b6579223a20222d2d2d2d2d424547494e2050524956415445204b45592d2d2d2d2d5c6e4d49495c6e2d2d2d2d2d454e442050524956415445204b45592d2d2d2d2d5c6e222c2022636c69656e745f656d61696c223a202273614070726f6a2e69616d2e67736572766963656163636f756e742e636f6d222c2022636c69656e745f6964223a2022313233222c2022617574685f757269223a202268747470733a2f2f6163636f756e74732e676f6f676c652e636f6d2f6f2f6f61757468322f61757468222c2022746f6b656e5f757269223a202268747470733a2f2f6f61757468322e676f6f676c65617069732e636f6d2f746f6b656e222c2022617574685f70726f76696465725f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f6f61757468322f76312f6365727473222c2022636c69656e745f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f726f626f742f76312f6d657461646174612f783530392f7361222c2022756e6976657273655f646f6d61696e223a2022676f6f676c65617069732e636f6d227d",
+   "outcome": {
+    "command": [
+     "scout",
+     "gcp",
+     "--service-account",
+     "/tmp/x/gcp-service-account.json",
+     "--all-projects",
+     "--report-name",
+     "gcp-report",
+     "--force",
+     "--no-browser"
+    ]
+   }
+  },
+  {
+   "contents": "7b2274797065223a2022736572766963655f6163636f756e74222c202270726f6a6563745f6964223a202270726f6a222c2022707269766174655f6b65795f6964223a20226b6964222c2022707269766174655f6b6579223a20222d2d2d2d2d424547494e2050524956415445204b45592d2d2d2d2d5c6e4d49495c6e2d2d2d2d2d454e442050524956415445204b45592d2d2d2d2d5c6e222c2022636c69656e745f656d61696c223a202273614070726f6a2e69616d2e67736572766963656163636f756e742e636f6d222c2022636c69656e745f6964223a2022313233222c2022617574685f757269223a202268747470733a2f2f6163636f756e74732e676f6f676c652e636f6d2f6f2f6f61757468322f61757468222c2022746f6b656e5f757269223a202268747470733a2f2f6f61757468322e676f6f676c65617069732e636f6d2f746f6b656e222c2022617574685f70726f76696465725f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f6f61757468322f76312f6365727473222c2022636c69656e745f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f726f626f742f76312f6d657461646174612f783530392f7361222c2022756e6976657273655f646f6d61696e223a2022676f6f676c65617069732e636f6d222c20226578747261223a205b315d7d",
+   "outcome": {
+    "command": [
+     "scout",
+     "gcp",
+     "--service-account",
+     "/tmp/x/gcp-service-account.json",
+     "--all-projects",
+     "--report-name",
+     "gcp-report",
+     "--force",
+     "--no-browser"
+    ]
+   }
+  },
+  {
+   "contents": "7b2274797065223a2022736572766963655f6163636f756e74222c202270726f6a6563745f6964223a202270726f6a222c2022707269766174655f6b65795f6964223a20226b6964222c2022707269766174655f6b6579223a20222d2d2d2d2d424547494e2050524956415445204b45592d2d2d2d2d5c6e4d49495c6e2d2d2d2d2d454e442050524956415445204b45592d2d2d2d2d5c6e222c2022636c69656e745f656d61696c223a202273614070726f6a2e69616d2e67736572766963656163636f756e742e636f6d222c2022636c69656e745f6964223a2022313233222c2022617574685f757269223a202268747470733a2f2f6163636f756e74732e676f6f676c652e636f6d2f6f2f6f61757468322f61757468222c2022746f6b656e5f757269223a202268747470733a2f2f6f61757468322e676f6f676c65617069732e636f6d2f746f6b656e222c2022617574685f70726f76696465725f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f6f61757468322f76312f6365727473222c2022636c69656e745f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f726f626f742f76312f6d657461646174612f783530392f7361227d",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "JSON file does not have the correct format and fields - 1 validation error for GCPScoutSuiteJSON\nuniverse_domain\n  Field required [type=missing, input_value={'type': 'service_account...ot/v1/metadata/x509/sa'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    }
+   }
+  },
+  {
+   "contents": "7b2274797065223a2022736572766963655f6163636f756e74222c202270726f6a6563745f6964223a206e756c6c2c2022707269766174655f6b65795f6964223a20226b6964222c2022707269766174655f6b6579223a20222d2d2d2d2d424547494e2050524956415445204b45592d2d2d2d2d5c6e4d49495c6e2d2d2d2d2d454e442050524956415445204b45592d2d2d2d2d5c6e222c2022636c69656e745f656d61696c223a202273614070726f6a2e69616d2e67736572766963656163636f756e742e636f6d222c2022636c69656e745f6964223a203132332c2022617574685f757269223a202268747470733a2f2f6163636f756e74732e676f6f676c652e636f6d2f6f2f6f61757468322f61757468222c2022746f6b656e5f757269223a202268747470733a2f2f6f61757468322e676f6f676c65617069732e636f6d2f746f6b656e222c2022617574685f70726f76696465725f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f6f61757468322f76312f6365727473222c2022636c69656e745f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f726f626f742f76312f6d657461646174612f783530392f7361222c2022756e6976657273655f646f6d61696e223a2022676f6f676c65617069732e636f6d227d",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "JSON file does not have the correct format and fields - 2 validation errors for GCPScoutSuiteJSON\nproject_id\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nclient_id\n  Input should be a valid string [type=string_type, input_value=123, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+    }
+   }
+  },
+  {
+   "contents": "5b312c20325d",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "JSON file does not have the correct format and fields - app.integrations.scoutsuite.schema.scoutsuite.GCPScoutSuiteJSON() argument after ** must be a mapping, not list"
+    }
+   }
+  },
+  {
+   "contents": "227465787422",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "JSON file does not have the correct format and fields - app.integrations.scoutsuite.schema.scoutsuite.GCPScoutSuiteJSON() argument after ** must be a mapping, not str"
+    }
+   }
+  },
+  {
+   "contents": "6e756c6c",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "JSON file does not have the correct format and fields - app.integrations.scoutsuite.schema.scoutsuite.GCPScoutSuiteJSON() argument after ** must be a mapping, not NoneType"
+    }
+   }
+  },
+  {
+   "contents": "3432",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "JSON file does not have the correct format and fields - app.integrations.scoutsuite.schema.scoutsuite.GCPScoutSuiteJSON() argument after ** must be a mapping, not int"
+    }
+   }
+  },
+  {
+   "contents": "7b7d",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "JSON file does not have the correct format and fields - 11 validation errors for GCPScoutSuiteJSON\ntype\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nproject_id\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nprivate_key_id\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nprivate_key\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nclient_email\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nclient_id\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nauth_uri\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ntoken_uri\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nauth_provider_x509_cert_url\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nclient_x509_cert_url\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nuniverse_domain\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    }
+   }
+  },
+  {
+   "contents": "",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "Invalid JSON file - Expecting value: line 1 column 1 (char 0)"
+    }
+   }
+  },
+  {
+   "contents": "202020",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "Invalid JSON file - Expecting value: line 1 column 4 (char 3)"
+    }
+   }
+  },
+  {
+   "contents": "7b626164206a736f6e",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "Invalid JSON file - Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    }
+   }
+  },
+  {
+   "contents": "7b2261223a20317d20747261696c696e67",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "Invalid JSON file - Extra data: line 1 column 10 (char 9)"
+    }
+   }
+  },
+  {
+   "contents": "fffe7b002200740079007000650022003a002000220073006500720076006900630065005f006100630063006f0075006e00740022002c0020002200700072006f006a006500630074005f006900640022003a0020002200700072006f006a0022002c002000220070007200690076006100740065005f006b00650079005f006900640022003a00200022006b006900640022002c002000220070007200690076006100740065005f006b006500790022003a00200022002d002d002d002d002d0042004500470049004e002000500052004900560041005400450020004b00450059002d002d002d002d002d005c006e004d00490049005c006e002d002d002d002d002d0045004e0044002000500052004900560041005400450020004b00450059002d002d002d002d002d005c006e0022002c002000220063006c00690065006e0074005f0065006d00610069006c0022003a0020002200730061004000700072006f006a002e00690061006d002e00670073006500720076006900630065006100630063006f0075006e0074002e0063006f006d0022002c002000220063006c00690065006e0074005f006900640022003a002000220031003200330022002c002000220061007500740068005f0075007200690022003a0020002200680074007400700073003a002f002f006100630063006f0075006e00740073002e0067006f006f0067006c0065002e0063006f006d002f006f002f006f00610075007400680032002f00610075007400680022002c002000220074006f006b0065006e005f0075007200690022003a0020002200680074007400700073003a002f002f006f00610075007400680032002e0067006f006f0067006c00650061007000690073002e0063006f006d002f0074006f006b0065006e0022002c002000220061007500740068005f00700072006f00760069006400650072005f0078003500300039005f0063006500720074005f00750072006c0022003a0020002200680074007400700073003a002f002f007700770077002e0067006f006f0067006c00650061007000690073002e0063006f006d002f006f00610075007400680032002f00760031002f006300650072007400730022002c002000220063006c00690065006e0074005f0078003500300039005f0063006500720074005f00750072006c0022003a0020002200680074007400700073003a002f002f007700770077002e0067006f006f0067006c00650061007000690073002e0063006f006d002f0072006f0062006f0074002f00760031002f006d0065007400610064006100740061002f0078003500300039002f007300610022002c002000220075006e006900760065007200730065005f0064006f006d00610069006e0022003a002000220067006f006f0067006c00650061007000690073002e0063006f006d0022007d00",
+   "outcome": {
+    "command": [
+     "scout",
+     "gcp",
+     "--service-account",
+     "/tmp/x/gcp-service-account.json",
+     "--all-projects",
+     "--report-name",
+     "gcp-report",
+     "--force",
+     "--no-browser"
+    ]
+   }
+  },
+  {
+   "contents": "007b002200740079007000650022003a002000220073006500720076006900630065005f006100630063006f0075006e00740022002c0020002200700072006f006a006500630074005f006900640022003a0020002200700072006f006a0022002c002000220070007200690076006100740065005f006b00650079005f006900640022003a00200022006b006900640022002c002000220070007200690076006100740065005f006b006500790022003a00200022002d002d002d002d002d0042004500470049004e002000500052004900560041005400450020004b00450059002d002d002d002d002d005c006e004d00490049005c006e002d002d002d002d002d0045004e0044002000500052004900560041005400450020004b00450059002d002d002d002d002d005c006e0022002c002000220063006c00690065006e0074005f0065006d00610069006c0022003a0020002200730061004000700072006f006a002e00690061006d002e00670073006500720076006900630065006100630063006f0075006e0074002e0063006f006d0022002c002000220063006c00690065006e0074005f006900640022003a002000220031003200330022002c002000220061007500740068005f0075007200690022003a0020002200680074007400700073003a002f002f006100630063006f0075006e00740073002e0067006f006f0067006c0065002e0063006f006d002f006f002f006f00610075007400680032002f00610075007400680022002c002000220074006f006b0065006e005f0075007200690022003a0020002200680074007400700073003a002f002f006f00610075007400680032002e0067006f006f0067006c00650061007000690073002e0063006f006d002f0074006f006b0065006e0022002c002000220061007500740068005f00700072006f00760069006400650072005f0078003500300039005f0063006500720074005f00750072006c0022003a0020002200680074007400700073003a002f002f007700770077002e0067006f006f0067006c00650061007000690073002e0063006f006d002f006f00610075007400680032002f00760031002f006300650072007400730022002c002000220063006c00690065006e0074005f0078003500300039005f0063006500720074005f00750072006c0022003a0020002200680074007400700073003a002f002f007700770077002e0067006f006f0067006c00650061007000690073002e0063006f006d002f0072006f0062006f0074002f00760031002f006d0065007400610064006100740061002f0078003500300039002f007300610022002c002000220075006e006900760065007200730065005f0064006f006d00610069006e0022003a002000220067006f006f0067006c00650061007000690073002e0063006f006d0022007d",
+   "outcome": {
+    "command": [
+     "scout",
+     "gcp",
+     "--service-account",
+     "/tmp/x/gcp-service-account.json",
+     "--all-projects",
+     "--report-name",
+     "gcp-report",
+     "--force",
+     "--no-browser"
+    ]
+   }
+  },
+  {
+   "contents": "efbbbf7b2274797065223a2022736572766963655f6163636f756e74222c202270726f6a6563745f6964223a202270726f6a222c2022707269766174655f6b65795f6964223a20226b6964222c2022707269766174655f6b6579223a20222d2d2d2d2d424547494e2050524956415445204b45592d2d2d2d2d5c6e4d49495c6e2d2d2d2d2d454e442050524956415445204b45592d2d2d2d2d5c6e222c2022636c69656e745f656d61696c223a202273614070726f6a2e69616d2e67736572766963656163636f756e742e636f6d222c2022636c69656e745f6964223a2022313233222c2022617574685f757269223a202268747470733a2f2f6163636f756e74732e676f6f676c652e636f6d2f6f2f6f61757468322f61757468222c2022746f6b656e5f757269223a202268747470733a2f2f6f61757468322e676f6f676c65617069732e636f6d2f746f6b656e222c2022617574685f70726f76696465725f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f6f61757468322f76312f6365727473222c2022636c69656e745f783530395f636572745f75726c223a202268747470733a2f2f7777772e676f6f676c65617069732e636f6d2f726f626f742f76312f6d657461646174612f783530392f7361222c2022756e6976657273655f646f6d61696e223a2022676f6f676c65617069732e636f6d227d",
+   "outcome": {
+    "command": [
+     "scout",
+     "gcp",
+     "--service-account",
+     "/tmp/x/gcp-service-account.json",
+     "--all-projects",
+     "--report-name",
+     "gcp-report",
+     "--force",
+     "--no-browser"
+    ]
+   }
+  },
+  {
+   "contents": "7b2274797065223a2022e9227d",
+   "outcome": {
+    "error": {
+     "class": "UnicodeDecodeError",
+     "text": "'utf-8' codec can't decode byte 0xe9 in position 10: invalid continuation byte"
+    }
+   }
+  },
+  {
+   "contents": "c328",
+   "outcome": {
+    "error": {
+     "class": "UnicodeDecodeError",
+     "text": "'utf-8' codec can't decode byte 0xc3 in position 0: invalid continuation byte"
+    }
+   }
+  },
+  {
+   "contents": "7b2274797065223a204e614e7d",
+   "outcome": {
+    "error": {
+     "class": "HTTPException",
+     "status": 400,
+     "text": "JSON file does not have the correct format and fields - 11 validation errors for GCPScoutSuiteJSON\ntype\n  Input should be a valid string [type=string_type, input_value=nan, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nproject_id\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nprivate_key_id\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nprivate_key\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nclient_email\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nclient_id\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nauth_uri\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ntoken_uri\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nauth_provider_x509_cert_url\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nclient_x509_cert_url\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nuniverse_domain\n  Field required [type=missing, input_value={'type': nan}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+    }
+   }
+  }
+ ],
+ "splitext": [
+  {
+   "name": "aws-report.html",
+   "base": "aws-report"
+  },
+  {
+   "name": "a.b.c",
+   "base": "a.b"
+  },
+  {
+   "name": ".bashrc",
+   "base": ".bashrc"
+  },
+  {
+   "name": "..",
+   "base": ".."
+  },
+  {
+   "name": ".",
+   "base": "."
+  },
+  {
+   "name": "...x",
+   "base": "...x"
+  },
+  {
+   "name": "a.",
+   "base": "a"
+  },
+  {
+   "name": "noext",
+   "base": "noext"
+  },
+  {
+   "name": "x.html.",
+   "base": "x.html"
+  },
+  {
+   "name": "..a.html",
+   "base": "..a"
+  },
+  {
+   "name": " .html",
+   "base": " "
+  },
+  {
+   "name": "é.html",
+   "base": "é"
+  },
+  {
+   "name": "a..b",
+   "base": "a."
+  }
+ ]
+}

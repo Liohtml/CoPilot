@@ -1,0 +1,1527 @@
+{
+ "connectors": [
+  {
+   "args": [
+    "Wazuh-Indexer",
+    "4.4.1",
+    "username_password",
+    "Connection to Wazuh-Indexer.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Wazuh-Indexer",
+    "connector_type": "4.4.1",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Wazuh-Indexer.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Wazuh-Indexer",
+    "connector_type": "4.4.1",
+    "connector_url": "https://wazuh_indexer.example:9000",
+    "connector_username": "",
+    "connector_password": "pw-0",
+    "connector_api_key": "",
+    "connector_description": "Connection to Wazuh-Indexer.",
+    "connector_supports": "supports 0",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "Wazuh-Manager",
+    "4.4.1",
+    "username_password",
+    "Connection to Wazuh-Manager. Default is wazuh-wui:wazuh-wui",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Wazuh-Manager",
+    "connector_type": "4.4.1",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Wazuh-Manager. Default is wazuh-wui:wazuh-wui",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Wazuh-Manager",
+    "connector_type": "4.4.1",
+    "connector_url": "https://wazuh_manager.example:9001",
+    "connector_username": "user-1",
+    "connector_password": "pw-1",
+    "connector_api_key": "key-1",
+    "connector_description": "Connection to Wazuh-Manager. Default is wazuh-wui:wazuh-wui",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "Graylog",
+    "5.0.7",
+    "username_password",
+    "Connection to Graylog.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Graylog",
+    "connector_type": "5.0.7",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Graylog.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Graylog",
+    "connector_type": "5.0.7",
+    "connector_url": "https://graylog.example:9002",
+    "connector_username": "user-2",
+    "connector_password": "pw-2",
+    "connector_api_key": "",
+    "connector_description": "Connection to Graylog.",
+    "connector_supports": "supports 2",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "Shuffle",
+    "1.1.0",
+    "api_key",
+    "Connection to Shuffle.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Shuffle",
+    "connector_type": "1.1.0",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Shuffle.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Shuffle",
+    "connector_type": "1.1.0",
+    "connector_url": "https://shuffle.example:9003",
+    "connector_username": "",
+    "connector_password": "pw-3",
+    "connector_api_key": "key-3",
+    "connector_description": "Connection to Shuffle.",
+    "connector_supports": "supports 3",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "Velociraptor",
+    "0.6.8",
+    "file",
+    "Connection to Velociraptor. Make sure you have generated the api file first.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Velociraptor",
+    "connector_type": "0.6.8",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Velociraptor. Make sure you have generated the api file first.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": true,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Velociraptor",
+    "connector_type": "0.6.8",
+    "connector_url": "https://velociraptor.example:9004",
+    "connector_username": "user-4",
+    "connector_password": "pw-4",
+    "connector_api_key": "",
+    "connector_description": "Connection to Velociraptor. Make sure you have generated the api file first.",
+    "connector_supports": "supports 4",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": true,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "Sublime",
+    "3",
+    "api_key",
+    "Connection to Sublime.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Sublime",
+    "connector_type": "3",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Sublime.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Sublime",
+    "connector_type": "3",
+    "connector_url": "https://sublime.example:9005",
+    "connector_username": "user-5",
+    "connector_password": "pw-5",
+    "connector_api_key": "key-5",
+    "connector_description": "Connection to Sublime.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "InfluxDB",
+    "3",
+    "api_key",
+    "Connection to InfluxDB.",
+    "INFLUXDB_ORG_AND_BUCKET"
+   ],
+   "row_unset": {
+    "connector_name": "InfluxDB",
+    "connector_type": "3",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to InfluxDB.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "InfluxDB",
+    "connector_type": "3",
+    "connector_url": "https://influxdb.example:9006",
+    "connector_username": "",
+    "connector_password": "pw-6",
+    "connector_api_key": "",
+    "connector_description": "Connection to InfluxDB.",
+    "connector_supports": "supports 6",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": "extra 6"
+   }
+  },
+  {
+   "args": [
+    "Grafana",
+    "3",
+    "username_password",
+    "Connection to Grafana.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Grafana",
+    "connector_type": "3",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Grafana.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Grafana",
+    "connector_type": "3",
+    "connector_url": "https://grafana.example:9007",
+    "connector_username": "user-7",
+    "connector_password": "pw-7",
+    "connector_api_key": "key-7",
+    "connector_description": "Connection to Grafana.",
+    "connector_supports": "supports 7",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "Wazuh Worker Provisioning",
+    "3",
+    "host_only",
+    "Connection to Wazuh Worker Provisioning. Make sure you have deployed the Wazuh Worker Provisioning Application provided by SOCFortress: https://github.com/socfortress/Customer-Provisioning-Worker",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Wazuh Worker Provisioning",
+    "connector_type": "3",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Wazuh Worker Provisioning. Make sure you have deployed the Wazuh Worker Provisioning Application provided by SOCFortress: https://github.com/socfortress/Customer-Provisioning-Worker",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": true,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Wazuh Worker Provisioning",
+    "connector_type": "3",
+    "connector_url": "https://wazuh_worker_provisioning.example:9008",
+    "connector_username": "user-8",
+    "connector_password": "pw-8",
+    "connector_api_key": "",
+    "connector_description": "Connection to Wazuh Worker Provisioning. Make sure you have deployed the Wazuh Worker Provisioning Application provided by SOCFortress: https://github.com/socfortress/Customer-Provisioning-Worker",
+    "connector_supports": "supports 8",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": true,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "Event Shipper",
+    "3",
+    "host_only",
+    "Connection to Graylog GELF Input to receive events from integrations. Make sure you have created a GELF Input in Graylog.",
+    "GELF_INPUT_PORT"
+   ],
+   "row_unset": {
+    "connector_name": "Event Shipper",
+    "connector_type": "3",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Graylog GELF Input to receive events from integrations. Make sure you have created a GELF Input in Graylog.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": true,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Event Shipper",
+    "connector_type": "3",
+    "connector_url": "https://event_shipper.example:9009",
+    "connector_username": "",
+    "connector_password": "pw-9",
+    "connector_api_key": "key-9",
+    "connector_description": "Connection to Graylog GELF Input to receive events from integrations. Make sure you have created a GELF Input in Graylog.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": true,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": "extra 9"
+   }
+  },
+  {
+   "args": [
+    "HAProxy Provisioning",
+    "3",
+    "host_only",
+    "Connection to HAProxy Provisioning. Make sure you have deployed the HAProxy Provisioning Application provided by SOCFortress: https://github.com/socfortress/Customer-Provisioning-Worker",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "HAProxy Provisioning",
+    "connector_type": "3",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to HAProxy Provisioning. Make sure you have deployed the HAProxy Provisioning Application provided by SOCFortress: https://github.com/socfortress/Customer-Provisioning-Worker",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": true,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "HAProxy Provisioning",
+    "connector_type": "3",
+    "connector_url": "https://haproxy_provisioning.example:9010",
+    "connector_username": "user-10",
+    "connector_password": "pw-10",
+    "connector_api_key": "",
+    "connector_description": "Connection to HAProxy Provisioning. Make sure you have deployed the HAProxy Provisioning Application provided by SOCFortress: https://github.com/socfortress/Customer-Provisioning-Worker",
+    "connector_supports": "supports 10",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": true,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "VirusTotal",
+    "3",
+    "api_key",
+    "Connection to VirusTotal. Make sure you have created an API key.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "VirusTotal",
+    "connector_type": "3",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to VirusTotal. Make sure you have created an API key.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "VirusTotal",
+    "connector_type": "3",
+    "connector_url": "https://virustotal.example:9011",
+    "connector_username": "user-11",
+    "connector_password": "pw-11",
+    "connector_api_key": "key-11",
+    "connector_description": "Connection to VirusTotal. Make sure you have created an API key.",
+    "connector_supports": "supports 11",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "Portainer",
+    "3",
+    "username_password",
+    "Connection to Portainer.",
+    "PORTAINER_ENDPOINT_ID"
+   ],
+   "row_unset": {
+    "connector_name": "Portainer",
+    "connector_type": "3",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Portainer.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Portainer",
+    "connector_type": "3",
+    "connector_url": "https://portainer.example:9012",
+    "connector_username": "",
+    "connector_password": "pw-12",
+    "connector_api_key": "",
+    "connector_description": "Connection to Portainer.",
+    "connector_supports": "supports 12",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": "extra 12"
+   }
+  },
+  {
+   "args": [
+    "Graylog-Network",
+    "5.0.7",
+    "username_password",
+    "Connection to Graylog. If you only have one Graylog instance, set this to the same as Graylog.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Graylog-Network",
+    "connector_type": "5.0.7",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Graylog. If you only have one Graylog instance, set this to the same as Graylog.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Graylog-Network",
+    "connector_type": "5.0.7",
+    "connector_url": "https://graylog_network.example:9013",
+    "connector_username": "user-13",
+    "connector_password": "pw-13",
+    "connector_api_key": "key-13",
+    "connector_description": "Connection to Graylog. If you only have one Graylog instance, set this to the same as Graylog.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": false,
+    "connector_accepts_username_password": true,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "Resend",
+    "1",
+    "api_key",
+    "Connection to Resend for transactional email notifications. Requires an API key and a verified sending domain. The default From address is read from RESEND_FROM_ADDRESS and can be overridden per notification route.",
+    "RESEND_FROM_ADDRESS"
+   ],
+   "row_unset": {
+    "connector_name": "Resend",
+    "connector_type": "1",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to Resend for transactional email notifications. Requires an API key and a verified sending domain. The default From address is read from RESEND_FROM_ADDRESS and can be overridden per notification route.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Resend",
+    "connector_type": "1",
+    "connector_url": "https://resend.example:9014",
+    "connector_username": "user-14",
+    "connector_password": "pw-14",
+    "connector_api_key": "",
+    "connector_description": "Connection to Resend for transactional email notifications. Requires an API key and a verified sending domain. The default From address is read from RESEND_FROM_ADDRESS and can be overridden per notification route.",
+    "connector_supports": "supports 14",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": "extra 14"
+   }
+  },
+  {
+   "args": [
+    "Talon",
+    "3",
+    "api_key",
+    "Talon is an automated AI SOC analyst built by SOCfortress for the CoPilot stack. It runs as a background service alongside CoPilot — pulling raw events from your Wazuh/OpenSearch SIEM, enriching them with threat intelligence, correlating across your environment, and writing structured investigation reports with severity assessments and recommended actions directly back into CoPilot.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "Talon",
+    "connector_type": "3",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Talon is an automated AI SOC analyst built by SOCfortress for the CoPilot stack. It runs as a background service alongside CoPilot — pulling raw events from your Wazuh/OpenSearch SIEM, enriching them with threat intelligence, correlating across your environment, and writing structured investigation reports with severity assessments and recommended actions directly back into CoPilot.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "Talon",
+    "connector_type": "3",
+    "connector_url": "https://talon.example:9015",
+    "connector_username": "",
+    "connector_password": "pw-15",
+    "connector_api_key": "key-15",
+    "connector_description": "Talon is an automated AI SOC analyst built by SOCfortress for the CoPilot stack. It runs as a background service alongside CoPilot — pulling raw events from your Wazuh/OpenSearch SIEM, enriching them with threat intelligence, correlating across your environment, and writing structured investigation reports with severity assessments and recommended actions directly back into CoPilot.",
+    "connector_supports": "supports 15",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  },
+  {
+   "args": [
+    "OpenCTI",
+    "7",
+    "api_key",
+    "Connection to OpenCTI's GraphQL API for threat intelligence lookups — IOC enrichment, indicators, reports and threat entities. Set the URL to the platform address (e.g. http://opencti:8080) and the API key to an OpenCTI user's API token. Optionally set the public URL analysts open OpenCTI at (e.g. https://cti.example.com) when it differs from the address CoPilot calls.",
+    "OPENCTI_PUBLIC_URL"
+   ],
+   "row_unset": {
+    "connector_name": "OpenCTI",
+    "connector_type": "7",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to OpenCTI's GraphQL API for threat intelligence lookups — IOC enrichment, indicators, reports and threat entities. Set the URL to the platform address (e.g. http://opencti:8080) and the API key to an OpenCTI user's API token. Optionally set the public URL analysts open OpenCTI at (e.g. https://cti.example.com) when it differs from the address CoPilot calls.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "OpenCTI",
+    "connector_type": "7",
+    "connector_url": "https://opencti.example:9016",
+    "connector_username": "user-16",
+    "connector_password": "pw-16",
+    "connector_api_key": "",
+    "connector_description": "Connection to OpenCTI's GraphQL API for threat intelligence lookups — IOC enrichment, indicators, reports and threat entities. Set the URL to the platform address (e.g. http://opencti:8080) and the API key to an OpenCTI user's API token. Optionally set the public URL analysts open OpenCTI at (e.g. https://cti.example.com) when it differs from the address CoPilot calls.",
+    "connector_supports": "supports 16",
+    "connector_configured": true,
+    "connector_verified": true,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": true,
+    "connector_extra_data": "extra 16"
+   }
+  },
+  {
+   "args": [
+    "SOCFortress UBA",
+    "1",
+    "api_key",
+    "Connection to SOCFortress UBA (user behavior analytics): entities ranked by risk, their signals and alerts, suppressions and verdicts. Set the URL to the UBA API (e.g. http://172.17.0.1:8010) and the API key to one created with `uba-admin api-keys create --name copilot --scope write`.",
+    null
+   ],
+   "row_unset": {
+    "connector_name": "SOCFortress UBA",
+    "connector_type": "1",
+    "connector_url": "",
+    "connector_username": null,
+    "connector_password": null,
+    "connector_api_key": null,
+    "connector_description": "Connection to SOCFortress UBA (user behavior analytics): entities ranked by risk, their signals and alerts, suppressions and verdicts. Set the URL to the UBA API (e.g. http://172.17.0.1:8010) and the API key to one created with `uba-admin api-keys create --name copilot --scope write`.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   },
+   "row_set": {
+    "connector_name": "SOCFortress UBA",
+    "connector_type": "1",
+    "connector_url": "https://socfortress_uba.example:9017",
+    "connector_username": "user-17",
+    "connector_password": "pw-17",
+    "connector_api_key": "key-17",
+    "connector_description": "Connection to SOCFortress UBA (user behavior analytics): entities ranked by risk, their signals and alerts, suppressions and verdicts. Set the URL to the UBA API (e.g. http://172.17.0.1:8010) and the API key to one created with `uba-admin api-keys create --name copilot --scope write`.",
+    "connector_supports": "Not specified.",
+    "connector_configured": true,
+    "connector_verified": false,
+    "connector_accepts_host_only": false,
+    "connector_accepts_api_key": true,
+    "connector_accepts_username_password": false,
+    "connector_accepts_file": false,
+    "connector_accepts_extra_data": false,
+    "connector_extra_data": null
+   }
+  }
+ ],
+ "connector_env": {
+  "WAZUH_INDEXER_URL": "https://wazuh_indexer.example:9000",
+  "WAZUH_INDEXER_USERNAME": "",
+  "WAZUH_INDEXER_PASSWORD": "pw-0",
+  "WAZUH_INDEXER_API_KEY": "",
+  "WAZUH_INDEXER_SUPPORTS": "supports 0",
+  "WAZUH_INDEXER_VERIFIED": "false",
+  "WAZUH_MANAGER_URL": "https://wazuh_manager.example:9001",
+  "WAZUH_MANAGER_USERNAME": "user-1",
+  "WAZUH_MANAGER_PASSWORD": "pw-1",
+  "WAZUH_MANAGER_API_KEY": "key-1",
+  "WAZUH_MANAGER_VERIFIED": "",
+  "GRAYLOG_URL": "https://graylog.example:9002",
+  "GRAYLOG_USERNAME": "user-2",
+  "GRAYLOG_PASSWORD": "pw-2",
+  "GRAYLOG_API_KEY": "",
+  "GRAYLOG_SUPPORTS": "supports 2",
+  "GRAYLOG_VERIFIED": "1",
+  "SHUFFLE_URL": "https://shuffle.example:9003",
+  "SHUFFLE_USERNAME": "",
+  "SHUFFLE_PASSWORD": "pw-3",
+  "SHUFFLE_API_KEY": "key-3",
+  "SHUFFLE_SUPPORTS": "supports 3",
+  "SHUFFLE_VERIFIED": "no",
+  "VELOCIRAPTOR_URL": "https://velociraptor.example:9004",
+  "VELOCIRAPTOR_USERNAME": "user-4",
+  "VELOCIRAPTOR_PASSWORD": "pw-4",
+  "VELOCIRAPTOR_API_KEY": "",
+  "VELOCIRAPTOR_SUPPORTS": "supports 4",
+  "VELOCIRAPTOR_VERIFIED": "false",
+  "SUBLIME_URL": "https://sublime.example:9005",
+  "SUBLIME_USERNAME": "user-5",
+  "SUBLIME_PASSWORD": "pw-5",
+  "SUBLIME_API_KEY": "key-5",
+  "SUBLIME_VERIFIED": "",
+  "INFLUXDB_URL": "https://influxdb.example:9006",
+  "INFLUXDB_USERNAME": "",
+  "INFLUXDB_PASSWORD": "pw-6",
+  "INFLUXDB_API_KEY": "",
+  "INFLUXDB_SUPPORTS": "supports 6",
+  "INFLUXDB_VERIFIED": "1",
+  "INFLUXDB_ORG_AND_BUCKET": "extra 6",
+  "GRAFANA_URL": "https://grafana.example:9007",
+  "GRAFANA_USERNAME": "user-7",
+  "GRAFANA_PASSWORD": "pw-7",
+  "GRAFANA_API_KEY": "key-7",
+  "GRAFANA_SUPPORTS": "supports 7",
+  "GRAFANA_VERIFIED": "no",
+  "WAZUH_WORKER_PROVISIONING_URL": "https://wazuh_worker_provisioning.example:9008",
+  "WAZUH_WORKER_PROVISIONING_USERNAME": "user-8",
+  "WAZUH_WORKER_PROVISIONING_PASSWORD": "pw-8",
+  "WAZUH_WORKER_PROVISIONING_API_KEY": "",
+  "WAZUH_WORKER_PROVISIONING_SUPPORTS": "supports 8",
+  "WAZUH_WORKER_PROVISIONING_VERIFIED": "false",
+  "EVENT_SHIPPER_URL": "https://event_shipper.example:9009",
+  "EVENT_SHIPPER_USERNAME": "",
+  "EVENT_SHIPPER_PASSWORD": "pw-9",
+  "EVENT_SHIPPER_API_KEY": "key-9",
+  "EVENT_SHIPPER_VERIFIED": "",
+  "GELF_INPUT_PORT": "extra 9",
+  "HAPROXY_PROVISIONING_URL": "https://haproxy_provisioning.example:9010",
+  "HAPROXY_PROVISIONING_USERNAME": "user-10",
+  "HAPROXY_PROVISIONING_PASSWORD": "pw-10",
+  "HAPROXY_PROVISIONING_API_KEY": "",
+  "HAPROXY_PROVISIONING_SUPPORTS": "supports 10",
+  "HAPROXY_PROVISIONING_VERIFIED": "1",
+  "VIRUSTOTAL_URL": "https://virustotal.example:9011",
+  "VIRUSTOTAL_USERNAME": "user-11",
+  "VIRUSTOTAL_PASSWORD": "pw-11",
+  "VIRUSTOTAL_API_KEY": "key-11",
+  "VIRUSTOTAL_SUPPORTS": "supports 11",
+  "VIRUSTOTAL_VERIFIED": "no",
+  "PORTAINER_URL": "https://portainer.example:9012",
+  "PORTAINER_USERNAME": "",
+  "PORTAINER_PASSWORD": "pw-12",
+  "PORTAINER_API_KEY": "",
+  "PORTAINER_SUPPORTS": "supports 12",
+  "PORTAINER_VERIFIED": "false",
+  "PORTAINER_ENDPOINT_ID": "extra 12",
+  "GRAYLOG_NETWORK_URL": "https://graylog_network.example:9013",
+  "GRAYLOG_NETWORK_USERNAME": "user-13",
+  "GRAYLOG_NETWORK_PASSWORD": "pw-13",
+  "GRAYLOG_NETWORK_API_KEY": "key-13",
+  "GRAYLOG_NETWORK_VERIFIED": "",
+  "RESEND_URL": "https://resend.example:9014",
+  "RESEND_USERNAME": "user-14",
+  "RESEND_PASSWORD": "pw-14",
+  "RESEND_API_KEY": "",
+  "RESEND_SUPPORTS": "supports 14",
+  "RESEND_VERIFIED": "1",
+  "RESEND_FROM_ADDRESS": "extra 14",
+  "TALON_URL": "https://talon.example:9015",
+  "TALON_USERNAME": "",
+  "TALON_PASSWORD": "pw-15",
+  "TALON_API_KEY": "key-15",
+  "TALON_SUPPORTS": "supports 15",
+  "TALON_VERIFIED": "no",
+  "OPENCTI_URL": "https://opencti.example:9016",
+  "OPENCTI_USERNAME": "user-16",
+  "OPENCTI_PASSWORD": "pw-16",
+  "OPENCTI_API_KEY": "",
+  "OPENCTI_SUPPORTS": "supports 16",
+  "OPENCTI_VERIFIED": "false",
+  "OPENCTI_PUBLIC_URL": "extra 16",
+  "SOCFORTRESS_UBA_URL": "https://socfortress_uba.example:9017",
+  "SOCFORTRESS_UBA_USERNAME": "user-17",
+  "SOCFORTRESS_UBA_PASSWORD": "pw-17",
+  "SOCFORTRESS_UBA_API_KEY": "key-17",
+  "SOCFORTRESS_UBA_VERIFIED": ""
+ },
+ "deleted_connectors": [
+  "DFIR-IRIS",
+  "AskSocfortress",
+  "SocfortressThreatIntel",
+  "Cortex"
+ ],
+ "roles": [
+  [
+   1,
+   "admin",
+   "Administrator"
+  ],
+  [
+   2,
+   "analyst",
+   "SOC Analyst"
+  ],
+  [
+   3,
+   "scheduler",
+   "Scheduler for automated tasks"
+  ],
+  [
+   4,
+   "customer_user",
+   "Customer user with limited access to their own data"
+  ],
+  [
+   5,
+   "responder",
+   "SOC Analyst who may also run response actions on their assigned customers"
+  ]
+ ],
+ "integrations": [
+  {
+   "name": "Office365",
+   "description": "Integrate Office365 with SOCFortress.",
+   "file": "office365.md",
+   "found": true,
+   "details_sha256": "8521d1886501f0604d3d572bbca8e9af2d313ef5ef33952398640c9e8b01a7c8",
+   "details_len": 8568
+  },
+  {
+   "name": "Mimecast",
+   "description": "Integrate Mimecast with SOCFortress.",
+   "file": "mimecast.md",
+   "found": true,
+   "details_sha256": "20d82c0d657f2fe6ca3e63e98d18c1db938060c389052b4c2d30197f19a22edd",
+   "details_len": 4282
+  },
+  {
+   "name": "SAP SIEM",
+   "description": "Integrate SAP SIEM with SOCFortress.",
+   "file": "sap_siem.md",
+   "found": true,
+   "details_sha256": "b1dd9be6dbc753e2cca5942059610d58ddf41d58e13b8b83a9c8e7c0428af1a6",
+   "details_len": 3057
+  },
+  {
+   "name": "Huntress",
+   "description": "Integrate Huntress with SOCFortress.",
+   "file": "huntress.md",
+   "found": true,
+   "details_sha256": "26252174f79e75cc04b99de44c2f426070a3f743201996b7044f071814db82d3",
+   "details_len": 2274
+  },
+  {
+   "name": "CarbonBlack",
+   "description": "Integrate CarbonBlack with SOCFortress.",
+   "file": "carbonblack.md",
+   "found": true,
+   "details_sha256": "c2fb4719d09ed3db00e7804c749a70b84c7dd41b5a59edd295a2ffca89caaffc",
+   "details_len": 2528
+  },
+  {
+   "name": "Crowdstrike",
+   "description": "Integrate Crowdstrike with SOCFortress.",
+   "file": "crowdstrike.md",
+   "found": true,
+   "details_sha256": "9cacc498fd9793af3b927ff8c849711c6b5a2fa24bfefc824e327bcb515abd33",
+   "details_len": 4217
+  },
+  {
+   "name": "DUO",
+   "description": "Integrate DUO with SOCFortress.",
+   "file": "duo.md",
+   "found": true,
+   "details_sha256": "b4b6be6fc8831868bf9641b46a8b1ead4b4da7229279e2db0e02ea7e135f4242",
+   "details_len": 4013
+  },
+  {
+   "name": "Darktrace",
+   "description": "Integrate Darktrace with SOCFortress.",
+   "file": "darktrace.md",
+   "found": true,
+   "details_sha256": "14baaa9f8bfc220e2dfeff29cc6647ecb2405521a43e85deaf4e40902bd1d08d",
+   "details_len": 2265
+  },
+  {
+   "name": "BitDefender",
+   "description": "Integrate BitDefender with SOCFortress.",
+   "file": "bitdefender.md",
+   "found": true,
+   "details_sha256": "3b9d3da7f1e9e7f253f7db029a2d00809d43ce84d323391a06df493b0a7d75a1",
+   "details_len": 3670
+  },
+  {
+   "name": "CATO",
+   "description": "Integrate CATO NETWORKS with SOCFortress.",
+   "file": "cato.md",
+   "found": true,
+   "details_sha256": "c5a97d14afcba90c1f9c1492189826aefcf38ba01b5ae52b5eccd3d31b6f1e90",
+   "details_len": 3390
+  },
+  {
+   "name": "DefenderForEndpoint",
+   "description": "Integrate DefenderForEndpoint with SOCFortress.",
+   "file": "defenderforendpoint.md",
+   "found": true,
+   "details_sha256": "1b6226e64114a360ef47302129cfc275017ec087fbfb707900ef92d471f58e50",
+   "details_len": 2561
+  },
+  {
+   "name": "SOCFortress MDR",
+   "description": "Forward alerts to the SOCFortress MDR server for this customer.",
+   "file": "socfortress_mdr.md",
+   "found": true,
+   "details_sha256": "3d33e33c5d0e21a7bca532acebf444fd35cec69cb3a2369d7e2eebc818b4b87c",
+   "details_len": 1119
+  },
+  {
+   "name": "AWS",
+   "description": "Integrate AWS with SOCFortress.",
+   "file": "aws.md",
+   "found": true,
+   "details_sha256": "3dcd847fc4ab071830581481342bfc6b3918399455c03af4b15108865dc88160",
+   "details_len": 7785
+  }
+ ],
+ "integration_auth_keys": [
+  [
+   "Office365",
+   "TENANT_ID"
+  ],
+  [
+   "Office365",
+   "CLIENT_ID"
+  ],
+  [
+   "Office365",
+   "CLIENT_SECRET"
+  ],
+  [
+   "Office365",
+   "API_TYPE"
+  ],
+  [
+   "Mimecast",
+   "APP_ID"
+  ],
+  [
+   "Mimecast",
+   "APP_KEY"
+  ],
+  [
+   "Mimecast",
+   "EMAIL_ADDRESS"
+  ],
+  [
+   "Mimecast",
+   "ACCESS_KEY"
+  ],
+  [
+   "Mimecast",
+   "SECRET_KEY"
+  ],
+  [
+   "SAP SIEM",
+   "API_KEY"
+  ],
+  [
+   "SAP SIEM",
+   "SECRET_KEY"
+  ],
+  [
+   "SAP SIEM",
+   "USER_KEY"
+  ],
+  [
+   "SAP SIEM",
+   "API_DOMAIN"
+  ],
+  [
+   "Huntress",
+   "API_KEY"
+  ],
+  [
+   "Huntress",
+   "API_SECRET"
+  ],
+  [
+   "CarbonBlack",
+   "API_KEY"
+  ],
+  [
+   "CarbonBlack",
+   "API_URL"
+  ],
+  [
+   "CarbonBlack",
+   "API_ID"
+  ],
+  [
+   "CarbonBlack",
+   "ORGANIZATION_KEY"
+  ],
+  [
+   "Crowdstrike",
+   "CLIENT_ID"
+  ],
+  [
+   "Crowdstrike",
+   "CLIENT_SECRET"
+  ],
+  [
+   "Crowdstrike",
+   "BASE_URL"
+  ],
+  [
+   "Crowdstrike",
+   "SYSLOG_PORT"
+  ],
+  [
+   "DUO",
+   "API_HOSTNAME"
+  ],
+  [
+   "DUO",
+   "INTEGRATION_KEY"
+  ],
+  [
+   "DUO",
+   "SECRET_KEY"
+  ],
+  [
+   "Darktrace",
+   "PUBLIC_TOKEN"
+  ],
+  [
+   "Darktrace",
+   "PRIVATE_TOKEN"
+  ],
+  [
+   "Darktrace",
+   "HOST"
+  ],
+  [
+   "Darktrace",
+   "PORT"
+  ],
+  [
+   "BitDefender",
+   "BASIC_AUTH_USERNAME"
+  ],
+  [
+   "BitDefender",
+   "BASIC_AUTH_PASSWORD"
+  ],
+  [
+   "BitDefender",
+   "WEBSERVER_HOSTNAME"
+  ],
+  [
+   "BitDefender",
+   "WEBSERVER_PORT"
+  ],
+  [
+   "BitDefender",
+   "GRAYLOG_PORT"
+  ],
+  [
+   "BitDefender",
+   "API_KEY"
+  ],
+  [
+   "CATO",
+   "API_KEY"
+  ],
+  [
+   "CATO",
+   "ACCOUNT_ID"
+  ],
+  [
+   "CATO",
+   "EVENT_TYPES"
+  ],
+  [
+   "CATO",
+   "EVENT_SUB_TYPES"
+  ],
+  [
+   "DefenderForEndpoint",
+   "TENANT_ID"
+  ],
+  [
+   "DefenderForEndpoint",
+   "CLIENT_ID"
+  ],
+  [
+   "DefenderForEndpoint",
+   "CLIENT_SECRET"
+  ],
+  [
+   "DefenderForEndpoint",
+   "SYSLOG_PORT"
+  ],
+  [
+   "SOCFortress MDR",
+   "COLLECTOR_UUID"
+  ],
+  [
+   "AWS",
+   "ACCESS_KEY_ID"
+  ],
+  [
+   "AWS",
+   "SECRET_ACCESS_KEY"
+  ],
+  [
+   "AWS",
+   "AWS_ACCOUNT_ID"
+  ],
+  [
+   "AWS",
+   "AWS_ACCOUNT_ALIAS"
+  ],
+  [
+   "AWS",
+   "AWS_ORGANIZATION_ID"
+  ],
+  [
+   "AWS",
+   "BUCKET_NAME"
+  ],
+  [
+   "AWS",
+   "SERVICES"
+  ],
+  [
+   "AWS",
+   "ONLY_LOGS_AFTER"
+  ]
+ ],
+ "network_connectors": [
+  {
+   "name": "Fortinet",
+   "description": "Integrate Fortinet with SOCFortress.",
+   "file": "fortinet.md",
+   "found": true,
+   "details_sha256": "fe6877a827672280302f983716f283b42b64544ecde899a3d65de58201fb9749",
+   "details_len": 2924
+  },
+  {
+   "name": "Sonicwall",
+   "description": "Integrate Sonicwall with SOCFortress.",
+   "file": "sonicwall.md",
+   "found": true,
+   "details_sha256": "a5aee883a0e7b9986bbd0bc66f94da5a66707f9ddc6e1ad5ea24cd78f569e6e3",
+   "details_len": 5865
+  },
+  {
+   "name": "Sentinelone",
+   "description": "Integrate Sentinelone with SOCFortress.",
+   "file": "sentinelone.md",
+   "found": true,
+   "details_sha256": "4702f9b37fdede76ee0c348442dc95a0b0162ec416226eed911e973b1c0f5121",
+   "details_len": 7417
+  }
+ ],
+ "network_connector_auth_keys": [
+  [
+   "Fortinet",
+   "SYSLOG_PORT"
+  ],
+  [
+   "Sonicwall",
+   "SYSLOG_PORT"
+  ],
+  [
+   "Sonicwall",
+   "TLS_CERT_FILE"
+  ],
+  [
+   "Sonicwall",
+   "TLS_KEY_FILE"
+  ],
+  [
+   "Sentinelone",
+   "SYSLOG_PORT"
+  ],
+  [
+   "Sentinelone",
+   "TLS_CERT_FILE"
+  ],
+  [
+   "Sentinelone",
+   "TLS_KEY_FILE"
+  ]
+ ],
+ "placeholder": "No deployment instructions available.",
+ "templates": [
+  {
+   "name": "Alert — concise",
+   "description": "One-line summary with severity and a link. Good for high-volume chat channels.",
+   "trigger": "alert_created",
+   "format": "markdown",
+   "subject_template": "{{ severity }} alert on {{ customer_code }}: {{ alert_name }}",
+   "body_template": "*{{ severity }}* — {{ alert_name }}\nCustomer: `{{ customer_code }}`{% if context.asset_name %} · Asset: {{ context.asset_name }}{% endif %}\n{% if link_url %}<{{ link_url }}|Open in CoPilot>{% endif %}"
+  },
+  {
+   "name": "Alert — detailed with IOCs",
+   "description": "Full context including any indicators the investigation extracted.",
+   "trigger": "alert_created",
+   "format": "markdown",
+   "subject_template": "{{ severity }} alert on {{ customer_code }}: {{ alert_name }}",
+   "body_template": "*New alert* — severity: *{{ severity }}*\n\nCustomer: `{{ customer_code }}`\nAlert: #{{ alert_id }}{% if alert_name %} — {{ alert_name }}{% endif %}\n{% if context.asset_name %}Asset: {{ context.asset_name }}\n{% endif %}{% if context.rule_level is not none %}Rule level: {{ context.rule_level }}\n{% endif %}\n{{ summary }}\n{% if context.iocs %}\n*Indicators*\n{% for ioc in context.iocs %}• `{{ ioc.value }}` ({{ ioc.type }})\n{% endfor %}{% endif %}{% if link_url %}\nOpen in CoPilot: {{ link_url }}{% endif %}"
+  },
+  {
+   "name": "Assignment — who and what",
+   "description": "For internal routes: who picked something up, and what it was.",
+   "trigger": null,
+   "format": "markdown",
+   "subject_template": "{{ entity_type | replace('_', ' ') | title }} #{{ entity_id }} assigned to {{ assignee }}",
+   "body_template": "*{{ entity_type | replace('_', ' ') | title }} assigned* — {{ assignee or 'unassigned' }}\n\n{{ entity_type | replace('_', ' ') | title }}: #{{ entity_id }}{% if context.title %} — {{ context.title }}{% endif %}\n{% if customer_code %}Customer: `{{ customer_code }}`\n{% endif %}{% if actor %}Assigned by: {{ actor }}\n{% endif %}{% if summary %}\n{{ summary }}\n{% endif %}{% if link_url %}\nOpen in CoPilot: {{ link_url }}{% endif %}"
+  },
+  {
+   "name": "SLA — running late",
+   "description": "For internal routes on SLA at risk / breached: which item, which target, how late, and whose it is.",
+   "trigger": null,
+   "format": "markdown",
+   "subject_template": "{{ subject }}",
+   "body_template": "{% if trigger == 'sla_breached' %}*SLA breached*{% else %}*SLA at risk*{% endif %}{% if context.clock %} — {{ context.clock }} target{% endif %}, severity *{{ severity }}*\n\n{{ entity_type | title }}: #{{ entity_id }}{% if context.title %} — {{ context.title }}{% endif %}\n{% if customer_code %}Customer: `{{ customer_code }}`\n{% endif %}Assigned to: {{ assignee or 'nobody' }}\n{% if context.due_at %}Due: {{ context.due_at }} UTC{% if context.overdue_minutes is not none %} ({{ context.overdue_minutes }} min overdue){% elif context.remaining_minutes is not none %} ({{ context.remaining_minutes }} min left){% endif %}\n{% endif %}{% if link_url %}\nOpen in CoPilot: {{ link_url }}{% endif %}"
+  },
+  {
+   "name": "AI investigation — customer summary",
+   "description": "Plain-language wrap-up of an AI investigation, written for the end customer.",
+   "trigger": "investigation_complete",
+   "format": "markdown",
+   "subject_template": "Security investigation complete — {{ severity }} finding",
+   "body_template": "We completed an automated investigation of activity on your environment.\n\n*Severity:* {{ severity }}\n*What we saw:* {{ alert_name }}\n{% if context.asset_name %}*Where:* {{ context.asset_name }}\n{% endif %}\n{{ summary }}\n{% if link_url %}\nThe full report is available here: {{ link_url }}{% endif %}"
+  },
+  {
+   "name": "AI report reviewed — sign-off",
+   "description": "An analyst checked an AI investigation. Works on both internal and customer-facing routes — the same event can tell your SOC and the customer.",
+   "trigger": "ai_report_reviewed",
+   "format": "markdown",
+   "subject_template": "Reviewed: {{ alert_name }}",
+   "body_template": "*Analyst review complete* — {{ alert_name }}\n\nCustomer: `{{ customer_code }}`\nAlert: #{{ alert_id }}\n{% if context.reviewer %}Reviewed by: {{ context.reviewer }}\n{% endif %}{% if context.verdict %}Verdict: {{ context.verdict }}\n{% endif %}\n{{ summary }}\n{% if link_url %}\nOpen in CoPilot: {{ link_url }}{% endif %}"
+  },
+  {
+   "name": "AI investigation — full report (HTML email)",
+   "description": "The complete AI investigation write-up with its tables rendered, in the customer's brand colours. Email channels only. Falls back to the summary when an alert has no report.",
+   "trigger": "investigation_complete",
+   "format": "html",
+   "body_template": "<div style=\"font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:760px;margin:0 auto;padding:24px\">{% if branding.logo %}<img src=\"{{ branding.logo }}\" alt=\"{{ branding.title | default(\"\") }}\" style=\"max-height:48px;margin-bottom:24px\">{% endif %}<h2 style=\"color:{{ branding.accent | default(\"#1f2937\") }};margin:0 0 8px\">{{ alert_name }}</h2><p style=\"color:#6b7280;margin:0 0 24px\">Alert severity: <strong>{{ severity }}</strong>{% if context.ai_report and context.ai_report.severity %} · Assessed: <strong>{{ context.ai_report.severity }}</strong>{% endif %}{% if customer_code %} · {{ customer_code }}{% endif %}</p>{% if context.ai_report and context.ai_report.html %}{{ context.ai_report.html }}{% else %}<div style=\"line-height:1.6;color:#374151\">{{ summary }}</div>{% endif %}{% if link_url %}<p style=\"margin-top:32px\"><a href=\"{{ link_url }}\" style=\"background:{{ branding.accent_strong | default(\"#2563eb\") }};color:{{ branding.accent_text | default(\"#ffffff\") }};padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block\">View in CoPilot</a></p>{% endif %}</div>",
+   "subject_template": "Investigation complete — {{ alert_name }}"
+  },
+  {
+   "name": "Branded email — HTML",
+   "description": "HTML email in the customer's brand colours. Email channels only. The logo is embedded as a data URI, which some email clients block — the colours always apply.",
+   "trigger": null,
+   "format": "html",
+   "subject_template": "{{ severity }} security notification — {{ alert_name }}",
+   "body_template": "<div style=\"font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:600px;margin:0 auto;padding:24px\">{% if branding.logo %}<img src=\"{{ branding.logo }}\" alt=\"{{ branding.title | default(\"\") }}\" style=\"max-height:48px;margin-bottom:24px\">{% endif %}<h2 style=\"color:{{ branding.accent | default(\"#1f2937\") }};margin:0 0 8px\">{{ alert_name }}</h2><p style=\"color:#6b7280;margin:0 0 24px\">Severity: <strong>{{ severity }}</strong>{% if customer_code %} · {{ customer_code }}{% endif %}</p><div style=\"line-height:1.6;color:#374151\">{{ summary }}</div>{% if link_url %}<p style=\"margin-top:32px\"><a href=\"{{ link_url }}\" style=\"background:{{ branding.accent_strong | default(\"#2563eb\") }};color:{{ branding.accent_text | default(\"#ffffff\") }};padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block\">View in CoPilot</a></p>{% endif %}</div>"
+  },
+  {
+   "name": "Temporary password — branded email",
+   "description": "The email an admin sends when issuing a temporary password, in the customer's brand colours. Duplicate it to translate it or add your support contact.",
+   "trigger": "temp_password_issued",
+   "format": "html",
+   "subject_template": "Your temporary {{ customer_name or 'CoPilot' }} password",
+   "body_template": "<div style=\"font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#374151\">{% if branding.logo %}<img src=\"{{ branding.logo }}\" alt=\"{{ branding.title | default(\"\") }}\" style=\"max-height:48px;margin-bottom:24px\">{% endif %}<h2 style=\"color:{{ branding.accent | default(\"#1f2937\") }};margin:0 0 16px\">Your temporary password</h2><p>Hello {{ user_name }},</p><p>An administrator has issued a temporary password for your {% if customer_name %}{{ customer_name }} {% endif %}CoPilot account.</p><p style=\"background:{{ branding.accent_soft | default(\"#e5e7eb\") }};padding:16px;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;letter-spacing:0.5px;word-break:break-all\">{{ temp_password }}</p>{% if login_url %}<p style=\"margin:24px 0\"><a href=\"{{ login_url }}\" style=\"background:{{ branding.accent_strong | default(\"#2563eb\") }};color:{{ branding.accent_text | default(\"#ffffff\") }};padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block\">Sign in</a></p>{% endif %}<p><strong>Please change it immediately after signing in.</strong> If you did not expect this, contact your security team.</p><p style=\"color:#6b7280;font-size:12px;margin-top:32px\">{{ branding.footer_brand or 'CoPilot' }}</p></div>"
+  }
+ ],
+ "portal_defaults": {
+  "title": "CoPilot",
+  "logo_base64": null,
+  "logo_mime_type": null,
+  "brand_color": null
+ },
+ "jobs": [
+  {
+   "job_id": "agent_sync",
+   "time_interval": 15,
+   "enabled": true,
+   "job_description": "Synchronizes agents with the Wazuh Manager and Velociraptor server.",
+   "last_success": null
+  },
+  {
+   "job_id": "resize_wazuh_index_fields",
+   "time_interval": 1,
+   "enabled": true,
+   "job_description": "Resizes the Wazuh index fields.",
+   "last_success": null
+  },
+  {
+   "job_id": "invoke_alert_creation_collect",
+   "time_interval": 5,
+   "enabled": true,
+   "job_description": "Invokes alert creation collection.",
+   "last_success": null
+  },
+  {
+   "job_id": "invoke_snapshot_schedules",
+   "time_interval": 15,
+   "enabled": true,
+   "job_description": "Invokes Index snapshot schedules execution.",
+   "last_success": null
+  },
+  {
+   "job_id": "invoke_palace_lesson_drainer",
+   "time_interval": 2,
+   "enabled": true,
+   "job_description": "Drains pending AI analyst palace lessons into MemPalace via NanoClaw /palace/lesson.",
+   "last_success": null
+  },
+  {
+   "job_id": "invoke_palace_lesson_sweeper",
+   "time_interval": 60,
+   "enabled": true,
+   "job_description": "Forgets expired one-off AI analyst palace lessons via NanoClaw /palace/forget.",
+   "last_success": null
+  },
+  {
+   "job_id": "refresh_wazuh_rules_cache",
+   "time_interval": 30,
+   "enabled": true,
+   "job_description": "Refreshes the in-memory Wazuh ruleset cache so catalog and sidebar requests never load it.",
+   "last_success": null
+  },
+  {
+   "job_id": "refresh_catalog_caches",
+   "time_interval": 15,
+   "enabled": true,
+   "job_description": "Refreshes the Detections Catalog GitHub-backed caches (CoPilot Searches rules, MITRE matrix) off the request path.",
+   "last_success": null
+  },
+  {
+   "job_id": "refresh_sidebar_health",
+   "time_interval": 6,
+   "enabled": true,
+   "job_description": "Refreshes the sidebar InfluxDB health indicator so the sidebar never runs the Flux query itself.",
+   "last_success": null
+  },
+  {
+   "job_id": "refresh_sidebar_indicators",
+   "time_interval": 4,
+   "enabled": true,
+   "job_description": "Assembles the deployment-wide sidebar indicators so /status/sidebar reads them from memory.",
+   "last_success": null
+  },
+  {
+   "job_id": "notify_sla_transitions",
+   "time_interval": 2,
+   "enabled": true,
+   "job_description": "Notifies internal routes when an alert's or case's SLA turns at risk or breaches, once per clock.",
+   "last_success": null
+  },
+  {
+   "job_id": "prune_audit_log",
+   "time_interval": 1440,
+   "enabled": true,
+   "job_description": "Prunes audit_log entries older than the configured retention window (AUDIT_LOG_RETENTION_DAYS).",
+   "last_success": null
+  }
+ ],
+ "buckets": [
+  "copilot-cases",
+  "copilot-case-report-templates",
+  "sysmon-configs",
+  "velociraptor-artifacts",
+  "incident-management-reports"
+ ],
+ "users": {
+  "admin": {
+   "username": "admin",
+   "email": "admin@admin.com",
+   "role_id": 1,
+   "password_length": 24
+  },
+  "scheduler": {
+   "username": "scheduler",
+   "email": "scheduler@scheduler.com",
+   "role_id": 3,
+   "password_length": 12
+  }
+ },
+ "password_classes": [
+  "abcdefghijklmnopqrstuvwxyz",
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  "0123456789",
+  "@$!%*?&#"
+ ]
+}

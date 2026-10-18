@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models.audit import AuditLog
 from app.db.db_session import async_engine
+from app.schedulers.handover import rust_handover
 
 DEFAULT_AUDIT_LOG_RETENTION_DAYS = 90
 
@@ -37,6 +38,7 @@ def get_retention_days() -> int:
     return days if days > 0 else 0
 
 
+@rust_handover("prune_audit_log")
 async def prune_audit_log() -> None:
     """Scheduled job: delete audit_log rows older than the configured retention window."""
     days = get_retention_days()

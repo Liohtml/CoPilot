@@ -7,7 +7,7 @@ from sqlmodel import SQLModel
 
 class DisabledRule(SQLModel, table=True):
     id: Optional[int] = Field(primary_key=True)
-    rule_id: str = Field(index=True)
+    rule_id: str = Field(index=True, max_length=255)
     previous_level: str = Field(max_length=256)
     new_level: str = Field(max_length=256)
     reason_for_disabling: str = Field(max_length=256)

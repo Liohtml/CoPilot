@@ -1,0 +1,6426 @@
+{
+ "generated_with": {
+  "requests": "2.33.1",
+  "urllib3": "2.19.913",
+  "python": "3.11.17"
+ },
+ "prepare_url": [
+  {
+   "url": "https://wazuh-manager:55000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/security/user/authenticate"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules?raw=True"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh-manager:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules/files/x#frag"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/100%",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules/files/100%25"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules/files/A%2F~."
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/..",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules/"
+  },
+  {
+   "url": "https://wazuh-manager:55000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/rules/files/y"
+  },
+  {
+   "url": "https://wazuh-manager:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://wazuh-manager:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://wazuh-manager:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh-manager:55000rules"
+  },
+  {
+   "url": "https://wazuh-manager:55000",
+   "params": [],
+   "prepared": "https://wazuh-manager:55000/"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/security/user/authenticate"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules?raw=True"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/x#frag"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/100%",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/100%25"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/A%2F~."
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/..",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/rules/files/y"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://Wazuh-Manager.EXAMPLE.com:55000rules"
+  },
+  {
+   "url": "https://Wazuh-Manager.EXAMPLE.com:55000",
+   "params": [],
+   "prepared": "https://wazuh-manager.example.com:55000/"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/security/user/authenticate"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules?raw=True"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules/files/a%20b.xml"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://10.0.0.5:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules/files/x#frag"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/100%",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules/files/100%25"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules/files/A%2F~."
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/..",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules/"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/rules/files/y"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: HTTPS://10.0.0.5:55000rules"
+  },
+  {
+   "url": "HTTPS://10.0.0.5:55000",
+   "params": [],
+   "prepared": "https://10.0.0.5:55000/"
+  },
+  {
+   "url": "http://127.0.0.1:5591/security/user/authenticate",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/security/user/authenticate"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules?raw=True"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules/files/local_rules.xml"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/a b.xml",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules/files/a%20b.xml"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/x?y=1",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules/files/x?y=1"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "http://127.0.0.1:5591/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/x#frag",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules/files/x#frag"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/100%",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules/files/100%25"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules/files/A%2F~."
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/..",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules/"
+  },
+  {
+   "url": "http://127.0.0.1:5591/rules/files/./x/../y",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/rules/files/y"
+  },
+  {
+   "url": "http://127.0.0.1:5591/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "http://127.0.0.1:5591/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "http://127.0.0.1:5591rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: http://127.0.0.1:5591rules"
+  },
+  {
+   "url": "http://127.0.0.1:5591",
+   "params": [],
+   "prepared": "http://127.0.0.1:5591/"
+  },
+  {
+   "url": "https://wazuh:55000//security/user/authenticate",
+   "params": [],
+   "prepared": "https://wazuh:55000//security/user/authenticate"
+  },
+  {
+   "url": "https://wazuh:55000//rules",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules"
+  },
+  {
+   "url": "https://wazuh:55000//rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:55000//rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:55000//rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules?raw=True"
+  },
+  {
+   "url": "https://wazuh:55000//rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000//rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/x#frag",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules/files/x#frag"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/100%",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules/files/100%25"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules/files/A%2F~."
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/..",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules/"
+  },
+  {
+   "url": "https://wazuh:55000//rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://wazuh:55000//rules/files/y"
+  },
+  {
+   "url": "https://wazuh:55000//groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://wazuh:55000//groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://wazuh:55000//groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://wazuh:55000//groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://wazuh:55000/rules",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules"
+  },
+  {
+   "url": "https://wazuh:55000/",
+   "params": [],
+   "prepared": "https://wazuh:55000/"
+  },
+  {
+   "url": "https://wazuh:55000/api/security/user/authenticate",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/security/user/authenticate"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules?raw=True"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/api/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules/files/x#frag"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/100%",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules/files/100%25"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules/files/A%2F~."
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/..",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules/"
+  },
+  {
+   "url": "https://wazuh:55000/api/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/rules/files/y"
+  },
+  {
+   "url": "https://wazuh:55000/api/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://wazuh:55000/api/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://wazuh:55000/api/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://wazuh:55000/apirules",
+   "params": [],
+   "prepared": "https://wazuh:55000/apirules"
+  },
+  {
+   "url": "https://wazuh:55000/api",
+   "params": [],
+   "prepared": "https://wazuh:55000/api"
+  },
+  {
+   "url": "https://wazuh:0/security/user/authenticate",
+   "params": [],
+   "prepared": "https://wazuh/security/user/authenticate"
+  },
+  {
+   "url": "https://wazuh:0/rules",
+   "params": [],
+   "prepared": "https://wazuh/rules"
+  },
+  {
+   "url": "https://wazuh:0/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:0/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:0/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh/rules?raw=True"
+  },
+  {
+   "url": "https://wazuh:0/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/x#frag"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/100%",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/100%25"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/A%2F~."
+  },
+  {
+   "url": "https://wazuh:0/rules/files/..",
+   "params": [],
+   "prepared": "https://wazuh/rules/"
+  },
+  {
+   "url": "https://wazuh:0/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/y"
+  },
+  {
+   "url": "https://wazuh:0/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://wazuh/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://wazuh:0/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://wazuh/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://wazuh:0rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:0rules"
+  },
+  {
+   "url": "https://wazuh:0",
+   "params": [],
+   "prepared": "https://wazuh/"
+  },
+  {
+   "url": "https://wazuh:00055000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://wazuh:55000/security/user/authenticate"
+  },
+  {
+   "url": "https://wazuh:00055000/rules",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules"
+  },
+  {
+   "url": "https://wazuh:00055000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:00055000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:00055000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules?raw=True"
+  },
+  {
+   "url": "https://wazuh:00055000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/x#frag"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/100%",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/100%25"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/A%2F~."
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/..",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/"
+  },
+  {
+   "url": "https://wazuh:00055000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/y"
+  },
+  {
+   "url": "https://wazuh:00055000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://wazuh:55000/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://wazuh:00055000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://wazuh:00055000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:00055000rules"
+  },
+  {
+   "url": "https://wazuh:00055000",
+   "params": [],
+   "prepared": "https://wazuh:55000/"
+  },
+  {
+   "url": "https://[::1]:55000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://[::1]:55000/security/user/authenticate"
+  },
+  {
+   "url": "https://[::1]:55000/rules",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules"
+  },
+  {
+   "url": "https://[::1]:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://[::1]:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://[::1]:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules?raw=True"
+  },
+  {
+   "url": "https://[::1]:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://[::1]:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules/files/x#frag"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/100%",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules/files/100%25"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules/files/A%2F~."
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/..",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules/"
+  },
+  {
+   "url": "https://[::1]:55000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://[::1]:55000/rules/files/y"
+  },
+  {
+   "url": "https://[::1]:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://[::1]:55000/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://[::1]:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://[::1]:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://[::1]:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://[::1]:55000rules"
+  },
+  {
+   "url": "https://[::1]:55000",
+   "params": [],
+   "prepared": "https://[::1]:55000/"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/security/user/authenticate"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules?search=a+b%2526c%253Dd%252Fe~f%252Bg%2525h&q=level%253E5%253Bgroups%253Dsysmon&select=id%252Clevel"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules?raw=True"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules?filename=%25C3%25A4%252C%25E2%2582%25AC&relative_dirname=etc%252Frules"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/a%2520b.xml"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/a%2520b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/a%2520b.xml?search=a+b%2526c%253Dd%252Fe~f%252Bg%2525h&q=level%253E5%253Bgroups%253Dsysmon&select=id%252Clevel"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/a%2520b.xml?raw=True"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/a%2520b.xml?filename=%25C3%25A4%252C%25E2%2582%25AC&relative_dirname=etc%252Frules"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/%25C3%25A4%25E2%2582%25AC.xml"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/x?y=1&search=a+b%2526c%253Dd%252Fe~f%252Bg%2525h&q=level%253E5%253Bgroups%253Dsysmon&select=id%252Clevel"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/x?y=1&filename=%25C3%25A4%252C%25E2%2582%25AC&relative_dirname=etc%252Frules"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/x#frag"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/100%",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/100%2525"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/%2541%252F%257E%252E"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/..",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/rules/files/y"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/groups/g%255B1%255D/files/%257Bc%257D%257C%255E%2560%2522%253C%253E"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://[FE80::1%25eth0]:55000rules"
+  },
+  {
+   "url": "https://[FE80::1%25eth0]:55000",
+   "params": [],
+   "prepared": "https://[fe80::1%25eth0]:55000/"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/security/user/authenticate"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules?raw=True"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/x#frag"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/100%",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/100%25"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/A%2F~."
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/..",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/rules/files/y"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://user:p%40ss@wazuh:55000rules"
+  },
+  {
+   "url": "https://user:p%40ss@wazuh:55000",
+   "params": [],
+   "prepared": "https://user:p%40ss@wazuh:55000/"
+  },
+  {
+   "url": "https://us er@wazuh:55000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/security/user/authenticate"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules?raw=True"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/x#frag"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/100%",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/100%25"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/A%2F~."
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/..",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules/"
+  },
+  {
+   "url": "https://us er@wazuh:55000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/rules/files/y"
+  },
+  {
+   "url": "https://us er@wazuh:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://us er@wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://us er@wazuh:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://us er@wazuh:55000rules"
+  },
+  {
+   "url": "https://us er@wazuh:55000",
+   "params": [],
+   "prepared": "https://us%20er@wazuh:55000/"
+  },
+  {
+   "url": "  https://wazuh:55000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://wazuh:55000/security/user/authenticate"
+  },
+  {
+   "url": "  https://wazuh:55000/rules",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules"
+  },
+  {
+   "url": "  https://wazuh:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "  https://wazuh:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "  https://wazuh:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules?raw=True"
+  },
+  {
+   "url": "  https://wazuh:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/x#frag"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/100%",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/100%25"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/A%2F~."
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/..",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/"
+  },
+  {
+   "url": "  https://wazuh:55000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://wazuh:55000/rules/files/y"
+  },
+  {
+   "url": "  https://wazuh:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://wazuh:55000/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "  https://wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "  https://wazuh:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:55000rules"
+  },
+  {
+   "url": "  https://wazuh:55000",
+   "params": [],
+   "prepared": "https://wazuh:55000/"
+  },
+  {
+   "url": "https://wazuh/security/user/authenticate",
+   "params": [],
+   "prepared": "https://wazuh/security/user/authenticate"
+  },
+  {
+   "url": "https://wazuh/rules",
+   "params": [],
+   "prepared": "https://wazuh/rules"
+  },
+  {
+   "url": "https://wazuh/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh/rules?raw=True"
+  },
+  {
+   "url": "https://wazuh/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://wazuh/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://wazuh/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://wazuh/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://wazuh/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://wazuh/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://wazuh/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://wazuh/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://wazuh/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://wazuh/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/x#frag"
+  },
+  {
+   "url": "https://wazuh/rules/files/100%",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/100%25"
+  },
+  {
+   "url": "https://wazuh/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/A%2F~."
+  },
+  {
+   "url": "https://wazuh/rules/files/..",
+   "params": [],
+   "prepared": "https://wazuh/rules/"
+  },
+  {
+   "url": "https://wazuh/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://wazuh/rules/files/y"
+  },
+  {
+   "url": "https://wazuh/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://wazuh/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://wazuh/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://wazuh/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://wazuhrules",
+   "params": [],
+   "prepared": "https://wazuhrules/"
+  },
+  {
+   "url": "https://wazuh",
+   "params": [],
+   "prepared": "https://wazuh/"
+  },
+  {
+   "url": "https://bücher.example:55000/security/user/authenticate",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/security/user/authenticate"
+  },
+  {
+   "url": "https://bücher.example:55000/rules",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules"
+  },
+  {
+   "url": "https://bücher.example:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://bücher.example:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://bücher.example:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules?raw=True"
+  },
+  {
+   "url": "https://bücher.example:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/local_rules.xml",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/a b.xml",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/a%20b.xml"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/a%20b.xml?raw=True"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/ä€.xml",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/%C3%A4%E2%82%AC.xml"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/x?y=1",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/x?y=1"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/x?y=1&raw=True"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/x#frag",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/x#frag"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/100%",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/100%25"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/A%2F~."
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/..",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/"
+  },
+  {
+   "url": "https://bücher.example:55000/rules/files/./x/../y",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/rules/files/y"
+  },
+  {
+   "url": "https://bücher.example:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/groups/g%5B1%5D/files/%7Bc%7D%7C%5E%60%22%3C%3E"
+  },
+  {
+   "url": "https://bücher.example:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://bücher.example:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://bücher.example:55000rules"
+  },
+  {
+   "url": "https://bücher.example:55000",
+   "params": [],
+   "prepared": "https://xn--bcher-kva.example:55000/"
+  },
+  {
+   "url": "https://wazuh:99999/security/user/authenticate",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/security/user/authenticate"
+  },
+  {
+   "url": "https://wazuh:99999/rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules"
+  },
+  {
+   "url": "https://wazuh:99999/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules"
+  },
+  {
+   "url": "https://wazuh:99999/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules"
+  },
+  {
+   "url": "https://wazuh:99999/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules"
+  },
+  {
+   "url": "https://wazuh:99999/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/local_rules.xml",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/a b.xml",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/ä€.xml",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/ä€.xml"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/x?y=1",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/x#frag",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/x#frag"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/100%",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/100%"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/%41%2f%7e%2E"
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/..",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/.."
+  },
+  {
+   "url": "https://wazuh:99999/rules/files/./x/../y",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/rules/files/./x/../y"
+  },
+  {
+   "url": "https://wazuh:99999/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/groups/g[1]/files/{c}|^`\"<>"
+  },
+  {
+   "url": "https://wazuh:99999/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://wazuh:99999rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999rules"
+  },
+  {
+   "url": "https://wazuh:99999",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:99999"
+  },
+  {
+   "url": "https://wazuh:port/security/user/authenticate",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/security/user/authenticate"
+  },
+  {
+   "url": "https://wazuh:port/rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules"
+  },
+  {
+   "url": "https://wazuh:port/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules"
+  },
+  {
+   "url": "https://wazuh:port/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules"
+  },
+  {
+   "url": "https://wazuh:port/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules"
+  },
+  {
+   "url": "https://wazuh:port/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/local_rules.xml",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/local_rules.xml"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/a b.xml",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/a b.xml"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/ä€.xml",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/ä€.xml"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/x?y=1",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/x?y=1"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/x#frag",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/x#frag"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/100%",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/100%"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/%41%2f%7e%2E"
+  },
+  {
+   "url": "https://wazuh:port/rules/files/..",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/.."
+  },
+  {
+   "url": "https://wazuh:port/rules/files/./x/../y",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/rules/files/./x/../y"
+  },
+  {
+   "url": "https://wazuh:port/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/groups/g[1]/files/{c}|^`\"<>"
+  },
+  {
+   "url": "https://wazuh:port/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port/groups/g;x=1/files/a@b:c!$&'()*+,="
+  },
+  {
+   "url": "https://wazuh:portrules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:portrules"
+  },
+  {
+   "url": "https://wazuh:port",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://wazuh:port"
+  },
+  {
+   "url": "wazuh:55000/security/user/authenticate",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/security/user/authenticate'"
+  },
+  {
+   "url": "wazuh:55000/rules",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules'"
+  },
+  {
+   "url": "wazuh:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules'"
+  },
+  {
+   "url": "wazuh:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules'"
+  },
+  {
+   "url": "wazuh:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules'"
+  },
+  {
+   "url": "wazuh:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/local_rules.xml",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/local_rules.xml'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/a b.xml",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/a b.xml'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/a b.xml'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/a b.xml'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/a b.xml'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/a b.xml'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/ä€.xml",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/ä€.xml'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/x?y=1",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/x?y=1'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/x?y=1'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/x?y=1'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/x?y=1'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/x?y=1'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/x#frag",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/x#frag'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/100%",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/100%'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/%41%2f%7e%2E'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/..",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/..'"
+  },
+  {
+   "url": "wazuh:55000/rules/files/./x/../y",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/rules/files/./x/../y'"
+  },
+  {
+   "url": "wazuh:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000/groups/g[1]/files/{c}|^`\"<>'"
+  },
+  {
+   "url": "wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for \"wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,=\""
+  },
+  {
+   "url": "wazuh:55000rules",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000rules'"
+  },
+  {
+   "url": "wazuh:55000",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'wazuh:55000'"
+  },
+  {
+   "url": "wazuh-manager/security/user/authenticate",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/security/user/authenticate': No scheme supplied. Perhaps you meant https://wazuh-manager/security/user/authenticate?"
+  },
+  {
+   "url": "wazuh-manager/rules",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules': No scheme supplied. Perhaps you meant https://wazuh-manager/rules?"
+  },
+  {
+   "url": "wazuh-manager/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules': No scheme supplied. Perhaps you meant https://wazuh-manager/rules?"
+  },
+  {
+   "url": "wazuh-manager/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules': No scheme supplied. Perhaps you meant https://wazuh-manager/rules?"
+  },
+  {
+   "url": "wazuh-manager/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules': No scheme supplied. Perhaps you meant https://wazuh-manager/rules?"
+  },
+  {
+   "url": "wazuh-manager/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules': No scheme supplied. Perhaps you meant https://wazuh-manager/rules?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/local_rules.xml",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/local_rules.xml': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/local_rules.xml?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/a b.xml",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/a b.xml': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/a b.xml?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/a b.xml': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/a b.xml?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/a b.xml': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/a b.xml?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/a b.xml': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/a b.xml?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/a b.xml': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/a b.xml?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/ä€.xml",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/ä€.xml': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/ä€.xml?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/x?y=1",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/x?y=1': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/x?y=1?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/x?y=1': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/x?y=1?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/x?y=1': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/x?y=1?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/x?y=1': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/x?y=1?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/x?y=1': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/x?y=1?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/x#frag",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/x#frag': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/x#frag?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/100%",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/100%': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/100%?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/%41%2f%7e%2E': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/%41%2f%7e%2E?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/..",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/..': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/..?"
+  },
+  {
+   "url": "wazuh-manager/rules/files/./x/../y",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/rules/files/./x/../y': No scheme supplied. Perhaps you meant https://wazuh-manager/rules/files/./x/../y?"
+  },
+  {
+   "url": "wazuh-manager/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager/groups/g[1]/files/{c}|^`\"<>': No scheme supplied. Perhaps you meant https://wazuh-manager/groups/g[1]/files/{c}|^`\"<>?"
+  },
+  {
+   "url": "wazuh-manager/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for \"wazuh-manager/groups/g;x=1/files/a@b:c!$&'()*+,=\""
+  },
+  {
+   "url": "wazuh-managerrules",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-managerrules': No scheme supplied. Perhaps you meant https://wazuh-managerrules?"
+  },
+  {
+   "url": "wazuh-manager",
+   "params": [],
+   "error": "MissingSchema: Invalid URL 'wazuh-manager': No scheme supplied. Perhaps you meant https://wazuh-manager?"
+  },
+  {
+   "url": "ftp://wazuh:21/security/user/authenticate",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/security/user/authenticate'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/local_rules.xml",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/local_rules.xml'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/a b.xml",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/a b.xml'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/a b.xml'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/a b.xml'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/a b.xml'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/a b.xml'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/ä€.xml",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/ä€.xml'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/x?y=1",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/x?y=1'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/x?y=1'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/x?y=1'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/x?y=1'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/x?y=1'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/x#frag",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/x#frag'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/100%",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/100%'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/%41%2f%7e%2E'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/..",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/..'"
+  },
+  {
+   "url": "ftp://wazuh:21/rules/files/./x/../y",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/rules/files/./x/../y'"
+  },
+  {
+   "url": "ftp://wazuh:21/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21/groups/g[1]/files/{c}|^`\"<>'"
+  },
+  {
+   "url": "ftp://wazuh:21/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for \"ftp://wazuh:21/groups/g;x=1/files/a@b:c!$&'()*+,=\""
+  },
+  {
+   "url": "ftp://wazuh:21rules",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21rules'"
+  },
+  {
+   "url": "ftp://wazuh:21",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'ftp://wazuh:21'"
+  },
+  {
+   "url": "https:///security/user/authenticate",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///security/user/authenticate': No host supplied"
+  },
+  {
+   "url": "https:///rules",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules': No host supplied"
+  },
+  {
+   "url": "https:///rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules': No host supplied"
+  },
+  {
+   "url": "https:///rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules': No host supplied"
+  },
+  {
+   "url": "https:///rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules': No host supplied"
+  },
+  {
+   "url": "https:///rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/local_rules.xml",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/local_rules.xml': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/a b.xml",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/a b.xml': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/a b.xml': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/a b.xml': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/a b.xml': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/a b.xml': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/ä€.xml",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/ä€.xml': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/x?y=1",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/x?y=1': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/x?y=1': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/x?y=1': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/x?y=1': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/x?y=1': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/x#frag",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/x#frag': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/100%",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/100%': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/%41%2f%7e%2E",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/%41%2f%7e%2E': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/..",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/..': No host supplied"
+  },
+  {
+   "url": "https:///rules/files/./x/../y",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///rules/files/./x/../y': No host supplied"
+  },
+  {
+   "url": "https:///groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https:///groups/g[1]/files/{c}|^`\"<>': No host supplied"
+  },
+  {
+   "url": "https:///groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "error": "InvalidURL: Invalid URL \"https:///groups/g;x=1/files/a@b:c!$&'()*+,=\": No host supplied"
+  },
+  {
+   "url": "https://rules",
+   "params": [],
+   "prepared": "https://rules/"
+  },
+  {
+   "url": "https://",
+   "params": [],
+   "error": "InvalidURL: Invalid URL 'https://': No host supplied"
+  },
+  {
+   "url": "https://*.wazuh:55000/security/user/authenticate",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/local_rules.xml",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/a b.xml",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/ä€.xml",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/x?y=1",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/x#frag",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/100%",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/..",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/rules/files/./x/../y",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "https://*.wazuh:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: https://*.wazuh:55000rules"
+  },
+  {
+   "url": "https://*.wazuh:55000",
+   "params": [],
+   "error": "InvalidURL: URL has an invalid label."
+  },
+  {
+   "url": "httpx://wazuh:55000/security/user/authenticate",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/security/user/authenticate'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules?raw=True'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/local_rules.xml",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/local_rules.xml'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/a b.xml",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/a%20b.xml'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/a%20b.xml?pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/a%20b.xml?search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/a%20b.xml?raw=True'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/a b.xml",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/a%20b.xml?filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/ä€.xml",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/%C3%A4%E2%82%AC.xml'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/x?y=1",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/x?y=1'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "pretty",
+     "False"
+    ],
+    [
+     "wait_for_complete",
+     "False"
+    ],
+    [
+     "offset",
+     "0"
+    ],
+    [
+     "limit",
+     "500"
+    ],
+    [
+     "distinct",
+     "False"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/x?y=1&pretty=False&wait_for_complete=False&offset=0&limit=500&distinct=False'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "search",
+     "a b&c=d/e~f+g%h"
+    ],
+    [
+     "q",
+     "level>5;groups=sysmon"
+    ],
+    [
+     "select",
+     "id,level"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/x?y=1&search=a+b%26c%3Dd%2Fe~f%2Bg%25h&q=level%3E5%3Bgroups%3Dsysmon&select=id%2Clevel'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "raw",
+     "True"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/x?y=1&raw=True'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/x?y=1",
+   "params": [
+    [
+     "filename",
+     "ä,€"
+    ],
+    [
+     "relative_dirname",
+     "etc/rules"
+    ]
+   ],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/x?y=1&filename=%C3%A4%2C%E2%82%AC&relative_dirname=etc%2Frules'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/x#frag",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/x#frag'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/100%",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/100%'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/%41%2f%7e%2E",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/A%2f~.'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/..",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/..'"
+  },
+  {
+   "url": "httpx://wazuh:55000/rules/files/./x/../y",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/rules/files/./x/../y'"
+  },
+  {
+   "url": "httpx://wazuh:55000/groups/g[1]/files/{c}|^`\"<>",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/groups/g[1]/files/%7Bc%7D%7C%5E%60%22%3C%3E'"
+  },
+  {
+   "url": "httpx://wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,=",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for \"httpx://wazuh:55000/groups/g;x=1/files/a@b:c!$&'()*+,=\""
+  },
+  {
+   "url": "httpx://wazuh:55000rules",
+   "params": [],
+   "error": "InvalidURL: Failed to parse: httpx://wazuh:55000rules"
+  },
+  {
+   "url": "httpx://wazuh:55000",
+   "params": [],
+   "error": "InvalidSchema: No connection adapters were found for 'httpx://wazuh:55000/'"
+  }
+ ]
+}

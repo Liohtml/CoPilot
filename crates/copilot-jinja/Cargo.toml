@@ -1,0 +1,21 @@
+[package]
+name = "copilot-jinja"
+description = "Jinja2 3.1's sandboxed template language with Python's value semantics, for operator-authored templates"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+num-bigint-dig = { workspace = true }
+num-integer = { workspace = true }
+num-traits = { workspace = true }
+regex = { workspace = true }
+unicode-ident = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

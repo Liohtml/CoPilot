@@ -1,0 +1,599 @@
+{
+ "fromisoformat": [
+  {
+   "input": "2026-03-01",
+   "wall": "2026-03-01T00:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:00:00",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:00:00Z",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": 0,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:00:00.250Z",
+   "wall": "2026-03-01T10:00:00.250000",
+   "offset_us": 0,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:00:00.250000+00:00",
+   "wall": "2026-03-01T10:00:00.250000",
+   "offset_us": 0,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01 10:00:00.987654+02:00",
+   "wall": "2026-03-01T10:00:00.987654",
+   "offset_us": 7200000000,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:00:00,5-05:30",
+   "wall": "2026-03-01T10:00:00.500000",
+   "offset_us": -19800000000,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:00:00.1234567",
+   "wall": "2026-03-01T10:00:00.123456",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:00",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T1000",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T100000",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "20260301T100000",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "20260301",
+   "wall": "2026-03-01T00:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-W09-7",
+   "wall": "2026-03-01T00:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026W097",
+   "wall": "2026-03-01T00:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-W53-1",
+   "wall": "2026-12-28T00:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-12-28 00:00:00.000",
+    "2026-12-29 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2020-W53-1",
+   "wall": "2020-12-28T00:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2020-12-28 00:00:00.000",
+    "2020-12-29 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-060",
+   "error": "Invalid isoformat string: '2026-060'"
+  },
+  {
+   "input": "2026-03-01T10:00:00+0530",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": 19800000000,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:00:00+05",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": 18000000000,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:00:00+24:00",
+   "error": "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not datetime.timedelta(days=1)."
+  },
+  {
+   "input": "2026-03-01T10:00:00-23:59:59.999999",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": -86399999999,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T24:00:00",
+   "error": "hour must be in 0..23"
+  },
+  {
+   "input": "2026-02-30T00:00:00",
+   "error": "day is out of range for month"
+  },
+  {
+   "input": "2026-13-01",
+   "error": "month must be in 1..12"
+  },
+  {
+   "input": "0000-01-01",
+   "error": "year 0 is out of range"
+  },
+  {
+   "input": "9999-12-31T23:59:59.999999",
+   "wall": "9999-12-31T23:59:59.999999",
+   "offset_us": null,
+   "day_range_error": "date value out of range"
+  },
+  {
+   "input": "2026-03-01T10:00:00Zjunk",
+   "error": "Invalid isoformat string: '2026-03-01T10:00:00Zjunk'"
+  },
+  {
+   "input": "2026-03-01X10:00:00",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": null,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01T10:61:00",
+   "error": "minute must be in 0..59"
+  },
+  {
+   "input": "2026-03-01T10:00:60",
+   "error": "second must be in 0..59"
+  },
+  {
+   "input": "2026-3-1",
+   "error": "Invalid isoformat string: '2026-3-1'"
+  },
+  {
+   "input": "not a date",
+   "error": "Invalid isoformat string: 'not a date'"
+  },
+  {
+   "input": "",
+   "error": "Invalid isoformat string: ''"
+  },
+  {
+   "input": "2026-03",
+   "error": "Invalid isoformat string: '2026-03'"
+  },
+  {
+   "input": "2026-03-01T",
+   "error": "Invalid isoformat string: '2026-03-01T'"
+  },
+  {
+   "input": "2026-03-01T10:00:00.",
+   "error": "Invalid isoformat string: '2026-03-01T10:00:00.'"
+  },
+  {
+   "input": "２０２６-03-01",
+   "error": "Invalid isoformat string: '２０２６-03-01'"
+  },
+  {
+   "input": "2026-03-01T10:00:00+05:30:15.5",
+   "wall": "2026-03-01T10:00:00",
+   "offset_us": 19815500000,
+   "day_range": [
+    "2026-03-01 00:00:00.000",
+    "2026-03-02 00:00:00.000"
+   ]
+  },
+  {
+   "input": "2026-03-01 10:00:00 ",
+   "error": "Invalid isoformat string: '2026-03-01 10:00:00 '"
+  }
+ ],
+ "strings": [
+  {
+   "input": "hOST application",
+   "capitalize": "Host application",
+   "splitlines": [
+    "hOST application"
+   ],
+   "split": [
+    "hOST",
+    "application"
+   ]
+  },
+  {
+   "input": "ßa",
+   "capitalize": "Ssa",
+   "splitlines": [
+    "ßa"
+   ],
+   "split": [
+    "ßa"
+   ]
+  },
+  {
+   "input": "ǅungla",
+   "capitalize": "ǅungla",
+   "splitlines": [
+    "ǅungla"
+   ],
+   "split": [
+    "ǅungla"
+   ]
+  },
+  {
+   "input": "ﬁre",
+   "capitalize": "Fire",
+   "splitlines": [
+    "ﬁre"
+   ],
+   "split": [
+    "ﬁre"
+   ]
+  },
+  {
+   "input": "",
+   "capitalize": "",
+   "splitlines": [],
+   "split": []
+  },
+  {
+   "input": "1abc",
+   "capitalize": "1abc",
+   "splitlines": [
+    "1abc"
+   ],
+   "split": [
+    "1abc"
+   ]
+  },
+  {
+   "input": "İstanbul",
+   "capitalize": "İstanbul",
+   "splitlines": [
+    "İstanbul"
+   ],
+   "split": [
+    "İstanbul"
+   ]
+  },
+  {
+   "input": "a\r\nb\rc\n\nde f\u001c",
+   "capitalize": "A\r\nb\rc\n\nde f\u001c",
+   "splitlines": [
+    "a",
+    "b",
+    "c",
+    "",
+    "d",
+    "e",
+    "f"
+   ],
+   "split": [
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f"
+   ]
+  },
+  {
+   "input": "x\n",
+   "capitalize": "X\n",
+   "splitlines": [
+    "x"
+   ],
+   "split": [
+    "x"
+   ]
+  },
+  {
+   "input": "  Host \u001c Application\t ",
+   "capitalize": "  host \u001c application\t ",
+   "splitlines": [
+    "  Host ",
+    " Application\t "
+   ],
+   "split": [
+    "Host",
+    "Application"
+   ]
+  },
+  {
+   "input": " lead",
+   "capitalize": " lead",
+   "splitlines": [
+    " lead"
+   ],
+   "split": [
+    "lead"
+   ]
+  },
+  {
+   "input": "one\u000btwo\fthree\u001d\u001e\u001f",
+   "capitalize": "One\u000btwo\fthree\u001d\u001e\u001f",
+   "splitlines": [
+    "one",
+    "two",
+    "three",
+    "",
+    "\u001f"
+   ],
+   "split": [
+    "one",
+    "two",
+    "three"
+   ]
+  }
+ ],
+ "ip_address": [
+  {
+   "input": "1.2.3.4",
+   "ok": true
+  },
+  {
+   "input": "01.2.3.4",
+   "ok": false
+  },
+  {
+   "input": "1.2.3",
+   "ok": false
+  },
+  {
+   "input": "255.255.255.255",
+   "ok": true
+  },
+  {
+   "input": "256.1.1.1",
+   "ok": false
+  },
+  {
+   "input": "::1",
+   "ok": true
+  },
+  {
+   "input": "fe80::1%eth0",
+   "ok": true
+  },
+  {
+   "input": "fe80::1%",
+   "ok": false
+  },
+  {
+   "input": "::ffff:1.2.3.4",
+   "ok": true
+  },
+  {
+   "input": "1::",
+   "ok": true
+  },
+  {
+   "input": "1:2:3:4:5:6:7:8",
+   "ok": true
+  },
+  {
+   "input": "1:2:3:4:5:6:7:8:9",
+   "ok": false
+  },
+  {
+   "input": "1:2",
+   "ok": false
+  },
+  {
+   "input": ":::",
+   "ok": false
+  },
+  {
+   "input": "g::1",
+   "ok": false
+  },
+  {
+   "input": "2001:db8::1",
+   "ok": true
+  },
+  {
+   "input": " 1.2.3.4",
+   "ok": false
+  },
+  {
+   "input": "1.2.3.4 ",
+   "ok": false
+  },
+  {
+   "input": "::1.2.3",
+   "ok": false
+  },
+  {
+   "input": "1::2::3",
+   "ok": false
+  },
+  {
+   "input": "0:0:0:0:0:0:0:0",
+   "ok": true
+  },
+  {
+   "input": "12345::",
+   "ok": false
+  },
+  {
+   "input": "١.٢.٣.٤",
+   "ok": false
+  }
+ ],
+ "basename": [
+  {
+   "input": "/usr/bin/ls",
+   "out": "ls"
+  },
+  {
+   "input": "C:\\x\\y.exe",
+   "out": "C:\\x\\y.exe"
+  },
+  {
+   "input": "dir/",
+   "out": ""
+  },
+  {
+   "input": "",
+   "out": ""
+  },
+  {
+   "input": "/",
+   "out": ""
+  },
+  {
+   "input": "a/b/c.txt",
+   "out": "c.txt"
+  },
+  {
+   "input": "noslash",
+   "out": "noslash"
+  }
+ ],
+ "dumps_indent2": [
+  {
+   "input": "{\"a\": [1, 2.5, {\"b\": \"é\"}], \"c\": {}, \"d\": []}",
+   "out": "{\n  \"a\": [\n    1,\n    2.5,\n    {\n      \"b\": \"\\u00e9\"\n    }\n  ],\n  \"c\": {},\n  \"d\": []\n}"
+  },
+  {
+   "input": "[1e16, 0.000025, -0.0, 1e-7, 123456789012345678901234567890]",
+   "out": "[\n  1e+16,\n  2.5e-05,\n  -0.0,\n  1e-07,\n  123456789012345678901234567890\n]"
+  },
+  {
+   "input": "{\"s\": \"tab\\tquote\\\"slash\\\\ \\u2028 \\ud83d\\ude00\", \"n\": null, \"t\": true}",
+   "out": "{\n  \"s\": \"tab\\tquote\\\"slash\\\\ \\u2028 \\ud83d\\ude00\",\n  \"n\": null,\n  \"t\": true\n}"
+  },
+  {
+   "input": "[]",
+   "out": "[]"
+  },
+  {
+   "input": "\"plain\"",
+   "out": "\"plain\""
+  }
+ ],
+ "timedelta_repr": [
+  {
+   "us": 0,
+   "out": "datetime.timedelta(0)"
+  },
+  {
+   "us": 1,
+   "out": "datetime.timedelta(microseconds=1)"
+  },
+  {
+   "us": -1,
+   "out": "datetime.timedelta(days=-1, seconds=86399, microseconds=999999)"
+  },
+  {
+   "us": 90000000000,
+   "out": "datetime.timedelta(days=1, seconds=3600)"
+  },
+  {
+   "us": -90000000001,
+   "out": "datetime.timedelta(days=-2, seconds=82799, microseconds=999999)"
+  },
+  {
+   "us": 86400000000,
+   "out": "datetime.timedelta(days=1)"
+  },
+  {
+   "us": 1000000,
+   "out": "datetime.timedelta(seconds=1)"
+  }
+ ]
+}

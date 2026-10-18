@@ -1,0 +1,30 @@
+[package]
+name = "copilot-sublime"
+description = "The Sublime connector: /api/sublime (the alert webhook and the stored alerts) and its connector check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-auth = { workspace = true }
+copilot-db = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-connectors = { workspace = true }
+copilot-incidents = { workspace = true }
+copilot-wazuh = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+reqwest = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,8 @@
+These rule files are copied unchanged from socfortress/CoPilot-Search-Queries
+(https://github.com/socfortress/CoPilot-Search-Queries, GPL-3.0), commit
+cda78327c10c82cb292fde8f5471823cff5dbf90: one per detections/ folder plus the
+shapes the catalog has to handle (parameters as a list with an unquoted
+schema_version, aggregation blocks, CVE tags, a PowerShell 4104 rule).
+
+They feed copilot-yaml's vectors (scripts/gen-yaml-vectors.py) and the GitHub
+stand-ins of the copilot-searches e2e and parity suites.

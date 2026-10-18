@@ -1,0 +1,37 @@
+[package]
+name = "copilot-web"
+description = "axum glue shared by every ported module: error envelope, auth extractors, validation, context"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }
+chrono = { workspace = true }
+speedate = { workspace = true }
+strum = { workspace = true }
+regex = { workspace = true }
+icu_properties = { workspace = true }
+idna = { workspace = true }
+unicode-normalization = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

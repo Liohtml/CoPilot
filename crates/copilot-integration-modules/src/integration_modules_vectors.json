@@ -1,0 +1,1155 @@
+{
+ "now": "2026-10-17T10:20:30.123987",
+ "models": [
+  {
+   "model": "HuntressAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "API_SECRET": "s"
+   },
+   "json": "{\"API_KEY\":\"k\",\"API_SECRET\":\"s\"}"
+  },
+  {
+   "model": "HuntressAuthKeys",
+   "input": {
+    "API_KEY": "k"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for HuntressAuthKeys\nAPI_SECRET\n  Field required [type=missing, input_value={'API_KEY': 'k'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "HuntressAuthKeys",
+   "input": {},
+   "error": {
+    "class": "ValidationError",
+    "text": "2 validation errors for HuntressAuthKeys\nAPI_KEY\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nAPI_SECRET\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "HuntressAuthKeys",
+   "input": {
+    "API_KEY": 1,
+    "API_SECRET": null
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "2 validation errors for HuntressAuthKeys\nAPI_KEY\n  Input should be a valid string [type=string_type, input_value=1, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nAPI_SECRET\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+   }
+  },
+  {
+   "model": "HuntressAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "API_SECRET": "s",
+    "EXTRA": "x"
+   },
+   "json": "{\"API_KEY\":\"k\",\"API_SECRET\":\"s\"}"
+  },
+  {
+   "model": "DuoAuthKeys",
+   "input": {
+    "API_HOSTNAME": "h",
+    "INTEGRATION_KEY": "i",
+    "SECRET_KEY": "s"
+   },
+   "json": "{\"API_HOSTNAME\":\"h\",\"INTEGRATION_KEY\":\"i\",\"SECRET_KEY\":\"s\"}"
+  },
+  {
+   "model": "DuoAuthKeys",
+   "input": {
+    "INTEGRATION_KEY": "i"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "2 validation errors for DuoAuthKeys\nAPI_HOSTNAME\n  Field required [type=missing, input_value={'INTEGRATION_KEY': 'i'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nSECRET_KEY\n  Field required [type=missing, input_value={'INTEGRATION_KEY': 'i'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": "42"
+   },
+   "json": "{\"API_KEY\":\"k\",\"ACCOUNT_ID\":42,\"EVENT_TYPES\":\"Security\",\"EVENT_SUB_TYPES\":\"IPS\"}"
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": " 42 "
+   },
+   "json": "{\"API_KEY\":\"k\",\"ACCOUNT_ID\":42,\"EVENT_TYPES\":\"Security\",\"EVENT_SUB_TYPES\":\"IPS\"}"
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": "5.0"
+   },
+   "json": "{\"API_KEY\":\"k\",\"ACCOUNT_ID\":5,\"EVENT_TYPES\":\"Security\",\"EVENT_SUB_TYPES\":\"IPS\"}"
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": "5."
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for CatoAuthKeys\nACCOUNT_ID\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='5.', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
+   }
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": "5.5"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for CatoAuthKeys\nACCOUNT_ID\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='5.5', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
+   }
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": "abc"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for CatoAuthKeys\nACCOUNT_ID\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='abc', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
+   }
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": ""
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for CatoAuthKeys\nACCOUNT_ID\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
+   }
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": "-7"
+   },
+   "json": "{\"API_KEY\":\"k\",\"ACCOUNT_ID\":-7,\"EVENT_TYPES\":\"Security\",\"EVENT_SUB_TYPES\":\"IPS\"}"
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": "+7"
+   },
+   "json": "{\"API_KEY\":\"k\",\"ACCOUNT_ID\":7,\"EVENT_TYPES\":\"Security\",\"EVENT_SUB_TYPES\":\"IPS\"}"
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "EVENT_TYPES": "Security",
+    "EVENT_SUB_TYPES": "IPS",
+    "ACCOUNT_ID": "99999999999999999999999"
+   },
+   "json": "{\"API_KEY\":\"k\",\"ACCOUNT_ID\":99999999999999999999999,\"EVENT_TYPES\":\"Security\",\"EVENT_SUB_TYPES\":\"IPS\"}"
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "ACCOUNT_ID": "5."
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "3 validation errors for CatoAuthKeys\nACCOUNT_ID\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='5.', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing\nEVENT_TYPES\n  Field required [type=missing, input_value={'API_KEY': 'k', 'ACCOUNT_ID': '5.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nEVENT_SUB_TYPES\n  Field required [type=missing, input_value={'API_KEY': 'k', 'ACCOUNT_ID': '5.'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "CatoAuthKeys",
+   "input": {
+    "ACCOUNT_ID": "x"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "4 validation errors for CatoAuthKeys\nAPI_KEY\n  Field required [type=missing, input_value={'ACCOUNT_ID': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nACCOUNT_ID\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing\nEVENT_TYPES\n  Field required [type=missing, input_value={'ACCOUNT_ID': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nEVENT_SUB_TYPES\n  Field required [type=missing, input_value={'ACCOUNT_ID': 'x'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "DarktraceAuthKeys",
+   "input": {
+    "PUBLIC_TOKEN": "p",
+    "PRIVATE_TOKEN": "q",
+    "HOST": "h",
+    "PORT": "443"
+   },
+   "json": "{\"PUBLIC_TOKEN\":\"p\",\"PRIVATE_TOKEN\":\"q\",\"HOST\":\"h\",\"PORT\":\"443\"}"
+  },
+  {
+   "model": "DarktraceAuthKeys",
+   "input": {
+    "PUBLIC_TOKEN": "p"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "3 validation errors for DarktraceAuthKeys\nPRIVATE_TOKEN\n  Field required [type=missing, input_value={'PUBLIC_TOKEN': 'p'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nHOST\n  Field required [type=missing, input_value={'PUBLIC_TOKEN': 'p'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nPORT\n  Field required [type=missing, input_value={'PUBLIC_TOKEN': 'p'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "MimecastAuthKeys",
+   "input": {
+    "APP_ID": "a",
+    "APP_KEY": "b",
+    "EMAIL_ADDRESS": "e@x",
+    "ACCESS_KEY": "c",
+    "SECRET_KEY": "c2VjcmV0"
+   },
+   "json": "{\"APP_ID\":\"a\",\"APP_KEY\":\"b\",\"EMAIL_ADDRESS\":\"e@x\",\"ACCESS_KEY\":\"c\",\"SECRET_KEY\":\"c2VjcmV0\",\"URI\":\"/api/audit/get-siem-logs\"}"
+  },
+  {
+   "model": "MimecastAuthKeys",
+   "input": {
+    "APP_ID": "a",
+    "APP_KEY": "b",
+    "EMAIL_ADDRESS": "e@x",
+    "ACCESS_KEY": "c",
+    "SECRET_KEY": "c2VjcmV0",
+    "URI": "/api/x"
+   },
+   "json": "{\"APP_ID\":\"a\",\"APP_KEY\":\"b\",\"EMAIL_ADDRESS\":\"e@x\",\"ACCESS_KEY\":\"c\",\"SECRET_KEY\":\"c2VjcmV0\",\"URI\":\"/api/x\"}"
+  },
+  {
+   "model": "MimecastAuthKeys",
+   "input": {
+    "APP_ID": "a"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "3 validation errors for MimecastAuthKeys\nAPP_KEY\n  Field required [type=missing, input_value={'APP_ID': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nACCESS_KEY\n  Field required [type=missing, input_value={'APP_ID': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nSECRET_KEY\n  Field required [type=missing, input_value={'APP_ID': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "CarbonBlackAuthKeys",
+   "input": {
+    "carbonblack_api_url": "u",
+    "carbonblack_api_key": "k",
+    "carbonblack_api_id": "i",
+    "carbonblack_org_key": "o"
+   },
+   "json": "{\"carbonblack_api_url\":\"u\",\"carbonblack_api_key\":\"k\",\"carbonblack_api_id\":\"i\",\"carbonblack_org_key\":\"o\",\"time_range\":\"-15m\"}"
+  },
+  {
+   "model": "CarbonBlackAuthKeys",
+   "input": {
+    "carbonblack_api_url": "u",
+    "carbonblack_api_key": null
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "3 validation errors for CarbonBlackAuthKeys\ncarbonblack_api_key\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\ncarbonblack_api_id\n  Field required [type=missing, input_value={'carbonblack_api_url': '...bonblack_api_key': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncarbonblack_org_key\n  Field required [type=missing, input_value={'carbonblack_api_url': '...bonblack_api_key': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "SapSiemAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "SECRET_KEY": "s",
+    "API_DOMAIN": "d"
+   },
+   "json": "{\"API_KEY\":\"k\",\"SECRET_KEY\":\"s\",\"USER_KEY\":null,\"API_DOMAIN\":\"d\"}"
+  },
+  {
+   "model": "SapSiemAuthKeys",
+   "input": {
+    "API_KEY": "k",
+    "SECRET_KEY": "s",
+    "USER_KEY": null,
+    "API_DOMAIN": "d"
+   },
+   "json": "{\"API_KEY\":\"k\",\"SECRET_KEY\":\"s\",\"USER_KEY\":null,\"API_DOMAIN\":\"d\"}"
+  },
+  {
+   "model": "SapSiemAuthKeys",
+   "input": {
+    "API_KEY": "k"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "2 validation errors for SapSiemAuthKeys\nSECRET_KEY\n  Field required [type=missing, input_value={'API_KEY': 'k'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nAPI_DOMAIN\n  Field required [type=missing, input_value={'API_KEY': 'k'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "CustomerDetails",
+   "input": {
+    "customer_code": "c",
+    "iris_customer_id": 7
+   },
+   "json": "{\"customer_code\":\"c\",\"iris_customer_id\":7}"
+  },
+  {
+   "model": "CustomerDetails",
+   "input": {
+    "customer_code": "c",
+    "iris_customer_id": "12"
+   },
+   "json": "{\"customer_code\":\"c\",\"iris_customer_id\":12}"
+  },
+  {
+   "model": "CustomerDetails",
+   "input": {
+    "customer_code": "c",
+    "iris_customer_id": null
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for CustomerDetails\niris_customer_id\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type"
+   }
+  },
+  {
+   "model": "CustomerDetails",
+   "input": {
+    "customer_code": "c",
+    "iris_customer_id": 1.5
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for CustomerDetails\niris_customer_id\n  Input should be a valid integer, got a number with a fractional part [type=int_from_float, input_value=1.5, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_from_float"
+   }
+  },
+  {
+   "model": "InvokeSapSiemAnalysis",
+   "input": {
+    "iris_customer_id": 3
+   },
+   "json": "{\"threshold\":0,\"time_range\":\"15\",\"iris_customer_id\":3}"
+  },
+  {
+   "model": "InvokeSapSiemAnalysis",
+   "input": {
+    "iris_customer_id": "3",
+    "threshold": "2",
+    "time_range": "15"
+   },
+   "json": "{\"threshold\":2,\"time_range\":15,\"iris_customer_id\":3}"
+  },
+  {
+   "model": "InvokeSapSiemAnalysis",
+   "input": {
+    "iris_customer_id": 3,
+    "threshold": null,
+    "time_range": "x"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "2 validation errors for InvokeSapSiemAnalysis\nthreshold\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type\ntime_range\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing"
+   }
+  },
+  {
+   "model": "InvokeSapSiemAnalysis",
+   "input": {
+    "threshold": true,
+    "time_range": 2.0
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for InvokeSapSiemAnalysis\niris_customer_id\n  Field required [type=missing, input_value={'threshold': True, 'time_range': 2.0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "CollectDuo",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": "10.0.0.5",
+    "graylog_port": "12201",
+    "integration": "duo",
+    "integration_key": "i",
+    "secret_key": "s",
+    "api_host": "h",
+    "api_endpoint": "/e",
+    "range": "15m"
+   },
+   "json": "{\"integration\":\"duo\",\"customer_code\":\"c\",\"integration_key\":\"i\",\"secret_key\":\"s\",\"api_host\":\"h\",\"api_endpoint\":\"/e\",\"graylog_host\":\"10.0.0.5\",\"graylog_port\":\"12201\",\"range\":\"15m\"}"
+  },
+  {
+   "model": "CollectDuo",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": null,
+    "graylog_port": "12201",
+    "integration": "duo",
+    "integration_key": "i",
+    "secret_key": "s",
+    "api_host": "h"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "3 validation errors for CollectDuo\napi_endpoint\n  Field required [type=missing, input_value={'customer_code': 'c', 'g...': 's', 'api_host': 'h'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ngraylog_host\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nrange\n  Field required [type=missing, input_value={'customer_code': 'c', 'g...': 's', 'api_host': 'h'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "CollectCato",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": "10.0.0.5",
+    "graylog_port": "12201",
+    "integration": "cato",
+    "api_key": "k",
+    "account_id": 42,
+    "event_types": "S",
+    "event_sub_types": "I"
+   },
+   "json": "{\"integration\":\"cato\",\"customer_code\":\"c\",\"graylog_host\":\"10.0.0.5\",\"graylog_port\":\"12201\",\"api_key\":\"k\",\"account_id\":42,\"event_types\":\"S\",\"event_sub_types\":\"I\"}"
+  },
+  {
+   "model": "CollectCato",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": "10.0.0.5",
+    "graylog_port": null,
+    "integration": "cato",
+    "api_key": "k",
+    "account_id": 42,
+    "event_types": "S"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "2 validation errors for CollectCato\ngraylog_port\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\nevent_sub_types\n  Field required [type=missing, input_value={'customer_code': 'c', 'g... 42, 'event_types': 'S'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "CollectCarbonBlack",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": "10.0.0.5",
+    "graylog_port": "12201",
+    "integration": "carbonblack",
+    "carbonblack_api_url": "u",
+    "carbonblack_api_key": "k",
+    "carbonblack_api_id": "i",
+    "carbonblack_org_key": "o",
+    "time_range": "-15m"
+   },
+   "json": "{\"integration\":\"carbonblack\",\"customer_code\":\"c\",\"graylog_host\":\"10.0.0.5\",\"graylog_port\":\"12201\",\"carbonblack_api_url\":\"u\",\"carbonblack_api_key\":\"k\",\"carbonblack_api_id\":\"i\",\"carbonblack_org_key\":\"o\",\"time_range\":\"-15m\"}"
+  },
+  {
+   "model": "CollectCarbonBlack",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": "10.0.0.5",
+    "graylog_port": "12201",
+    "integration": "carbonblack",
+    "carbonblack_api_url": "u",
+    "time_range": null
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "3 validation errors for CollectCarbonBlack\ncarbonblack_api_key\n  Field required [type=missing, input_value={'customer_code': 'c', 'g...'u', 'time_range': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncarbonblack_api_id\n  Field required [type=missing, input_value={'customer_code': 'c', 'g...'u', 'time_range': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ncarbonblack_org_key\n  Field required [type=missing, input_value={'customer_code': 'c', 'g...'u', 'time_range': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "CollectDarktrace",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": "10.0.0.5",
+    "graylog_port": "12201",
+    "integration": "darktrace",
+    "public_token": "p",
+    "private_token": "q",
+    "darktrace_host": "h",
+    "darktrace_port": "443",
+    "timeframe": "15m"
+   },
+   "json": "{\"integration\":\"darktrace\",\"customer_code\":\"c\",\"graylog_host\":\"10.0.0.5\",\"graylog_port\":\"12201\",\"public_token\":\"p\",\"private_token\":\"q\",\"darktrace_host\":\"h\",\"darktrace_port\":\"443\",\"timeframe\":\"15m\"}"
+  },
+  {
+   "model": "CollectDarktrace",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": "10.0.0.5",
+    "graylog_port": "12201",
+    "integration": "darktrace",
+    "public_token": "p",
+    "darktrace_port": null
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "4 validation errors for CollectDarktrace\nprivate_token\n  Field required [type=missing, input_value={'customer_code': 'c', 'g... 'darktrace_port': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndarktrace_host\n  Field required [type=missing, input_value={'customer_code': 'c', 'g... 'darktrace_port': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ndarktrace_port\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\ntimeframe\n  Field required [type=missing, input_value={'customer_code': 'c', 'g... 'darktrace_port': None}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "CollectMimecast",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": "10.0.0.5",
+    "graylog_port": "12201",
+    "integration": "mimecast",
+    "app_id": "a",
+    "app_key": "b",
+    "email_address": "e",
+    "access_key": "c",
+    "secret_key": "s",
+    "uri": "/api/audit/get-siem-logs",
+    "time_range": "15m"
+   },
+   "json": "{\"integration\":\"mimecast\",\"customer_code\":\"c\",\"graylog_host\":\"10.0.0.5\",\"graylog_port\":\"12201\",\"app_id\":\"a\",\"app_key\":\"b\",\"email_address\":\"e\",\"access_key\":\"c\",\"secret_key\":\"s\",\"uri\":\"/api/audit/get-siem-logs\",\"time_range\":\"15m\"}"
+  },
+  {
+   "model": "CollectMimecast",
+   "input": {
+    "customer_code": "c",
+    "graylog_host": null,
+    "graylog_port": "12201",
+    "integration": "mimecast",
+    "app_id": "a"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "4 validation errors for CollectMimecast\ngraylog_host\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type\napp_key\n  Field required [type=missing, input_value={'customer_code': 'c', 'g...imecast', 'app_id': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\naccess_key\n  Field required [type=missing, input_value={'customer_code': 'c', 'g...imecast', 'app_id': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nsecret_key\n  Field required [type=missing, input_value={'customer_code': 'c', 'g...imecast', 'app_id': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  },
+  {
+   "model": "DataItem",
+   "input": {
+    "oldestFirst": false,
+    "from_": "2026-10-17T10:05:30.123Z",
+    "to": "2026-10-17T10:20:30.123Z",
+    "route": "all",
+    "scanResult": "all"
+   },
+   "json": "{\"oldestFirst\":false,\"from_\":\"2026-10-17T10:05:30.123000Z\",\"to\":\"2026-10-17T10:20:30.123000Z\",\"route\":\"all\",\"scanResult\":\"all\"}"
+  },
+  {
+   "model": "DataItem",
+   "input": {
+    "oldestFirst": false,
+    "from_": null,
+    "to": "2026-10-17T10:20:30.123Z",
+    "route": "all",
+    "scanResult": "all"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for DataItem\nfrom_\n  Input should be a valid datetime [type=datetime_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/datetime_type"
+   }
+  },
+  {
+   "model": "DataItem",
+   "input": {
+    "oldestFirst": false,
+    "from_": "1011-01-01T00:00:00.000Z",
+    "to": "x",
+    "route": "all",
+    "scanResult": "all"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for DataItem\nto\n  Input should be a valid datetime or date, input is too short [type=datetime_from_date_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/datetime_from_date_parsing"
+   }
+  }
+ ],
+ "bounded": [
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c"
+   },
+   "json": "{\"customer_code\":\"c\",\"integration_name\":\"SAP SIEM\",\"threshold\":3,\"time_range\":\"15m\",\"lower_bound\":null,\"upper_bound\":null}"
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "1h",
+    "threshold": "7"
+   },
+   "json": "{\"customer_code\":\"c\",\"integration_name\":\"SAP SIEM\",\"threshold\":7,\"time_range\":\"1h\",\"lower_bound\":\"2026-10-17T09:20:30.123Z\",\"upper_bound\":\"2026-10-17T10:20:30.123Z\"}"
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "2d"
+   },
+   "json": "{\"customer_code\":\"c\",\"integration_name\":\"SAP SIEM\",\"threshold\":3,\"time_range\":\"2d\",\"lower_bound\":\"2026-10-15T10:20:30.123Z\",\"upper_bound\":\"2026-10-17T10:20:30.123Z\"}"
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "3w"
+   },
+   "json": "{\"customer_code\":\"c\",\"integration_name\":\"SAP SIEM\",\"threshold\":3,\"time_range\":\"3w\",\"lower_bound\":\"2026-09-26T10:20:30.123Z\",\"upper_bound\":\"2026-10-17T10:20:30.123Z\"}"
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "05m"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for InvokeSapSiemRequest\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value='05m', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "-5m"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for InvokeSapSiemRequest\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value='-5m', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "0m"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for InvokeSapSiemRequest\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value='0m', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": " 5m"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for InvokeSapSiemRequest\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value=' 5m', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "5x"
+   },
+   "error": {
+    "class": "UnboundLocalError",
+    "text": "cannot access local variable 'lower_bound' where it is not associated with a value"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "ab"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for InvokeSapSiemRequest\n  Value error, invalid literal for int() with base 10: 'a' [type=value_error, input_value={'customer_code': 'c', 'time_range': 'ab'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "m"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for InvokeSapSiemRequest\n  Value error, invalid literal for int() with base 10: '' [type=value_error, input_value={'customer_code': 'c', 'time_range': 'm'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": ""
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for InvokeSapSiemRequest\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value='', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": null
+   },
+   "json": "{\"customer_code\":\"c\",\"integration_name\":\"SAP SIEM\",\"threshold\":3,\"time_range\":null,\"lower_bound\":null,\"upper_bound\":null}"
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": 5
+   },
+   "error": {
+    "class": "TypeError",
+    "text": "'int' object is not subscriptable"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": [
+     "5",
+     "m"
+    ]
+   },
+   "error": {
+    "class": "TypeError",
+    "text": "int() argument must be a string, a bytes-like object or a real number, not 'list'"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "53000w"
+   },
+   "json": "{\"customer_code\":\"c\",\"integration_name\":\"SAP SIEM\",\"threshold\":3,\"time_range\":\"53000w\",\"lower_bound\":\"1011-01-12T10:20:30.123Z\",\"upper_bound\":\"2026-10-17T10:20:30.123Z\"}"
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "99999999999w"
+   },
+   "error": {
+    "class": "OverflowError",
+    "text": "Python int too large to convert to C int"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "200000000w"
+   },
+   "error": {
+    "class": "OverflowError",
+    "text": "days=1400000000; must have magnitude <= 999999999"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "-200000000w"
+   },
+   "error": {
+    "class": "OverflowError",
+    "text": "days=-1400000000; must have magnitude <= 999999999"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "-400000000w"
+   },
+   "error": {
+    "class": "OverflowError",
+    "text": "Python int too large to convert to C int"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "106000w"
+   },
+   "error": {
+    "class": "OverflowError",
+    "text": "date value out of range"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "999999999999999999999m"
+   },
+   "error": {
+    "class": "OverflowError",
+    "text": "Python int too large to convert to C int"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "1_0m"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for InvokeSapSiemRequest\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value='1_0m', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "time_range": "5x"
+   },
+   "error": {
+    "class": "UnboundLocalError",
+    "text": "cannot access local variable 'lower_bound' where it is not associated with a value"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "time_range": "05m",
+    "threshold": "x"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "3 validation errors for InvokeSapSiemRequest\ncustomer_code\n  Field required [type=missing, input_value={'time_range': '05m', 'th...26-10-17T10:20:30.123Z'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nthreshold\n  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value='05m', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "InvokeSapSiemRequest",
+   "input": {
+    "customer_code": "c",
+    "lower_bound": "keep",
+    "time_range": null
+   },
+   "json": "{\"customer_code\":\"c\",\"integration_name\":\"SAP SIEM\",\"threshold\":3,\"time_range\":null,\"lower_bound\":\"keep\",\"upper_bound\":null}"
+  },
+  {
+   "model": "MimecastRequest",
+   "input": {
+    "customer_code": "c"
+   },
+   "json": "{\"customer_code\":\"c\",\"integration_name\":\"Mimecast\",\"time_range\":\"15m\"}"
+  },
+  {
+   "model": "MimecastRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "10h"
+   },
+   "json": "{\"customer_code\":\"c\",\"integration_name\":\"Mimecast\",\"time_range\":\"10h\"}"
+  },
+  {
+   "model": "MimecastRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": "1x"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for MimecastRequest\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value='1x', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "MimecastRequest",
+   "input": {
+    "time_range": "0d"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "2 validation errors for MimecastRequest\ncustomer_code\n  Field required [type=missing, input_value={'time_range': '0d'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value='0d', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "MimecastRequest",
+   "input": {
+    "customer_code": "c",
+    "time_range": null,
+    "integration_name": null
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for MimecastRequest\nintegration_name\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+   }
+  },
+  {
+   "model": "MimecastTTPURLSRequest",
+   "input": {
+    "ApplicationID": "a",
+    "ApplicationKey": "b",
+    "AccessKey": "c",
+    "SecretKey": "c2VjcmV0",
+    "EmailAddress": "e@x"
+   },
+   "json": "{\"ApplicationID\":\"a\",\"ApplicationKey\":\"b\",\"AccessKey\":\"c\",\"SecretKey\":\"c2VjcmV0\",\"EmailAddress\":\"e@x\",\"BaseURL\":null,\"time_range\":\"15m\",\"pagination_token\":null,\"lower_bound\":null,\"upper_bound\":null}"
+  },
+  {
+   "model": "MimecastTTPURLSRequest",
+   "input": {
+    "ApplicationID": "a",
+    "ApplicationKey": "b",
+    "AccessKey": "c",
+    "SecretKey": "c2VjcmV0",
+    "EmailAddress": "e@x",
+    "time_range": "1h"
+   },
+   "json": "{\"ApplicationID\":\"a\",\"ApplicationKey\":\"b\",\"AccessKey\":\"c\",\"SecretKey\":\"c2VjcmV0\",\"EmailAddress\":\"e@x\",\"BaseURL\":null,\"time_range\":\"1h\",\"pagination_token\":null,\"lower_bound\":\"2026-10-17T09:20:30.123Z\",\"upper_bound\":\"2026-10-17T10:20:30.123Z\"}"
+  },
+  {
+   "model": "MimecastTTPURLSRequest",
+   "input": {
+    "ApplicationID": "a",
+    "ApplicationKey": "b",
+    "AccessKey": "c",
+    "SecretKey": "c2VjcmV0",
+    "EmailAddress": "e@x",
+    "time_range": "1x"
+   },
+   "error": {
+    "class": "UnboundLocalError",
+    "text": "cannot access local variable 'lower_bound' where it is not associated with a value"
+   }
+  },
+  {
+   "model": "MimecastTTPURLSRequest",
+   "input": {
+    "ApplicationID": "a",
+    "ApplicationKey": "b",
+    "AccessKey": "c",
+    "SecretKey": "c2VjcmV0",
+    "EmailAddress": "e@x",
+    "time_range": "01h"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for MimecastTTPURLSRequest\ntime_range\n  String should match pattern '^[1-9][0-9]*[mhdw]$' [type=string_pattern_mismatch, input_value='01h', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+   }
+  },
+  {
+   "model": "MimecastTTPURLSRequest",
+   "input": {
+    "ApplicationID": "a",
+    "ApplicationKey": "b",
+    "AccessKey": "c",
+    "SecretKey": "abc",
+    "EmailAddress": "e@x"
+   },
+   "error": {
+    "class": "Error",
+    "text": "Incorrect padding"
+   }
+  },
+  {
+   "model": "MimecastTTPURLSRequest",
+   "input": {
+    "ApplicationID": "a",
+    "ApplicationKey": "b",
+    "AccessKey": "c",
+    "SecretKey": "abcde",
+    "EmailAddress": "e@x"
+   },
+   "error": {
+    "class": "Error",
+    "text": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+   }
+  },
+  {
+   "model": "MimecastTTPURLSRequest",
+   "input": {
+    "ApplicationID": "a",
+    "ApplicationKey": "b",
+    "AccessKey": "c",
+    "SecretKey": "c2Vj cmV0!",
+    "EmailAddress": "e@x"
+   },
+   "json": "{\"ApplicationID\":\"a\",\"ApplicationKey\":\"b\",\"AccessKey\":\"c\",\"SecretKey\":\"c2Vj cmV0!\",\"EmailAddress\":\"e@x\",\"BaseURL\":null,\"time_range\":\"15m\",\"pagination_token\":null,\"lower_bound\":null,\"upper_bound\":null}"
+  },
+  {
+   "model": "MimecastTTPURLSRequest",
+   "input": {
+    "ApplicationID": "a",
+    "ApplicationKey": "b",
+    "AccessKey": "c",
+    "SecretKey": null,
+    "EmailAddress": "e@x"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "1 validation error for MimecastTTPURLSRequest\nSecretKey\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_type"
+   }
+  },
+  {
+   "model": "MimecastTTPURLSRequest",
+   "input": {
+    "ApplicationID": "a"
+   },
+   "error": {
+    "class": "ValidationError",
+    "text": "4 validation errors for MimecastTTPURLSRequest\nApplicationKey\n  Field required [type=missing, input_value={'ApplicationID': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nAccessKey\n  Field required [type=missing, input_value={'ApplicationID': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nSecretKey\n  Field required [type=missing, input_value={'ApplicationID': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nEmailAddress\n  Field required [type=missing, input_value={'ApplicationID': 'a'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  }
+ ],
+ "b64decode": [
+  {
+   "input": "",
+   "hex": ""
+  },
+  {
+   "input": "YWJj",
+   "hex": "616263"
+  },
+  {
+   "input": "YWJjZA==",
+   "hex": "61626364"
+  },
+  {
+   "input": "YWJjZA",
+   "error": {
+    "class": "Error",
+    "text": "Incorrect padding"
+   }
+  },
+  {
+   "input": "YW Jj!",
+   "hex": "616263"
+  },
+  {
+   "input": "abc",
+   "error": {
+    "class": "Error",
+    "text": "Incorrect padding"
+   }
+  },
+  {
+   "input": "abcde",
+   "error": {
+    "class": "Error",
+    "text": "Invalid base64-encoded string: number of data characters (5) cannot be 1 more than a multiple of 4"
+   }
+  },
+  {
+   "input": "a===",
+   "error": {
+    "class": "Error",
+    "text": "Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4"
+   }
+  },
+  {
+   "input": "====",
+   "hex": ""
+  },
+  {
+   "input": "YQ==YQ==",
+   "hex": "61"
+  },
+  {
+   "input": "é",
+   "error": {
+    "class": "ValueError",
+    "text": "string argument should contain only ASCII characters"
+   }
+  },
+  {
+   "input": "c2VjcmV0LWtleQ==",
+   "hex": "7365637265742d6b6579"
+  },
+  {
+   "input": "-_-_",
+   "hex": ""
+  },
+  {
+   "input": "YW\nJj",
+   "hex": "616263"
+  }
+ ],
+ "http_urls": [
+  {
+   "input": "https://us-api.mimecast.com",
+   "ok": true
+  },
+  {
+   "input": "http://127.0.0.1:8080/x?y=1",
+   "ok": true
+  },
+  {
+   "input": "HTTPS://EXAMPLE.COM",
+   "ok": true
+  },
+  {
+   "input": "ftp://example.com",
+   "ok": false
+  },
+  {
+   "input": "not a url",
+   "ok": false
+  },
+  {
+   "input": "http://",
+   "ok": false
+  },
+  {
+   "input": "https://",
+   "ok": false
+  },
+  {
+   "input": "//example.com",
+   "ok": false
+  },
+  {
+   "input": "https:example.com",
+   "ok": true
+  },
+  {
+   "input": "mailto:a@example.com",
+   "ok": false
+  },
+  {
+   "input": "https://[::1]:443/",
+   "ok": true
+  },
+  {
+   "input": "https://exa mple.com",
+   "ok": false
+  },
+  {
+   "input": "https://e.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "ok": true
+  },
+  {
+   "input": "https://e.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "ok": false
+  },
+  {
+   "input": "https://e.com/éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+   "ok": false
+  },
+  {
+   "input": "https://e.com/éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+   "ok": true
+  },
+  {
+   "input": "https://e.com/%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9",
+   "ok": false
+  },
+  {
+   "input": "",
+   "ok": false
+  }
+ ]
+}

@@ -1,0 +1,30 @@
+[package]
+name = "copilot-incidents"
+description = "Incident management (/api/incidents/*): alerts, cases, comments, tags, IoCs, case tasks and timeline"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-sla = { workspace = true }
+copilot-objectstore = { workspace = true }
+copilot-upstream = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+http = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

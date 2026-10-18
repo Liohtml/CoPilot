@@ -1,0 +1,36 @@
+# Roll back: the Python backend serves CoPilot again, in the Rust backend's place.
+#
+#   docker compose rm -sf copilot-backend
+#   docker compose -f docker-compose.yml -f docker-compose.legacy.yml up -d
+#
+# copilot-backend-legacy (the `legacy` profile's Python backend, started without
+# --profile here) takes host port 5000 and the network name copilot-backend, so
+# the frontends' nginx and every caller reach it; APScheduler runs the schedule
+# again. The Rust backend and its init step are not started. Keep this file on
+# every later `docker compose` command until you return to the Rust backend:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.legacy.yml rm -sf copilot-backend-legacy
+#   docker compose up -d
+#
+# The database must be one the Python release understands: the Rust backend
+# writes Alembic's head into alembic_version, and a schema change it applied
+# after that head is not undone (docs/architecture/DEPLOYMENT.md, "Rolling back").
+services:
+    copilot-backend:
+        # A profile nobody activates: the service is defined but not started.
+        profiles: ["rolled-back"]
+
+    copilot-backend-init:
+        profiles: ["rolled-back"]
+
+    copilot-backend-legacy:
+        profiles: !reset []
+        ports:
+            - "5000:5000"
+        networks:
+            default:
+                aliases:
+                    - copilot-backend
+        environment:
+            # No Rust backend runs: APScheduler owns the schedule.
+            - COPILOT_PY_SCHEDULER=true

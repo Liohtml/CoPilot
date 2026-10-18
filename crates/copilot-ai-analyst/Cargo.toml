@@ -1,0 +1,24 @@
+[package]
+name = "copilot-ai-analyst"
+description = "AI analyst write-back, review, replay and MemPalace-lesson API (/api/ai_analyst)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-web = { workspace = true }
+copilot-talon = { workspace = true }
+copilot-scheduler = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+
+[lints]
+workspace = true

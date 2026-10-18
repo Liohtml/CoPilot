@@ -1,0 +1,3698 @@
+{
+ "bodies": [
+  {
+   "model": "feedback",
+   "input": {
+    "verdict": "TRUE_POSITIVE"
+   },
+   "dump": "{\"verdict\":\"TRUE_POSITIVE\",\"reason\":null,\"note\":null,\"suppress\":true,\"suppress_days\":30}"
+  },
+  {
+   "model": "feedback",
+   "input": {
+    "verdict": "FALSE_POSITIVE",
+    "reason": "EXPECTED_ACTIVITY",
+    "note": "é",
+    "suppress": "off",
+    "suppress_days": "7"
+   },
+   "dump": "{\"verdict\":\"FALSE_POSITIVE\",\"reason\":\"EXPECTED_ACTIVITY\",\"note\":\"é\",\"suppress\":false,\"suppress_days\":7}"
+  },
+  {
+   "model": "feedback",
+   "input": {
+    "verdict": "FALSE_POSITIVE\n"
+   },
+   "errors": [
+    [
+     "string_pattern_mismatch",
+     [
+      "verdict"
+     ],
+     "String should match pattern '^(TRUE_POSITIVE|FALSE_POSITIVE)$'"
+    ]
+   ]
+  },
+  {
+   "model": "feedback",
+   "input": {
+    "verdict": "false_positive"
+   },
+   "errors": [
+    [
+     "string_pattern_mismatch",
+     [
+      "verdict"
+     ],
+     "String should match pattern '^(TRUE_POSITIVE|FALSE_POSITIVE)$'"
+    ]
+   ]
+  },
+  {
+   "model": "feedback",
+   "input": {
+    "verdict": "TRUE_POSITIVE",
+    "reason": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+    "note": null,
+    "suppress": null,
+    "suppress_days": 0
+   },
+   "errors": [
+    [
+     "string_too_long",
+     [
+      "reason"
+     ],
+     "String should have at most 50 characters"
+    ],
+    [
+     "bool_type",
+     [
+      "suppress"
+     ],
+     "Input should be a valid boolean"
+    ],
+    [
+     "greater_than_equal",
+     [
+      "suppress_days"
+     ],
+     "Input should be greater than or equal to 1"
+    ]
+   ]
+  },
+  {
+   "model": "feedback",
+   "input": {
+    "verdict": 1,
+    "reason": 5,
+    "note": [
+     "x"
+    ],
+    "suppress": 2,
+    "suppress_days": 365.0
+   },
+   "errors": [
+    [
+     "string_type",
+     [
+      "verdict"
+     ],
+     "Input should be a valid string"
+    ],
+    [
+     "string_type",
+     [
+      "reason"
+     ],
+     "Input should be a valid string"
+    ],
+    [
+     "string_type",
+     [
+      "note"
+     ],
+     "Input should be a valid string"
+    ],
+    [
+     "bool_parsing",
+     [
+      "suppress"
+     ],
+     "Input should be a valid boolean, unable to interpret input"
+    ]
+   ]
+  },
+  {
+   "model": "feedback",
+   "input": {
+    "verdict": "TRUE_POSITIVE",
+    "suppress_days": 7.5,
+    "suppress": 1
+   },
+   "errors": [
+    [
+     "int_from_float",
+     [
+      "suppress_days"
+     ],
+     "Input should be a valid integer, got a number with a fractional part"
+    ]
+   ]
+  },
+  {
+   "model": "feedback",
+   "input": {
+    "verdict": "TRUE_POSITIVE",
+    "suppress_days": "1_0",
+    "suppress": "YES"
+   },
+   "dump": "{\"verdict\":\"TRUE_POSITIVE\",\"reason\":null,\"note\":null,\"suppress\":true,\"suppress_days\":10}"
+  },
+  {
+   "model": "feedback",
+   "input": {
+    "verdict": "TRUE_POSITIVE",
+    "suppress_days": true,
+    "suppress": " true"
+   },
+   "errors": [
+    [
+     "bool_parsing",
+     [
+      "suppress"
+     ],
+     "Input should be a valid boolean, unable to interpret input"
+    ]
+   ]
+  },
+  {
+   "model": "feedback",
+   "input": {},
+   "errors": [
+    [
+     "missing",
+     [
+      "verdict"
+     ],
+     "Field required"
+    ]
+   ]
+  },
+  {
+   "model": "suppression",
+   "input": {
+    "entity_key": "k",
+    "rule_ids": [
+     "a"
+    ]
+   },
+   "dump": "{\"entity_key\":\"k\",\"rule_ids\":[\"a\"],\"days\":30,\"reason\":null}"
+  },
+  {
+   "model": "suppression",
+   "input": {
+    "entity_key": "",
+    "rule_ids": []
+   },
+   "errors": [
+    [
+     "string_too_short",
+     [
+      "entity_key"
+     ],
+     "String should have at least 1 character"
+    ],
+    [
+     "too_short",
+     [
+      "rule_ids"
+     ],
+     "List should have at least 1 item after validation, not 0"
+    ]
+   ]
+  },
+  {
+   "model": "suppression",
+   "input": {
+    "entity_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "rule_ids": [
+     1,
+     null
+    ],
+    "days": 366,
+    "reason": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+   },
+   "errors": [
+    [
+     "string_too_long",
+     [
+      "entity_key"
+     ],
+     "String should have at most 512 characters"
+    ],
+    [
+     "string_type",
+     [
+      "rule_ids",
+      0
+     ],
+     "Input should be a valid string"
+    ],
+    [
+     "string_type",
+     [
+      "rule_ids",
+      1
+     ],
+     "Input should be a valid string"
+    ],
+    [
+     "less_than_equal",
+     [
+      "days"
+     ],
+     "Input should be less than or equal to 365"
+    ],
+    [
+     "string_too_long",
+     [
+      "reason"
+     ],
+     "String should have at most 500 characters"
+    ]
+   ]
+  },
+  {
+   "model": "suppression",
+   "input": {
+    "entity_key": "k",
+    "rule_ids": "a"
+   },
+   "errors": [
+    [
+     "list_type",
+     [
+      "rule_ids"
+     ],
+     "Input should be a valid list"
+    ]
+   ]
+  },
+  {
+   "model": "suppression",
+   "input": {
+    "entity_key": "k",
+    "rule_ids": {
+     "a": 1
+    },
+    "days": "30"
+   },
+   "errors": [
+    [
+     "list_type",
+     [
+      "rule_ids"
+     ],
+     "Input should be a valid list"
+    ]
+   ]
+  },
+  {
+   "model": "suppression",
+   "input": {
+    "rule_ids": [
+     "a"
+    ],
+    "days": null
+   },
+   "errors": [
+    [
+     "missing",
+     [
+      "entity_key"
+     ],
+     "Field required"
+    ],
+    [
+     "int_type",
+     [
+      "days"
+     ],
+     "Input should be a valid integer"
+    ]
+   ]
+  },
+  {
+   "model": "backtest",
+   "input": {},
+   "dump": "{\"days\":1,\"warmup_days\":0}"
+  },
+  {
+   "model": "backtest",
+   "input": {
+    "days": 2,
+    "warmup_days": "1.5"
+   },
+   "dump": "{\"days\":2.0,\"warmup_days\":1.5}"
+  },
+  {
+   "model": "backtest",
+   "input": {
+    "days": 0,
+    "warmup_days": 15
+   },
+   "errors": [
+    [
+     "greater_than",
+     [
+      "days"
+     ],
+     "Input should be greater than 0"
+    ],
+    [
+     "less_than_equal",
+     [
+      "warmup_days"
+     ],
+     "Input should be less than or equal to 14"
+    ]
+   ]
+  },
+  {
+   "model": "backtest",
+   "input": {
+    "days": "nan",
+    "warmup_days": "-inf"
+   },
+   "errors": [
+    [
+     "less_than_equal",
+     [
+      "days"
+     ],
+     "Input should be less than or equal to 7"
+    ],
+    [
+     "greater_than_equal",
+     [
+      "warmup_days"
+     ],
+     "Input should be greater than or equal to 0"
+    ]
+   ]
+  },
+  {
+   "model": "backtest",
+   "input": {
+    "days": 7.0000001,
+    "warmup_days": 14
+   },
+   "errors": [
+    [
+     "less_than_equal",
+     [
+      "days"
+     ],
+     "Input should be less than or equal to 7"
+    ]
+   ]
+  },
+  {
+   "model": "backtest",
+   "input": {
+    "days": true,
+    "rules": [
+     "r1"
+    ],
+    "filter": "f"
+   },
+   "dump": "{\"days\":1.0,\"warmup_days\":0,\"rules\":[\"r1\"],\"filter\":\"f\"}"
+  },
+  {
+   "model": "backtest",
+   "input": {
+    "rules": "r1",
+    "filter": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "errors": [
+    [
+     "list_type",
+     [
+      "rules"
+     ],
+     "Input should be a valid list"
+    ],
+    [
+     "string_too_long",
+     [
+      "filter"
+     ],
+     "String should have at most 1000 characters"
+    ]
+   ]
+  },
+  {
+   "model": "backtest",
+   "input": {
+    "rules": null,
+    "filter": null,
+    "days": null
+   },
+   "errors": [
+    [
+     "float_type",
+     [
+      "days"
+     ],
+     "Input should be a valid number"
+    ]
+   ]
+  },
+  {
+   "model": "backtest",
+   "input": {
+    "days": "1e0",
+    "warmup_days": " 2 "
+   },
+   "dump": "{\"days\":1.0,\"warmup_days\":2.0}"
+  },
+  {
+   "model": "score",
+   "input": {
+    "score": 0
+   },
+   "dump": "{\"score\":0.0}"
+  },
+  {
+   "model": "score",
+   "input": {
+    "score": 100
+   },
+   "dump": "{\"score\":100.0}"
+  },
+  {
+   "model": "score",
+   "input": {
+    "score": -0.0
+   },
+   "dump": "{\"score\":-0.0}"
+  },
+  {
+   "model": "score",
+   "input": {
+    "score": 100.5
+   },
+   "errors": [
+    [
+     "less_than_equal",
+     [
+      "score"
+     ],
+     "Input should be less than or equal to 100"
+    ]
+   ]
+  },
+  {
+   "model": "score",
+   "input": {
+    "score": "inf"
+   },
+   "errors": [
+    [
+     "less_than_equal",
+     [
+      "score"
+     ],
+     "Input should be less than or equal to 100"
+    ]
+   ]
+  },
+  {
+   "model": "score",
+   "input": {
+    "score": null
+   },
+   "errors": [
+    [
+     "float_type",
+     [
+      "score"
+     ],
+     "Input should be a valid number"
+    ]
+   ]
+  },
+  {
+   "model": "score",
+   "input": {},
+   "errors": [
+    [
+     "missing",
+     [
+      "score"
+     ],
+     "Field required"
+    ]
+   ]
+  },
+  {
+   "model": "score",
+   "input": {
+    "score": "1_5"
+   },
+   "dump": "{\"score\":15.0}"
+  },
+  {
+   "model": "merge",
+   "input": {
+    "into": "a"
+   },
+   "dump": "{\"into\":\"a\"}"
+  },
+  {
+   "model": "merge",
+   "input": {
+    "into": ""
+   },
+   "errors": [
+    [
+     "string_too_short",
+     [
+      "into"
+     ],
+     "String should have at least 1 character"
+    ]
+   ]
+  },
+  {
+   "model": "merge",
+   "input": {
+    "into": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "errors": [
+    [
+     "string_too_long",
+     [
+      "into"
+     ],
+     "String should have at most 64 characters"
+    ]
+   ]
+  },
+  {
+   "model": "merge",
+   "input": {
+    "into": 5
+   },
+   "errors": [
+    [
+     "string_type",
+     [
+      "into"
+     ],
+     "Input should be a valid string"
+    ]
+   ]
+  },
+  {
+   "model": "merge",
+   "input": {},
+   "errors": [
+    [
+     "missing",
+     [
+      "into"
+     ],
+     "Field required"
+    ]
+   ]
+  },
+  {
+   "model": "rule_setting",
+   "input": {},
+   "dump": "{}"
+  },
+  {
+   "model": "rule_setting",
+   "input": {
+    "enabled": null
+   },
+   "dump": "{\"enabled\":null}"
+  },
+  {
+   "model": "rule_setting",
+   "input": {
+    "score": null
+   },
+   "dump": "{\"score\":null}"
+  },
+  {
+   "model": "rule_setting",
+   "input": {
+    "enabled": "off",
+    "score": "12.5"
+   },
+   "dump": "{\"enabled\":false,\"score\":12.5}"
+  },
+  {
+   "model": "rule_setting",
+   "input": {
+    "enabled": "maybe",
+    "score": 101
+   },
+   "errors": [
+    [
+     "bool_parsing",
+     [
+      "enabled"
+     ],
+     "Input should be a valid boolean, unable to interpret input"
+    ],
+    [
+     "less_than_equal",
+     [
+      "score"
+     ],
+     "Input should be less than or equal to 100"
+    ]
+   ]
+  },
+  {
+   "model": "rule_setting",
+   "input": {
+    "enabled": 0,
+    "score": true
+   },
+   "dump": "{\"enabled\":false,\"score\":1.0}"
+  },
+  {
+   "model": "rule_setting",
+   "input": {
+    "other": 1
+   },
+   "dump": "{}"
+  },
+  {
+   "model": "alert_threshold",
+   "input": {
+    "alert_threshold": 20
+   },
+   "dump": "{\"alert_threshold\":20.0}"
+  },
+  {
+   "model": "alert_threshold",
+   "input": {
+    "alert_threshold": 19.99
+   },
+   "errors": [
+    [
+     "greater_than_equal",
+     [
+      "alert_threshold"
+     ],
+     "Input should be greater than or equal to 20"
+    ]
+   ]
+  },
+  {
+   "model": "alert_threshold",
+   "input": {
+    "alert_threshold": "1000"
+   },
+   "dump": "{\"alert_threshold\":1000.0}"
+  },
+  {
+   "model": "alert_threshold",
+   "input": {
+    "alert_threshold": true
+   },
+   "errors": [
+    [
+     "greater_than_equal",
+     [
+      "alert_threshold"
+     ],
+     "Input should be greater than or equal to 20"
+    ]
+   ]
+  },
+  {
+   "model": "alert_threshold",
+   "input": {},
+   "errors": [
+    [
+     "missing",
+     [
+      "alert_threshold"
+     ],
+     "Field required"
+    ]
+   ]
+  },
+  {
+   "model": "mode",
+   "input": {
+    "mode": "active"
+   },
+   "dump": "{\"mode\":\"active\"}"
+  },
+  {
+   "model": "mode",
+   "input": {
+    "mode": "learning"
+   },
+   "dump": "{\"mode\":\"learning\"}"
+  },
+  {
+   "model": "mode",
+   "input": {
+    "mode": "LEARNING"
+   },
+   "errors": [
+    [
+     "literal_error",
+     [
+      "mode"
+     ],
+     "Input should be 'active' or 'learning'"
+    ]
+   ]
+  },
+  {
+   "model": "mode",
+   "input": {
+    "mode": null
+   },
+   "errors": [
+    [
+     "literal_error",
+     [
+      "mode"
+     ],
+     "Input should be 'active' or 'learning'"
+    ]
+   ]
+  },
+  {
+   "model": "mode",
+   "input": {},
+   "errors": [
+    [
+     "missing",
+     [
+      "mode"
+     ],
+     "Field required"
+    ]
+   ]
+  },
+  {
+   "model": "provision",
+   "input": {},
+   "dump": "{\"bootstrap_days\":14,\"deploy_wazuh_rules\":false}"
+  },
+  {
+   "model": "provision",
+   "input": {
+    "bootstrap_days": 0,
+    "deploy_wazuh_rules": "true"
+   },
+   "dump": "{\"bootstrap_days\":0,\"deploy_wazuh_rules\":true}"
+  },
+  {
+   "model": "provision",
+   "input": {
+    "bootstrap_days": 31
+   },
+   "errors": [
+    [
+     "less_than_equal",
+     [
+      "bootstrap_days"
+     ],
+     "Input should be less than or equal to 30"
+    ]
+   ]
+  },
+  {
+   "model": "provision",
+   "input": {
+    "bootstrap_days": "-1",
+    "deploy_wazuh_rules": "nope"
+   },
+   "errors": [
+    [
+     "greater_than_equal",
+     [
+      "bootstrap_days"
+     ],
+     "Input should be greater than or equal to 0"
+    ],
+    [
+     "bool_parsing",
+     [
+      "deploy_wazuh_rules"
+     ],
+     "Input should be a valid boolean, unable to interpret input"
+    ]
+   ]
+  },
+  {
+   "model": "provision",
+   "input": {
+    "bootstrap_days": 1.5
+   },
+   "errors": [
+    [
+     "int_from_float",
+     [
+      "bootstrap_days"
+     ],
+     "Input should be a valid integer, got a number with a fractional part"
+    ]
+   ]
+  }
+ ],
+ "queries": [
+  {
+   "type": "float_ge0",
+   "input": "0",
+   "value": "0.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "1",
+   "value": "1.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": " 1 ",
+   "value": "1.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "1.0",
+   "value": "1.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "1.5",
+   "value": "1.5"
+  },
+  {
+   "type": "float_ge0",
+   "input": "-0",
+   "value": "-0.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "1_000",
+   "value": "1000.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "1__0",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "_1",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "+2",
+   "value": "2.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "1e3",
+   "value": "1000.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "1E-5",
+   "value": "1e-05"
+  },
+  {
+   "type": "float_ge0",
+   "input": ".5",
+   "value": "0.5"
+  },
+  {
+   "type": "float_ge0",
+   "input": "5.",
+   "value": "5.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "inf",
+   "value": "inf"
+  },
+  {
+   "type": "float_ge0",
+   "input": "-Infinity",
+   "error": "greater_than_equal"
+  },
+  {
+   "type": "float_ge0",
+   "input": "nan",
+   "error": "greater_than_equal"
+  },
+  {
+   "type": "float_ge0",
+   "input": "NaN",
+   "error": "greater_than_equal"
+  },
+  {
+   "type": "float_ge0",
+   "input": "0x10",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "500",
+   "value": "500.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "501",
+   "value": "501.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "100",
+   "value": "100.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "101",
+   "value": "101.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "99999999999999999999999",
+   "value": "1e+23"
+  },
+  {
+   "type": "float_ge0",
+   "input": "",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": " ",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "true",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "True",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": " true",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "yes",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "On",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "off",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "f",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "N",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "2",
+   "value": "2.0"
+  },
+  {
+   "type": "float_ge0",
+   "input": "1h",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "6h",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "1h\n",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "open",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "closed",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "OPEN",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "j",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "ja",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "é",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "float_parsing"
+  },
+  {
+   "type": "float_ge0",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "float_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "0",
+   "error": "greater_than_equal"
+  },
+  {
+   "type": "int_ge1",
+   "input": "1",
+   "value": "1"
+  },
+  {
+   "type": "int_ge1",
+   "input": " 1 ",
+   "value": "1"
+  },
+  {
+   "type": "int_ge1",
+   "input": "1.0",
+   "value": "1"
+  },
+  {
+   "type": "int_ge1",
+   "input": "1.5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "-0",
+   "error": "greater_than_equal"
+  },
+  {
+   "type": "int_ge1",
+   "input": "1_000",
+   "value": "1000"
+  },
+  {
+   "type": "int_ge1",
+   "input": "1__0",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "_1",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "+2",
+   "value": "2"
+  },
+  {
+   "type": "int_ge1",
+   "input": "1e3",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "1E-5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": ".5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "5.",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "inf",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "-Infinity",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "nan",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "NaN",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "0x10",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "500",
+   "value": "500"
+  },
+  {
+   "type": "int_ge1",
+   "input": "501",
+   "value": "501"
+  },
+  {
+   "type": "int_ge1",
+   "input": "100",
+   "value": "100"
+  },
+  {
+   "type": "int_ge1",
+   "input": "101",
+   "value": "101"
+  },
+  {
+   "type": "int_ge1",
+   "input": "99999999999999999999999",
+   "value": "99999999999999999999999"
+  },
+  {
+   "type": "int_ge1",
+   "input": "",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": " ",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "true",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "True",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": " true",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "yes",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "On",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "off",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "f",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "N",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "2",
+   "value": "2"
+  },
+  {
+   "type": "int_ge1",
+   "input": "1h",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "6h",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "1h\n",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "open",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "closed",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "OPEN",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "j",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "ja",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "é",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_ge1",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "0",
+   "error": "greater_than_equal"
+  },
+  {
+   "type": "int_1_500",
+   "input": "1",
+   "value": "1"
+  },
+  {
+   "type": "int_1_500",
+   "input": " 1 ",
+   "value": "1"
+  },
+  {
+   "type": "int_1_500",
+   "input": "1.0",
+   "value": "1"
+  },
+  {
+   "type": "int_1_500",
+   "input": "1.5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "-0",
+   "error": "greater_than_equal"
+  },
+  {
+   "type": "int_1_500",
+   "input": "1_000",
+   "error": "less_than_equal"
+  },
+  {
+   "type": "int_1_500",
+   "input": "1__0",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "_1",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "+2",
+   "value": "2"
+  },
+  {
+   "type": "int_1_500",
+   "input": "1e3",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "1E-5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": ".5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "5.",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "inf",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "-Infinity",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "nan",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "NaN",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "0x10",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "500",
+   "value": "500"
+  },
+  {
+   "type": "int_1_500",
+   "input": "501",
+   "error": "less_than_equal"
+  },
+  {
+   "type": "int_1_500",
+   "input": "100",
+   "value": "100"
+  },
+  {
+   "type": "int_1_500",
+   "input": "101",
+   "value": "101"
+  },
+  {
+   "type": "int_1_500",
+   "input": "99999999999999999999999",
+   "error": "less_than_equal"
+  },
+  {
+   "type": "int_1_500",
+   "input": "",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": " ",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "true",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "True",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": " true",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "yes",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "On",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "off",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "f",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "N",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "2",
+   "value": "2"
+  },
+  {
+   "type": "int_1_500",
+   "input": "1h",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "6h",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "1h\n",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "open",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "closed",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "OPEN",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "j",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "ja",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "é",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_500",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "0",
+   "error": "greater_than_equal"
+  },
+  {
+   "type": "int_1_100",
+   "input": "1",
+   "value": "1"
+  },
+  {
+   "type": "int_1_100",
+   "input": " 1 ",
+   "value": "1"
+  },
+  {
+   "type": "int_1_100",
+   "input": "1.0",
+   "value": "1"
+  },
+  {
+   "type": "int_1_100",
+   "input": "1.5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "-0",
+   "error": "greater_than_equal"
+  },
+  {
+   "type": "int_1_100",
+   "input": "1_000",
+   "error": "less_than_equal"
+  },
+  {
+   "type": "int_1_100",
+   "input": "1__0",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "_1",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "+2",
+   "value": "2"
+  },
+  {
+   "type": "int_1_100",
+   "input": "1e3",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "1E-5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": ".5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "5.",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "inf",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "-Infinity",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "nan",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "NaN",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "0x10",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "500",
+   "error": "less_than_equal"
+  },
+  {
+   "type": "int_1_100",
+   "input": "501",
+   "error": "less_than_equal"
+  },
+  {
+   "type": "int_1_100",
+   "input": "100",
+   "value": "100"
+  },
+  {
+   "type": "int_1_100",
+   "input": "101",
+   "error": "less_than_equal"
+  },
+  {
+   "type": "int_1_100",
+   "input": "99999999999999999999999",
+   "error": "less_than_equal"
+  },
+  {
+   "type": "int_1_100",
+   "input": "",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": " ",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "true",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "True",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": " true",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "yes",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "On",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "off",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "f",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "N",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "2",
+   "value": "2"
+  },
+  {
+   "type": "int_1_100",
+   "input": "1h",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "6h",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "1h\n",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "open",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "closed",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "OPEN",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "j",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "ja",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "é",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int_1_100",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "0",
+   "value": "0"
+  },
+  {
+   "type": "int",
+   "input": "1",
+   "value": "1"
+  },
+  {
+   "type": "int",
+   "input": " 1 ",
+   "value": "1"
+  },
+  {
+   "type": "int",
+   "input": "1.0",
+   "value": "1"
+  },
+  {
+   "type": "int",
+   "input": "1.5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "-0",
+   "value": "0"
+  },
+  {
+   "type": "int",
+   "input": "1_000",
+   "value": "1000"
+  },
+  {
+   "type": "int",
+   "input": "1__0",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "_1",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "+2",
+   "value": "2"
+  },
+  {
+   "type": "int",
+   "input": "1e3",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "1E-5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": ".5",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "5.",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "inf",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "-Infinity",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "nan",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "NaN",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "0x10",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "500",
+   "value": "500"
+  },
+  {
+   "type": "int",
+   "input": "501",
+   "value": "501"
+  },
+  {
+   "type": "int",
+   "input": "100",
+   "value": "100"
+  },
+  {
+   "type": "int",
+   "input": "101",
+   "value": "101"
+  },
+  {
+   "type": "int",
+   "input": "99999999999999999999999",
+   "value": "99999999999999999999999"
+  },
+  {
+   "type": "int",
+   "input": "",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": " ",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "true",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "True",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": " true",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "yes",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "On",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "off",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "f",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "N",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "2",
+   "value": "2"
+  },
+  {
+   "type": "int",
+   "input": "1h",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "6h",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "1h\n",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "open",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "closed",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "OPEN",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "j",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "ja",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "é",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "int_parsing"
+  },
+  {
+   "type": "int",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "int_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "0",
+   "value": false
+  },
+  {
+   "type": "bool",
+   "input": "1",
+   "value": true
+  },
+  {
+   "type": "bool",
+   "input": " 1 ",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "1.0",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "1.5",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "-0",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "1_000",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "1__0",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "_1",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "+2",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "1e3",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "1E-5",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": ".5",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "5.",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "inf",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "-Infinity",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "nan",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "NaN",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "0x10",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "500",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "501",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "100",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "101",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "99999999999999999999999",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": " ",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "true",
+   "value": true
+  },
+  {
+   "type": "bool",
+   "input": "True",
+   "value": true
+  },
+  {
+   "type": "bool",
+   "input": " true",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "yes",
+   "value": true
+  },
+  {
+   "type": "bool",
+   "input": "On",
+   "value": true
+  },
+  {
+   "type": "bool",
+   "input": "off",
+   "value": false
+  },
+  {
+   "type": "bool",
+   "input": "f",
+   "value": false
+  },
+  {
+   "type": "bool",
+   "input": "N",
+   "value": false
+  },
+  {
+   "type": "bool",
+   "input": "2",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "1h",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "6h",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "1h\n",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "open",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "closed",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "OPEN",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "j",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "ja",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "é",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "bool",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "bool_parsing"
+  },
+  {
+   "type": "str_1_512",
+   "input": "0",
+   "value": "0"
+  },
+  {
+   "type": "str_1_512",
+   "input": "1",
+   "value": "1"
+  },
+  {
+   "type": "str_1_512",
+   "input": " 1 ",
+   "value": " 1 "
+  },
+  {
+   "type": "str_1_512",
+   "input": "1.0",
+   "value": "1.0"
+  },
+  {
+   "type": "str_1_512",
+   "input": "1.5",
+   "value": "1.5"
+  },
+  {
+   "type": "str_1_512",
+   "input": "-0",
+   "value": "-0"
+  },
+  {
+   "type": "str_1_512",
+   "input": "1_000",
+   "value": "1_000"
+  },
+  {
+   "type": "str_1_512",
+   "input": "1__0",
+   "value": "1__0"
+  },
+  {
+   "type": "str_1_512",
+   "input": "_1",
+   "value": "_1"
+  },
+  {
+   "type": "str_1_512",
+   "input": "+2",
+   "value": "+2"
+  },
+  {
+   "type": "str_1_512",
+   "input": "1e3",
+   "value": "1e3"
+  },
+  {
+   "type": "str_1_512",
+   "input": "1E-5",
+   "value": "1E-5"
+  },
+  {
+   "type": "str_1_512",
+   "input": ".5",
+   "value": ".5"
+  },
+  {
+   "type": "str_1_512",
+   "input": "5.",
+   "value": "5."
+  },
+  {
+   "type": "str_1_512",
+   "input": "inf",
+   "value": "inf"
+  },
+  {
+   "type": "str_1_512",
+   "input": "-Infinity",
+   "value": "-Infinity"
+  },
+  {
+   "type": "str_1_512",
+   "input": "nan",
+   "value": "nan"
+  },
+  {
+   "type": "str_1_512",
+   "input": "NaN",
+   "value": "NaN"
+  },
+  {
+   "type": "str_1_512",
+   "input": "0x10",
+   "value": "0x10"
+  },
+  {
+   "type": "str_1_512",
+   "input": "500",
+   "value": "500"
+  },
+  {
+   "type": "str_1_512",
+   "input": "501",
+   "value": "501"
+  },
+  {
+   "type": "str_1_512",
+   "input": "100",
+   "value": "100"
+  },
+  {
+   "type": "str_1_512",
+   "input": "101",
+   "value": "101"
+  },
+  {
+   "type": "str_1_512",
+   "input": "99999999999999999999999",
+   "value": "99999999999999999999999"
+  },
+  {
+   "type": "str_1_512",
+   "input": "",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_1_512",
+   "input": " ",
+   "value": " "
+  },
+  {
+   "type": "str_1_512",
+   "input": "true",
+   "value": "true"
+  },
+  {
+   "type": "str_1_512",
+   "input": "True",
+   "value": "True"
+  },
+  {
+   "type": "str_1_512",
+   "input": " true",
+   "value": " true"
+  },
+  {
+   "type": "str_1_512",
+   "input": "yes",
+   "value": "yes"
+  },
+  {
+   "type": "str_1_512",
+   "input": "On",
+   "value": "On"
+  },
+  {
+   "type": "str_1_512",
+   "input": "off",
+   "value": "off"
+  },
+  {
+   "type": "str_1_512",
+   "input": "f",
+   "value": "f"
+  },
+  {
+   "type": "str_1_512",
+   "input": "N",
+   "value": "N"
+  },
+  {
+   "type": "str_1_512",
+   "input": "2",
+   "value": "2"
+  },
+  {
+   "type": "str_1_512",
+   "input": "1h",
+   "value": "1h"
+  },
+  {
+   "type": "str_1_512",
+   "input": "6h",
+   "value": "6h"
+  },
+  {
+   "type": "str_1_512",
+   "input": "1h\n",
+   "value": "1h\n"
+  },
+  {
+   "type": "str_1_512",
+   "input": "open",
+   "value": "open"
+  },
+  {
+   "type": "str_1_512",
+   "input": "closed",
+   "value": "closed"
+  },
+  {
+   "type": "str_1_512",
+   "input": "OPEN",
+   "value": "OPEN"
+  },
+  {
+   "type": "str_1_512",
+   "input": "j",
+   "value": "j"
+  },
+  {
+   "type": "str_1_512",
+   "input": "ja",
+   "value": "ja"
+  },
+  {
+   "type": "str_1_512",
+   "input": "é",
+   "value": "é"
+  },
+  {
+   "type": "str_1_512",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "type": "str_1_512",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "string_too_long"
+  },
+  {
+   "type": "str_2_200",
+   "input": "0",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_2_200",
+   "input": "1",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_2_200",
+   "input": " 1 ",
+   "value": " 1 "
+  },
+  {
+   "type": "str_2_200",
+   "input": "1.0",
+   "value": "1.0"
+  },
+  {
+   "type": "str_2_200",
+   "input": "1.5",
+   "value": "1.5"
+  },
+  {
+   "type": "str_2_200",
+   "input": "-0",
+   "value": "-0"
+  },
+  {
+   "type": "str_2_200",
+   "input": "1_000",
+   "value": "1_000"
+  },
+  {
+   "type": "str_2_200",
+   "input": "1__0",
+   "value": "1__0"
+  },
+  {
+   "type": "str_2_200",
+   "input": "_1",
+   "value": "_1"
+  },
+  {
+   "type": "str_2_200",
+   "input": "+2",
+   "value": "+2"
+  },
+  {
+   "type": "str_2_200",
+   "input": "1e3",
+   "value": "1e3"
+  },
+  {
+   "type": "str_2_200",
+   "input": "1E-5",
+   "value": "1E-5"
+  },
+  {
+   "type": "str_2_200",
+   "input": ".5",
+   "value": ".5"
+  },
+  {
+   "type": "str_2_200",
+   "input": "5.",
+   "value": "5."
+  },
+  {
+   "type": "str_2_200",
+   "input": "inf",
+   "value": "inf"
+  },
+  {
+   "type": "str_2_200",
+   "input": "-Infinity",
+   "value": "-Infinity"
+  },
+  {
+   "type": "str_2_200",
+   "input": "nan",
+   "value": "nan"
+  },
+  {
+   "type": "str_2_200",
+   "input": "NaN",
+   "value": "NaN"
+  },
+  {
+   "type": "str_2_200",
+   "input": "0x10",
+   "value": "0x10"
+  },
+  {
+   "type": "str_2_200",
+   "input": "500",
+   "value": "500"
+  },
+  {
+   "type": "str_2_200",
+   "input": "501",
+   "value": "501"
+  },
+  {
+   "type": "str_2_200",
+   "input": "100",
+   "value": "100"
+  },
+  {
+   "type": "str_2_200",
+   "input": "101",
+   "value": "101"
+  },
+  {
+   "type": "str_2_200",
+   "input": "99999999999999999999999",
+   "value": "99999999999999999999999"
+  },
+  {
+   "type": "str_2_200",
+   "input": "",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_2_200",
+   "input": " ",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_2_200",
+   "input": "true",
+   "value": "true"
+  },
+  {
+   "type": "str_2_200",
+   "input": "True",
+   "value": "True"
+  },
+  {
+   "type": "str_2_200",
+   "input": " true",
+   "value": " true"
+  },
+  {
+   "type": "str_2_200",
+   "input": "yes",
+   "value": "yes"
+  },
+  {
+   "type": "str_2_200",
+   "input": "On",
+   "value": "On"
+  },
+  {
+   "type": "str_2_200",
+   "input": "off",
+   "value": "off"
+  },
+  {
+   "type": "str_2_200",
+   "input": "f",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_2_200",
+   "input": "N",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_2_200",
+   "input": "2",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_2_200",
+   "input": "1h",
+   "value": "1h"
+  },
+  {
+   "type": "str_2_200",
+   "input": "6h",
+   "value": "6h"
+  },
+  {
+   "type": "str_2_200",
+   "input": "1h\n",
+   "value": "1h\n"
+  },
+  {
+   "type": "str_2_200",
+   "input": "open",
+   "value": "open"
+  },
+  {
+   "type": "str_2_200",
+   "input": "closed",
+   "value": "closed"
+  },
+  {
+   "type": "str_2_200",
+   "input": "OPEN",
+   "value": "OPEN"
+  },
+  {
+   "type": "str_2_200",
+   "input": "j",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_2_200",
+   "input": "ja",
+   "value": "ja"
+  },
+  {
+   "type": "str_2_200",
+   "input": "é",
+   "error": "string_too_short"
+  },
+  {
+   "type": "str_2_200",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "string_too_long"
+  },
+  {
+   "type": "str_2_200",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "string_too_long"
+  },
+  {
+   "type": "str_step",
+   "input": "0",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "1",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": " 1 ",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "1.0",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "1.5",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "-0",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "1_000",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "1__0",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "_1",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "+2",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "1e3",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "1E-5",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": ".5",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "5.",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "inf",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "-Infinity",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "nan",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "NaN",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "0x10",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "500",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "501",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "100",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "101",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "99999999999999999999999",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": " ",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "true",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "True",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": " true",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "yes",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "On",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "off",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "f",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "N",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "2",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "1h",
+   "value": "1h"
+  },
+  {
+   "type": "str_step",
+   "input": "6h",
+   "value": "6h"
+  },
+  {
+   "type": "str_step",
+   "input": "1h\n",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "open",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "closed",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "OPEN",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "j",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "ja",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "é",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_step",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "0",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "1",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": " 1 ",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "1.0",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "1.5",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "-0",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "1_000",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "1__0",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "_1",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "+2",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "1e3",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "1E-5",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": ".5",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "5.",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "inf",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "-Infinity",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "nan",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "NaN",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "0x10",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "500",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "501",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "100",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "101",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "99999999999999999999999",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": " ",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "true",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "True",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": " true",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "yes",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "On",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "off",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "f",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "N",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "2",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "1h",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "6h",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "1h\n",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "open",
+   "value": "open"
+  },
+  {
+   "type": "str_status",
+   "input": "closed",
+   "value": "closed"
+  },
+  {
+   "type": "str_status",
+   "input": "OPEN",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "j",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "ja",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "é",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "string_pattern_mismatch"
+  },
+  {
+   "type": "str_status",
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "error": "string_pattern_mismatch"
+  }
+ ],
+ "params": [
+  {
+   "params": [
+    [
+     "a",
+     true
+    ],
+    [
+     "b",
+     false
+    ],
+    [
+     "c",
+     0.0
+    ],
+    [
+     "d",
+     1e-05
+    ],
+    [
+     "e",
+     1e+16
+    ],
+    [
+     "f",
+     12
+    ],
+    [
+     "g",
+     "é /?&=+"
+    ]
+   ],
+   "query": "a=true&b=false&c=0.0&d=1e-05&e=1e%2B16&f=12&g=%C3%A9+%2F%3F%26%3D%2B"
+  },
+  {
+   "params": [
+    [
+     "min_risk",
+     1.0
+    ],
+    [
+     "native",
+     "false"
+    ],
+    [
+     "page",
+     1
+    ],
+    [
+     "page_size",
+     50
+    ]
+   ],
+   "query": "min_risk=1.0&native=false&page=1&page_size=50"
+  },
+  {
+   "params": [
+    [
+     "entity_key",
+     [
+      "a",
+      null,
+      true,
+      1.5
+     ]
+    ],
+    [
+     "status",
+     "open"
+    ],
+    [
+     "page_size",
+     500
+    ]
+   ],
+   "query": "entity_key=a&entity_key=&entity_key=true&entity_key=1.5&status=open&page_size=500"
+  },
+  {
+   "params": [
+    [
+     "x",
+     {
+      "k": [
+       1
+      ]
+     }
+    ],
+    [
+     "y",
+     null
+    ],
+    [
+     "z",
+     ""
+    ]
+   ],
+   "query": "x=%7B%27k%27%3A+%5B1%5D%7D&y=&z="
+  }
+ ],
+ "segments": [
+  {
+   "input": "acme",
+   "quoted": "acme"
+  },
+  {
+   "input": "windows-demo\\jdoe",
+   "quoted": "windows-demo%5Cjdoe"
+  },
+  {
+   "input": "upn:jane@contoso.com",
+   "quoted": "upn%3Ajane%40contoso.com"
+  },
+  {
+   "input": "é ü",
+   "quoted": "%C3%A9%20%C3%BC"
+  },
+  {
+   "input": "a/b",
+   "quoted": "a%2Fb"
+  },
+  {
+   "input": "..",
+   "quoted": ".."
+  },
+  {
+   "input": "~_.-",
+   "quoted": "~_.-"
+  },
+  {
+   "input": "%2F",
+   "quoted": "%252F"
+  },
+  {
+   "input": "x?#&=+",
+   "quoted": "x%3F%23%26%3D%2B"
+  }
+ ],
+ "formats": [
+  {
+   "template": "UBA FEED - {source} - {tenant}",
+   "tenant": "acme",
+   "ok": "UBA FEED - WAZUH - acme"
+  },
+  {
+   "template": "UBA FEED - {source} - {tenant}",
+   "tenant": "é'x",
+   "ok": "UBA FEED - WAZUH - é'x"
+  },
+  {
+   "template": "UBA FEED - {source} - {tenant}",
+   "tenant": "",
+   "ok": "UBA FEED - WAZUH - "
+  },
+  {
+   "template": "UBA ALERTS - {tenant}",
+   "tenant": "acme",
+   "ok": "UBA ALERTS - acme"
+  },
+  {
+   "template": "UBA ALERTS - {tenant}",
+   "tenant": "é'x",
+   "ok": "UBA ALERTS - é'x"
+  },
+  {
+   "template": "UBA ALERTS - {tenant}",
+   "tenant": "",
+   "ok": "UBA ALERTS - "
+  },
+  {
+   "template": "{tenant}",
+   "tenant": "acme",
+   "ok": "acme"
+  },
+  {
+   "template": "{tenant}",
+   "tenant": "é'x",
+   "ok": "é'x"
+  },
+  {
+   "template": "{tenant}",
+   "tenant": "",
+   "ok": ""
+  },
+  {
+   "template": "{{literal}} {tenant}",
+   "tenant": "acme",
+   "ok": "{literal} acme"
+  },
+  {
+   "template": "{{literal}} {tenant}",
+   "tenant": "é'x",
+   "ok": "{literal} é'x"
+  },
+  {
+   "template": "{{literal}} {tenant}",
+   "tenant": "",
+   "ok": "{literal} "
+  },
+  {
+   "template": "no placeholder",
+   "tenant": "acme",
+   "ok": "no placeholder"
+  },
+  {
+   "template": "no placeholder",
+   "tenant": "é'x",
+   "ok": "no placeholder"
+  },
+  {
+   "template": "no placeholder",
+   "tenant": "",
+   "ok": "no placeholder"
+  },
+  {
+   "template": "{tenant!r}",
+   "tenant": "acme",
+   "ok": "'acme'"
+  },
+  {
+   "template": "{tenant!r}",
+   "tenant": "é'x",
+   "ok": "\"é'x\""
+  },
+  {
+   "template": "{tenant!r}",
+   "tenant": "",
+   "ok": "''"
+  },
+  {
+   "template": "{tenant!s:>12}",
+   "tenant": "acme",
+   "ok": "        acme"
+  },
+  {
+   "template": "{tenant!s:>12}",
+   "tenant": "é'x",
+   "ok": "         é'x"
+  },
+  {
+   "template": "{tenant!s:>12}",
+   "tenant": "",
+   "ok": "            "
+  },
+  {
+   "template": "{tenant:.2}",
+   "tenant": "acme",
+   "ok": "ac"
+  },
+  {
+   "template": "{tenant:.2}",
+   "tenant": "é'x",
+   "ok": "é'"
+  },
+  {
+   "template": "{tenant:.2}",
+   "tenant": "",
+   "ok": ""
+  },
+  {
+   "template": "{tenant:_<8}",
+   "tenant": "acme",
+   "ok": "acme____"
+  },
+  {
+   "template": "{tenant:_<8}",
+   "tenant": "é'x",
+   "ok": "é'x_____"
+  },
+  {
+   "template": "{tenant:_<8}",
+   "tenant": "",
+   "ok": "________"
+  },
+  {
+   "template": "{source:^9}",
+   "tenant": "acme",
+   "ok": "  WAZUH  "
+  },
+  {
+   "template": "{source:^9}",
+   "tenant": "é'x",
+   "ok": "  WAZUH  "
+  },
+  {
+   "template": "{source:^9}",
+   "tenant": "",
+   "ok": "  WAZUH  "
+  },
+  {
+   "template": "{missing}",
+   "tenant": "acme",
+   "error": [
+    "KeyError",
+    "'missing'"
+   ]
+  },
+  {
+   "template": "{missing}",
+   "tenant": "é'x",
+   "error": [
+    "KeyError",
+    "'missing'"
+   ]
+  },
+  {
+   "template": "{missing}",
+   "tenant": "",
+   "error": [
+    "KeyError",
+    "'missing'"
+   ]
+  },
+  {
+   "template": "{0}",
+   "tenant": "acme",
+   "error": [
+    "IndexError",
+    "Replacement index 0 out of range for positional args tuple"
+   ]
+  },
+  {
+   "template": "{0}",
+   "tenant": "é'x",
+   "error": [
+    "IndexError",
+    "Replacement index 0 out of range for positional args tuple"
+   ]
+  },
+  {
+   "template": "{0}",
+   "tenant": "",
+   "error": [
+    "IndexError",
+    "Replacement index 0 out of range for positional args tuple"
+   ]
+  },
+  {
+   "template": "{}",
+   "tenant": "acme",
+   "error": [
+    "IndexError",
+    "Replacement index 0 out of range for positional args tuple"
+   ]
+  },
+  {
+   "template": "{}",
+   "tenant": "é'x",
+   "error": [
+    "IndexError",
+    "Replacement index 0 out of range for positional args tuple"
+   ]
+  },
+  {
+   "template": "{}",
+   "tenant": "",
+   "error": [
+    "IndexError",
+    "Replacement index 0 out of range for positional args tuple"
+   ]
+  },
+  {
+   "template": "{",
+   "tenant": "acme",
+   "error": [
+    "ValueError",
+    "Single '{' encountered in format string"
+   ]
+  },
+  {
+   "template": "{",
+   "tenant": "é'x",
+   "error": [
+    "ValueError",
+    "Single '{' encountered in format string"
+   ]
+  },
+  {
+   "template": "{",
+   "tenant": "",
+   "error": [
+    "ValueError",
+    "Single '{' encountered in format string"
+   ]
+  },
+  {
+   "template": "}",
+   "tenant": "acme",
+   "error": [
+    "ValueError",
+    "Single '}' encountered in format string"
+   ]
+  },
+  {
+   "template": "}",
+   "tenant": "é'x",
+   "error": [
+    "ValueError",
+    "Single '}' encountered in format string"
+   ]
+  },
+  {
+   "template": "}",
+   "tenant": "",
+   "error": [
+    "ValueError",
+    "Single '}' encountered in format string"
+   ]
+  },
+  {
+   "template": "a } b",
+   "tenant": "acme",
+   "error": [
+    "ValueError",
+    "Single '}' encountered in format string"
+   ]
+  },
+  {
+   "template": "a } b",
+   "tenant": "é'x",
+   "error": [
+    "ValueError",
+    "Single '}' encountered in format string"
+   ]
+  },
+  {
+   "template": "a } b",
+   "tenant": "",
+   "error": [
+    "ValueError",
+    "Single '}' encountered in format string"
+   ]
+  },
+  {
+   "template": "{tenant",
+   "tenant": "acme",
+   "error": [
+    "ValueError",
+    "expected '}' before end of string"
+   ]
+  },
+  {
+   "template": "{tenant",
+   "tenant": "é'x",
+   "error": [
+    "ValueError",
+    "expected '}' before end of string"
+   ]
+  },
+  {
+   "template": "{tenant",
+   "tenant": "",
+   "error": [
+    "ValueError",
+    "expected '}' before end of string"
+   ]
+  },
+  {
+   "template": "{tenant!x}",
+   "tenant": "acme",
+   "error": [
+    "ValueError",
+    "Unknown conversion specifier x"
+   ]
+  },
+  {
+   "template": "{tenant!x}",
+   "tenant": "é'x",
+   "error": [
+    "ValueError",
+    "Unknown conversion specifier x"
+   ]
+  },
+  {
+   "template": "{tenant!x}",
+   "tenant": "",
+   "error": [
+    "ValueError",
+    "Unknown conversion specifier x"
+   ]
+  },
+  {
+   "template": "{tenant:d}",
+   "tenant": "acme",
+   "error": [
+    "ValueError",
+    "Unknown format code 'd' for object of type 'str'"
+   ]
+  },
+  {
+   "template": "{tenant:d}",
+   "tenant": "é'x",
+   "error": [
+    "ValueError",
+    "Unknown format code 'd' for object of type 'str'"
+   ]
+  },
+  {
+   "template": "{tenant:d}",
+   "tenant": "",
+   "error": [
+    "ValueError",
+    "Unknown format code 'd' for object of type 'str'"
+   ]
+  }
+ ],
+ "lowers": [
+  {
+   "input": "ACME",
+   "lower": "acme"
+  },
+  {
+   "input": "Acme-01",
+   "lower": "acme-01"
+  },
+  {
+   "input": "İSTANBUL",
+   "lower": "i̇stanbul"
+  },
+  {
+   "input": "ΣΑΣ",
+   "lower": "σας"
+  },
+  {
+   "input": "ß",
+   "lower": "ß"
+  },
+  {
+   "input": "ǅ",
+   "lower": "ǆ"
+  },
+  {
+   "input": "Ⅻ",
+   "lower": "ⅻ"
+  },
+  {
+   "input": "ﬃ",
+   "lower": "ﬃ"
+  }
+ ]
+}

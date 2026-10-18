@@ -27,6 +27,7 @@ from sqlalchemy.future import select
 from app.connectors.talon.utils.universal import send_post_request
 from app.db.db_session import get_db_session
 from app.db.universal_models import AiAnalystPalaceLesson
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 
 JOB_ID = "invoke_palace_lesson_sweeper"
@@ -41,6 +42,7 @@ ONE_OFF_EXPIRY_DAYS = 7
 DEFAULT_BATCH_SIZE = 25
 
 
+@rust_handover(JOB_ID)
 async def invoke_palace_lesson_sweeper() -> None:
     """
     Forget one batch of expired one-off palace lessons.

@@ -25,15 +25,19 @@ from fastapi import Depends
 from fastapi import HTTPException
 from fastapi import Security
 from loguru import logger
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models.users import User
 from app.auth.utils import AuthHandler
 from app.db.db_session import get_db
+from app.incidents.models import Alert
 from app.middleware.customer_access import customer_access_handler
 from app.middleware.customer_access import verify_customer_code_access
 from app.middleware.customer_access import verify_optional_customer_code_access
 from app.notifications.channels import CHANNEL_REGISTRY
+from app.notifications.schema.events import NotificationEvent
+from app.notifications.schema.notifications import BridgedEventResponse
 from app.notifications.schema.notifications import ChannelDescriptor
 from app.notifications.schema.notifications import ChannelListResponse
 from app.notifications.schema.notifications import DispatchLogListResponse
@@ -64,6 +68,9 @@ from app.notifications.schema.notifications import TemplatePreviewRequest
 from app.notifications.schema.notifications import TemplatePreviewResponse
 from app.notifications.services import notifications as svc
 from app.notifications.services import templates as templates_svc
+from app.notifications.services.bridge import BridgeRejected
+from app.notifications.services.bridge import sanitize_bridged_event
+from app.notifications.services.emit import emit
 
 notifications_router = APIRouter()
 
@@ -807,3 +814,36 @@ async def delete_template_route(
         message=("Template deleted" + (f"; {detached} route(s) fell back to their channel default" if detached else "")),
         template=read,
     )
+
+
+# ---------------------------------------------------------------------------
+# Hand-off from the Rust service (docs/architecture/RUST_MIGRATION.md)
+# ---------------------------------------------------------------------------
+
+
+@notifications_router.post(
+    "/notifications/events",
+    status_code=202,
+    response_model=BridgedEventResponse,
+    description=(
+        "Accept a notification event built by a module already served by the Rust "
+        "backend and emit it through this pipeline. Only AI-analyst alert triggers; "
+        "dedupe key and link are re-derived from the alert."
+    ),
+    dependencies=[Security(AuthHandler().require_any_scope("admin", "analyst"))],
+)
+async def emit_bridged_event_route(
+    event: NotificationEvent,
+    current_user: User = Depends(AuthHandler().get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> BridgedEventResponse:
+    owner = (await session.execute(select(Alert.customer_code).where(Alert.id == event.entity_id))).scalars().first()
+    await customer_access_handler.enforce_customer_access(current_user, owner or event.customer_code or "", session)
+    try:
+        sanitized = sanitize_bridged_event(event, owner)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except BridgeRejected as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    emit(sanitized)
+    return BridgedEventResponse(success=True, message="Notification event queued")

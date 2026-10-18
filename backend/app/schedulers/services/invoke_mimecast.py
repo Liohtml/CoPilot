@@ -11,11 +11,13 @@ from app.integrations.mimecast.routes.mimecast import mimecast_ttp_url_route
 from app.integrations.mimecast.schema.mimecast import MimecastRequest
 from app.integrations.mimecast.schema.mimecast import MimecastResponse
 from app.integrations.models.customer_integration_settings import CustomerIntegrations
+from app.schedulers.handover import rust_handover
 from app.schedulers.models.scheduler import JobMetadata
 
 load_dotenv()
 
 
+@rust_handover("invoke_mimecast_integration")
 async def invoke_mimecast_integration() -> MimecastResponse:
     """
     Invokes the Mimecast integration.
@@ -53,6 +55,7 @@ async def invoke_mimecast_integration() -> MimecastResponse:
     return MimecastResponse(success=True, message="Mimecast integration invoked.")
 
 
+@rust_handover("invoke_mimecast_integration_ttp")
 async def invoke_mimecast_integration_ttp() -> MimecastResponse:
     """
     Invokes the Mimecast integration.

@@ -1,0 +1,40 @@
+[package]
+name = "copilot-integration-provisioning"
+description = "Network-connector and integration provisioning: the Fortinet / SonicWall / SentinelOne stack provisioning (/api/stack_provisioning/graylog/provision/*) and the integrations' POST /provision routes (Graylog index set and stream, Grafana datasource, folder and dashboards; the CrowdStrike, Defender for Endpoint and Bitdefender collectors' files)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-db = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-graylog = { workspace = true }
+copilot-grafana = { workspace = true }
+copilot-grafana-dashboards = { workspace = true }
+copilot-monitoring-alerts = { workspace = true }
+copilot-provisioning = { workspace = true }
+copilot-integrations = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-portainer = { workspace = true }
+copilot-scheduler = { workspace = true }
+base64 = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[lints]
+workspace = true

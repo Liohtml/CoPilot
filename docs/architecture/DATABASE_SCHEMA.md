@@ -12,7 +12,7 @@ For typical agent change work, these domains are most relevant:
 - Connectors and integration metadata: `connectors*`, `available_*`, `customer_*_connectors*`, `customer_*integrations*`, `integration_*`, `network_connectors_*`, `custom_alert_creation_*`, `monitoring_alerts`, `sigma_queries`, `github_audit_*`
 - Auth / users / roles: `user`, `role`, `user_customer_access`, `user_tag_access`, `role_tag_access`
 - Incidents (alerts/cases/tags/comments): all `incident_management_*` tables
-- Scheduler/job metadata: `scheduled_job_metadata`, `schedulerjob`, `index_snapshot_schedules`
+- Scheduler/job metadata: `scheduled_job_metadata`, `apscheduler_jobs` (APScheduler's own store, not an Alembic table), `index_snapshot_schedules`; the Alembic `schedulerjob` table is unused
 - Agent data store / artifacts / reports: `agent_datastore`, `incident_management_case_datastore`, `incident_management_case_report_template_datastore`, `vulnerability_reports`, `sca_reports`, `agent_vulnerabilities`
 
 ## Critical relationship graph
@@ -173,7 +173,7 @@ When tag access control is enabled, alert visibility is constrained by the tag I
 | Table | PK | Important columns | Foreign keys | Model file(s) |
 |---|---|---|---|---|
 | `scheduled_job_metadata` | `id` | `job_id`, `last_success`, `time_interval`, `extra_data`, `enabled`, `job_description` | None | `backend/app/schedulers/models/scheduler.py` (`JobMetadata`) |
-| `schedulerjob` | `id` | `next_run_time`, `job_state` | None | `backend/app/db/universal_models.py` (`SchedulerJob`) |
+| `schedulerjob` | `id` | `next_run_time`, `job_state` | None | `backend/app/db/universal_models.py` (`SchedulerJob`) — unused: APScheduler keeps its jobs in `apscheduler_jobs` |
 | `index_snapshot_schedules` | `id` | schedule metadata (`name`, `index_pattern`, `repository`), retention/last execution fields | None | `backend/app/connectors/wazuh_indexer/models/snapshot_and_restore.py` |
 
 ### Connectors and Integrations
@@ -282,4 +282,4 @@ The following SQLModel tables are defined in code but do **not** appear in `back
 - Prefer extending existing domain tables over creating parallel tables when possible (especially incidents and connector metadata).
 - For incident workflows, changes usually involve: `incident_management_alert`, `incident_management_case`, link tables (`*_to_*`), and optional datastore tables.
 - For connector onboarding, changes usually involve: `available_*`, `customer_*`, `*_services`, `*_subscriptions`, `*_configs`, `*_keys`, and `*_meta` tables.
-- For scheduler automation, coordinate changes between `scheduled_job_metadata`, `schedulerjob`, and domain-specific tables storing job outcomes.
+- For scheduler automation, coordinate changes between `scheduled_job_metadata`, APScheduler's `apscheduler_jobs`, and domain-specific tables storing job outcomes.

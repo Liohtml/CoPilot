@@ -1,0 +1,29 @@
+[package]
+name = "copilot-patch-tuesday"
+description = "Microsoft Patch Tuesday: /api/patch-tuesday (MSRC's CVRF documents enriched with FIRST's EPSS and CISA's KEV catalog, over httpx)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-jinja = { workspace = true }
+copilot-uba = { workspace = true }
+copilot-wazuh = { workspace = true }
+copilot-yaml = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,30 @@
+[package]
+name = "copilot-grafana-dashboards"
+description = "Grafana dashboard provisioning: the dashboard templates of backend/app/connectors/grafana/dashboards/ compiled in, provision_dashboards, POST /api/grafana/dashboards and POST /api/customer_provisioning/provision/dashboards"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+copilot-core = { workspace = true }
+copilot-auth = { workspace = true }
+copilot-db = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-grafana = { workspace = true }
+copilot-monitoring-alerts = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+
+[dev-dependencies]
+sha2 = { workspace = true }
+hex = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

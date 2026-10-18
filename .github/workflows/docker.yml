@@ -163,3 +163,129 @@ jobs:
                   webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
                   webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
                   message: "Docker image for inspector-runner has been updated."
+
+    # The Rust backend (crates/copilot): the image docker-compose.yml runs as
+    # copilot-backend. Built natively on each architecture's runner (a release
+    # build of the workspace under QEMU takes hours), pushed by digest, checked
+    # against its size budget, then joined into one multi-arch `latest` by
+    # merge-rust-backend below. The build context is the repository root, filtered
+    # by crates/copilot/Dockerfile.dockerignore.
+    build-rust-backend:
+        strategy:
+            fail-fast: true
+            matrix:
+                include:
+                    - platform: linux/amd64
+                      runner: ubuntu-24.04
+                    - platform: linux/arm64
+                      runner: ubuntu-24.04-arm
+        runs-on: ${{ matrix.runner }}
+        timeout-minutes: 150
+        env:
+            IMAGE: ghcr.io/socfortress/copilot-rs
+            # Uncompressed; ScoutSuite's venv alone is about 1 GiB.
+            SIZE_BUDGET_MIB: 2560
+
+        steps:
+            - name: Check out code
+              uses: actions/checkout@v4
+              with:
+                  persist-credentials: false
+
+            - name: Platform pair
+              env:
+                  PLATFORM: ${{ matrix.platform }}
+              run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ secrets.REPO_OWNER }}
+                  password: ${{ secrets.REPO_TOKEN }}
+
+            - name: Build and push by digest
+              id: build
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: ./crates/copilot/Dockerfile
+                  platforms: ${{ matrix.platform }}
+                  # The licence server's key, as the Python backend's image carries it.
+                  build-args: |
+                      COPILOT_API_KEY=${{ secrets.COPILOT_API_KEY }}
+                  outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+                  cache-from: type=gha,scope=copilot-rs-${{ env.PLATFORM_PAIR }}
+                  cache-to: type=gha,mode=max,scope=copilot-rs-${{ env.PLATFORM_PAIR }}
+
+            - name: Size budget
+              env:
+                  DIGEST: ${{ steps.build.outputs.digest }}
+              run: |
+                  docker pull "${IMAGE}@${DIGEST}"
+                  size=$(docker image inspect -f '{{.Size}}' "${IMAGE}@${DIGEST}")
+                  mib=$((size / 1048576))
+                  echo "copilot-rs (${{ matrix.platform }}): ${mib} MiB, budget ${SIZE_BUDGET_MIB} MiB"
+                  if [ "$mib" -gt "$SIZE_BUDGET_MIB" ]; then
+                      echo "::error::the Rust backend image is ${mib} MiB, over its ${SIZE_BUDGET_MIB} MiB budget"
+                      exit 1
+                  fi
+
+            - name: Export digest
+              env:
+                  DIGEST: ${{ steps.build.outputs.digest }}
+              run: |
+                  mkdir -p "${{ runner.temp }}/digests"
+                  touch "${{ runner.temp }}/digests/${DIGEST#sha256:}"
+
+            - name: Upload digest
+              uses: actions/upload-artifact@v4
+              with:
+                  name: digests-copilot-rs-${{ env.PLATFORM_PAIR }}
+                  path: ${{ runner.temp }}/digests/*
+                  if-no-files-found: error
+                  retention-days: 1
+
+    merge-rust-backend:
+        needs: build-rust-backend
+        runs-on: ubuntu-latest
+        env:
+            IMAGE: ghcr.io/socfortress/copilot-rs
+
+        steps:
+            - name: Download digests
+              uses: actions/download-artifact@v4
+              with:
+                  path: ${{ runner.temp }}/digests
+                  pattern: digests-copilot-rs-*
+                  merge-multiple: true
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ secrets.REPO_OWNER }}
+                  password: ${{ secrets.REPO_TOKEN }}
+
+            - name: Create the multi-arch tag
+              working-directory: ${{ runner.temp }}/digests
+              run: |
+                  refs=()
+                  for digest in *; do refs+=("${IMAGE}@sha256:${digest}"); done
+                  docker buildx imagetools create -t "${IMAGE}:latest" "${refs[@]}"
+
+            - name: Inspect
+              run: docker buildx imagetools inspect "${IMAGE}:latest"
+
+            - name: Notify Discord
+              uses: appleboy/discord-action@v1.0.0
+              with:
+                  webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
+                  webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
+                  message: "Docker image for the Rust backend (copilot-rs) has been updated."

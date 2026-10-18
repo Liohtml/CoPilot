@@ -17,8 +17,10 @@ from loguru import logger
 from app.integrations.copilot_searches.services.wazuh_rules_cache import (
     wazuh_rules_cache,
 )
+from app.schedulers.handover import rust_handover
 
 
+@rust_handover("refresh_wazuh_rules_cache")
 async def refresh_wazuh_rules_cache() -> None:
     """Reload the Wazuh ruleset into the in-process cache.
 

@@ -1,0 +1,734 @@
+{
+ "crowdstrike": {
+  "requests": [
+   {
+    "input": "{\"customer_code\": \"c1\"}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Crowdstrike\", \"hot_data_retention\": 30, \"index_replicas\": 0}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"integration_name\": \"Other\", \"hot_data_retention\": \"7\", \"index_replicas\": 2}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Crowdstrike\", \"hot_data_retention\": 7, \"index_replicas\": 2}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": null, \"index_replicas\": null}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"Crowdstrike\", \"hot_data_retention\": null, \"index_replicas\": null}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": 1.5}",
+    "status": 422,
+    "body": "{\"message\":\"hot_data_retention: Input should be a valid integer, got a number with a fractional part\",\"details\":[{\"field\":\"hot_data_retention\",\"error_type\":\"value_error\",\"message\":\"hot_data_retention: Input should be a valid integer, got a number with a fractional part\"}]}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": true, \"index_replicas\": \"x\"}",
+    "status": 422,
+    "body": "{\"message\":\"Input is not a valid integer.\",\"details\":[{\"field\":\"index_replicas\",\"error_type\":\"int_parsing\",\"message\":\"Input is not a valid integer.\"}]}"
+   },
+   {
+    "input": "{\"customer_code\": 5}",
+    "status": 422,
+    "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"}]}"
+   },
+   {
+    "input": "{\"hot_data_retention\": 100000000000000000000}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "null",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "[]",
+    "status": 500
+   },
+   {
+    "input": "\"x\"",
+    "status": 500
+   },
+   {
+    "input": "3",
+    "status": 500
+   }
+  ],
+  "auth_keys": [
+   {
+    "input": "{\"CLIENT_ID\": \"cid\", \"CLIENT_SECRET\": \"s3cr3t\", \"BASE_URL\": \"https://api.crowdstrike.com\", \"SYSLOG_PORT\": \"5556\"}",
+    "dump": "{\"CLIENT_ID\": \"cid\", \"CLIENT_SECRET\": \"s3cr3t\", \"BASE_URL\": \"https://api.crowdstrike.com\", \"SYSLOG_PORT\": \"5556\"}"
+   },
+   {
+    "input": "{\"CLIENT_ID\": \"REPLACE_CLIENT_SECRET\", \"CLIENT_SECRET\": \"\\u00e9 \\\"q\\\" \\\\ REPLACE_SYSLOG_HOST\", \"BASE_URL\": \"REPLACE_BASE_URL/x\", \"SYSLOG_PORT\": \" 0_514 \", \"EXTRA\": \"ignored\"}",
+    "dump": "{\"CLIENT_ID\": \"REPLACE_CLIENT_SECRET\", \"CLIENT_SECRET\": \"\\u00e9 \\\"q\\\" \\\\ REPLACE_SYSLOG_HOST\", \"BASE_URL\": \"REPLACE_BASE_URL/x\", \"SYSLOG_PORT\": \" 0_514 \"}"
+   },
+   {
+    "input": "{\"CLIENT_ID\": \"a\", \"CLIENT_SECRET\": \"b\", \"BASE_URL\": \"c\"}",
+    "error": "1 validation error for ProvisionCrowdstrikeAuthKeys\nSYSLOG_PORT\n  Field required [type=missing, input_value={'CLIENT_ID': 'a', 'CLIEN...': 'b', 'BASE_URL': 'c'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   },
+   {
+    "input": "{\"CLIENT_ID\": \"x\", \"CLIENT_SECRET\": \"y\", \"BASE_URL\": \"z\", \"SYSLOG_PORT\": \"1\"}",
+    "dump": "{\"CLIENT_ID\": \"x\", \"CLIENT_SECRET\": \"y\", \"BASE_URL\": \"z\", \"SYSLOG_PORT\": \"1\"}"
+   },
+   {
+    "input": "{}",
+    "error": "4 validation errors for ProvisionCrowdstrikeAuthKeys\nCLIENT_ID\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nCLIENT_SECRET\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nBASE_URL\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nSYSLOG_PORT\n  Field required [type=missing, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   }
+  ],
+  "details": [
+   {
+    "input": "{\"customer_code\": \"c1\", \"customer_name\": \"Acme\", \"protocal_type\": \"TCP\", \"syslog_port\": 514, \"hot_data_retention\": 30, \"index_replicas\": 0}",
+    "dump": "{\"customer_name\": \"Acme\", \"customer_code\": \"c1\", \"protocal_type\": \"TCP\", \"syslog_port\": 514, \"hot_data_retention\": 30, \"index_replicas\": 0}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"customer_name\": \"Acme\", \"protocal_type\": \"TCP\", \"syslog_port\": 514, \"hot_data_retention\": null, \"index_replicas\": null}",
+    "error": "2 validation errors for CrowdstrikeCustomerDetails\nhot_data_retention\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type\nindex_replicas\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"customer_name\": \"Acme\", \"protocal_type\": \"Tcp\", \"syslog_port\": 514, \"hot_data_retention\": 7, \"index_replicas\": null}",
+    "error": "1 validation error for CrowdstrikeCustomerDetails\nindex_replicas\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type"
+   }
+  ],
+  "files": [
+   {
+    "name": "Acme_Corp",
+    "keys": {
+     "CLIENT_ID": "cid",
+     "CLIENT_SECRET": "s3cr3t",
+     "BASE_URL": "https://api.crowdstrike.com",
+     "SYSLOG_PORT": "5556"
+    },
+    "url": "http://graylog.example.com:9000",
+    "files": {
+     "Acme_Corp_docker-compose.yml": "version: \"3.8\"\n\nservices:\n    crowdstrike-connector-Acme_Corp:\n        image: ghcr.io/socfortress/crowdstrike-connector\n        volumes:\n            - /opt/CoPilot/data/data/Acme_Corp/cs.falconhoseclient.cfg:/opt/crowdstrike/etc/cs.falconhoseclient.cfg\n        restart: unless-stopped\n",
+     "cs.falconhoseclient.cfg": {
+      "sha256": "d71c09599404b9e822657e32a22a21466cd8455c69bf073663d66f55f95b4bf3",
+      "len": 42533
+     }
+    }
+   },
+   {
+    "name": "CUSTOMER_NAME_PORT",
+    "keys": {
+     "CLIENT_ID": "REPLACE_CLIENT_SECRET",
+     "CLIENT_SECRET": "é \"q\" \\ REPLACE_SYSLOG_HOST",
+     "BASE_URL": "REPLACE_BASE_URL/x",
+     "SYSLOG_PORT": " 0_514 ",
+     "EXTRA": "ignored"
+    },
+    "url": "https://10.0.0.5:9000/x",
+    "files": {
+     "CUSTOMER_NAME_PORT_docker-compose.yml": "version: \"3.8\"\n\nservices:\n    crowdstrike-connector-CUSTOMER_NAME_PORT:\n        image: ghcr.io/socfortress/crowdstrike-connector\n        volumes:\n            - /opt/CoPilot/data/data/CUSTOMER_NAME_PORT/cs.falconhoseclient.cfg:/opt/crowdstrike/etc/cs.falconhoseclient.cfg\n        restart: unless-stopped\n",
+     "cs.falconhoseclient.cfg": {
+      "sha256": "b4495fcd8ebbe5c5be71854d68115ef76a4a9c7d0d9666cb0ca0c0bfbbc3f1f5",
+      "len": 42538
+     }
+    }
+   },
+   {
+    "name": "É_\"x\"",
+    "keys": {
+     "CLIENT_ID": "x",
+     "CLIENT_SECRET": "y",
+     "BASE_URL": "z",
+     "SYSLOG_PORT": "1"
+    },
+    "url": null,
+    "files": {
+     "cs.falconhoseclient.cfg": {
+      "sha256": "7dc93139fad3bb415662677485e14e6f07bfdcab86f678c6ec25585e3ac9fd04",
+      "len": 42456
+     },
+     "É_\"x\"_docker-compose.yml": "version: \"3.8\"\n\nservices:\n    crowdstrike-connector-É_\"x\":\n        image: ghcr.io/socfortress/crowdstrike-connector\n        volumes:\n            - /opt/CoPilot/data/data/É_\"x\"/cs.falconhoseclient.cfg:/opt/crowdstrike/etc/cs.falconhoseclient.cfg\n        restart: unless-stopped\n"
+    }
+   }
+  ]
+ },
+ "defender_for_endpoint": {
+  "requests": [
+   {
+    "input": "{\"customer_code\": \"c1\"}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"DefenderForEndpoint\", \"hot_data_retention\": 30, \"index_replicas\": 0}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"integration_name\": \"Other\", \"hot_data_retention\": \"7\", \"index_replicas\": 2}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"DefenderForEndpoint\", \"hot_data_retention\": 7, \"index_replicas\": 2}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": null, \"index_replicas\": null}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"DefenderForEndpoint\", \"hot_data_retention\": null, \"index_replicas\": null}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": 1.5}",
+    "status": 422,
+    "body": "{\"message\":\"hot_data_retention: Input should be a valid integer, got a number with a fractional part\",\"details\":[{\"field\":\"hot_data_retention\",\"error_type\":\"value_error\",\"message\":\"hot_data_retention: Input should be a valid integer, got a number with a fractional part\"}]}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": true, \"index_replicas\": \"x\"}",
+    "status": 422,
+    "body": "{\"message\":\"Input is not a valid integer.\",\"details\":[{\"field\":\"index_replicas\",\"error_type\":\"int_parsing\",\"message\":\"Input is not a valid integer.\"}]}"
+   },
+   {
+    "input": "{\"customer_code\": 5}",
+    "status": 422,
+    "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"}]}"
+   },
+   {
+    "input": "{\"hot_data_retention\": 100000000000000000000}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "null",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "[]",
+    "status": 500
+   },
+   {
+    "input": "\"x\"",
+    "status": 500
+   },
+   {
+    "input": "3",
+    "status": 500
+   }
+  ],
+  "auth_keys": [
+   {
+    "input": "{\"CLIENT_ID\": \"cid\", \"CLIENT_SECRET\": \"sec\", \"TENANT_ID\": \"tenant-guid\", \"SYSLOG_PORT\": \"5044\"}",
+    "dump": "{\"CLIENT_ID\": \"cid\", \"CLIENT_SECRET\": \"sec\", \"TENANT_ID\": \"tenant-guid\", \"SYSLOG_PORT\": \"5044\"}"
+   },
+   {
+    "input": "{\"CLIENT_ID\": \"REPLACE_TENANT_ID\", \"CLIENT_SECRET\": \"\\u00fc\\nline\", \"TENANT_ID\": \"REPLACE_CLIENT_ID\", \"SYSLOG_PORT\": \"x\"}",
+    "dump": "{\"CLIENT_ID\": \"REPLACE_TENANT_ID\", \"CLIENT_SECRET\": \"\\u00fc\\nline\", \"TENANT_ID\": \"REPLACE_CLIENT_ID\", \"SYSLOG_PORT\": \"x\"}"
+   },
+   {
+    "input": "{\"TENANT_ID\": \"t\"}",
+    "error": "3 validation errors for ProvisionDefenderForEndpointAuthKeys\nCLIENT_ID\n  Field required [type=missing, input_value={'TENANT_ID': 't'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nCLIENT_SECRET\n  Field required [type=missing, input_value={'TENANT_ID': 't'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nSYSLOG_PORT\n  Field required [type=missing, input_value={'TENANT_ID': 't'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   },
+   {
+    "input": "{\"CLIENT_ID\": \"c\", \"CLIENT_SECRET\": \"s\", \"TENANT_ID\": \"t\", \"SYSLOG_PORT\": \"9\"}",
+    "dump": "{\"CLIENT_ID\": \"c\", \"CLIENT_SECRET\": \"s\", \"TENANT_ID\": \"t\", \"SYSLOG_PORT\": \"9\"}"
+   }
+  ],
+  "details": [
+   {
+    "input": "{\"customer_code\": \"c1\", \"customer_name\": \"Acme\", \"protocal_type\": \"TCP\", \"syslog_port\": 514, \"hot_data_retention\": 30, \"index_replicas\": 0}",
+    "dump": "{\"customer_name\": \"Acme\", \"customer_code\": \"c1\", \"protocal_type\": \"TCP\", \"syslog_port\": 514, \"hot_data_retention\": 30, \"index_replicas\": 0}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"customer_name\": \"Acme\", \"protocal_type\": \"TCP\", \"syslog_port\": 514, \"hot_data_retention\": null, \"index_replicas\": null}",
+    "error": "2 validation errors for DefenderForEndpointCustomerDetails\nhot_data_retention\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type\nindex_replicas\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"customer_name\": \"Acme\", \"protocal_type\": \"Tcp\", \"syslog_port\": 514, \"hot_data_retention\": 7, \"index_replicas\": null}",
+    "error": "1 validation error for DefenderForEndpointCustomerDetails\nindex_replicas\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type"
+   }
+  ],
+  "files": [
+   {
+    "name": "Acme_Corp",
+    "keys": {
+     "CLIENT_ID": "cid",
+     "CLIENT_SECRET": "sec",
+     "TENANT_ID": "tenant-guid",
+     "SYSLOG_PORT": "5044"
+    },
+    "url": "http://graylog.example.com:9000",
+    "files": {
+     "Acme_Corp_docker-compose-defender-for-endpoint.yml": "version: '3.8'\nservices:\n  defender-for-endpoint-connector-Acme_Corp:\n    image: docker.elastic.co/beats/filebeat:8.17.2\n    container_name: defender-for-endpoint-Acme_Corp\n    user: root\n    volumes:\n      - /opt/CoPilot/data/data/Acme_Corp/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro\n      - /opt/CoPilot/data/data/Acme_Corp/data:/usr/share/filebeat/data\n      - /var/run/docker.sock:/var/run/docker.sock\n      - /var/lib/docker/containers/:/var/lib/docker/containers/:ro\n      - /var/log/:/var/log/:ro\n      - /var/log/audit/:/var/log/audit/:ro\n",
+     "data": null,
+     "filebeat.yml": "filebeat.modules:\n- module: microsoft\n  defender_atp:\n    enabled: true\n    var.oauth2.client.id: \"cid\"\n    var.oauth2.client.secret: \"sec\"\n    var.oauth2.token_url: \"https://login.microsoftonline.com/tenant-guid/oauth2/token\"\n\nfilebeat.inputs:\n- type: log\n  enabled: false\n  paths:\n    - /var/log/*.log\n\noutput.logstash:\n  hosts: [\"graylog.example.com:5044\"]\n"
+    }
+   },
+   {
+    "name": "CUSTOMER_NAME_PORT",
+    "keys": {
+     "CLIENT_ID": "REPLACE_TENANT_ID",
+     "CLIENT_SECRET": "ü\nline",
+     "TENANT_ID": "REPLACE_CLIENT_ID",
+     "SYSLOG_PORT": "x"
+    },
+    "url": "https://10.0.0.5:9000/x",
+    "files": {
+     "CUSTOMER_NAME_PORT_docker-compose-defender-for-endpoint.yml": "version: '3.8'\nservices:\n  defender-for-endpoint-connector-CUSTOMER_NAME_PORT:\n    image: docker.elastic.co/beats/filebeat:8.17.2\n    container_name: defender-for-endpoint-CUSTOMER_NAME_PORT\n    user: root\n    volumes:\n      - /opt/CoPilot/data/data/CUSTOMER_NAME_PORT/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro\n      - /opt/CoPilot/data/data/CUSTOMER_NAME_PORT/data:/usr/share/filebeat/data\n      - /var/run/docker.sock:/var/run/docker.sock\n      - /var/lib/docker/containers/:/var/lib/docker/containers/:ro\n      - /var/log/:/var/log/:ro\n      - /var/log/audit/:/var/log/audit/:ro\n",
+     "data": null,
+     "filebeat.yml": "filebeat.modules:\n- module: microsoft\n  defender_atp:\n    enabled: true\n    var.oauth2.client.id: \"REPLACE_TENANT_ID\"\n    var.oauth2.client.secret: \"ü\nline\"\n    var.oauth2.token_url: \"https://login.microsoftonline.com/REPLACE_TENANT_ID/oauth2/token\"\n\nfilebeat.inputs:\n- type: log\n  enabled: false\n  paths:\n    - /var/log/*.log\n\noutput.logstash:\n  hosts: [\"10.0.0.5/x:x\"]\n"
+    }
+   },
+   {
+    "name": "É_\"x\"",
+    "keys": {
+     "CLIENT_ID": "c",
+     "CLIENT_SECRET": "s",
+     "TENANT_ID": "t",
+     "SYSLOG_PORT": "9"
+    },
+    "url": null,
+    "files": {
+     "data": null,
+     "filebeat.yml": "filebeat.modules:\n- module: microsoft\n  defender_atp:\n    enabled: true\n    var.oauth2.client.id: \"c\"\n    var.oauth2.client.secret: \"s\"\n    var.oauth2.token_url: \"https://login.microsoftonline.com/t/oauth2/token\"\n\nfilebeat.inputs:\n- type: log\n  enabled: false\n  paths:\n    - /var/log/*.log\n\noutput.logstash:\n  hosts: [\"None:9\"]\n",
+     "É_\"x\"_docker-compose-defender-for-endpoint.yml": "version: '3.8'\nservices:\n  defender-for-endpoint-connector-É_\"x\":\n    image: docker.elastic.co/beats/filebeat:8.17.2\n    container_name: defender-for-endpoint-É_\"x\"\n    user: root\n    volumes:\n      - /opt/CoPilot/data/data/É_\"x\"/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro\n      - /opt/CoPilot/data/data/É_\"x\"/data:/usr/share/filebeat/data\n      - /var/run/docker.sock:/var/run/docker.sock\n      - /var/lib/docker/containers/:/var/lib/docker/containers/:ro\n      - /var/log/:/var/log/:ro\n      - /var/log/audit/:/var/log/audit/:ro\n"
+    }
+   }
+  ]
+ },
+ "bitdefender": {
+  "requests": [
+   {
+    "input": "{\"customer_code\": \"c1\"}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"BitDefender\", \"hot_data_retention\": 30, \"index_replicas\": 0}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"integration_name\": \"Other\", \"hot_data_retention\": \"7\", \"index_replicas\": 2}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"BitDefender\", \"hot_data_retention\": 7, \"index_replicas\": 2}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": null, \"index_replicas\": null}",
+    "status": 200,
+    "dump": "{\"customer_code\": \"c1\", \"integration_name\": \"BitDefender\", \"hot_data_retention\": null, \"index_replicas\": null}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": 1.5}",
+    "status": 422,
+    "body": "{\"message\":\"hot_data_retention: Input should be a valid integer, got a number with a fractional part\",\"details\":[{\"field\":\"hot_data_retention\",\"error_type\":\"value_error\",\"message\":\"hot_data_retention: Input should be a valid integer, got a number with a fractional part\"}]}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"hot_data_retention\": true, \"index_replicas\": \"x\"}",
+    "status": 422,
+    "body": "{\"message\":\"Input is not a valid integer.\",\"details\":[{\"field\":\"index_replicas\",\"error_type\":\"int_parsing\",\"message\":\"Input is not a valid integer.\"}]}"
+   },
+   {
+    "input": "{\"customer_code\": 5}",
+    "status": 422,
+    "body": "{\"message\":\"customer_code: Input should be a valid string\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"value_error\",\"message\":\"customer_code: Input should be a valid string\"}]}"
+   },
+   {
+    "input": "{\"hot_data_retention\": 100000000000000000000}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "{}",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"customer_code\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "null",
+    "status": 422,
+    "body": "{\"message\":\"Missing data for required field.\",\"details\":[{\"field\":\"body\",\"error_type\":\"missing\",\"message\":\"Missing data for required field.\"}]}"
+   },
+   {
+    "input": "[]",
+    "status": 500
+   },
+   {
+    "input": "\"x\"",
+    "status": 500
+   },
+   {
+    "input": "3",
+    "status": 500
+   }
+  ],
+  "auth_keys": [
+   {
+    "input": "{\"BASIC_AUTH_USERNAME\": \"admin\", \"BASIC_AUTH_PASSWORD\": \"p\\u00e4ssword:x\", \"WEBSERVER_HOSTNAME\": \"firehose.example.com\", \"WEBSERVER_PORT\": \"3200\", \"GRAYLOG_PORT\": \"10514\", \"API_KEY\": \"key-1\"}",
+    "dump": "{\"BASIC_AUTH_USERNAME\": \"admin\", \"BASIC_AUTH_PASSWORD\": \"p\\u00e4ssword:x\", \"WEBSERVER_HOSTNAME\": \"firehose.example.com\", \"WEBSERVER_PORT\": \"3200\", \"GRAYLOG_PORT\": \"10514\", \"API_KEY\": \"key-1\"}"
+   },
+   {
+    "input": "{\"BASIC_AUTH_USERNAME\": \"u \\\"1\\\"\", \"BASIC_AUTH_PASSWORD\": \"\", \"WEBSERVER_HOSTNAME\": \"h\", \"WEBSERVER_PORT\": \" +0_80 \", \"GRAYLOG_PORT\": \"1_0514\", \"API_KEY\": \"\\u00fc\"}",
+    "dump": "{\"BASIC_AUTH_USERNAME\": \"u \\\"1\\\"\", \"BASIC_AUTH_PASSWORD\": \"\", \"WEBSERVER_HOSTNAME\": \"h\", \"WEBSERVER_PORT\": \" +0_80 \", \"GRAYLOG_PORT\": \"1_0514\", \"API_KEY\": \"\\u00fc\"}"
+   },
+   {
+    "input": "{\"BASIC_AUTH_USERNAME\": \"a\", \"BASIC_AUTH_PASSWORD\": \"b\", \"WEBSERVER_HOSTNAME\": \"h\", \"WEBSERVER_PORT\": \"PORT\", \"GRAYLOG_PORT\": \"514\", \"API_KEY\": \"k\"}",
+    "dump": "{\"BASIC_AUTH_USERNAME\": \"a\", \"BASIC_AUTH_PASSWORD\": \"b\", \"WEBSERVER_HOSTNAME\": \"h\", \"WEBSERVER_PORT\": \"PORT\", \"GRAYLOG_PORT\": \"514\", \"API_KEY\": \"k\"}"
+   },
+   {
+    "input": "{\"API_KEY\": \"k\"}",
+    "error": "5 validation errors for ProvisionBitdefenderAuthKeys\nBASIC_AUTH_USERNAME\n  Field required [type=missing, input_value={'API_KEY': 'k'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nBASIC_AUTH_PASSWORD\n  Field required [type=missing, input_value={'API_KEY': 'k'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nWEBSERVER_HOSTNAME\n  Field required [type=missing, input_value={'API_KEY': 'k'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nWEBSERVER_PORT\n  Field required [type=missing, input_value={'API_KEY': 'k'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\nGRAYLOG_PORT\n  Field required [type=missing, input_value={'API_KEY': 'k'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+   },
+   {
+    "input": "{\"BASIC_AUTH_USERNAME\": \"a\", \"BASIC_AUTH_PASSWORD\": \"b\", \"WEBSERVER_HOSTNAME\": \"h\", \"WEBSERVER_PORT\": \"443\", \"GRAYLOG_PORT\": \"x\", \"API_KEY\": \"k\"}",
+    "dump": "{\"BASIC_AUTH_USERNAME\": \"a\", \"BASIC_AUTH_PASSWORD\": \"b\", \"WEBSERVER_HOSTNAME\": \"h\", \"WEBSERVER_PORT\": \"443\", \"GRAYLOG_PORT\": \"x\", \"API_KEY\": \"k\"}"
+   },
+   {
+    "input": "{\"BASIC_AUTH_USERNAME\": \"a\", \"BASIC_AUTH_PASSWORD\": \"b\", \"WEBSERVER_HOSTNAME\": \"h\", \"WEBSERVER_PORT\": \"8443\", \"GRAYLOG_PORT\": \"514\", \"API_KEY\": \"k\"}",
+    "dump": "{\"BASIC_AUTH_USERNAME\": \"a\", \"BASIC_AUTH_PASSWORD\": \"b\", \"WEBSERVER_HOSTNAME\": \"h\", \"WEBSERVER_PORT\": \"8443\", \"GRAYLOG_PORT\": \"514\", \"API_KEY\": \"k\"}"
+   }
+  ],
+  "details": [
+   {
+    "input": "{\"customer_code\": \"c1\", \"customer_name\": \"Acme\", \"protocal_type\": \"TCP\", \"syslog_port\": 514, \"hot_data_retention\": 30, \"index_replicas\": 0}",
+    "dump": "{\"customer_name\": \"Acme\", \"customer_code\": \"c1\", \"protocal_type\": \"TCP\", \"syslog_port\": 514, \"hot_data_retention\": 30, \"index_replicas\": 0}"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"customer_name\": \"Acme\", \"protocal_type\": \"TCP\", \"syslog_port\": 514, \"hot_data_retention\": null, \"index_replicas\": null}",
+    "error": "2 validation errors for BitdefenderCustomerDetails\nhot_data_retention\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type\nindex_replicas\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type"
+   },
+   {
+    "input": "{\"customer_code\": \"c1\", \"customer_name\": \"Acme\", \"protocal_type\": \"Tcp\", \"syslog_port\": 514, \"hot_data_retention\": 7, \"index_replicas\": null}",
+    "error": "1 validation error for BitdefenderCustomerDetails\nindex_replicas\n  Input should be a valid integer [type=int_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.13/v/int_type"
+   }
+  ],
+  "files": [
+   {
+    "name": "Acme_Corp",
+    "keys": {
+     "BASIC_AUTH_USERNAME": "admin",
+     "BASIC_AUTH_PASSWORD": "pässword:x",
+     "WEBSERVER_HOSTNAME": "firehose.example.com",
+     "WEBSERVER_PORT": "3200",
+     "GRAYLOG_PORT": "10514",
+     "API_KEY": "key-1"
+    },
+    "url": "http://graylog.example.com:9000",
+    "files": {
+     "Acme_Corp_bitdefender_docker-compose.yml": "version: \"3.8\"\n\nservices:\n    bitdefender-connector-Acme_Corp:\n        image: ghcr.io/socfortress/bitdefender-connector\n        volumes:\n            - /opt/CoPilot/data/data/Acme_Corp/config.json:/opt/bitdefender/gz-evpsc/api/config/config.json\n        ports:\n            - \"3200:3200\"\n        restart: unless-stopped\n",
+     "config.json": "{\n    \"port\": 3200,\n    \"syslog_port\": 10514,\n    \"transport\": \"Tcp\",\n    \"target\": \"graylog.example.com\",\n    \"authentication_string\": \"Basic YWRtaW46cMOkc3N3b3JkOng=\",\n    \"secure\": {\n        \"enabled\": true,\n        \"key\": \"api/config/server.key\",\n        \"cert\": \"api/config/server.crt\"\n    }\n}"
+    }
+   },
+   {
+    "name": "CUSTOMER_NAME_PORT",
+    "keys": {
+     "BASIC_AUTH_USERNAME": "u \"1\"",
+     "BASIC_AUTH_PASSWORD": "",
+     "WEBSERVER_HOSTNAME": "h",
+     "WEBSERVER_PORT": " +0_80 ",
+     "GRAYLOG_PORT": "1_0514",
+     "API_KEY": "ü"
+    },
+    "url": "https://10.0.0.5:9000/x",
+    "files": {
+     "CUSTOMER_NAME_PORT_bitdefender_docker-compose.yml": "version: \"3.8\"\n\nservices:\n    bitdefender-connector-CUSTOMER_NAME_ +0_80 :\n        image: ghcr.io/socfortress/bitdefender-connector\n        volumes:\n            - /opt/CoPilot/data/data/CUSTOMER_NAME_ +0_80 /config.json:/opt/bitdefender/gz-evpsc/api/config/config.json\n        ports:\n            - \" +0_80 : +0_80 \"\n        restart: unless-stopped\n",
+     "config.json": "{\n    \"port\": 80,\n    \"syslog_port\": 10514,\n    \"transport\": \"Tcp\",\n    \"target\": \"10.0.0.5/x\",\n    \"authentication_string\": \"Basic dSAiMSI6\",\n    \"secure\": {\n        \"enabled\": true,\n        \"key\": \"api/config/server.key\",\n        \"cert\": \"api/config/server.crt\"\n    }\n}"
+    }
+   },
+   {
+    "name": "É_\"x\"",
+    "keys": {
+     "BASIC_AUTH_USERNAME": "a",
+     "BASIC_AUTH_PASSWORD": "b",
+     "WEBSERVER_HOSTNAME": "h",
+     "WEBSERVER_PORT": "PORT",
+     "GRAYLOG_PORT": "514",
+     "API_KEY": "k"
+    },
+    "url": null,
+    "exception": [
+     "ValueError",
+     "invalid literal for int() with base 10: 'PORT'"
+    ],
+    "files": {
+     "É_\"x\"_bitdefender_docker-compose.yml": "version: \"3.8\"\n\nservices:\n    bitdefender-connector-É_\"x\":\n        image: ghcr.io/socfortress/bitdefender-connector\n        volumes:\n            - /opt/CoPilot/data/data/É_\"x\"/config.json:/opt/bitdefender/gz-evpsc/api/config/config.json\n        ports:\n            - \"PORT:PORT\"\n        restart: unless-stopped\n"
+    }
+   },
+   {
+    "name": ".",
+    "keys": {
+     "BASIC_AUTH_USERNAME": "a",
+     "BASIC_AUTH_PASSWORD": "b",
+     "WEBSERVER_HOSTNAME": "h",
+     "WEBSERVER_PORT": "443",
+     "GRAYLOG_PORT": "x",
+     "API_KEY": "k"
+    },
+    "url": "graylog",
+    "exception": [
+     "ValueError",
+     "invalid literal for int() with base 10: 'x'"
+    ],
+    "files": {
+     "._bitdefender_docker-compose.yml": "version: \"3.8\"\n\nservices:\n    bitdefender-connector-.:\n        image: ghcr.io/socfortress/bitdefender-connector\n        volumes:\n            - /opt/CoPilot/data/data/./config.json:/opt/bitdefender/gz-evpsc/api/config/config.json\n        ports:\n            - \"443:443\"\n        restart: unless-stopped\n"
+    }
+   },
+   {
+    "name": "Acme_Corp",
+    "keys": {
+     "BASIC_AUTH_USERNAME": "a",
+     "BASIC_AUTH_PASSWORD": "b",
+     "WEBSERVER_HOSTNAME": "h",
+     "WEBSERVER_PORT": "8443",
+     "GRAYLOG_PORT": "514",
+     "API_KEY": "k"
+    },
+    "url": "http://graylog.example.com:9000",
+    "files": {
+     "Acme_Corp_bitdefender_docker-compose.yml": "version: \"3.8\"\n\nservices:\n    bitdefender-connector-Acme_Corp:\n        image: ghcr.io/socfortress/bitdefender-connector\n        volumes:\n            - /opt/CoPilot/data/data/Acme_Corp/config.json:/opt/bitdefender/gz-evpsc/api/config/config.json\n        ports:\n            - \"8443:8443\"\n        restart: unless-stopped\n",
+     "config.json": "{\n    \"port\": 8443,\n    \"syslog_port\": 514,\n    \"transport\": \"Tcp\",\n    \"target\": \"graylog.example.com\",\n    \"authentication_string\": \"Basic YTpi\",\n    \"secure\": {\n        \"enabled\": true,\n        \"key\": \"api/config/server.key\",\n        \"cert\": \"api/config/server.crt\"\n    }\n}"
+    }
+   }
+  ],
+  "gravityzone": [
+   {
+    "keys": {
+     "BASIC_AUTH_USERNAME": "admin",
+     "BASIC_AUTH_PASSWORD": "pässword:x",
+     "WEBSERVER_HOSTNAME": "firehose.example.com",
+     "WEBSERVER_PORT": "3200",
+     "GRAYLOG_PORT": "10514",
+     "API_KEY": "key-1"
+    },
+    "url": "https://cloud.gravityzone.bitdefender.com/api/v1.0/jsonrpc/push",
+    "headers": [
+     [
+      "Host",
+      "cloud.gravityzone.bitdefender.com"
+     ],
+     [
+      "Accept",
+      "*/*"
+     ],
+     [
+      "Accept-Encoding",
+      "gzip, deflate"
+     ],
+     [
+      "Connection",
+      "keep-alive"
+     ],
+     [
+      "User-Agent",
+      "python-httpx/0.28.1"
+     ],
+     [
+      "authorization",
+      "Basic a2V5LTE6"
+     ],
+     [
+      "cache-control",
+      "no-cache"
+     ],
+     [
+      "content-type",
+      "application/json"
+     ],
+     [
+      "Content-Length",
+      "780"
+     ]
+    ],
+    "body": "{\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"setPushEventSettings\",\"params\":{\"serviceSettings\":{\"requireValidSslCertificate\":false,\"authorization\":\"Basic YWRtaW46cMOkc3N3b3JkOng=\",\"url\":\"https://firehose.example.com:3200/api\"},\"serviceType\":\"cef\",\"status\":1,\"subscribeToEventTypes\":{\"adcloudgz\":true,\"antiexploit\":true,\"aph\":true,\"av\":true,\"avc\":true,\"dp\":true,\"endpoint-moved-in\":true,\"endpoint-moved-out\":true,\"exchange-malware\":true,\"exchange-user-credentials\":true,\"fw\":true,\"hd\":true,\"hwid-change\":true,\"install\":true,\"modules\":true,\"network-monitor\":true,\"network-sandboxing\":true,\"new-incident\":true,\"ransomware-mitigation\":true,\"registration\":true,\"supa-update-status\":true,\"sva\":true,\"sva-load\":true,\"task-status\":true,\"troubleshooting-activity\":true,\"uc\":true,\"uninstall\":true}}}"
+   },
+   {
+    "keys": {
+     "BASIC_AUTH_USERNAME": "u \"1\"",
+     "BASIC_AUTH_PASSWORD": "",
+     "WEBSERVER_HOSTNAME": "h",
+     "WEBSERVER_PORT": " +0_80 ",
+     "GRAYLOG_PORT": "1_0514",
+     "API_KEY": "ü"
+    },
+    "url": "https://cloud.gravityzone.bitdefender.com/api/v1.0/jsonrpc/push",
+    "headers": [
+     [
+      "Host",
+      "cloud.gravityzone.bitdefender.com"
+     ],
+     [
+      "Accept",
+      "*/*"
+     ],
+     [
+      "Accept-Encoding",
+      "gzip, deflate"
+     ],
+     [
+      "Connection",
+      "keep-alive"
+     ],
+     [
+      "User-Agent",
+      "python-httpx/0.28.1"
+     ],
+     [
+      "authorization",
+      "Basic w7w6"
+     ],
+     [
+      "cache-control",
+      "no-cache"
+     ],
+     [
+      "content-type",
+      "application/json"
+     ],
+     [
+      "Content-Length",
+      "748"
+     ]
+    ],
+    "body": "{\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"setPushEventSettings\",\"params\":{\"serviceSettings\":{\"requireValidSslCertificate\":false,\"authorization\":\"Basic dSAiMSI6\",\"url\":\"https://h: +0_80 /api\"},\"serviceType\":\"cef\",\"status\":1,\"subscribeToEventTypes\":{\"adcloudgz\":true,\"antiexploit\":true,\"aph\":true,\"av\":true,\"avc\":true,\"dp\":true,\"endpoint-moved-in\":true,\"endpoint-moved-out\":true,\"exchange-malware\":true,\"exchange-user-credentials\":true,\"fw\":true,\"hd\":true,\"hwid-change\":true,\"install\":true,\"modules\":true,\"network-monitor\":true,\"network-sandboxing\":true,\"new-incident\":true,\"ransomware-mitigation\":true,\"registration\":true,\"supa-update-status\":true,\"sva\":true,\"sva-load\":true,\"task-status\":true,\"troubleshooting-activity\":true,\"uc\":true,\"uninstall\":true}}}"
+   },
+   {
+    "keys": {
+     "BASIC_AUTH_USERNAME": "a",
+     "BASIC_AUTH_PASSWORD": "b",
+     "WEBSERVER_HOSTNAME": "h",
+     "WEBSERVER_PORT": "PORT",
+     "GRAYLOG_PORT": "514",
+     "API_KEY": "k"
+    },
+    "url": "https://cloud.gravityzone.bitdefender.com/api/v1.0/jsonrpc/push",
+    "headers": [
+     [
+      "Host",
+      "cloud.gravityzone.bitdefender.com"
+     ],
+     [
+      "Accept",
+      "*/*"
+     ],
+     [
+      "Accept-Encoding",
+      "gzip, deflate"
+     ],
+     [
+      "Connection",
+      "keep-alive"
+     ],
+     [
+      "User-Agent",
+      "python-httpx/0.28.1"
+     ],
+     [
+      "authorization",
+      "Basic azo="
+     ],
+     [
+      "cache-control",
+      "no-cache"
+     ],
+     [
+      "content-type",
+      "application/json"
+     ],
+     [
+      "Content-Length",
+      "741"
+     ]
+    ],
+    "body": "{\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"setPushEventSettings\",\"params\":{\"serviceSettings\":{\"requireValidSslCertificate\":false,\"authorization\":\"Basic YTpi\",\"url\":\"https://h:PORT/api\"},\"serviceType\":\"cef\",\"status\":1,\"subscribeToEventTypes\":{\"adcloudgz\":true,\"antiexploit\":true,\"aph\":true,\"av\":true,\"avc\":true,\"dp\":true,\"endpoint-moved-in\":true,\"endpoint-moved-out\":true,\"exchange-malware\":true,\"exchange-user-credentials\":true,\"fw\":true,\"hd\":true,\"hwid-change\":true,\"install\":true,\"modules\":true,\"network-monitor\":true,\"network-sandboxing\":true,\"new-incident\":true,\"ransomware-mitigation\":true,\"registration\":true,\"supa-update-status\":true,\"sva\":true,\"sva-load\":true,\"task-status\":true,\"troubleshooting-activity\":true,\"uc\":true,\"uninstall\":true}}}"
+   },
+   {
+    "keys": {
+     "BASIC_AUTH_USERNAME": "a",
+     "BASIC_AUTH_PASSWORD": "b",
+     "WEBSERVER_HOSTNAME": "h",
+     "WEBSERVER_PORT": "443",
+     "GRAYLOG_PORT": "x",
+     "API_KEY": "k"
+    },
+    "url": "https://cloud.gravityzone.bitdefender.com/api/v1.0/jsonrpc/push",
+    "headers": [
+     [
+      "Host",
+      "cloud.gravityzone.bitdefender.com"
+     ],
+     [
+      "Accept",
+      "*/*"
+     ],
+     [
+      "Accept-Encoding",
+      "gzip, deflate"
+     ],
+     [
+      "Connection",
+      "keep-alive"
+     ],
+     [
+      "User-Agent",
+      "python-httpx/0.28.1"
+     ],
+     [
+      "authorization",
+      "Basic azo="
+     ],
+     [
+      "cache-control",
+      "no-cache"
+     ],
+     [
+      "content-type",
+      "application/json"
+     ],
+     [
+      "Content-Length",
+      "740"
+     ]
+    ],
+    "body": "{\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"setPushEventSettings\",\"params\":{\"serviceSettings\":{\"requireValidSslCertificate\":false,\"authorization\":\"Basic YTpi\",\"url\":\"https://h:443/api\"},\"serviceType\":\"cef\",\"status\":1,\"subscribeToEventTypes\":{\"adcloudgz\":true,\"antiexploit\":true,\"aph\":true,\"av\":true,\"avc\":true,\"dp\":true,\"endpoint-moved-in\":true,\"endpoint-moved-out\":true,\"exchange-malware\":true,\"exchange-user-credentials\":true,\"fw\":true,\"hd\":true,\"hwid-change\":true,\"install\":true,\"modules\":true,\"network-monitor\":true,\"network-sandboxing\":true,\"new-incident\":true,\"ransomware-mitigation\":true,\"registration\":true,\"supa-update-status\":true,\"sva\":true,\"sva-load\":true,\"task-status\":true,\"troubleshooting-activity\":true,\"uc\":true,\"uninstall\":true}}}"
+   },
+   {
+    "keys": {
+     "BASIC_AUTH_USERNAME": "a",
+     "BASIC_AUTH_PASSWORD": "b",
+     "WEBSERVER_HOSTNAME": "h",
+     "WEBSERVER_PORT": "8443",
+     "GRAYLOG_PORT": "514",
+     "API_KEY": "k"
+    },
+    "url": "https://cloud.gravityzone.bitdefender.com/api/v1.0/jsonrpc/push",
+    "headers": [
+     [
+      "Host",
+      "cloud.gravityzone.bitdefender.com"
+     ],
+     [
+      "Accept",
+      "*/*"
+     ],
+     [
+      "Accept-Encoding",
+      "gzip, deflate"
+     ],
+     [
+      "Connection",
+      "keep-alive"
+     ],
+     [
+      "User-Agent",
+      "python-httpx/0.28.1"
+     ],
+     [
+      "authorization",
+      "Basic azo="
+     ],
+     [
+      "cache-control",
+      "no-cache"
+     ],
+     [
+      "content-type",
+      "application/json"
+     ],
+     [
+      "Content-Length",
+      "741"
+     ]
+    ],
+    "body": "{\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"setPushEventSettings\",\"params\":{\"serviceSettings\":{\"requireValidSslCertificate\":false,\"authorization\":\"Basic YTpi\",\"url\":\"https://h:8443/api\"},\"serviceType\":\"cef\",\"status\":1,\"subscribeToEventTypes\":{\"adcloudgz\":true,\"antiexploit\":true,\"aph\":true,\"av\":true,\"avc\":true,\"dp\":true,\"endpoint-moved-in\":true,\"endpoint-moved-out\":true,\"exchange-malware\":true,\"exchange-user-credentials\":true,\"fw\":true,\"hd\":true,\"hwid-change\":true,\"install\":true,\"modules\":true,\"network-monitor\":true,\"network-sandboxing\":true,\"new-incident\":true,\"ransomware-mitigation\":true,\"registration\":true,\"supa-update-status\":true,\"sva\":true,\"sva-load\":true,\"task-status\":true,\"troubleshooting-activity\":true,\"uc\":true,\"uninstall\":true}}}"
+   }
+  ]
+ }
+}

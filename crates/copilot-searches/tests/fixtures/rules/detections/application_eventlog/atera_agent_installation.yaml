@@ -1,0 +1,138 @@
+name: Atera Agent Installation
+id: 87261fb2-69d0-42fe-b9de-88c6b5f65a43
+version: 1
+schema_version: "1.0"
+date: "2022-12-25"
+author: Bhabesh Raj
+source:
+  format: sigma
+  repository: SigmaHQ/sigma
+  rule_id: 87261fb2-69d0-42fe-b9de-88c6b5f65a43
+  commit: release-20260810
+  license: DRL-1.1
+converted_by: Moussa Amine — sigma2copilot v0.1.0
+status: experimental
+type: TTP
+
+description: >
+  Detects successful installation of Atera Remote Monitoring & Management (RMM)
+  agent as recently found to be used by Conti operators. MITRE ATT&CK:
+  T1219.002.
+
+data_source:
+  - Windows Application Event Log
+
+search:
+  index_pattern: "${INDEX_PATTERN}"
+  size: 100
+  sort:
+    - timestamp: desc
+  query:
+    bool:
+      must:
+        - term:
+            agent_name: "${AGENT_NAME}"
+        - term:
+            agent_labels_customer: "${CUSTOMER_CODE}"
+        
+        - term:
+            data_win_system_eventID: "1033"
+        - term:
+            data_win_system_providerName:
+              value: "MsiInstaller"
+              case_insensitive: true
+        - wildcard:
+            data_win_eventdata_message:
+              value: "*AteraAgent*"
+              case_insensitive: true
+        # ---- end generated ----
+        - range:
+            timestamp:
+              gte: "${START_TIME}"
+              lte: "${END_TIME}"
+  _source:
+    - timestamp
+    - agent_name
+    - data_win_system_eventID
+    - data_win_system_providerName
+    - data_win_eventdata_message
+
+parameters:
+  AGENT_NAME:
+    description: "Target agent/host name"
+    type: string
+    required: true
+    example: "DESKTOP-AM0HLGE"
+  CUSTOMER_CODE:
+    description: "Customer label for filtering"
+    type: string
+    required: true
+    example: "lab"
+  INDEX_PATTERN:
+    description: "Elasticsearch index pattern"
+    type: string
+    required: true
+    example: "wazuh-lab_*"
+  START_TIME:
+    description: "Query start time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now-24h"
+    example: "2026-04-08 00:00:00.000"
+  END_TIME:
+    description: "Query end time (ISO 8601 or relative)"
+    type: datetime
+    required: false
+    default: "now"
+    example: "2026-04-08 23:59:59.999"
+
+how_to_implement: >
+  Requires the relevant built-in Windows event channel collected by the Wazuh
+  agent (eventchannel localfile entry in ossec.conf). The detection looks for
+  events where data_win_system_eventID equals '1033';
+  data_win_system_providerName equals 'MsiInstaller'; data_win_eventdata_message
+  matches '*AteraAgent*'.
+
+known_false_positives: >
+  Legitimate Atera agent installation. Baseline expected activity in your
+  environment and tune this detection before relying on it for automated
+  response.
+
+references:
+  - https://www.advintel.io/post/secret-backdoor-behind-conti-ransomware-operation-introducing-atera-agent
+  - https://attack.mitre.org/techniques/T1219/002/
+
+response:
+  message: >
+    Atera Agent Installation detected on host $agent_name$. Matched
+    data_win_system_providerName: $data_win_system_providerName$. Matched
+    data_win_eventdata_message: $data_win_eventdata_message$. MITRE ATT&CK:
+    T1219.002
+  risk_score: 75
+  severity: high
+  risk_objects:
+    - field: agent_name
+      type: system
+      score: 75
+  threat_objects:
+    - field: data_win_system_providerName
+      type: other
+    - field: data_win_eventdata_message
+      type: other
+
+tags:
+  asset_type: Endpoint
+  mitre_attack_id:
+    - T1219.002
+  custom_tags:
+    - atera
+    - agent
+    - installation
+    - windows_application
+    - command_and_control
+  product:
+    - Wazuh
+  security_domain: endpoint
+
+graylog:
+  query: data_win_system_eventID:"1033" AND data_win_system_providerName:/[Mm][Ss][Ii][Ii][Nn][Ss][Tt][Aa][Ll][Ll][Ee][Rr]/ AND data_win_eventdata_message:/.*[Aa][Tt][Ee][Rr][Aa][Aa][Gg][Ee][Nn][Tt].*/

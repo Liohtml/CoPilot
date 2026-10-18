@@ -1,0 +1,24 @@
+[package]
+name = "copilot-mcp"
+description = "CoPilot MCP: /api/copilot_mcp (the MCP servers, their example questions and categories, and the query routed to the local copilot-mcp container or SOCFortress's cloud)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-auth = { workspace = true }
+copilot-web = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-threat-intel = { workspace = true }
+copilot-wazuh = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true
