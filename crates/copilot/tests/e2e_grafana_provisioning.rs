@@ -264,6 +264,53 @@ async fn dashboard_failures_read_as_python_s() {
     let saved = set_connector(&h, "Grafana", &grafana.uri()).await;
     h.seed().await;
     let analyst = h.token(&h.code("analyst"), "analyst");
+    // The analyst's customer holds Grafana organization 7; beta's is 8.
+    let (acme, beta) = (h.code("acme"), h.code("beta"));
+    seed_meta(&h, &acme, "7").await;
+    seed_meta(&h, &beta, "8").await;
+    // Another tenant's organization, one no customer holds, and the default
+    // (0) are refused before Grafana is asked (Python wrote into any).
+    for (uri, body) in [
+        (
+            "/api/grafana/dashboards",
+            json!({"dashboards": ["HUNTRESS_SUMMARY"], "organizationId": 8}),
+        ),
+        (
+            "/api/grafana/dashboards",
+            json!({"dashboards": ["HUNTRESS_SUMMARY"], "organizationId": "9"}),
+        ),
+        ("/api/grafana/dashboards", json!({"dashboards": []})),
+        (
+            "/api/customer_provisioning/provision/dashboards",
+            json!({"customer_name": "x", "dashboards_to_include": {"dashboards": ["DUO_AUTH"]},
+                "grafana_org_id": 8, "grafana_datasource_uid": "d", "grafana_folder_id": 1,
+                "grafana_url": "https://g"}),
+        ),
+    ] {
+        let org = body
+            .get("organizationId")
+            .or_else(|| body.get("grafana_org_id"))
+            .map_or("0".to_string(), |v| {
+                v.as_str().map_or(v.to_string(), String::from)
+            });
+        let (st, answer) = h.call("POST", uri, Some(&analyst), Some(body)).await;
+        assert_eq!(st, StatusCode::FORBIDDEN, "{answer}");
+        assert_eq!(
+            answer["message"],
+            json!(format!("Access denied to Grafana organization {org}"))
+        );
+    }
+    // Validation comes first: an unknown dashboard is the 422, whatever the org.
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/grafana/dashboards",
+            Some(&analyst),
+            Some(json!({"dashboards": ["NOPE"], "organizationId": 8})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(grafana.received_requests().await.unwrap().is_empty());
     Mock::given(method("POST"))
         .and(path("/api/user/using/7"))
         .respond_with(ResponseTemplate::new(404).set_body_json(json!({"message": "Not found"})))
@@ -313,7 +360,7 @@ async fn dashboard_failures_read_as_python_s() {
             "POST",
             "/api/grafana/dashboards",
             Some(&analyst),
-            Some(json!({"dashboards": []})),
+            Some(json!({"dashboards": [], "organizationId": 7})),
         )
         .await;
     assert_eq!(st, StatusCode::OK, "{body}");
@@ -355,7 +402,7 @@ async fn dashboard_failures_read_as_python_s() {
             "POST",
             "/api/grafana/dashboards",
             Some(&analyst),
-            Some(json!({"dashboards": ["DUO_AUTH"]})),
+            Some(json!({"dashboards": ["DUO_AUTH"], "organizationId": 7})),
         )
         .await;
     assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
@@ -370,6 +417,10 @@ async fn dashboard_failures_read_as_python_s() {
         set_connector(&h, "Grafana", row.2.as_deref().unwrap_or_default()).await;
         restore_connector(&h, "Grafana", Some(row)).await;
     }
+    h.exec(&format!(
+        "DELETE FROM customersmeta WHERE customer_code IN ('{acme}', '{beta}')"
+    ))
+    .await;
 }
 
 // --- step 2: network connectors ------------------------------------------------------

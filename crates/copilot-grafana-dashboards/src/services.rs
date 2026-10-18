@@ -99,3 +99,20 @@ pub async fn provision_dashboards(grafana: &GrafanaClient, request: &PyValue) ->
         ]),
     )
 }
+
+/// The customers whose `customersmeta` row names Grafana organization `org`
+/// (`customer_meta_grafana_org_id`, a string column, compared as text).
+pub async fn organization_owners(
+    db: &copilot_db::Db,
+    org: &str,
+) -> Result<Vec<String>, copilot_db::DbError> {
+    // The value comes from the request: never a cached prepared statement.
+    let owners = sqlx::query_scalar::<_, String>(
+        "SELECT customer_code FROM customersmeta WHERE customer_meta_grafana_org_id = ?",
+    )
+    .persistent(false)
+    .bind(org)
+    .fetch_all(db.pool())
+    .await?;
+    Ok(owners)
+}

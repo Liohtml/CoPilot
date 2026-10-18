@@ -1063,7 +1063,35 @@ async def dashboard_checks(p, t_admin, t_analyst, t_unassigned):
         t_admin,
         json={"dashboards": [1], "organizationId": "x", "folderId": 1.5, "datasourceUid": 5, "grafana_url": None},
     )
-    await p.same("dashboards: empty list asks nothing", "POST", DASH, t_analyst, before=ok, json={"dashboards": []})
+    await p.same("dashboards: empty list asks nothing", "POST", DASH, t_admin, before=ok, json={"dashboards": []})
+    # Deliberate difference: a scoped caller's organization must be one of their customers'
+    # (customersmeta.customer_meta_grafana_org_id; Python wrote into any tenant's): §4.
+    await p.same(
+        "dashboards: an analyst, the organization of no customer of theirs",
+        "POST",
+        DASH,
+        t_analyst,
+        before=ok,
+        expect=(200, 403),
+        json={"dashboards": [], "organizationId": 4242},
+    )
+    await p.same(
+        "dashboards: an analyst without customers",
+        "POST",
+        DASH,
+        t_unassigned,
+        before=ok,
+        expect=(200, 403),
+        json={"dashboards": [], "organizationId": 7},
+    )
+    await p.same(
+        "dashboards: an analyst, their customer's organization",
+        "POST",
+        DASH,
+        t_analyst,
+        before=ok,
+        json={"dashboards": ["DUO_AUTH"], "organizationId": "7"},
+    )
     await p.same(
         "dashboards: defaults (org 0, folder 0, the template URL)",
         "POST",
@@ -1076,7 +1104,7 @@ async def dashboard_checks(p, t_admin, t_analyst, t_unassigned):
         "dashboards: several, the datasource and URL replaced",
         "POST",
         DASH,
-        t_unassigned,
+        t_admin,
         before=ok,
         json={
             "dashboards": ["WAZUH_SUMMARY", "OFFICE365_SUMMARY", "SONICWALL_VPN", "WAZUH_SUMMARY", "MIMECAST_SUMMARY"],

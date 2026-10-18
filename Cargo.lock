@@ -870,6 +870,7 @@ dependencies = [
  "axum",
  "copilot-auth",
  "copilot-core",
+ "copilot-db",
  "copilot-grafana",
  "copilot-monitoring-alerts",
  "copilot-upstream",
@@ -878,6 +879,7 @@ dependencies = [
  "http",
  "serde_json",
  "sha2",
+ "sqlx",
  "tokio",
  "tracing",
 ]
