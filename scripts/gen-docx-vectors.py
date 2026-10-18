@@ -129,7 +129,8 @@ def slim(data, drop):
                     if (override.get("PartName") or "").lstrip("/") in drop:
                         tree.remove(override)
                 content = etree.tostring(tree, xml_declaration=True, encoding="UTF-8", standalone=True)
-            dst.writestr(name, content)
+            # A fixed timestamp keeps the generated templates (and this file) reproducible.
+            dst.writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), content, compress_type=zipfile.ZIP_DEFLATED)
     return out.getvalue()
 
 

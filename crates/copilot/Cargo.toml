@@ -79,6 +79,7 @@ clap = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
+copilot-docx = { workspace = true }
 copilot-velociraptor = { workspace = true, features = ["testing"] }
 tempfile = { workspace = true }
 tower = { workspace = true }

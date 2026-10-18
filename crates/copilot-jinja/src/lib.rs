@@ -54,5 +54,16 @@ pub use env::{Autoescape, Data, Directory, Environment};
 pub use error::{Error, Result};
 pub use notify::{Event, Input, MAX_RENDERED_BYTES, compile_template, render};
 
+/// `format(x, spec)` of a Python `float` (`f"{x:.1f}"`, `"%.3g"`); an
+/// invalid spec is its `ValueError`.
+pub fn format_float(x: f64, spec: &str) -> Result<String> {
+    format::format_value(&value::Value::Float(x), spec)
+}
+
+/// `repr(float)` (and `str(float)`).
+pub fn float_repr(x: f64) -> String {
+    pyrepr::float_repr(x)
+}
+
 /// The sandbox's `MAX_RANGE`.
 pub const MAX_RANGE: usize = 100_000;

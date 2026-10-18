@@ -7,10 +7,18 @@
 //!   `Response`, through `copilot.py`'s `GZipMiddleware(minimum_size=1000)`
 //! - [`tempfile`]  — `NamedTemporaryFile(delete=False, suffix=…)` names
 //! - [`case`]      — the case DOCX (`copilot-docx`) and PDF reports
+//! - [`customer_report`] — the customer reports' background generation
+//! - [`soc_report`] — the SOC operations report
+//! - [`charts`], [`sla`], [`templates`] — what the report pages are made of
 
 #![warn(missing_docs)]
 
 pub mod case;
+pub mod charts;
+pub mod customer_report;
 pub mod pdfkit;
+pub mod sla;
+pub mod soc_report;
 pub mod starlette;
 pub mod tempfile;
+pub mod templates;

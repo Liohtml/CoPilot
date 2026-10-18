@@ -18,9 +18,10 @@
 //!                      │ integrations, dispatch log, channel catalog          │
 //!                      │                    → copilot-notifications ───────────► webhook, Teams,
 //!                      │ (every module emits in-process: DispatchingSink)     │   Resend, Shuffle
-//!                      │ /api/soc_management/* (but GET /report),             │
-//!                      │ /api/customer_portal/sla/*                           │
+//!                      │ /api/soc_management/*, /api/customer_portal/sla/*    │
 //!                      │                    → copilot-soc-management          │
+//!                      │ the case, customer and SOC reports (PDF, DOCX)       │
+//!                      │                    → copilot-reports ────────────────► wkhtmltopdf, MinIO
 //!                      │ /api/agent_data_store/*, the incidents' MinIO routes │
 //!                      │                    → copilot-objectstore ────────────────► MinIO :9000
 //!                      │ /api/siem/dashboards, /event_sources, /events        │
@@ -131,9 +132,10 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // reports (copilot-reports).
     "POST /api/incidents/report",
     // The report list, the visibility switch, download and delete (GET "",
-    // PATCH /{id}/visibility, GET /{id}/download, DELETE /{id}); generation
-    // (the PDF renderer) stays in Python.
+    // PATCH /{id}/visibility, GET /{id}/download, DELETE /{id}), and the
+    // generation (POST /generate/background, copilot-reports).
     "GET /api/incidents/customer_reports",
+    "POST /api/incidents/customer_reports",
     "PATCH /api/incidents/customer_reports",
     "DELETE /api/incidents/customer_reports",
     "GET /api/scheduler",
@@ -207,8 +209,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/portainer/stop-wazuh-customer-stack",
     "POST /api/portainer/update-customer-stack-id",
     "DELETE /api/portainer/delete-wazuh-customer-stack",
-    // SOC Management but GET /report (the PDF operations report: matplotlib
-    // charts and wkhtmltopdf), which falls through to the legacy backend.
+    // SOC Management (copilot-soc-management), its PDF operations report
+    // GET /report (copilot-reports).
     "/api/soc_management",
     "/api/customer_portal/sla",
     // The customer WAF (copilot-waf).
@@ -989,6 +991,8 @@ impl App {
                 "/api/soc_management",
                 copilot_soc_management::router(self.ctx.clone()),
             )
+            // `GET /api/soc_management/report`, at its full path.
+            .merge(copilot_reports::soc_report::router(self.ctx.clone()))
             .merge(copilot_soc_management::portal_router(self.ctx.clone()))
             .nest("/api/customer_waf", copilot_waf::router(self.waf.clone()))
             .nest(
@@ -1116,10 +1120,17 @@ impl App {
                     legacy: self.legacy.clone(),
                 }),
             )
-            // The case DOCX and PDF reports, at their full paths beside the
-            // nested `/api/incidents/report` router.
+            // The case DOCX and PDF reports and the customer reports'
+            // generation, at their full paths beside the nested
+            // `/api/incidents/report` and `/customer_reports` routers.
             .merge(copilot_reports::case::router(
                 copilot_reports::case::CaseReportState {
+                    ctx: self.ctx.clone(),
+                    store: self.objectstore.clone(),
+                },
+            ))
+            .merge(copilot_reports::customer_report::router(
+                copilot_reports::customer_report::CustomerReportState {
                     ctx: self.ctx.clone(),
                     store: self.objectstore.clone(),
                 },
