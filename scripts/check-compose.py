@@ -30,6 +30,10 @@ The variables the binary knows are the table in `crates/copilot-core/src/env_var
    `crates/copilot/Dockerfile` and allowed by its `.dockerignore`, the runtime user's uid is the
    one the init step hands the data to, and the `HEALTHCHECK` probes the route the binary serves.
 
+Then a self-test: each breakage in `SELF_TEST` (the standby running APScheduler, a read-only data
+directory, MinIO's objects handed over, a stand-in passed, …) is applied to a copy of the files and
+must fail the layout checks, so a check that stopped biting is noticed.
+
 Exits non-zero, naming every failure.
 """
 
@@ -368,14 +372,21 @@ def check_mounts(label: str, name: str, service: dict, services: dict, workdir: 
                 fail(f"{label}: {other} and {name} do not share {target}")
 
 
-def check_layouts() -> None:
+def check_layouts(edits: dict[str, tuple[str, str]] | None = None) -> None:
+    """Every layout; `edits` ({file: (old, new)}) changes a copy of the files first (the self-test)."""
     if shutil.which("docker") is None:
         fail("docker compose is needed (Docker Compose v2): docker not found")
         return
     with tempfile.TemporaryDirectory(prefix="check-compose-") as tmp:
         work = Path(tmp)
         for f in COMPOSE_FILES:
-            shutil.copy(ROOT / f, work / f)
+            text = (ROOT / f).read_text()
+            if edits and f in edits:
+                old, new = edits[f]
+                if old not in text:
+                    fail(f"self-test: {f} no longer holds {old!r}")
+                text = text.replace(old, new)
+            (work / f).write_text(text)
         layouts = [
             ("base", ["docker-compose.yml"], [], {}),
             ("base + legacy profile", ["docker-compose.yml"], [LEGACY_PROFILE], {}),
@@ -446,17 +457,90 @@ def check_image() -> None:
             fail(f".github/workflows/docker.yml does not push {image}, which the Compose files run")
 
 
+# Breakages the layout checks must catch: (what, file, old text, new text, a word of the failure).
+SELF_TEST = [
+    ("the standby runs APScheduler", "docker-compose.yml", "- COPILOT_PY_SCHEDULER=false", "- COPILOT_PY_SCHEDULER=true", "owners"),
+    ("nobody owns the schedule", "docker-compose.yml", "- COPILOT_SCHEDULER_OWNER=rust", "- COPILOT_SCHEDULER_OWNER=", "owners"),
+    (
+        "the data directory read-only",
+        "docker-compose.yml",
+        "- ./data/data:/opt/copilot/backend/data\n            - scoutsuite",
+        "- ./data/data:/opt/copilot/backend/data:ro\n            - scoutsuite",
+        "read-write",
+    ),
+    (
+        "the init step not awaited",
+        "docker-compose.yml",
+        "condition: service_completed_successfully",
+        "condition: service_started",
+        "wait for",
+    ),
+    (
+        "MinIO's objects handed over",
+        "docker-compose.yml",
+        "-path /opt/copilot/backend/data/minio-data -prune",
+        "-path /nowhere -prune",
+        "copilot-minio",
+    ),
+    (
+        "a test stand-in passed",
+        "docker-compose.yml",
+        "- COPILOT_SCHEDULER_OWNER=rust",
+        "- COPILOT_SCHEDULER_OWNER=rust\n            - COPILOT_MINIO_ENDPOINT=x",
+        "stand-in",
+    ),
+    (
+        "an unknown variable passed",
+        "docker-compose.yml",
+        "- COPILOT_SCHEDULER_OWNER=rust",
+        "- COPILOT_SCHEDULER_OWNER=rust\n            - COPILOT_SHEDULER=rust",
+        "does not know",
+    ),
+    (
+        "the hand-over reaches no Python",
+        "docker-compose.rust.yml",
+        "- COPILOT_LEGACY_URL=http://copilot-backend-legacy:5000",
+        "- COPILOT_LEGACY_URL=",
+        "no Python backend",
+    ),
+    (
+        "the rollback answers to no name",
+        "docker-compose.legacy.yml",
+        "                    - copilot-backend\n",
+        "                    - copilot-python\n",
+        "answer to",
+    ),
+]
+
+
+def self_test() -> None:
+    """Each breakage of SELF_TEST must fail the layout checks, naming it."""
+    global failures
+    kept = failures
+    for what, file, old, new, word in SELF_TEST:
+        failures = []
+        check_layouts({file: (old, new)})
+        caught = [m for m in failures if word in m and not m.startswith("self-test")]
+        broken = [m for m in failures if m.startswith("self-test")]
+        kept += broken
+        if not caught and not broken:
+            kept.append(f"self-test: {what} ({file}) passed the layout checks")
+    failures = kept
+
+
 def main() -> int:
     check_sources()
     check_env_example()
     check_layouts()
     check_image()
+    if not failures:
+        self_test()
     if failures:
         for message in failures:
             print(f"FAIL {message}")
         print(f"{len(failures)} check(s) failed")
         return 1
-    print("ok: the sources, .env.example, the five Compose layouts and the Rust image agree")
+    print(f"ok: the sources, .env.example, the five Compose layouts and the Rust image agree; {len(SELF_TEST)} breakages caught")
     return 0
 
 
