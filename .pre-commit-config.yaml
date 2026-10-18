@@ -6,10 +6,14 @@ repos:
           - id: check-merge-conflict
           - id: check-yaml
             args: ["--unsafe"]
+          # The rule files under crates/copilot-searches/tests/fixtures/rules are byte-exact
+          # copies of socfortress/CoPilot-Search-Queries: the YAML vectors cut and edit them by
+          # position, so their whitespace stays as upstream wrote it.
           - id: end-of-file-fixer
-            exclude: '\.json$'
+            exclude: '\.json$|^crates/copilot-searches/tests/fixtures/rules/'
           - id: check-json
           - id: trailing-whitespace
+            exclude: ^crates/copilot-searches/tests/fixtures/rules/
           - id: check-added-large-files
           #- id: detect-private-key # Not using since uploading nginx key
           - id: requirements-txt-fixer
@@ -52,4 +56,5 @@ repos:
       hooks:
           - id: eslint
             args: ["--config", "frontend/eslint.config.mjs"]
-            exclude: ^(docs/|tools/)
+            # crates/: Playwright's injected scripts, kept verbatim, not frontend code.
+            exclude: ^(docs/|tools/|crates/)
