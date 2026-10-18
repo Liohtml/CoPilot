@@ -6,12 +6,17 @@
 //! dependencies, then the query parameters and the body's fields (one 422,
 //! query errors first).
 //!
-//! Differences by design (both close tenant leaks): `GET /agent/{agent_id}`
+//! Differences by design (each closes a tenant leak): `GET /agent/{agent_id}`
 //! lists only the rows of the caller's customers (Python listed any agent's
-//! to any analyst), and `POST /sync/agent/{agent_name}` checks the host's
+//! to any analyst); `POST /sync/agent/{agent_name}` checks the host's
 //! tenant (`enforce_hostname_access`) — Python synced any tenant's agent, and
 //! with `?customer_code=` filed its vulnerabilities under a customer of the
-//! caller's.
+//! caller's; `POST /sync` and `/sync/background` sync only a scoped caller's
+//! customers' agents (admins and the scheduler stay deployment-wide; Python
+//! synced every tenant's for any analyst); and
+//! `POST /reports/generate/background` checks the customer before it inserts
+//! the report's placeholder row — a refused request is a 403 and leaves no
+//! row (Python inserted it, then marked it failed).
 
 use axum::Router;
 use axum::extract::{Path, State};
@@ -82,34 +87,55 @@ fn respond(dump: &PyValue) -> ApiResult {
     Ok(model_response(dump))
 }
 
+/// The customers a sync may cover: `None` is deployment-wide (admins and the
+/// scheduler, whose user has no customers), else the caller's.
+async fn sync_within(
+    st: &AgentReportsState,
+    user: &CurrentUser,
+) -> Result<Option<Vec<String>>, ApiError> {
+    if user.role_id.and_then(copilot_core::Role::from_id) == Some(copilot_core::Role::Scheduler) {
+        return Ok(None);
+    }
+    Ok(match user.access(&st.ctx).await? {
+        copilot_auth::AccessScope::All => None,
+        copilot_auth::AccessScope::Customers(codes) => Some(codes.clone()),
+    })
+}
+
 async fn sync_all(
     State(st): State<AgentReportsState>,
     q: QueryPairs,
-    WithJson(_auth, body): WithJson<Authorized<SyncScopes>>,
+    WithJson(auth, body): WithJson<Authorized<SyncScopes>>,
 ) -> ApiResult {
     let mut v = Validator::new();
     let batch = q.int_or(&mut v, "batch_size", BATCH, 100);
     let bulk = bool_or(&q, &mut v, "use_bulk_mode", false);
     optional_sync_body(&mut v, &body);
     v.finish()?;
+    let within = sync_within(&st, &auth).await?;
     tracing::info!(
         "Starting vulnerability sync for all agents from database (batch_size={batch}, \
          bulk_mode={})",
         if bulk { "True" } else { "False" }
     );
-    respond(&sync::sync_all(&st, None, batch, bulk).await.dump())
+    respond(
+        &sync::sync_all(&st, None, within.as_deref(), batch, bulk)
+            .await
+            .dump(),
+    )
 }
 
 async fn sync_background(
     State(st): State<AgentReportsState>,
-    WithJson(_auth, body): WithJson<Soc>,
+    WithJson(auth, body): WithJson<Soc>,
 ) -> ApiResult {
     let mut v = Validator::new();
     optional_sync_body(&mut v, &body);
     v.finish()?;
+    let within = sync_within(&st, &auth).await?;
     tracing::info!("Starting background vulnerability sync for all agents from database");
     tokio::spawn(async move {
-        let r = sync::sync_all(&st, None, 100, false).await;
+        let r = sync::sync_all(&st, None, within.as_deref(), 100, false).await;
         if !r.success {
             tracing::error!("Background vulnerability sync failed: {}", r.message);
         }
@@ -181,7 +207,7 @@ async fn sync_customer(
         if bulk { "True" } else { "False" }
     );
     respond(
-        &sync::sync_all(&st, Some(&customer_code), batch, bulk)
+        &sync::sync_all(&st, Some(&customer_code), None, batch, bulk)
             .await
             .dump(),
     )
@@ -309,6 +335,8 @@ async fn generate_background(
     WithJson(auth, body): WithJson<Soc>,
 ) -> ApiResult {
     let req = body.model(report_request)?;
+    // The customer first: a refused request leaves no placeholder row.
+    auth.enforce_customer(&st.ctx, &req.customer_code).await?;
     tracing::info!(
         "Queueing vulnerability report generation for customer: {}",
         req.customer_code

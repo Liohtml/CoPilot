@@ -621,9 +621,14 @@ async fn bulk_mode(
 }
 
 /// `sync_all_vulnerabilities(customer_code, batch_size, use_bulk_mode)`.
+///
+/// `within` narrows the agents to those customers (a scoped caller's:
+/// Python synced every tenant's agents for any analyst, RUST_MIGRATION.md
+/// §4); `None` is deployment-wide (admins, the scheduler).
 pub async fn sync_all(
     st: &AgentReportsState,
     customer_code: Option<&str>,
+    within: Option<&[String]>,
     batch_size: i64,
     bulk: bool,
 ) -> SyncOutcome {
@@ -639,7 +644,17 @@ pub async fn sync_all(
     );
     let terms: Vec<On<'_>> = code.map(On::Customer).into_iter().collect();
     let agents = match agents::select(&st.ctx.db, &terms).await {
-        Ok(a) => a,
+        Ok(mut a) => {
+            if let Some(codes) = within {
+                a.retain(|agent| {
+                    agent
+                        .customer_code
+                        .as_deref()
+                        .is_some_and(|c| codes.iter().any(|x| x == c))
+                });
+            }
+            a
+        }
         Err(e) => {
             let text = db_text(&e);
             tracing::error!("Error in bulk vulnerability sync: {text}");

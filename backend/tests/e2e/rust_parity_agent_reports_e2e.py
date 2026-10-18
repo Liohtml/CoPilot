@@ -975,8 +975,19 @@ async def vulnerability_checks(p, t):
         db=report_rows,
         settle=finished,
     )
+
+    def refused_first(py, rs):
+        # §4: Python queues the report, then its task marks the row failed; Rust refuses the
+        # customer before inserting anything.
+        failed = [r for r in py["rows"] if r["customer_code"] == CUST_B and r["status"] == "failed"]
+        if py["status"] != 200 or not failed or rs["status"] != 403 or rs["rows"]:
+            return f"python {py['status']} {py['rows']} rust {rs['status']} {rs['body']} {rs['rows']}"
+        if rs["body"].get("message") != f"Access denied to customer {CUST_B}" or rs["upstream"] or rs["s3"]:
+            return f"rust {rs['body']} {rs['upstream']} {rs['s3']}"
+        return None
+
     await p.same(
-        "background report of another tenant",
+        "background report of another tenant (Rust refuses before the row)",
         "POST",
         f"{V}/reports/generate/background",
         t["analyst"],
@@ -984,6 +995,7 @@ async def vulnerability_checks(p, t):
         before=no_reports,
         db=report_rows,
         settle=finished,
+        expect_diff=refused_first,
     )
     await p.same(
         "background report of an unknown customer",
@@ -1050,13 +1062,44 @@ async def vulnerability_checks(p, t):
 
     await p.same("sync of every agent", "POST", f"{V}/sync", t["scheduler"], before=reset_vulns, db=vuln_rows)
     await p.same(
-        "background sync of every agent",
+        "background sync of every agent, as admin",
+        "POST",
+        f"{V}/sync/background",
+        t["admin"],
+        before=reset_vulns,
+        db=vuln_rows,
+        settle=all_synced,
+    )
+
+    def analysts_only(py, rs):
+        # §4: a scoped analyst's sync of every agent covers their customers' agents only (Python
+        # synced every tenant's); the scheduler and admins stay deployment-wide.
+        py_codes = {r["customer_code"] for r in py["rows"]}
+        rs_codes = {r["customer_code"] for r in rs["rows"]}
+        if (py["status"], rs["status"]) != (200, 200) or py_codes != {CUST_A, CUST_B} or rs_codes != {CUST_A}:
+            return f"python {py['status']} {sorted(py_codes)} rust {rs['status']} {sorted(rs_codes)}"
+        if [r for r in py["rows"] if r["customer_code"] == CUST_A] != rs["rows"]:
+            return f"the analyst's rows differ: python {py['rows']} rust {rs['rows']}"
+        return None
+
+    await p.same(
+        "sync of every agent, as a scoped analyst (Rust syncs their customers')",
+        "POST",
+        f"{V}/sync",
+        t["analyst"],
+        before=reset_vulns,
+        db=vuln_rows,
+        expect_diff=analysts_only,
+    )
+    await p.same(
+        "background sync of every agent, as a scoped analyst (Rust syncs their customers')",
         "POST",
         f"{V}/sync/background",
         t["analyst"],
         before=reset_vulns,
         db=vuln_rows,
         settle=all_synced,
+        expect_diff=analysts_only,
     )
     reset_vulns()
 
