@@ -1384,8 +1384,7 @@ async def main():  # noqa: C901 - one scenario after the other
             ("case", "WAZUH_EDR"),
             ("trailing space", "wazuh_edr%20"),
         ):
-            if "%2F" in segment:
-                continue  # an encoded `/` is Python's (copilot_wazuh::decoded_slash_to_legacy)
+            # An encoded `/` is routed decoded, as Starlette routes it.
             await both(f"category: {label}", "GET", f"{T}/{segment}", t_analyst)
 
         # ==================================================================

@@ -69,6 +69,7 @@ copilot-reports = { workspace = true }
 copilot-verifiers = { workspace = true }
 copilot-migrate = { workspace = true }
 copilot-startup = { workspace = true }
+copilot-standalone = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

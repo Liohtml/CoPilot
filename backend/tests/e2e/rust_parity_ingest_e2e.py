@@ -1092,7 +1092,7 @@ async def reads(p, t):
         await p.same(f"available indices: {source}", "GET", f"{D}/available-indices/{source}", t["analyst"])
     for index in (IDX, f"flat-{SFX}", f"none-{SFX}"):
         await p.same(f"mappings: {index}", "GET", f"{D}/mappings/fields-assets-title-and-timefield?index_name={index}", t["analyst"])
-    await p.same("encoded slash goes to Python", "GET", f"{D}/available-source/a%2Fb", t["analyst"])
+    await p.same("an encoded slash, routed decoded", "GET", f"{D}/available-source/a%2Fb", t["analyst"])
 
 
 async def manual(p, t):

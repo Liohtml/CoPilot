@@ -12,7 +12,6 @@ copilot-db = { workspace = true }
 copilot-auth = { workspace = true }
 copilot-web = { workspace = true }
 copilot-connectors = { workspace = true }
-copilot-gateway = { workspace = true }
 copilot-scheduler = { workspace = true }
 copilot-upstream = { workspace = true }
 serde = { workspace = true }

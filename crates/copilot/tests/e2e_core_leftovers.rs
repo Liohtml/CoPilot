@@ -1283,9 +1283,7 @@ async fn connector_yaml_upload_follows_python() {
 }
 
 #[tokio::test]
-async fn connector_yaml_upload_is_python_s_when_the_directory_is_not_writable() {
-    use wiremock::matchers::{body_string_contains, header};
-
+async fn connector_yaml_upload_fails_as_python_s_when_the_directory_is_not_writable() {
     if !configured() {
         return;
     }
@@ -1319,12 +1317,11 @@ async fn connector_yaml_upload_is_python_s_when_the_directory_is_not_writable() 
          NULL, 'desc', 'supports', 0, 1, 0, 0, 0, 1, 0, NULL, 1)",
     )
     .await;
-    Mock::given(method("POST"))
-        .and(path("/api/connectors/upload/Velociraptor"))
-        .and(header("authorization", format!("Bearer {admin}").as_str()))
-        .and(body_string_contains("api_url: x"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"answered_by": "python"})))
-        .expect(1)
+    // The legacy backend is never asked: the answer is the 500 Python's own
+    // failed write is.
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(599))
+        .expect(0)
         .mount(&legacy)
         .await;
     let (ct, body) = multipart_file("file", "api.config.yaml", b"api_url: x\n");
@@ -1337,8 +1334,14 @@ async fn connector_yaml_upload_is_python_s_when_the_directory_is_not_writable() 
             body,
         )
         .await;
-    assert_eq!((st.as_u16(), out), (200, json!({"answered_by": "python"})));
-    // Nothing was written here: the row is as it was.
+    assert_eq!(
+        (st.as_u16(), out),
+        (
+            500,
+            json!({"success": false, "message": "Failed to upload file"})
+        )
+    );
+    // Nothing was written: the row is as it was.
     let (key, configured): (Option<String>, bool) = sqlx::query_as(
         "SELECT connector_api_key, connector_configured FROM connectors WHERE id = 5",
     )
@@ -1360,6 +1363,7 @@ async fn connector_yaml_upload_is_python_s_when_the_directory_is_not_writable() 
     assert_eq!(st, 400);
     h.exec("DELETE FROM connectors WHERE id = 5").await;
     cleanup(&h).await;
+    legacy.verify().await;
 }
 
 #[tokio::test]

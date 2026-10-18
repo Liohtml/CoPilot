@@ -26,7 +26,6 @@ pub mod upload;
 pub mod verify;
 
 use axum::extract::FromRef;
-use copilot_gateway::LegacyProxy;
 use copilot_web::AppContext;
 
 pub use routes::router;
@@ -49,10 +48,8 @@ pub const REQUIREMENTS: &[copilot_db::schema::TableRequirement] =
 pub struct ConnectorsState {
     /// Shared dependencies.
     pub ctx: AppContext,
-    /// The tools this build verifies itself.
+    /// The tools this build verifies (every one `get_connector_service` knows).
     pub verifiers: Verifiers,
-    /// The Python backend, which verifies (and updates) every other connector.
-    pub legacy: Option<LegacyProxy>,
     /// The Python backend's data directory (`UPLOAD_FOLDER`,
     /// `COPILOT_BACKEND_DATA_DIR`), where a YAML upload is written.
     pub data_dir: std::path::PathBuf,

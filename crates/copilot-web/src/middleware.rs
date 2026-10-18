@@ -1,7 +1,5 @@
 //! Cross-cutting layers for the routes this service answers itself.
 //!
-//! - [`cors`] — Starlette's `CORSMiddleware(allow_origins=["*"],
-//!   allow_credentials=True, …)`: mirror the origin, allow credentials.
 //! - [`compression`] — `GZipMiddleware(minimum_size=1000)`; never SSE, and
 //!   not for a response marked [`Uncompressed`].
 //! - [`log_handled_errors`] — the `log_entries` row every Python exception
@@ -15,18 +13,12 @@ use axum::response::{IntoResponse, Response};
 use http::HeaderValue;
 use tower_http::compression::CompressionLayer;
 use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
-use tower_http::cors::CorsLayer;
 
 use copilot_db::audit::{ErrorLogEntry, insert_error_log};
 use copilot_db::users;
 
 use crate::context::AppContext;
 use crate::error::LoggedError;
-
-/// Permissive CORS mirroring Starlette's wildcard-with-credentials behaviour.
-pub fn cors() -> CorsLayer {
-    CorsLayer::very_permissive()
-}
 
 /// gzip above 1000 bytes, never for event streams or images, nor for a
 /// response marked [`Uncompressed`].
@@ -73,29 +65,18 @@ const MESSAGE_COLUMN: usize = 5024;
 /// `scope["path"]`: the path uvicorn percent-decoded (UTF-8, errors
 /// replaced).
 pub fn decoded_path(uri: &http::Uri) -> String {
-    let raw = uri.path().as_bytes();
-    let mut bytes = Vec::with_capacity(raw.len());
-    let mut i = 0;
-    while i < raw.len() {
-        let hex = |b: u8| (b as char).to_digit(16);
-        if raw[i] == b'%' && i + 2 < raw.len() {
-            if let (Some(h), Some(l)) = (hex(raw[i + 1]), hex(raw[i + 2])) {
-                bytes.push(u8::try_from(h * 16 + l).unwrap_or(0));
-                i += 3;
-                continue;
-            }
-        }
-        bytes.push(raw[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&bytes).into_owned()
+    crate::routing::scope_path(uri.path())
 }
 
 /// `str(request.url)`: Starlette joins the scheme, the `Host` header, the
 /// path uvicorn percent-decoded (UTF-8, errors replaced) and the raw query
 /// string.
 fn starlette_url(host: &str, uri: &http::Uri) -> String {
-    let path = decoded_path(uri);
+    starlette_url_of(host, &decoded_path(uri), uri)
+}
+
+/// [`starlette_url`] for the decoded path Starlette routed.
+fn starlette_url_of(host: &str, path: &str, uri: &http::Uri) -> String {
     match uri.query().filter(|q| !q.is_empty()) {
         Some(q) => format!("http://{host}{path}?{q}"),
         None => format!("http://{host}{path}"),
@@ -103,6 +84,7 @@ fn starlette_url(host: &str, uri: &http::Uri) -> String {
 }
 
 /// The length of [`starlette_url`].
+#[cfg(test)]
 fn starlette_url_chars(host: &str, uri: &http::Uri) -> usize {
     starlette_url(host, uri).chars().count()
 }
@@ -123,13 +105,18 @@ pub async fn log_handled_errors(
         .and_then(|h| h.to_str().ok())
         .unwrap_or("localhost")
         .to_string();
-    let route = starlette_url(&host, req.uri());
+    // The decoded path Starlette routed (the front records it before the
+    // path is quoted again for axum), else this URI's.
+    let route = match req.extensions().get::<crate::routing::ScopePath>() {
+        Some(p) => starlette_url_of(&host, &p.0, req.uri()),
+        None => starlette_url(&host, req.uri()),
+    };
     let bearer = req
         .headers()
         .get(http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split_once(' ').map(|(_, t)| t.to_string()));
-    let python_route_chars = starlette_url_chars(&host, req.uri());
+    let python_route_chars = route.chars().count();
     let resp = next.run(req).await;
     if let Some(logged) = resp.extensions().get::<LoggedError>() {
         // Python's handler writes the row in the request and MySQL refuses a

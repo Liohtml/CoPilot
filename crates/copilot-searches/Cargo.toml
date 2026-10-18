@@ -19,7 +19,6 @@ copilot-threat-intel = { workspace = true }
 copilot-monitoring-alerts = { workspace = true }
 copilot-ingest = { workspace = true }
 copilot-scheduler = { workspace = true }
-copilot-gateway = { workspace = true }
 copilot-yaml = { workspace = true }
 copilot-jinja = { workspace = true }
 serde_json = { workspace = true }

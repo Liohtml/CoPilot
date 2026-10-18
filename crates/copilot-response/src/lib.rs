@@ -18,7 +18,6 @@
 
 use std::sync::Arc;
 
-use copilot_gateway::LegacyProxy;
 use copilot_objectstore::ObjectStore;
 use copilot_wazuh::WazuhState;
 use copilot_web::AppContext;
@@ -78,8 +77,6 @@ pub struct ResponseState {
     pub velociraptor: copilot_velociraptor::VelociraptorClient,
     /// The environment the routes read.
     pub env: Arc<ResponseEnv>,
-    /// The Python backend (requests these routers hand over).
-    pub legacy: Option<LegacyProxy>,
 }
 
 pub use active_response::routes::{graylog_router, router as active_response_router};

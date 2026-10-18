@@ -1014,7 +1014,10 @@ async fn case_files_upload_download_and_delete() {
         r.json()
     );
 
-    // A path with an encoded `/` is Python's.
+    // A path with an encoded `/` is routed decoded, as Starlette routes it:
+    // no route takes `…/download/{case}/a/b`, and neither MinIO nor the
+    // legacy backend is asked.
+    standin.take();
     let r = raw(
         &h,
         "GET",
@@ -1024,8 +1027,11 @@ async fn case_files_upload_download_and_delete() {
         Vec::new(),
     )
     .await;
-    assert_eq!(r.json()["from"], json!("python"), "{:?}", r.json());
-    standin.take();
+    assert_eq!(
+        (r.status, r.json()),
+        (StatusCode::NOT_FOUND, json!({"detail": "Not Found"}))
+    );
+    assert_eq!(standin.take().len(), 0);
 
     // Delete: admin/analyst only, then MinIO, then the row.
     let r = raw(

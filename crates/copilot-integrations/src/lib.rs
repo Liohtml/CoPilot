@@ -41,7 +41,6 @@ pub mod table_model;
 use axum::Router;
 use axum::extract::FromRef;
 use copilot_db::schema::TableRequirement;
-use copilot_gateway::LegacyProxy;
 use copilot_grafana::GrafanaClient;
 use copilot_graylog::GraylogClient;
 use copilot_wazuh::WazuhState;
@@ -59,8 +58,6 @@ pub struct IntegrationsState {
     pub grafana: GrafanaClient,
     /// The Wazuh manager client (an Office365 tenant's `<api_auth>` block).
     pub wazuh: WazuhState,
-    /// The Python backend (a path with an encoded `/` is Starlette's).
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl FromRef<IntegrationsState> for AppContext {
@@ -71,15 +68,10 @@ impl FromRef<IntegrationsState> for AppContext {
 
 /// Every route of the three modules, by full path.
 pub fn router(state: IntegrationsState) -> Router {
-    let legacy = state.legacy.clone();
     Router::new()
         .merge(integrations::routes::router(state.clone()))
         .merge(alert_settings::routes::router(state.clone()))
         .merge(network_connectors::routes::router(state))
-        .route_layer(axum::middleware::from_fn_with_state(
-            legacy,
-            copilot_wazuh::decoded_slash_to_legacy,
-        ))
 }
 
 /// The columns this crate reads and writes.

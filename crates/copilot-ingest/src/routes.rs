@@ -34,7 +34,6 @@ type Soc = Authorized<AdminOrAnalyst>;
 pub fn router(state: IngestState) -> Router {
     let alerts = "/api/incidents/alerts";
     let db = "/api/incidents/db_operations";
-    let legacy = state.legacy.clone();
     Router::new()
         .route(&format!("{alerts}/index/names"), get(index_names))
         .route(&format!("{alerts}/alerts/not-created"), get(not_created))
@@ -71,10 +70,6 @@ pub fn router(state: IngestState) -> Router {
             get(mappings),
         )
         .with_state(state)
-        .layer(axum::middleware::from_fn_with_state(
-            legacy,
-            copilot_wazuh::decoded_slash_to_legacy,
-        ))
 }
 
 /// A response model's JSON (pydantic's writer).

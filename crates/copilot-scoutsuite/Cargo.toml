@@ -13,7 +13,6 @@ copilot-upstream = { workspace = true }
 copilot-objectstore = { workspace = true }
 copilot-patch-tuesday = { workspace = true }
 copilot-wazuh = { workspace = true }
-copilot-gateway = { workspace = true }
 axum = { workspace = true }
 http = { workspace = true }
 tokio = { workspace = true }

@@ -46,7 +46,6 @@ use std::time::Duration;
 
 use axum::extract::FromRef;
 use copilot_db::schema::TableRequirement;
-use copilot_gateway::LegacyProxy;
 use copilot_graylog::GraylogClient;
 use copilot_objectstore::ObjectStore;
 use copilot_upstream::http::PyHttp;
@@ -73,8 +72,6 @@ pub struct SearchesState {
     pub settings: Arc<caches::Settings>,
     /// The four caches.
     pub caches: Arc<caches::Caches>,
-    /// The Python backend, for the requests these routes do not answer.
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl std::fmt::Debug for SearchesState {
@@ -94,7 +91,6 @@ impl SearchesState {
         wazuh: WazuhState,
         graylog: GraylogClient,
         store: ObjectStore,
-        legacy: Option<LegacyProxy>,
     ) -> Result<Self, reqwest::Error> {
         Ok(Self {
             ctx,
@@ -104,7 +100,6 @@ impl SearchesState {
             store,
             settings: Arc::new(caches::Settings::from_config(env)),
             caches: Arc::default(),
-            legacy,
         })
     }
 }

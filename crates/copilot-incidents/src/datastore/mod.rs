@@ -9,7 +9,7 @@
 
 use axum::extract::FromRef;
 
-use copilot_objectstore::{LegacyProxy, ObjectStore};
+use copilot_objectstore::ObjectStore;
 use copilot_web::AppContext;
 
 pub mod default_templates;
@@ -25,8 +25,6 @@ pub struct DatastoreState {
     pub ctx: AppContext,
     /// The MinIO store.
     pub store: ObjectStore,
-    /// The Python backend (for a path with an encoded `/`).
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl FromRef<DatastoreState> for AppContext {

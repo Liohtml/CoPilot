@@ -36,7 +36,6 @@ mod vectors;
 
 use axum::extract::FromRef;
 use copilot_db::schema::TableRequirement;
-use copilot_gateway::LegacyProxy;
 use copilot_web::AppContext;
 
 pub use client::SublimeClient;
@@ -96,8 +95,6 @@ pub struct SublimeState {
     pub ctx: AppContext,
     /// Sublime's API.
     pub client: SublimeClient,
-    /// The Python backend, for a path with an encoded `/`.
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl std::fmt::Debug for SublimeState {
@@ -108,12 +105,8 @@ impl std::fmt::Debug for SublimeState {
 
 impl SublimeState {
     /// The state over the context's connector cache.
-    pub fn new(ctx: AppContext, client: SublimeClient, legacy: Option<LegacyProxy>) -> Self {
-        Self {
-            ctx,
-            client,
-            legacy,
-        }
+    pub fn new(ctx: AppContext, client: SublimeClient) -> Self {
+        Self { ctx, client }
     }
 }
 

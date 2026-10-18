@@ -5,11 +5,14 @@
 //!
 //! Pinned by `src/docx_vectors.json` (`scripts/gen-docx-vectors.py`: every
 //! member of the documents Python writes for a set of templates and
-//! contexts, the bundled `case_report_jinja_template.docx` included).
+//! contexts, the bundled `case_report_jinja_template.docx` included) and
+//! `src/recover_vectors.json` (`scripts/gen-docx-recover-vectors.py`: the
+//! trees lxml's recovering parser makes of broken bodies).
 
 pub mod docxtpl;
 pub mod opc;
 pub mod pyre;
+pub mod recover;
 pub mod xml;
 pub mod zip;
 
@@ -22,16 +25,12 @@ pub enum DocxError {
     Value(String),
     /// Anything else: a bare 500.
     Internal(String),
-    /// The rendered body is not well-formed XML beyond the characters XML
-    /// refuses: lxml's recovering parser (libxml2's repair, not ported)
-    /// would still make a document of it.
-    Recover(String),
 }
 
 impl std::fmt::Display for DocxError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Value(m) | Self::Internal(m) | Self::Recover(m) => f.write_str(m),
+            Self::Value(m) | Self::Internal(m) => f.write_str(m),
         }
     }
 }

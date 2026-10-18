@@ -12,7 +12,6 @@ copilot-db = { workspace = true }
 copilot-auth = { workspace = true }
 copilot-web = { workspace = true }
 copilot-upstream = { workspace = true }
-copilot-gateway = { workspace = true }
 copilot-graylog = { workspace = true }
 copilot-grafana = { workspace = true }
 copilot-wazuh = { workspace = true }

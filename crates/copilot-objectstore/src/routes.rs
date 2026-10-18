@@ -27,7 +27,6 @@ use axum::routing::{get, post};
 use http::StatusCode;
 
 use copilot_db::agents;
-use copilot_gateway::LegacyProxy;
 use copilot_upstream::py::PyExc;
 use copilot_web::validate::{IntRules, Validator, loc};
 use copilot_web::{
@@ -49,8 +48,6 @@ pub struct DataStoreState {
     pub ctx: AppContext,
     /// The MinIO store.
     pub store: ObjectStore,
-    /// The Python backend (for a path with an encoded `/`).
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl axum::extract::FromRef<DataStoreState> for AppContext {
@@ -72,10 +69,6 @@ pub fn router(state: DataStoreState) -> Router {
             "/agent/{agent_id}/artifacts/{artifact_id}/download",
             get(download),
         )
-        .layer(axum::middleware::from_fn_with_state(
-            state.legacy.clone(),
-            web::encoded_slash_to_legacy,
-        ))
         .with_state(state)
 }
 

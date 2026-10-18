@@ -39,7 +39,6 @@ type Soc = Authorized<AdminOrAnalyst>;
 /// The 11 routes, behind the encoded-slash hand-off to Python.
 pub fn router(state: ThreatIntelState) -> Router {
     let p = |s: &str| format!("/api/threat_intel{s}");
-    let legacy = state.legacy.clone();
     Router::new()
         .route(&p("/epss"), post(epss_route))
         .route(&p("/socfortress"), post(socfortress_route))
@@ -64,10 +63,6 @@ pub fn router(state: ThreatIntelState) -> Router {
             post(ai_velociraptor),
         )
         .with_state(state)
-        .layer(axum::middleware::from_fn_with_state(
-            legacy,
-            copilot_wazuh::decoded_slash_to_legacy,
-        ))
 }
 
 /// A `response_model` answer.

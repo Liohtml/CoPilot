@@ -829,7 +829,7 @@ fn broken_docx() -> Vec<u8> {
 }
 
 #[tokio::test]
-async fn a_docx_only_lxml_can_repair_is_rendered_by_python() {
+async fn a_docx_only_lxml_can_repair_is_repaired_here() {
     if !configured() {
         return;
     }
@@ -849,10 +849,11 @@ async fn a_docx_only_lxml_can_repair_is_rendered_by_python() {
         .respond_with(ResponseTemplate::new(200).set_body_raw(broken, "application/octet-stream"))
         .mount(&s3)
         .await;
+    // The legacy backend is never asked.
     let legacy = legacy_server().await;
-    Mock::given(method("POST"))
-        .and(path("/api/incidents/report/generate-report-docx"))
-        .respond_with(ResponseTemplate::new(200).set_body_raw("python's document", DOCX_TYPE))
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(599))
+        .expect(0)
         .mount(&legacy)
         .await;
     let h = harness_or_skip!(Some(&legacy), &minio_env(&s3));
@@ -863,20 +864,15 @@ async fn a_docx_only_lxml_can_repair_is_rendered_by_python() {
     let docx = "/api/incidents/report/generate-report-docx";
     let request = json!({"case_id": acme, "template_name": "broken.docx", "file_name": "r"});
 
-    let (st, _, body) = raw(&h, "POST", docx, &admin, Some(request.clone())).await;
+    let (st, headers, body) = raw(&h, "POST", docx, &admin, Some(request)).await;
     assert_eq!(st, 200);
-    assert_eq!(body, b"python's document");
-    let forwarded = legacy.received_requests().await.unwrap();
-    assert_eq!(forwarded.len(), 1);
-    assert_eq!(
-        serde_json::from_slice::<Value>(&forwarded[0].body).unwrap(),
-        request
-    );
-    assert_eq!(
-        forwarded[0].headers.get("authorization").unwrap(),
-        &format!("Bearer {admin}")
-    );
-    // The tenancy is Rust's, before anything is rendered or forwarded.
+    assert_eq!(headers["content-type"], DOCX_TYPE);
+    // libxml2's repair: the `<b` that lost its `>` is an empty element.
+    let archive = copilot_docx::zip::Archive::open(&body).unwrap();
+    let document = archive.read("word/document.xml").unwrap().unwrap();
+    let document = String::from_utf8(document).unwrap();
+    assert!(document.contains("<b/></w:t>"), "{document}");
+    // The tenancy first.
     let (st, _) = h
         .call(
             "POST",
@@ -886,6 +882,6 @@ async fn a_docx_only_lxml_can_repair_is_rendered_by_python() {
         )
         .await;
     assert_eq!(st, 403);
-    assert_eq!(legacy.received_requests().await.unwrap().len(), 1);
+    legacy.verify().await;
     cleanup(&h, &[acme, beta]).await;
 }

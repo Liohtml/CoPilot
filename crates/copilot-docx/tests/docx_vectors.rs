@@ -41,9 +41,6 @@ fn outcome(result: Result<Vec<(String, Vec<u8>)>, DocxError>, want: &Json) -> Js
         Err(DocxError::Value(m)) => {
             serde_json::json!({"error": {"kind": "ValueError", "message": m}})
         }
-        Err(DocxError::Recover(m)) => {
-            serde_json::json!({"error": {"kind": "Recover", "message": m}})
-        }
         Err(DocxError::Internal(m)) => {
             // Only the kind is compared for a bare 500.
             let wanted = want["error"]["message"].clone();

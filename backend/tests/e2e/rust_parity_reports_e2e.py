@@ -627,9 +627,35 @@ DOCX_VECTORS = os.path.join(REPO, "crates", "copilot-docx", "src", "docx_vectors
 BUNDLED = os.path.join(REPO, "backend", "app", "incidents", "templates")
 
 
+# Inserted after the bundled template's `<w:body>`: well-formed as a template, broken once rendered —
+# a raw `&` from Jinja (after it every predefined entity in content is dropped) and a conditional
+# that removes a table's closing tags (the rest of the body ends up in its cell).
+RECOVERY_XML = (
+    '<w:p><w:r><w:t xml:space="preserve">Raw {{ "&amp;"[0]|safe }} amp, then &amp; and &lt;b&gt;</w:t></w:r></w:p>'
+    '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid><w:tr><w:tc><w:p><w:r>'
+    '<w:t xml:space="preserve">Cell {% if False %}</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'
+    '<w:p><w:r><w:t xml:space="preserve">{% endif %}After &amp; more</w:t></w:r></w:p>'
+)
+
+
+def recovering_template(source):
+    """The bundled template with `RECOVERY_XML` at the start of its body."""
+    zin = zipfile.ZipFile(io.BytesIO(source))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == "word/document.xml":
+                data = data.replace(b"<w:body>", b"<w:body>" + RECOVERY_XML.encode(), 1)
+            zout.writestr(info, data)
+    return out.getvalue()
+
+
 def put_templates():
     with open(os.path.join(BUNDLED, "case_report_jinja_template.docx"), "rb") as fh:
-        S3.put("copilot-case-report-templates", "bundled.docx", fh.read())
+        bundled = fh.read()
+    S3.put("copilot-case-report-templates", "bundled.docx", bundled)
+    S3.put("copilot-case-report-templates", "recover.docx", recovering_template(bundled))
     with open(os.path.join(BUNDLED, "case_report_jinja_template.html"), "rb") as fh:
         S3.put("copilot-case-report-templates", "bundled.html", fh.read())
     with open(DOCX_VECTORS) as fh:
@@ -691,6 +717,14 @@ async def case_report_checks(p, t):
     )
     await p.same("docx: not a Word file", "POST", docx, t["admin"], json={"case_id": case, "template_name": "notword.docx"})
     await p.same("docx: not a zip", "POST", docx, t["admin"], json={"case_id": case, "template_name": "broken.docx"})
+    await p.same(
+        "docx: a rendered body only lxml's recovering parser repairs",
+        "POST",
+        docx,
+        t["admin"],
+        json={"case_id": case, "template_name": "recover.docx"},
+        expect=200,
+    )
     await p.same("pdf: bundled template", "POST", pdf, t["admin"], json={"case_id": case, "template_name": "bundled.html"}, expect=200)
     await p.same(
         "pdf: custom template",

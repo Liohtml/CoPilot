@@ -17,7 +17,6 @@ copilot-talon = { workspace = true }
 copilot-wazuh = { workspace = true }
 copilot-upstream = { workspace = true }
 copilot-scheduler = { workspace = true }
-copilot-gateway = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }

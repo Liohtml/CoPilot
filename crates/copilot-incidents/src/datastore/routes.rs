@@ -102,11 +102,7 @@ pub fn router(state: DatastoreState) -> Router {
     for name in CASE_STATICS {
         r = r.route(&format!("{P}/case/{name}"), delete(delete_case));
     }
-    r.layer(axum::middleware::from_fn_with_state(
-        state.legacy.clone(),
-        web::encoded_slash_to_legacy,
-    ))
-    .with_state(state)
+    r.with_state(state)
 }
 
 fn json_response(v: Value) -> Response {

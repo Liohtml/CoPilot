@@ -37,7 +37,6 @@ pub mod templates;
 pub mod timerange;
 
 use axum::extract::FromRef;
-use copilot_gateway::LegacyProxy;
 use copilot_wazuh::es::EsHttp;
 use copilot_web::AppContext;
 
@@ -48,8 +47,6 @@ pub struct SiemState {
     pub ctx: AppContext,
     /// The indexer's HTTP stack (`copilot_wazuh::es`).
     pub es: EsHttp,
-    /// The Python backend, for the requests these routers must not answer.
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl FromRef<SiemState> for AppContext {

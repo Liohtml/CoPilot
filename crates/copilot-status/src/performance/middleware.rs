@@ -3,10 +3,13 @@
 //! route template; the answer carries `X-Process-Time-Ms` (the time to its
 //! head) and `X-Request-Id`.
 //!
-//! Applied with `Router::layer` on the whole application, so it runs after
-//! routing — where `MatchedPath` names the template Python rebuilds from
-//! `path_params` — and wraps every route and the fallback, the proxy to
-//! Python included. On a proxied answer the two headers Python's own timer
+//! Applied around the whole application, inside the front that takes
+//! Starlette's routing decision (`copilot_web::routing::Routed`): the route
+//! that decided names the template Python rebuilds from `path_params` (a
+//! 404, a mount or a documentation page is `_normalise_path`'s). Without
+//! the front (a router mounted directly, as the unit tests do) axum's
+//! `MatchedPath` names it. It wraps every route and the fallback, the proxy
+//! to Python included. On a proxied answer the two headers Python's own timer
 //! wrote are replaced: the outermost process's are the ones that measure
 //! what the client waited for.
 
@@ -21,7 +24,7 @@ use axum::response::Response;
 use http::HeaderValue;
 use http_body::{Frame, SizeHint};
 
-use super::registry::route_template;
+use super::registry::{normalise_path, route_template};
 use super::{Perf, perf};
 
 const PROCESS_TIME: &str = "x-process-time-ms";
@@ -105,13 +108,22 @@ pub async fn timing(req: Request, next: Next) -> Response {
     if !perf.config.enabled {
         return next.run(req).await;
     }
-    let raw_path = copilot_web::middleware::decoded_path(req.uri());
-    let template = route_template(
-        req.extensions()
-            .get::<MatchedPath>()
-            .map(MatchedPath::as_str),
-        &raw_path,
-    );
+    let raw_path = match req.extensions().get::<copilot_web::routing::ScopePath>() {
+        Some(p) => p.0.clone(),
+        None => copilot_web::middleware::decoded_path(req.uri()),
+    };
+    let template = match req.extensions().get::<copilot_web::routing::Routed>() {
+        Some(routed) => routed
+            .template
+            .clone()
+            .unwrap_or_else(|| normalise_path(&raw_path)),
+        None => route_template(
+            req.extensions()
+                .get::<MatchedPath>()
+                .map(MatchedPath::as_str),
+            &raw_path,
+        ),
+    };
     let id = perf
         .requests()
         .start_request(req.method().as_str(), &raw_path);

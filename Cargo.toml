@@ -77,6 +77,7 @@ copilot-file-analysis = { path = "crates/copilot-file-analysis" }
 copilot-verifiers = { path = "crates/copilot-verifiers" }
 copilot-migrate = { path = "crates/copilot-migrate" }
 copilot-startup = { path = "crates/copilot-startup" }
+copilot-standalone = { path = "crates/copilot-standalone" }
 
 # --- async runtime ---
 tokio = { version = "1.47", features = ["full"] }

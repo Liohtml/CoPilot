@@ -5,10 +5,9 @@
 //! parsed with `remove_blank_text` (libxml2's `areBlanks` heuristic) or
 //! keeping every blank, and serialized as `etree.tostring` writes it: the
 //! declarations before the attributes, `<a/>` for an element without
-//! children, libxml2's escapes. A recovering parse (`recover=True`) only
-//! drops the characters XML does not allow, as libxml2 does; any other
-//! malformation is an error here ([`crate::DocxError::Recover`]: the report
-//! route hands such a request to the Python backend).
+//! children, libxml2's escapes. This parser is the strict one python-docx
+//! uses; the recovering one docxtpl's `fix_tables` uses is
+//! [`crate::recover`].
 
 use std::fmt::Write as _;
 
@@ -24,8 +23,9 @@ pub enum Node {
     Text(String),
     /// A comment.
     Comment(String),
-    /// A processing instruction: target and data.
-    Pi(String, String),
+    /// A processing instruction: target and data (`None` for `<?t?>`,
+    /// which libxml2 writes back without the space).
+    Pi(String, Option<String>),
 }
 
 /// An attribute, its prefix as written and its namespace.
@@ -70,13 +70,11 @@ impl std::fmt::Display for XmlError {
 
 impl std::error::Error for XmlError {}
 
-/// How a parse treats blanks and errors.
+/// How a parse treats blanks.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ParseOptions {
     /// `remove_blank_text=True`.
     pub remove_blank_text: bool,
-    /// `recover=True` (only the invalid characters are recovered from).
-    pub recover: bool,
 }
 
 impl Element {
@@ -443,7 +441,7 @@ impl Parser {
         Ok(text)
     }
 
-    fn pi(&mut self) -> Result<(String, String), XmlError> {
+    fn pi(&mut self) -> Result<(String, Option<String>), XmlError> {
         self.i += 2;
         let target = self.name()?;
         if target.eq_ignore_ascii_case("xml") {
@@ -460,6 +458,7 @@ impl Parser {
             return self.err("ParsePI: PI space expected");
         }
         let data: String = self.s[j..end].iter().collect();
+        let data = (end > self.i).then_some(data);
         self.i = end + 2;
         Ok((target, data))
     }
@@ -557,8 +556,6 @@ impl Parser {
                         v.push(' ');
                     } else if is_xml_char(c) {
                         v.push(c);
-                    } else if self.opts.recover {
-                        v.push('\u{FFFD}');
                     } else {
                         return self.err("invalid character in attribute value");
                     }
@@ -668,7 +665,7 @@ impl Parser {
             self.i += 1;
             if is_xml_char(c) {
                 run.push(c);
-            } else if !self.opts.recover {
+            } else {
                 return self.err("PCDATA invalid Char value");
             }
         }
@@ -861,6 +858,9 @@ pub fn escape_text(s: &str, out: &mut String) {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '\r' => out.push_str("&#13;"),
+            // A control character only a recovered character reference
+            // leaves in the tree: libxml2 writes the replacement character.
+            c if (c as u32) < 0x20 && c != '\t' && c != '\n' => out.push_str("&#xFFFD;"),
             c => out.push(c),
         }
     }
@@ -877,6 +877,7 @@ pub fn escape_attr(s: &str, out: &mut String) {
             '\n' => out.push_str("&#10;"),
             '\r' => out.push_str("&#13;"),
             '\t' => out.push_str("&#9;"),
+            c if (c as u32) < 0x20 => out.push_str("&#xFFFD;"),
             c => out.push(c),
         }
     }
@@ -939,7 +940,7 @@ fn write_node(n: &Node, out: &mut String) {
         Node::Pi(t, d) => {
             out.push_str("<?");
             out.push_str(t);
-            if !d.is_empty() {
+            if let Some(d) = d {
                 out.push(' ');
                 out.push_str(d);
             }
@@ -991,7 +992,6 @@ mod tests {
                 s,
                 ParseOptions {
                     remove_blank_text: true,
-                    recover: false,
                 },
             )
             .unwrap(),
@@ -1021,18 +1021,5 @@ mod tests {
             blanks("<a xml:space=\"preserve\">\n<b/></a>"),
             "<a xml:space=\"preserve\">\n<b/></a>"
         );
-    }
-
-    #[test]
-    fn recovers_invalid_characters() {
-        let e = parse_str(
-            "<a><b>x\u{b}y</b></a>",
-            ParseOptions {
-                remove_blank_text: false,
-                recover: true,
-            },
-        )
-        .unwrap();
-        assert_eq!(to_string(&e), "<a><b>xy</b></a>");
     }
 }
