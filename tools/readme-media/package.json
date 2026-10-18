@@ -1,0 +1,13 @@
+{
+  "name": "copilot-readme-media",
+  "private": true,
+  "type": "module",
+  "description": "Screenshots and the product tour for the README (see README.md here).",
+  "scripts": {
+    "capture": "node ./capture.mjs",
+    "tour": "node ./capture.mjs --tour"
+  },
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}
