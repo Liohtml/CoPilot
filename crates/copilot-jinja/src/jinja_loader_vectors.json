@@ -1,0 +1,1312 @@
+{
+ "cases": [
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "base.html": "<html><title>{% block title %}Base{% endblock %}</title>\n<body>{% block body %}<p>base body</p>{% endblock %}\n<footer>{% block footer required %}{% endblock %}</footer></body></html>",
+     "child.html": "{# a comment #}\n{% extends 'base.html' %}\nignored text\n{% block title %}Child — {{ super() }}{% endblock %}{% block body %}{{ self.title() }}|{{ name }}{% endblock %}{% block footer %}f{% endblock %}"
+    }
+   ],
+   "render": "child.html",
+   "vars": {
+    "name": "<b>"
+   },
+   "outcome": {
+    "ok": "\n<html><title>Child — Base</title>\n<body>Child — Base|&lt;b&gt;\n<footer>f</footer></body></html>"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "base.html": "A{% block x %}[base {{ v }}]{% endblock %}B",
+     "mid.html": "{% extends 'base.html' %}{% block x %}[mid {{ super() }}]{% endblock %}",
+     "grand.html": "{% extends 'mid.html' %}{% set v = 3 %}{% block x %}[grand {{ super() }}]{% endblock %}"
+    }
+   ],
+   "render": "grand.html",
+   "vars": {
+    "v": 1
+   },
+   "outcome": {
+    "ok": "A[grand [mid [base 3]]]B"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "b.html": "{% block footer required %}{% endblock %}",
+     "c.html": "{% extends 'b.html' %}"
+    }
+   ],
+   "render": "c.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "TemplateRuntimeError",
+     "message": "Required block 'footer' not found"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "b.html": "{% for i in [1,2] %}{% block row scoped %}<{{ i }}>{% endblock %}{% endfor %}",
+     "c.html": "{% extends 'b.html' %}{% block row %}({{ i }}){% endblock %}"
+    }
+   ],
+   "render": "c.html",
+   "vars": {},
+   "outcome": {
+    "ok": "(1)(2)"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "b.html": "B{% block a %}a{% endblock %}",
+     "c.html": "pre{% if flag %}{% extends 'b.html' %}{% endif %}post{% block a %}A{% endblock %}"
+    }
+   ],
+   "render": "c.html",
+   "vars": {
+    "flag": true
+   },
+   "outcome": {
+    "ok": "preBA"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "b.html": "B{% block a %}a{% endblock %}",
+     "c.html": "pre{% if flag %}{% extends 'b.html' %}{% endif %}post{% block a %}A{% endblock %}"
+    }
+   ],
+   "render": "c.html",
+   "vars": {
+    "flag": false
+   },
+   "outcome": {
+    "ok": "prepostA"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "b.html": "B",
+     "c.html": "{% extends 'b.html' %}{% extends 'b.html' %}"
+    }
+   ],
+   "render": "c.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "TemplateRuntimeError",
+     "message": "extended multiple times"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "c.html": "{% extends 'missing.html' %}"
+    }
+   ],
+   "render": "c.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "TemplateNotFound",
+     "message": "'missing.html' not found in search path: '<dir0>'"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "c.html": "{% extends '../x.html' %}"
+    }
+   ],
+   "render": "c.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "TemplateNotFound",
+     "message": "../x.html"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "b.html": "<{{ self.t() }}>{% block t %}T{% endblock %}",
+     "c.html": "{% extends 'b.html' %}{% block t %}{{ super.super }}x{% endblock %}"
+    }
+   ],
+   "render": "c.html",
+   "vars": {},
+   "outcome": {
+    "ok": "<x>x"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "sub/b.html": "[{% block a %}{% endblock %}]",
+     "sub/c.html": "{% extends 'sub/b.html' %}{% block a %}ok{% endblock %}"
+    }
+   ],
+   "render": "sub/c.html",
+   "vars": {},
+   "outcome": {
+    "ok": "[ok]"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "c.html": "{% extends 'b.html' %}"
+    },
+    {
+     "b.html": "from the second directory"
+    }
+   ],
+   "render": "c.html",
+   "vars": {},
+   "outcome": {
+    "ok": "from the second directory"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "a.html": "a"
+    },
+    {
+     "b.html": "b"
+    }
+   ],
+   "render": "nope.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "TemplateNotFound",
+     "message": "nope.html"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "a.html": "a"
+    }
+   ],
+   "render": "nope.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "TemplateNotFound",
+     "message": "'nope.html' not found in search path: '<dir0>'"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "c.html": "dot {{ 1 }}"
+    }
+   ],
+   "render": "./c.html",
+   "vars": {},
+   "outcome": {
+    "ok": "dot 1"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "macros.html": "{# macros #}\n{% macro chip(p) -%}<span>{{ p }}</span>{%- endmacro %}\n{% macro row(x, closed=false) %}<tr>{{ chip(x) }}{% if closed %}C{% endif %}{{ period.from }}</tr>{% endmacro %}\n{% set exported = 7 %}{% set _hidden = 8 %}\n",
+     "page.html": "{% from 'macros.html' import chip, row with context %}{{ chip('<i>') }}{{ row(1, true) }}|{{ exported }}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {
+    "period": {
+     "from": "2024-01-01"
+    }
+   },
+   "outcome": {
+    "ok": "<span>&lt;i&gt;</span><tr><span>1</span>C2024-01-01</tr>|"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "macros.html": "{# macros #}\n{% macro chip(p) -%}<span>{{ p }}</span>{%- endmacro %}\n{% macro row(x, closed=false) %}<tr>{{ chip(x) }}{% if closed %}C{% endif %}{{ period.from }}</tr>{% endmacro %}\n{% set exported = 7 %}{% set _hidden = 8 %}\n",
+     "page.html": "{% from 'macros.html' import row %}{{ row(1) }}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {
+    "period": {
+     "from": "x"
+    }
+   },
+   "outcome": {
+    "error": {
+     "type": "UndefinedError",
+     "message": "'period' is undefined"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "macros.html": "{# macros #}\n{% macro chip(p) -%}<span>{{ p }}</span>{%- endmacro %}\n{% macro row(x, closed=false) %}<tr>{{ chip(x) }}{% if closed %}C{% endif %}{{ period.from }}</tr>{% endmacro %}\n{% set exported = 7 %}{% set _hidden = 8 %}\n",
+     "page.html": "{% from 'macros.html' import row, nothing as n with context %}[{{ n }}]{{ row(2) }}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {
+    "period": {
+     "from": "y"
+    }
+   },
+   "outcome": {
+    "ok": "[]<tr><span>2</span>y</tr>"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "macros.html": "{# macros #}\n{% macro chip(p) -%}<span>{{ p }}</span>{%- endmacro %}\n{% macro row(x, closed=false) %}<tr>{{ chip(x) }}{% if closed %}C{% endif %}{{ period.from }}</tr>{% endmacro %}\n{% set exported = 7 %}{% set _hidden = 8 %}\n",
+     "page.html": "{% from 'macros.html' import nothing %}{{ nothing.attr }}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "UndefinedError",
+     "message": "the template 'macros.html' (imported on line 1 in 'page.html') does not export the requested name 'nothing'"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "macros.html": "{# macros #}\n{% macro chip(p) -%}<span>{{ p }}</span>{%- endmacro %}\n{% macro row(x, closed=false) %}<tr>{{ chip(x) }}{% if closed %}C{% endif %}{{ period.from }}</tr>{% endmacro %}\n{% set exported = 7 %}{% set _hidden = 8 %}\n",
+     "page.html": "{% import 'macros.html' as m %}{{ m.chip(1) }}|{{ m.exported }}|{{ m._hidden }}|{{ m.missing }}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {},
+   "outcome": {
+    "ok": "<span>1</span>|7||"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "macros.html": "{# macros #}\n{% macro chip(p) -%}<span>{{ p }}</span>{%- endmacro %}\n{% macro row(x, closed=false) %}<tr>{{ chip(x) }}{% if closed %}C{% endif %}{{ period.from }}</tr>{% endmacro %}\n{% set exported = 7 %}{% set _hidden = 8 %}\n",
+     "page.html": "{% import 'macros.html' as m with context %}{{ m.row(3) }}{{ m.__name__ }}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {
+    "period": {
+     "from": "z"
+    }
+   },
+   "outcome": {
+    "ok": "<tr><span>3</span>z</tr>"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "base.html": "<{% block content %}{% endblock %}>",
+     "macros.html": "{# macros #}\n{% macro chip(p) -%}<span>{{ p }}</span>{%- endmacro %}\n{% macro row(x, closed=false) %}<tr>{{ chip(x) }}{% if closed %}C{% endif %}{{ period.from }}</tr>{% endmacro %}\n{% set exported = 7 %}{% set _hidden = 8 %}\n",
+     "page.html": "{% extends 'base.html' %}{% from 'macros.html' import row with context %}{% block content %}{% for c in cases %}{{ row(c, loop.last) }}{% endfor %}{% endblock %}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {
+    "period": {
+     "from": "p"
+    },
+    "cases": [
+     1,
+     2
+    ]
+   },
+   "outcome": {
+    "ok": "<<tr><span>1</span>p</tr><tr><span>2</span>Cp</tr>>"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "page.html": "{% from 'macros.html' import x %}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "TemplateNotFound",
+     "message": "'macros.html' not found in search path: '<dir0>'"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "macros.html": "{% macro m() %}{{ v }}{% endmacro %}",
+     "page.html": "{% for v in [1, 2] %}{% from 'macros.html' import m with context %}{{ m() }}{% endfor %}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {
+    "v": 0
+   },
+   "outcome": {
+    "ok": "12"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "part.html": "[{{ x }}]",
+     "page.html": "{% set x = 2 %}{% include 'part.html' %}{% include 'part.html' without context %}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {
+    "x": 1
+   },
+   "outcome": {
+    "ok": "[2][]"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "page.html": "a{% include 'missing.html' ignore missing %}b"
+    }
+   ],
+   "render": "page.html",
+   "vars": {},
+   "outcome": {
+    "ok": "ab"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "part.html": "P",
+     "page.html": "{% include ['nope.html', 'part.html'] %}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {},
+   "outcome": {
+    "ok": "P"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "page.html": "{% include ['nope.html', 'neither.html'] %}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "TemplatesNotFound",
+     "message": "none of the templates given were found: nope.html, neither.html"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "page.html": "{% include 'missing.html' %}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "TemplateNotFound",
+     "message": "'missing.html' not found in search path: '<dir0>'"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "select",
+    "strict": false
+   },
+   "dirs": [
+    {
+     "part.html": "{% for i in items %}{{ i }}{% endfor %}",
+     "page.html": "{% for items in [[1], [2, 3]] %}{% include 'part.html' %}{% endfor %}"
+    }
+   ],
+   "render": "page.html",
+   "vars": {},
+   "outcome": {
+    "ok": "123"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "[{{ missing }}]",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "[]"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "[{{ d.missing }}]",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "[]"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "[{{ d.missing.x }}]",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "error": {
+     "type": "UndefinedError",
+     "message": "'dict object' has no attribute 'missing'"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "[{{ missing.x }}]",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "error": {
+     "type": "UndefinedError",
+     "message": "'missing' is undefined"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{% if missing %}y{% else %}n{% endif %}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "n"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ missing or 'dash' }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "dash"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{% for x in missing %}x{% else %}empty{% endfor %}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "empty"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ missing|length }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "0"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "[{{ missing|join(',') }}]",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "[]"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ missing == none }}|{{ missing is defined }}|{{ missing is none }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "False|False|False"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ missing + 1 }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "error": {
+     "type": "UndefinedError",
+     "message": "'missing' is undefined"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ missing() }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "error": {
+     "type": "UndefinedError",
+     "message": "'missing' is undefined"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ d.missing or '—' }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "—"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ d.type_label or (d.type or '—') }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "—"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ d.items|length }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "error": {
+     "type": "TypeError",
+     "message": "object of type 'builtin_function_or_method' has no len()"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ d['nope'] }}|{{ d.k }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "|v&#39;&lt;"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ [missing] }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "[Undefined]"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ missing ~ 'x' }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "x"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ (missing|default('def')) }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "def"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ d }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "{&#39;k&#39;: &#34;v&#39;&lt;&#34;, &#39;type&#39;: None}"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ d.__class__ }}|{{ ''.__class__ }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "|"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{% set ns = namespace(n=0) %}{% set ns.n = ns.n + 1 %}{{ ns.n }}",
+   "vars": {
+    "d": {
+     "k": "v'<",
+     "type": null
+    }
+   },
+   "outcome": {
+    "ok": "1"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": true
+   },
+   "dirs": [],
+   "string": "[{{ missing }}]",
+   "vars": {},
+   "outcome": {
+    "error": {
+     "type": "UndefinedError",
+     "message": "'missing' is undefined"
+    }
+   }
+  },
+  {
+   "env": {
+    "autoescape": "off",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "[{{ d.missing }}]",
+   "vars": {
+    "d": {}
+   },
+   "outcome": {
+    "ok": "[]"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ t }}|{{ t2 }}|{{ day }}",
+   "vars": {
+    "t": {
+     "$dt": "2024-03-05T14:07:09"
+    },
+    "t2": {
+     "$dt": "2024-03-05T14:07:09.000250"
+    },
+    "day": {
+     "$date": "2024-03-05"
+    },
+    "none_t": null
+   },
+   "outcome": {
+    "ok": "2024-03-05 14:07:09|2024-03-05 14:07:09.000250|2024-03-05"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ [t, t2, day] }}",
+   "vars": {
+    "t": {
+     "$dt": "2024-03-05T14:07:09"
+    },
+    "t2": {
+     "$dt": "2024-03-05T14:07:09.000250"
+    },
+    "day": {
+     "$date": "2024-03-05"
+    },
+    "none_t": null
+   },
+   "outcome": {
+    "ok": "[datetime.datetime(2024, 3, 5, 14, 7, 9), datetime.datetime(2024, 3, 5, 14, 7, 9, 250), datetime.date(2024, 3, 5)]"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ t.year }}-{{ t.month }}-{{ t.day }} {{ t.hour }}:{{ t.minute }}:{{ t.second }}.{{ t.microsecond }}",
+   "vars": {
+    "t": {
+     "$dt": "2024-03-05T14:07:09"
+    },
+    "t2": {
+     "$dt": "2024-03-05T14:07:09.000250"
+    },
+    "day": {
+     "$date": "2024-03-05"
+    },
+    "none_t": null
+   },
+   "outcome": {
+    "ok": "2024-3-5 14:7:9.0"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ t.strftime('%Y-%m-%d %H:%M') }}|{{ t2.strftime('%d/%m/%y %a %b %f') }}",
+   "vars": {
+    "t": {
+     "$dt": "2024-03-05T14:07:09"
+    },
+    "t2": {
+     "$dt": "2024-03-05T14:07:09.000250"
+    },
+    "day": {
+     "$date": "2024-03-05"
+    },
+    "none_t": null
+   },
+   "outcome": {
+    "ok": "2024-03-05 14:07|05/03/24 Tue Mar 000250"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ t.isoformat() }}|{{ t2.isoformat() }}|{{ t.isoformat(' ') }}|{{ day.isoformat() }}",
+   "vars": {
+    "t": {
+     "$dt": "2024-03-05T14:07:09"
+    },
+    "t2": {
+     "$dt": "2024-03-05T14:07:09.000250"
+    },
+    "day": {
+     "$date": "2024-03-05"
+    },
+    "none_t": null
+   },
+   "outcome": {
+    "ok": "2024-03-05T14:07:09|2024-03-05T14:07:09.000250|2024-03-05 14:07:09|2024-03-05"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ t.date() }}|{{ t.time() }}|{{ t.weekday() }}|{{ t.isoweekday() }}",
+   "vars": {
+    "t": {
+     "$dt": "2024-03-05T14:07:09"
+    },
+    "t2": {
+     "$dt": "2024-03-05T14:07:09.000250"
+    },
+    "day": {
+     "$date": "2024-03-05"
+    },
+    "none_t": null
+   },
+   "outcome": {
+    "ok": "2024-03-05|14:07:09|1|2"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ t if t else 'N/A' }}|{{ none_t if none_t else 'N/A' }}",
+   "vars": {
+    "t": {
+     "$dt": "2024-03-05T14:07:09"
+    },
+    "t2": {
+     "$dt": "2024-03-05T14:07:09.000250"
+    },
+    "day": {
+     "$date": "2024-03-05"
+    },
+    "none_t": null
+   },
+   "outcome": {
+    "ok": "2024-03-05 14:07:09|N/A"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ t.tzinfo }}|{{ t.nope }}",
+   "vars": {
+    "t": {
+     "$dt": "2024-03-05T14:07:09"
+    },
+    "t2": {
+     "$dt": "2024-03-05T14:07:09.000250"
+    },
+    "day": {
+     "$date": "2024-03-05"
+    },
+    "none_t": null
+   },
+   "outcome": {
+    "ok": "None|"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ t == t }}",
+   "vars": {
+    "t": {
+     "$dt": "2024-03-05T14:07:09"
+    },
+    "t2": {
+     "$dt": "2024-03-05T14:07:09.000250"
+    },
+    "day": {
+     "$date": "2024-03-05"
+    },
+    "none_t": null
+   },
+   "outcome": {
+    "ok": "True"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{% for a, b in pairs %}{{ a }}={{ b }};{% endfor %}{{ pairs }}|{{ m }}|{{ f }}|{{ r }}",
+   "vars": {
+    "pairs": [
+     {
+      "$tuple": [
+       "x",
+       1
+      ]
+     },
+     {
+      "$tuple": [
+       "y",
+       2
+      ]
+     }
+    ],
+    "m": {
+     "$markup": "<b>ok</b>"
+    },
+    "f": 33.3,
+    "r": 0.0
+   },
+   "outcome": {
+    "ok": "x=1;y=2;[(&#39;x&#39;, 1), (&#39;y&#39;, 2)]|<b>ok</b>|33.3|0.0"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ ctx }}",
+   "vars": {
+    "ctx": {
+     "a": 1,
+     "b": [
+      1.5,
+      null,
+      true
+     ],
+     "c": {
+      "d": "e"
+     }
+    }
+   },
+   "outcome": {
+    "ok": "{&#39;a&#39;: 1, &#39;b&#39;: [1.5, None, True], &#39;c&#39;: {&#39;d&#39;: &#39;e&#39;}}"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "off",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ ctx }}",
+   "vars": {
+    "ctx": {
+     "a": 1,
+     "b": [
+      1.5,
+      null,
+      true
+     ],
+     "c": {
+      "d": "e"
+     }
+    }
+   },
+   "outcome": {
+    "ok": "{'a': 1, 'b': [1.5, None, True], 'c': {'d': 'e'}}"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "line\r\nnext\n",
+   "vars": {},
+   "outcome": {
+    "ok": "line\nnext"
+   }
+  },
+  {
+   "env": {
+    "autoescape": "on",
+    "strict": false
+   },
+   "dirs": [],
+   "string": "{{ x }}\n\n",
+   "vars": {
+    "x": 1
+   },
+   "outcome": {
+    "ok": "1\n"
+   }
+  }
+ ]
+}

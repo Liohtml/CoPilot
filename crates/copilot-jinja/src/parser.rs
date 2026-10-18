@@ -408,33 +408,41 @@ impl Parser {
             locals: Vec::new(),
             subtree_scoped: false,
             subtree_stores_loop: false,
+            guard: false,
         })))
     }
 
     fn parse_extends(&mut self) -> Result<Stmt> {
         self.next()?;
-        Ok(Stmt::Extends(self.parse_expression(true)?))
+        Ok(Stmt::Extends(Box::new(Extends {
+            template: self.parse_expression(true)?,
+            check: ExtendsCheck::None,
+        })))
     }
 
-    fn parse_import_context(&mut self) -> Result<()> {
+    /// `parse_import_context(node, default)`: the `with`/`without context`
+    /// that may follow.
+    fn parse_import_context(&mut self, default: bool) -> Result<bool> {
         if test_any(self.cur(), &["name:with", "name:without"])
             && self.stream.look()?.tok.is_name("context")
         {
+            let with = self.cur().is_name("with");
             self.next()?;
             self.stream.skip(1)?;
+            return Ok(with);
         }
-        Ok(())
+        Ok(default)
     }
 
     fn parse_include(&mut self) -> Result<Stmt> {
-        self.next()?;
+        let lineno = self.next()?.lineno;
         let template = self.parse_expression(true)?;
         let mut ignore_missing = false;
         if self.cur().is_name("ignore") && self.stream.look()?.tok.is_name("missing") {
             ignore_missing = true;
             self.stream.skip(2)?;
         }
-        self.parse_import_context()?;
+        let with_context = self.parse_import_context(true)?;
         let kind = match &template {
             Expr::Const(Value::Str(_)) => LoadKind::IncludeOne,
             Expr::Const(Value::Tuple(_) | Value::List(_)) | Expr::Tuple(..) | Expr::List(_) => {
@@ -447,36 +455,55 @@ impl Parser {
             template,
             targets: Vec::new(),
             ignore_missing,
+            names: Vec::new(),
+            from: false,
+            with_context,
+            lineno,
+            toplevel: false,
+            locals: Vec::new(),
+            target_levels: Vec::new(),
+            position: String::new(),
         })))
     }
 
     fn parse_import(&mut self) -> Result<Stmt> {
-        self.next()?;
+        let lineno = self.next()?.lineno;
         let template = self.parse_expression(true)?;
         self.stream.expect_name("as")?;
         let Expr::Name(target, _) = self.parse_assign_target(true, true, None, false)? else {
             return Err(syntax("internal parsing error"));
         };
-        self.parse_import_context()?;
+        let with_context = self.parse_import_context(false)?;
         Ok(Stmt::Load(Box::new(LoadTemplate {
             kind: LoadKind::Import,
             template,
             targets: vec![target],
             ignore_missing: false,
+            names: Vec::new(),
+            from: false,
+            with_context,
+            lineno,
+            toplevel: false,
+            locals: Vec::new(),
+            target_levels: Vec::new(),
+            position: String::new(),
         })))
     }
 
     fn parse_from(&mut self) -> Result<Stmt> {
-        self.next()?;
+        let lineno = self.next()?.lineno;
         let template = self.parse_expression(true)?;
         self.stream.expect_name("import")?;
         let mut names: Vec<Rc<str>> = Vec::new();
+        let mut imported: Vec<Rc<str>> = Vec::new();
+        let mut with_context = false;
         loop {
             if !names.is_empty() {
                 self.stream.expect_type("comma")?;
             }
             if matches!(self.cur(), Tok::Name(_)) {
-                if self.parse_from_context()? {
+                if let Some(with) = self.parse_from_context()? {
+                    with_context = with;
                     break;
                 }
                 let Expr::Name(target, _) = self.parse_assign_target(true, true, None, false)?
@@ -488,6 +515,7 @@ impl Parser {
                         "names starting with an underline can not be imported",
                     ));
                 }
+                imported.push(target.clone());
                 if self.stream.skip_if_name("as")? {
                     let Expr::Name(alias, _) = self.parse_assign_target(true, true, None, false)?
                     else {
@@ -497,7 +525,11 @@ impl Parser {
                 } else {
                     names.push(target);
                 }
-                if self.parse_from_context()? || *self.cur() != Tok::Comma {
+                if let Some(with) = self.parse_from_context()? {
+                    with_context = with;
+                    break;
+                }
+                if *self.cur() != Tok::Comma {
                     break;
                 }
             } else {
@@ -509,18 +541,29 @@ impl Parser {
             template,
             targets: names,
             ignore_missing: false,
+            names: imported,
+            from: true,
+            with_context,
+            lineno,
+            toplevel: false,
+            locals: Vec::new(),
+            target_levels: Vec::new(),
+            position: String::new(),
         })))
     }
 
-    fn parse_from_context(&mut self) -> Result<bool> {
+    /// `parse_context()` of `parse_from`: `Some(with)` when a `with` or
+    /// `without context` follows.
+    fn parse_from_context(&mut self) -> Result<Option<bool>> {
         if matches!(self.cur().name(), Some("with" | "without"))
             && self.stream.look()?.tok.is_name("context")
         {
+            let with = self.cur().is_name("with");
             self.next()?;
             self.stream.skip(1)?;
-            return Ok(true);
+            return Ok(Some(with));
         }
-        Ok(false)
+        Ok(None)
     }
 
     fn parse_signature(&mut self) -> Result<(Vec<Rc<str>>, Vec<Expr>)> {
@@ -625,6 +668,7 @@ impl Parser {
         Ok(Stmt::Output(Output {
             items,
             escape: Escape::Off,
+            guard: false,
         }))
     }
 
@@ -1230,6 +1274,7 @@ impl Parser {
                 body.push(Stmt::Output(Output {
                     items: std::mem::take(data),
                     escape: Escape::Off,
+                    guard: false,
                 }));
             }
         };

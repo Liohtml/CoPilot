@@ -722,6 +722,7 @@ async fn grafana_reporting_reads_and_links() {
     Mock::given(method("POST"))
         .and(path("/api/reporting/generate-report"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+        .expect(0)
         .mount(&legacy)
         .await;
     let h = harness_or_skip!(Some(&legacy));
@@ -854,7 +855,7 @@ async fn grafana_reporting_reads_and_links() {
         "Invalid time range unit: w. Must be one of ['m', 'h', 'd']"
     );
 
-    // The PDF report stays in Python.
+    // The PDF report is copilot-reports' now: the body's 422, here.
     let (status, body) = h
         .call(
             "POST",
@@ -863,7 +864,8 @@ async fn grafana_reporting_reads_and_links() {
             Some(json!({})),
         )
         .await;
-    assert_eq!((status, body), (StatusCode::OK, json!({"from": "python"})));
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["details"][0]["field"], "company_name");
     let (status, _) = h
         .call("GET", "/api/reporting/orgs", Some(&portal), None)
         .await;

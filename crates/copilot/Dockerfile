@@ -10,7 +10,8 @@
 # embeds — never .env, data/, the rest of backend/ or target/).
 #
 # Runtime: debian:bookworm-slim, non-root, one static-ish binary (and the
-# ScoutSuite CLI its scans run). The service
+# ScoutSuite CLI its scans run, wkhtmltopdf and the Chromium headless shell
+# the reports print with). The service
 # listens on :5000 (COPILOT_PORT) and reads the same environment as the
 # Python backend (MYSQL_*, JWT_SECRET, …); see docs/architecture/RUST_MIGRATION.md.
 
@@ -31,8 +32,11 @@ COPY backend/app/integrations/defender_for_endpoint/templates ./backend/app/inte
 COPY backend/app/integrations/bitdefender/templates ./backend/app/integrations/bitdefender/templates
 COPY backend/app/customer_provisioning/templates ./backend/app/customer_provisioning/templates
 COPY backend/app/connectors/portainer/templates ./backend/app/connectors/portainer/templates
-# copilot-incidents compiles in the default case report templates.
+# copilot-incidents compiles in the default case report templates;
+# copilot-reports these, the SOC operations report's and the Grafana report's.
 COPY backend/app/incidents/templates ./backend/app/incidents/templates
+COPY backend/app/soc_management/templates ./backend/app/soc_management/templates
+COPY backend/app/connectors/grafana/reporting ./backend/app/connectors/grafana/reporting
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,sharing=locked \
     set -eux; \
@@ -60,12 +64,23 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*; \
     useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin copilot; \
     install -d -o copilot -g copilot -m 0755 /opt/copilot/backend/scoutsuite-report
-# wkhtmltopdf for the File Analysis PDF report (copilot-file-analysis runs it
-# as pdfkit does, from /usr/bin), the package the backend image installs.
+# The reports (copilot-reports): wkhtmltopdf as the Python image installs it
+# (pdfkit's binary: the case, customer, SOC and File Analysis PDFs, run from
+# /usr/bin as pdfkit does), DejaVu Sans for the
+# charts the binary draws, and the Chromium headless shell the Grafana report
+# drives — the build Python's Playwright (requirements.txt: 1.59.0) runs,
+# installed with its system libraries by Playwright's own CLI from a throwaway
+# venv into PLAYWRIGHT_BROWSERS_PATH, where the binary looks for it.
+ARG PLAYWRIGHT_VERSION=1.59.0
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y wkhtmltopdf; \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends wkhtmltopdf fonts-dejavu-core; \
+    python3 -m venv /tmp/playwright; \
+    /tmp/playwright/bin/pip install --no-cache-dir "playwright==${PLAYWRIGHT_VERSION}"; \
+    /tmp/playwright/bin/playwright install --with-deps --only-shell chromium; \
+    rm -rf /tmp/playwright /var/lib/apt/lists/*; \
+    chmod -R a+rX "${PLAYWRIGHT_BROWSERS_PATH}"
 COPY --from=rust-builder /out/copilot /usr/local/bin/copilot
 USER copilot
 WORKDIR /tmp

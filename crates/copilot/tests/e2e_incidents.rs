@@ -571,7 +571,7 @@ async fn unported_paths_and_methods_reach_the_legacy_backend() {
     Mock::given(method("POST"))
         .and(path(format!("{R}/generate-report-docx")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python-post"})))
-        .expect(1)
+        .expect(0)
         .mount(&legacy)
         .await;
     Mock::given(path(format!("{P}/case-report-template/default-template")))
@@ -589,7 +589,9 @@ async fn unported_paths_and_methods_reach_the_legacy_backend() {
             Some(json!({})),
         )
         .await;
-    assert_eq!((st.as_u16(), body), (200, json!({"from": "python-post"})));
+    // The case reports are copilot-reports' now: the body's 422, here.
+    assert_eq!(st.as_u16(), 422, "{body}");
+    assert_eq!(body["details"][0]["field"], "case_id");
     // Answered here (no MinIO in this harness), never by Python.
     let (_, body) = h
         .call(
@@ -1491,12 +1493,14 @@ async fn csv_exports_and_report_list_split_with_python() {
         Mock::given(method(m))
             .and(path(p.clone()))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+            .expect(0)
             .mount(&legacy)
             .await;
+        // copilot-reports' routes now: the body's 422 here, never Python.
         let (st, out) = h.call(m, &p, Some(&admin), Some(json!({}))).await;
+        assert_eq!(st.as_u16(), 422, "{m} {p} {out}");
         assert_eq!(
-            (st.as_u16(), out),
-            (200, json!({"from": "python"})),
+            out["message"], "Missing data for required field.",
             "{m} {p}"
         );
     }

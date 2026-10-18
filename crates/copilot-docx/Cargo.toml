@@ -1,0 +1,23 @@
+[package]
+name = "copilot-docx"
+description = "docxtpl 0.20 over python-docx 1.2 and lxml: a .docx template read, rendered through copilot-jinja and written back as Python writes it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-jinja = { workspace = true }
+fancy-regex = { workspace = true }
+flate2 = { workspace = true }
+crc32fast = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[lints]
+workspace = true

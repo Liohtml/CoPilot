@@ -80,7 +80,7 @@ fn no_loader() -> Error {
     Error::type_error("no loader for this environment specified")
 }
 
-/// `StrictUndefined(hint, name=name)`.
+/// `environment.undefined(hint, name=name)`.
 fn undefined_named(hint: String, name: &str) -> Value {
     Value::Undefined(Rc::new(Undefined {
         hint: Some(hint),
@@ -104,14 +104,74 @@ fn cond_undefined(hint: String) -> Value {
 
 // --- context and scopes ------------------------------------------------------------
 
+/// A block's chain: the most derived first (`context.blocks[name]`).
+type BlockChain = Vec<Rc<BlockDef>>;
+
 /// A template `Context`: the render's variables and what top-level
 /// assignments add.
 pub struct Context {
     vars: RefCell<Vec<(Rc<str>, Value)>>,
     parent: Rc<HashMap<Rc<str>, Value>>,
+    /// `context.blocks`.
+    blocks: RefCell<Vec<(Rc<str>, BlockChain)>>,
+    /// `context.exported_vars`, in the order they were added.
+    exported: RefCell<Vec<Rc<str>>>,
 }
 
 impl Context {
+    fn new(parent: HashMap<Rc<str>, Value>, t: &Template) -> Rc<Context> {
+        Rc::new(Context {
+            vars: RefCell::new(Vec::new()),
+            parent: Rc::new(parent),
+            blocks: RefCell::new(
+                t.blocks
+                    .iter()
+                    .map(|b| (b.name.clone(), vec![b.clone()]))
+                    .collect(),
+            ),
+            exported: RefCell::new(Vec::new()),
+        })
+    }
+
+    /// `context.get_all()`.
+    fn get_all(&self) -> HashMap<Rc<str>, Value> {
+        let mut all: HashMap<Rc<str>, Value> = (*self.parent).clone();
+        for (k, v) in self.vars.borrow().iter() {
+            all.insert(k.clone(), v.clone());
+        }
+        all
+    }
+
+    fn chain(&self, name: &str) -> Option<BlockChain> {
+        self.blocks
+            .borrow()
+            .iter()
+            .find(|(n, _)| &**n == name)
+            .map(|(_, c)| c.clone())
+    }
+
+    /// `context.blocks.setdefault(name, []).append(block)`.
+    fn append_block(&self, block: &Rc<BlockDef>) {
+        let mut blocks = self.blocks.borrow_mut();
+        match blocks.iter_mut().find(|(n, _)| *n == block.name) {
+            Some((_, chain)) => chain.push(block.clone()),
+            None => blocks.push((block.name.clone(), vec![block.clone()])),
+        }
+    }
+
+    fn export(&self, name: &Rc<str>) {
+        if name.starts_with('_') {
+            return;
+        }
+        let mut e = self.exported.borrow_mut();
+        if !e.contains(name) {
+            e.push(name.clone());
+        }
+    }
+
+    fn discard_export(&self, name: &str) {
+        self.exported.borrow_mut().retain(|n| &**n != name);
+    }
     fn resolve_or_missing(&self, key: &str) -> Option<Value> {
         if let Some((_, v)) = self.vars.borrow().iter().find(|(k, _)| &**k == key) {
             return Some(v.clone());
@@ -129,16 +189,15 @@ impl Context {
 
     /// `context.derived(locals)`.
     fn derived(&self, locals: Vec<(Rc<str>, Value)>) -> Rc<Context> {
-        let mut parent: HashMap<Rc<str>, Value> = (*self.parent).clone();
-        for (k, v) in self.vars.borrow().iter() {
-            parent.insert(k.clone(), v.clone());
-        }
+        let mut parent = self.get_all();
         for (k, v) in locals {
             parent.insert(k, v);
         }
         Rc::new(Context {
             vars: RefCell::new(Vec::new()),
             parent: Rc::new(parent),
+            blocks: RefCell::new(self.blocks.borrow().clone()),
+            exported: RefCell::new(Vec::new()),
         })
     }
 }
@@ -148,6 +207,8 @@ pub struct Scope {
     vars: RefCell<Vec<HashMap<Rc<str>, Option<Value>>>>,
     parent: Option<Rc<Scope>>,
     ctx: Rc<Context>,
+    /// A root function's `parent_template`.
+    parent_template: RefCell<Option<Rc<Template>>>,
 }
 
 impl Scope {
@@ -156,9 +217,18 @@ impl Scope {
             vars: RefCell::new(Vec::new()),
             parent,
             ctx,
+            parent_template: RefCell::new(None),
         });
         arena::track_scope(&rc);
         rc
+    }
+
+    /// The `parent_template` of the root function this code runs in.
+    fn root_parent(&self) -> Option<Rc<Template>> {
+        match &self.parent {
+            Some(p) => p.root_parent(),
+            None => self.parent_template.borrow().clone(),
+        }
     }
 
     /// The variable's value: `None` when this function and the ones around
@@ -193,6 +263,12 @@ impl Scope {
         }
         if let Ok(mut v) = self.ctx.vars.try_borrow_mut() {
             v.clear();
+        }
+        if let Ok(mut v) = self.ctx.blocks.try_borrow_mut() {
+            v.clear();
+        }
+        if let Ok(mut p) = self.parent_template.try_borrow_mut() {
+            *p = None;
         }
     }
 }
@@ -282,10 +358,11 @@ pub struct Rendered {
 // --- the machine -------------------------------------------------------------------------
 
 pub(crate) struct VmState {
-    blocks: Vec<Rc<BlockDef>>,
     autoescape: RefCell<Value>,
     steps: Cell<u64>,
     depth: Cell<usize>,
+    /// The environment's loader, when it has one.
+    env: Option<Rc<crate::env::Loaded>>,
 }
 
 /// A handle on the running render.
@@ -325,28 +402,42 @@ fn globals() -> HashMap<Rc<str>, Value> {
 /// `template.render(**vars)`, with the output capped at `cap` bytes (the
 /// size is still counted past it).
 pub fn render(t: &Template, vars: Vec<(Rc<str>, Value)>, cap: usize) -> Result<Rendered> {
+    render_in(None, &Rc::new(clone_template(t)), vars, cap)
+}
+
+/// A compiled template shared by reference (blocks are `Rc`s already).
+fn clone_template(t: &Template) -> Template {
+    Template {
+        body: t.body.clone(),
+        frame: t.frame.clone(),
+        self_param: t.self_param,
+        blocks: t.blocks.clone(),
+        autoescape: t.autoescape,
+        name: t.name.clone(),
+    }
+}
+
+/// [`render`] in an environment with a loader.
+pub(crate) fn render_in(
+    env: Option<Rc<crate::env::Loaded>>,
+    t: &Rc<Template>,
+    vars: Vec<(Rc<str>, Value)>,
+    cap: usize,
+) -> Result<Rendered> {
     let _guard = arena::RenderGuard::new();
     let mut parent = globals();
     for (k, v) in vars {
         parent.insert(k, v);
     }
-    let ctx = Rc::new(Context {
-        vars: RefCell::new(Vec::new()),
-        parent: Rc::new(parent),
-    });
+    let ctx = Context::new(parent, t);
     let vm = Vm(Rc::new(VmState {
-        blocks: t.blocks.clone(),
         autoescape: RefCell::new(Value::Bool(t.autoescape)),
         steps: Cell::new(0),
         depth: Cell::new(2),
+        env,
     }));
-    let scope = Scope::new(None, ctx.clone());
-    if t.self_param {
-        scope.set(0, &Rc::from("self"), Some(vm.template_reference(&ctx)));
-    }
-    vm.enter_frame(&t.frame, &scope);
     let mut sink = Sink::root(cap);
-    vm.exec_body(&t.body, &scope, &mut sink)?;
+    vm.run_root(t, &ctx, &mut sink)?;
     let bytes = sink.bytes;
     let text = sink.finish()?;
     Ok(Rendered { text, bytes })
@@ -379,6 +470,190 @@ impl Vm {
         }
         self.0.depth.set(d);
         Ok(DepthGuard(&self.0, frames))
+    }
+
+    /// `template.root_render_func(context)`: the body, then the parent
+    /// template's root when an `extends` ran.
+    fn run_root(&self, t: &Rc<Template>, ctx: &Rc<Context>, sink: &mut Sink) -> Result<()> {
+        let scope = Scope::new(None, ctx.clone());
+        if t.self_param {
+            scope.set(0, &Rc::from("self"), Some(self.template_reference(ctx)));
+        }
+        self.enter_frame(&t.frame, &scope);
+        self.exec_body(&t.body, &scope, sink)?;
+        let parent = scope.parent_template.borrow().clone();
+        match parent {
+            Some(p) => {
+                let _g = self.enter(1)?;
+                self.run_root(&p, ctx, sink)
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// `environment.get_template(name)`.
+    fn get_template(&self, name: &Value) -> Result<Rc<Template>> {
+        let Some(env) = &self.0.env else {
+            return Err(no_loader());
+        };
+        match name {
+            Value::Undefined(u) => Err(u.error()),
+            v => match v.as_str() {
+                Some(n) => env.get_template(n),
+                None => Err(Error::new(
+                    "AttributeError",
+                    format!("'{}' object has no attribute 'split'", v.type_name()),
+                )),
+            },
+        }
+    }
+
+    /// `environment.select_template(names)` (an `include` of a list).
+    fn select_from(&self, names: &Value) -> Result<Rc<Template>> {
+        if let Value::Undefined(u) = names {
+            return Err(u.error());
+        }
+        if !ops::truthy(names)? {
+            return Err(Error::new(
+                "TemplatesNotFound",
+                "Tried to select from an empty list of templates.",
+            ));
+        }
+        let mut tried: Vec<String> = Vec::new();
+        let mut it = ops::py_iter(names)?;
+        while let Some(n) = it.next()? {
+            match self.get_template(&n) {
+                Ok(t) => return Ok(t),
+                Err(e) if e.kind == "TemplateNotFound" => tried.push(pyrepr::str(&n)?),
+                Err(e) => return Err(e),
+            }
+        }
+        Err(Error::new(
+            "TemplatesNotFound",
+            format!(
+                "none of the templates given were found: {}",
+                tried.join(", ")
+            ),
+        ))
+    }
+
+    /// `template.make_module(vars, shared, locals)`: the root rendered in a
+    /// context of its own; the module answers its exported names.
+    fn make_module(&self, t: &Rc<Template>, parent: HashMap<Rc<str>, Value>) -> Result<Value> {
+        let ctx = Context::new(parent, t);
+        let saved = self.autoescape();
+        *self.0.autoescape.borrow_mut() = Value::Bool(t.autoescape);
+        let mut buf = Sink::buffer();
+        let result = self.run_root(t, &ctx, &mut buf);
+        *self.0.autoescape.borrow_mut() = saved;
+        result?;
+        let body = buf.finish()?;
+        let exported: Vec<(Rc<str>, Value)> = ctx
+            .exported
+            .borrow()
+            .iter()
+            .filter_map(|k| ctx.resolve_or_missing(k).map(|v| (k.clone(), v)))
+            .collect();
+        Ok(Value::object(TemplateModule {
+            name: t.name.clone(),
+            exported: RefCell::new(exported),
+            body,
+            autoescape: t.autoescape,
+        }))
+    }
+
+    /// The parent dict a `with context` import or include gets:
+    /// `context.get_all()` and the locals that are not missing.
+    fn context_with_locals(&self, l: &LoadTemplate, scope: &Rc<Scope>) -> HashMap<Rc<str>, Value> {
+        let mut parent = scope.ctx.get_all();
+        for (name, level) in &l.locals {
+            if let Some(Some(v)) = scope.get(*level, name) {
+                parent.insert(name.clone(), v);
+            }
+        }
+        parent
+    }
+
+    fn exec_load(&self, l: &LoadTemplate, scope: &Rc<Scope>, sink: &mut Sink) -> Result<()> {
+        let name = self.eval(&l.template, scope)?;
+        if l.kind != LoadKind::Import {
+            // `{% include %}`.
+            let found = match l.kind {
+                LoadKind::IncludeOne => self.get_template(&name),
+                LoadKind::IncludeSelect => self.select_from(&name),
+                _ => {
+                    if name.is_str() || name.is_undefined() {
+                        self.get_template(&name)
+                    } else {
+                        self.select_from(&name)
+                    }
+                }
+            };
+            let t = match found {
+                Ok(t) => t,
+                Err(e)
+                    if l.ignore_missing
+                        && (e.kind == "TemplateNotFound" || e.kind == "TemplatesNotFound") =>
+                {
+                    return Ok(());
+                }
+                Err(e) => return Err(e),
+            };
+            if l.with_context {
+                let ctx = Context::new(self.context_with_locals(l, scope), &t);
+                let saved = self.autoescape();
+                *self.0.autoescape.borrow_mut() = Value::Bool(t.autoescape);
+                let result = self.run_root(&t, &ctx, sink);
+                *self.0.autoescape.borrow_mut() = saved;
+                return result;
+            }
+            let module = self.make_module(&t, globals())?;
+            let text = module
+                .downcast::<TemplateModule>()
+                .map(|m| m.body.clone())
+                .unwrap_or_default();
+            return sink.text(&text);
+        }
+        let t = self.get_template(&name)?;
+        let module = if l.with_context {
+            self.make_module(&t, self.context_with_locals(l, scope))?
+        } else {
+            self.make_module(&t, globals())?
+        };
+        if !l.from {
+            let target = &l.targets[0];
+            scope.set(l.target_levels[0], target, Some(module.clone()));
+            if l.toplevel {
+                scope.ctx.set_var(target, module);
+                scope.ctx.discard_export(target);
+            }
+            return Ok(());
+        }
+        let m = module.downcast::<TemplateModule>().ok_or_else(internal)?;
+        for ((name, alias), level) in l.names.iter().zip(&l.targets).zip(&l.target_levels) {
+            let v = match m.get(name) {
+                Some(v) => v,
+                None => undefined_named(
+                    format!(
+                        "the template {} (imported on {}) does not export the requested name {}",
+                        m.name.as_deref().map_or("None".to_string(), str_repr),
+                        l.position,
+                        str_repr(name)
+                    ),
+                    name,
+                ),
+            };
+            scope.set(*level, alias, Some(v.clone()));
+            if l.toplevel {
+                scope.ctx.set_var(alias, v);
+            }
+        }
+        if l.toplevel {
+            for alias in &l.targets {
+                scope.ctx.discard_export(alias);
+            }
+        }
+        Ok(())
     }
 
     fn template_reference(&self, ctx: &Rc<Context>) -> Value {
@@ -423,6 +698,9 @@ impl Vm {
     fn exec(&self, s: &Stmt, scope: &Rc<Scope>, sink: &mut Sink) -> Result<()> {
         match s {
             Stmt::Output(o) => {
+                if o.guard && scope.root_parent().is_some() {
+                    return Ok(());
+                }
                 for item in &o.items {
                     match item {
                         OutItem::Text(t) => sink.text(t)?,
@@ -461,6 +739,7 @@ impl Vm {
                 let v = self.macro_value(m, scope);
                 if m.toplevel {
                     scope.ctx.set_var(&name, v.clone());
+                    scope.ctx.export(&name);
                 }
                 scope.set(m.store_level, &name, Some(v));
                 Ok(())
@@ -496,7 +775,10 @@ impl Vm {
                 Ok(())
             }
             Stmt::Block(b) => {
-                if b.required {
+                if b.guard && scope.root_parent().is_some() {
+                    return Ok(());
+                }
+                if b.required && scope.ctx.chain(&b.name).is_none_or(|c| c.len() <= 1) {
                     return Err(Error::runtime(format!(
                         "Required block {} not found",
                         str_repr(&b.name)
@@ -517,22 +799,41 @@ impl Vm {
                 self.run_block(&b.name, &ctx, sink)
             }
             Stmt::Extends(e) => {
-                self.eval(e, scope)?;
-                Err(no_loader())
+                let multiple = || Error::new("TemplateRuntimeError", "extended multiple times");
+                match e.check {
+                    ExtendsCheck::Always => return Err(multiple()),
+                    ExtendsCheck::IfExtended if scope.root_parent().is_some() => {
+                        return Err(multiple());
+                    }
+                    _ => {}
+                }
+                let name = self.eval(&e.template, scope)?;
+                if self.0.env.is_none() {
+                    return Err(no_loader());
+                }
+                let parent = self.get_template(&name)?;
+                for b in &parent.blocks {
+                    scope.ctx.append_block(b);
+                }
+                *scope.parent_template.borrow_mut() = Some(parent);
+                Ok(())
             }
             Stmt::Load(l) => {
-                let v = self.eval(&l.template, scope)?;
-                match l.kind {
-                    LoadKind::Import | LoadKind::IncludeOne => Err(no_loader()),
-                    LoadKind::IncludeSelect => self.select_template(&v, l.ignore_missing),
-                    LoadKind::IncludeEither => {
-                        if v.is_str() || v.is_undefined() {
-                            Err(no_loader())
-                        } else {
-                            self.select_template(&v, l.ignore_missing)
+                if self.0.env.is_none() {
+                    let v = self.eval(&l.template, scope)?;
+                    return match l.kind {
+                        LoadKind::Import | LoadKind::IncludeOne => Err(no_loader()),
+                        LoadKind::IncludeSelect => self.select_template(&v, l.ignore_missing),
+                        LoadKind::IncludeEither => {
+                            if v.is_str() || v.is_undefined() {
+                                Err(no_loader())
+                            } else {
+                                self.select_template(&v, l.ignore_missing)
+                            }
                         }
-                    }
+                    };
                 }
+                self.exec_load(l, scope, sink)
             }
             Stmt::Assign(a) => {
                 self.check_ns(&a.target, scope)?;
@@ -607,6 +908,7 @@ impl Vm {
             if let Some(Some(v)) = scope.get(*level, name) {
                 scope.ctx.set_var(name, v);
             }
+            scope.ctx.export(name);
         }
     }
 
@@ -801,28 +1103,46 @@ impl Vm {
 
     // --- blocks and macros -------------------------------------------------------------
 
+    /// `yield from context.blocks[name][0](context)`.
     fn run_block(&self, name: &str, ctx: &Rc<Context>, sink: &mut Sink) -> Result<()> {
-        let def = self
-            .0
-            .blocks
-            .iter()
-            .find(|d| &*d.name == name)
-            .cloned()
-            .ok_or_else(internal)?;
+        let chain = ctx.chain(name).ok_or_else(|| Error::key(str_repr(name)))?;
+        self.run_block_at(&chain, 0, ctx, sink)
+    }
+
+    /// The block function `chain[index]`, its `super()` the next in the chain.
+    fn run_block_at(
+        &self,
+        chain: &BlockChain,
+        index: usize,
+        ctx: &Rc<Context>,
+        sink: &mut Sink,
+    ) -> Result<()> {
+        let def = chain.get(index).cloned().ok_or_else(internal)?;
+        let name = def.name.clone();
         let _g = self.enter(1)?;
         let bscope = Scope::new(None, ctx.clone());
         if def.self_param {
             bscope.set(0, &Rc::from("self"), Some(self.template_reference(ctx)));
         }
         if def.super_param {
-            bscope.set(
-                0,
-                &Rc::from("super"),
-                Some(undefined_named(
-                    format!("there is no parent block called {}.", str_repr(name)),
+            // `context.super(name, current)`: the block after this one in
+            // the context's chain.
+            let current = ctx.chain(&name).unwrap_or_default();
+            let at = current.iter().position(|b| Rc::ptr_eq(b, &def));
+            let sup = match at {
+                Some(i) if i + 1 < current.len() => Value::object(BlockReference {
+                    vm: self.clone(),
+                    name: name.clone(),
+                    ctx: RefCell::new(Some(ctx.clone())),
+                    stack: RefCell::new(current),
+                    depth: i + 1,
+                }),
+                _ => undefined_named(
+                    format!("there is no parent block called {}.", str_repr(&name)),
                     "super",
-                )),
-            );
+                ),
+            };
+            bscope.set(0, &Rc::from("super"), Some(sup));
         }
         self.enter_frame(&def.frame, &bscope);
         self.exec_body(&def.body, &bscope, sink)
@@ -1697,15 +2017,17 @@ impl Object for TemplateReference {
     }
 
     fn getitem(&self, key: &Value) -> Option<Result<Value>> {
-        let found = key
-            .as_str()
-            .and_then(|k| self.vm.0.blocks.iter().find(|b| &*b.name == k))
-            .map(|b| b.name.clone());
-        Some(match (found, self.ctx.borrow().clone()) {
-            (Some(name), Some(ctx)) => Ok(Value::object(BlockReference {
+        let ctx = self.ctx.borrow().clone();
+        let found = match (key.as_str(), &ctx) {
+            (Some(k), Some(ctx)) => ctx.chain(k).map(|c| (Rc::<str>::from(k), c)),
+            _ => None,
+        };
+        Some(match (found, ctx) {
+            (Some((name, stack)), Some(ctx)) => Ok(Value::object(BlockReference {
                 vm: self.vm.clone(),
                 name,
                 ctx: RefCell::new(Some(ctx)),
+                stack: RefCell::new(stack),
                 depth: 0,
             })),
             _ => pyrepr::repr(key).and_then(|r| Err(Error::key(r))),
@@ -1728,6 +2050,7 @@ pub(crate) struct BlockReference {
     vm: Vm,
     name: Rc<str>,
     ctx: RefCell<Option<Rc<Context>>>,
+    stack: RefCell<BlockChain>,
     depth: usize,
 }
 
@@ -1773,10 +2096,23 @@ impl Object for BlockReference {
     fn getattr(&self, _me: &Value, name: &str) -> Option<Result<Value>> {
         Some(Ok(match name {
             "name" => Value::Str(self.name.clone()),
-            "super" => undefined_named(
-                format!("there is no parent block called {}.", str_repr(&self.name)),
-                "super",
-            ),
+            "super" => {
+                let stack = self.stack.borrow().clone();
+                if self.depth + 1 >= stack.len() {
+                    undefined_named(
+                        format!("there is no parent block called {}.", str_repr(&self.name)),
+                        "super",
+                    )
+                } else {
+                    Value::object(BlockReference {
+                        vm: self.vm.clone(),
+                        name: self.name.clone(),
+                        ctx: RefCell::new(self.ctx.borrow().clone()),
+                        stack: RefCell::new(stack),
+                        depth: self.depth + 1,
+                    })
+                }
+            }
             _ => return None,
         }))
     }
@@ -1802,9 +2138,9 @@ impl Object for BlockReference {
                 )));
             }
             let ctx = self.ctx.borrow().clone().ok_or_else(internal)?;
-            let _ = self.depth;
+            let stack = self.stack.borrow().clone();
             let mut buf = Sink::buffer();
-            self.vm.run_block(&self.name, &ctx, &mut buf)?;
+            self.vm.run_block_at(&stack, self.depth, &ctx, &mut buf)?;
             let rv = buf.finish()?;
             Ok(if ops::truthy(&self.vm.autoescape())? {
                 Value::markup(rv)
@@ -1817,6 +2153,108 @@ impl Object for BlockReference {
     fn clear(&self) {
         if let Ok(mut c) = self.ctx.try_borrow_mut() {
             *c = None;
+        }
+        if let Ok(mut st) = self.stack.try_borrow_mut() {
+            st.clear();
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// `jinja2.environment.TemplateModule`: an imported template, its exported
+/// names as attributes.
+pub(crate) struct TemplateModule {
+    name: Option<Rc<str>>,
+    exported: RefCell<Vec<(Rc<str>, Value)>>,
+    body: String,
+    #[allow(dead_code)]
+    autoescape: bool,
+}
+
+impl std::fmt::Debug for TemplateModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<TemplateModule>")
+    }
+}
+
+impl TemplateModule {
+    /// `getattr(module, name, missing)` for an exported name.
+    fn get(&self, name: &str) -> Option<Value> {
+        self.exported
+            .borrow()
+            .iter()
+            .find(|(k, _)| &**k == name)
+            .map(|(_, v)| v.clone())
+    }
+}
+
+const MODULE_ATTRS: &[&str] = &[
+    "__class__",
+    "__delattr__",
+    "__dict__",
+    "__dir__",
+    "__doc__",
+    "__eq__",
+    "__format__",
+    "__ge__",
+    "__getattribute__",
+    "__getstate__",
+    "__gt__",
+    "__hash__",
+    "__html__",
+    "__init__",
+    "__init_subclass__",
+    "__le__",
+    "__lt__",
+    "__module__",
+    "__name__",
+    "__ne__",
+    "__new__",
+    "__reduce__",
+    "__reduce_ex__",
+    "__repr__",
+    "__setattr__",
+    "__sizeof__",
+    "__str__",
+    "__subclasshook__",
+    "__weakref__",
+    "_body_stream",
+];
+
+impl Object for TemplateModule {
+    fn type_name(&self) -> &str {
+        "TemplateModule"
+    }
+
+    fn module(&self) -> &str {
+        "jinja2.environment"
+    }
+
+    fn repr(&self) -> Result<String> {
+        Ok(match &self.name {
+            Some(n) => format!("<TemplateModule {}>", str_repr(n)),
+            None => format!("<TemplateModule memory:{}>", objects::addr(self)),
+        })
+    }
+
+    fn str(&self) -> Result<String> {
+        Ok(self.body.clone())
+    }
+
+    fn attrs(&self) -> &'static [&'static str] {
+        MODULE_ATTRS
+    }
+
+    fn getattr(&self, _me: &Value, name: &str) -> Option<Result<Value>> {
+        self.get(name).map(Ok)
+    }
+
+    fn clear(&self) {
+        if let Ok(mut e) = self.exported.try_borrow_mut() {
+            e.clear();
         }
     }
 

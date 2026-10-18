@@ -28,6 +28,8 @@ copilot-gateway = { path = "crates/copilot-gateway" }
 copilot-identity = { path = "crates/copilot-identity" }
 copilot-webauthn = { path = "crates/copilot-webauthn" }
 copilot-jinja = { path = "crates/copilot-jinja" }
+copilot-docx = { path = "crates/copilot-docx" }
+copilot-reports = { path = "crates/copilot-reports" }
 copilot-incidents = { path = "crates/copilot-incidents" }
 copilot-sla = { path = "crates/copilot-sla" }
 copilot-soc-management = { path = "crates/copilot-soc-management" }
@@ -121,6 +123,10 @@ flate2 = "1"
 
 # --- text ---
 regex = "1"
+# The report charts' glyph outlines (DejaVu Sans, read at run time).
+ttf-parser = { version = "=0.25.1", default-features = false, features = ["std"] }
+# docxtpl's lookaround patterns (`copilot-docx`), as Python's `re` backtracks.
+fancy-regex = "=0.19.2"
 # `rustls-native-certs`: STARTTLS trusts the system store, like `ssl.create_default_context()`.
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "rustls-native-certs", "hostname"] }
 

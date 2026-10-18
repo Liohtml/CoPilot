@@ -18,9 +18,10 @@
 //!                      │ integrations, dispatch log, channel catalog          │
 //!                      │                    → copilot-notifications ───────────► webhook, Teams,
 //!                      │ (every module emits in-process: DispatchingSink)     │   Resend, Shuffle
-//!                      │ /api/soc_management/* (but GET /report),             │
-//!                      │ /api/customer_portal/sla/*                           │
+//!                      │ /api/soc_management/*, /api/customer_portal/sla/*    │
 //!                      │                    → copilot-soc-management          │
+//!                      │ the case, customer, SOC, Grafana reports (PDF, DOCX) │
+//!                      │                    → copilot-reports ────────────────► wkhtmltopdf, Chromium, MinIO
 //!                      │ /api/agent_data_store/*, the incidents' MinIO routes │
 //!                      │                    → copilot-objectstore ────────────────► MinIO :9000
 //!                      │ /api/siem/dashboards, /event_sources, /events        │
@@ -127,12 +128,14 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // the indexer and Graylog-event alerts, /create/threshold, the Sigma ingest,
     // the exclusion draft and dry-run.
     "/api/incidents/alerts",
-    // The CSV case exports; the DOCX and PDF reports stay in Python.
-    "POST /api/incidents/report/generate-report-csv",
+    // The CSV case exports (copilot-incidents) and the case DOCX and PDF
+    // reports (copilot-reports).
+    "POST /api/incidents/report",
     // The report list, the visibility switch, download and delete (GET "",
-    // PATCH /{id}/visibility, GET /{id}/download, DELETE /{id}); generation
-    // (the PDF renderer) stays in Python.
+    // PATCH /{id}/visibility, GET /{id}/download, DELETE /{id}), and the
+    // generation (POST /generate/background, copilot-reports).
     "GET /api/incidents/customer_reports",
+    "POST /api/incidents/customer_reports",
     "PATCH /api/incidents/customer_reports",
     "DELETE /api/incidents/customer_reports",
     // The Scheduler (copilot-scheduler): every route, the writes included;
@@ -188,10 +191,12 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The InfluxDB connector (copilot-influxdb): alerts and metrics.
     "GET /api/influxdb",
     // The Grafana connector (copilot-grafana): the reporting reads and iframe
-    // links, adding a user to an org. `POST /api/reporting/generate-report`
-    // (Playwright) stays in Python.
+    // links, adding a user to an org; the panel report
+    // `POST /api/reporting/generate-report` (copilot-reports, headless
+    // Chromium as Playwright drives it).
     "GET /api/reporting",
     "POST /api/reporting/generate_iframe_links",
+    "POST /api/reporting/generate-report",
     "POST /api/user/user/organization/add",
     // Dashboard provisioning (copilot-grafana-dashboards, the templates
     // compiled in from backend/); its customer-provisioning twin
@@ -206,8 +211,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "POST /api/portainer/stop-wazuh-customer-stack",
     "POST /api/portainer/update-customer-stack-id",
     "DELETE /api/portainer/delete-wazuh-customer-stack",
-    // SOC Management but GET /report (the PDF operations report: matplotlib
-    // charts and wkhtmltopdf), which falls through to the legacy backend.
+    // SOC Management (copilot-soc-management), its PDF operations report
+    // GET /report (copilot-reports).
     "/api/soc_management",
     "/api/customer_portal/sla",
     // The customer WAF (copilot-waf).
@@ -1003,6 +1008,14 @@ impl App {
                 ctx: self.ctx.clone(),
                 client: self.grafana.clone(),
             }))
+            // `POST /api/reporting/generate-report` (the licence, Grafana in a
+            // headless Chromium), at its full path.
+            .merge(copilot_reports::grafana::router(
+                copilot_reports::grafana::GrafanaReportState {
+                    ctx: self.ctx.clone(),
+                    license: self.license.clone(),
+                },
+            ))
             // All but `POST /create-wazuh-customer-stack`, which is
             // copilot-integration-provisioning's (merged below).
             .nest(
@@ -1018,6 +1031,8 @@ impl App {
                 "/api/soc_management",
                 copilot_soc_management::router(self.ctx.clone()),
             )
+            // `GET /api/soc_management/report`, at its full path.
+            .merge(copilot_reports::soc_report::router(self.ctx.clone()))
             .merge(copilot_soc_management::portal_router(self.ctx.clone()))
             .nest("/api/customer_waf", copilot_waf::router(self.waf.clone()))
             .nest(
@@ -1145,6 +1160,22 @@ impl App {
                     legacy: self.legacy.clone(),
                 }),
             )
+            // The case DOCX and PDF reports and the customer reports'
+            // generation, at their full paths beside the nested
+            // `/api/incidents/report` and `/customer_reports` routers.
+            .merge(copilot_reports::case::router(
+                copilot_reports::case::CaseReportState {
+                    ctx: self.ctx.clone(),
+                    store: self.objectstore.clone(),
+                    legacy: self.legacy.clone(),
+                },
+            ))
+            .merge(copilot_reports::customer_report::router(
+                copilot_reports::customer_report::CustomerReportState {
+                    ctx: self.ctx.clone(),
+                    store: self.objectstore.clone(),
+                },
+            ))
             // Full paths beside the nested incidents routers (methods merge
             // on a shared path: DELETE /case/{case_id} joins its GET).
             .merge(copilot_incidents::datastore::router(

@@ -12,22 +12,22 @@ use crate::arena;
 use crate::compiler;
 use crate::error::{Error, Result};
 use crate::notify::{Input, input_value};
-use crate::value::{Value, with_undefined_class};
+use crate::value::{UndefinedMode, Value};
 use crate::vm;
 
 /// The stack a page renders on.
 const STACK_SIZE: usize = 256 << 20;
 
 fn render_here(source: &str, context: &[(String, Input)], autoescape: bool) -> Result<String> {
-    with_undefined_class(true, || {
-        let _guard = arena::RenderGuard::new();
-        let template = compiler::compile(source, autoescape)?;
-        let vars: Vec<(Rc<str>, Value)> = context
-            .iter()
-            .map(|(k, v)| (Rc::from(k.as_str()), input_value(v)))
-            .collect();
-        Ok(vm::render(&template, vars, usize::MAX)?.text)
-    })
+    // Jinja2's default `Undefined`, not the notification renderer's strict one.
+    let _mode = UndefinedMode::set(false);
+    let _guard = arena::RenderGuard::new();
+    let template = compiler::compile(source, autoescape)?;
+    let vars: Vec<(Rc<str>, Value)> = context
+        .iter()
+        .map(|(k, v)| (Rc::from(k.as_str()), input_value(v)))
+        .collect();
+    Ok(vm::render(&template, vars, usize::MAX)?.text)
 }
 
 /// `template.render(context)` of a page template.

@@ -1,7 +1,7 @@
 //! Values with Python's types: what a Jinja2 template sees and builds.
 
 use std::any::Any;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
@@ -48,26 +48,6 @@ impl fmt::Debug for Value {
             Err(_) => f.write_str("<value>"),
         }
     }
-}
-
-thread_local! {
-    /// Set while a page renders with Jinja2's default `Undefined` (see
-    /// [`crate::page`]); unset, every undefined value is a `StrictUndefined`.
-    static LENIENT: Cell<bool> = const { Cell::new(false) };
-}
-
-/// Run `f` with the environment's `undefined` class set to the plain
-/// `Undefined` (`lenient`) or to `StrictUndefined`.
-pub(crate) fn with_undefined_class<T>(lenient: bool, f: impl FnOnce() -> T) -> T {
-    let previous = LENIENT.with(|l| l.replace(lenient));
-    let out = f();
-    LENIENT.with(|l| l.set(previous));
-    out
-}
-
-/// Whether the environment's `undefined` is `StrictUndefined`.
-pub(crate) fn strict_undefined() -> bool {
-    !LENIENT.with(Cell::get)
 }
 
 impl Value {
@@ -130,7 +110,7 @@ impl Value {
         Value::Object(rc)
     }
 
-    /// `StrictUndefined(name=name)`: a missing variable.
+    /// `environment.undefined(name=name)`: a missing variable.
     pub fn undefined_name(name: &str) -> Self {
         Value::Undefined(Rc::new(Undefined {
             hint: None,
@@ -141,7 +121,7 @@ impl Value {
         }))
     }
 
-    /// `StrictUndefined(hint)`.
+    /// `environment.undefined(hint)`.
     pub fn undefined_hint(hint: impl Into<String>) -> Self {
         Value::Undefined(Rc::new(Undefined {
             hint: Some(hint.into()),
@@ -152,7 +132,8 @@ impl Value {
         }))
     }
 
-    /// `StrictUndefined(obj=obj, name=name)`: a missing attribute or item.
+    /// `environment.undefined(obj=obj, name=name)`: a missing attribute or
+    /// item.
     pub fn undefined_member(obj: &Value, name: Value) -> Self {
         Value::Undefined(Rc::new(Undefined {
             hint: None,
@@ -285,6 +266,32 @@ impl Value {
             }
             other => other.clone(),
         }
+    }
+}
+
+thread_local! {
+    static STRICT_UNDEFINED: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
+/// Whether the environment rendering on this thread is `undefined=
+/// StrictUndefined` (the notification renderer) rather than Jinja's default
+/// `Undefined` (the report renderers).
+pub fn strict_undefined() -> bool {
+    STRICT_UNDEFINED.with(std::cell::Cell::get)
+}
+
+/// While alive, the thread's environment uses the given undefined class.
+pub(crate) struct UndefinedMode(bool);
+
+impl UndefinedMode {
+    pub(crate) fn set(strict: bool) -> Self {
+        Self(STRICT_UNDEFINED.with(|s| s.replace(strict)))
+    }
+}
+
+impl Drop for UndefinedMode {
+    fn drop(&mut self) {
+        STRICT_UNDEFINED.with(|s| s.set(self.0));
     }
 }
 

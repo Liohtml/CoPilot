@@ -65,6 +65,7 @@ copilot-assessments = { workspace = true }
 copilot-wazuh-rules = { workspace = true }
 copilot-case-templates = { workspace = true }
 copilot-file-analysis = { workspace = true }
+copilot-reports = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
@@ -79,6 +80,7 @@ clap = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
+copilot-docx = { workspace = true }
 copilot-velociraptor = { workspace = true, features = ["testing"] }
 base64 = { workspace = true }
 hex = { workspace = true }

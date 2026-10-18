@@ -1,7 +1,8 @@
 # Allowlist: only the Cargo workspace (and the backend templates it embeds:
 # copilot-grafana-dashboards' dashboards, copilot-integration-provisioning's
 # collector files, Wazuh group configurations and worker stack, the case
-# report templates copilot-incidents embeds) is sent to the builder.
+# report templates copilot-incidents and copilot-reports embed) is sent to the
+# builder.
 *
 !Cargo.toml
 !Cargo.lock
@@ -15,4 +16,6 @@
 !backend/app/customer_provisioning/templates/
 !backend/app/connectors/portainer/templates/
 !backend/app/incidents/templates/
+!backend/app/soc_management/templates/
+!backend/app/connectors/grafana/reporting/
 crates/**/target/

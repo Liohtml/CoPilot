@@ -255,6 +255,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "bit-set"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
+dependencies = [
+ "bit-vec",
+]
+
+[[package]]
+name = "bit-vec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
+
+[[package]]
 name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -476,6 +491,7 @@ dependencies = [
  "copilot-customer-portal",
  "copilot-customers",
  "copilot-db",
+ "copilot-docx",
  "copilot-file-analysis",
  "copilot-gateway",
  "copilot-grafana",
@@ -499,6 +515,7 @@ dependencies = [
  "copilot-platform",
  "copilot-portainer",
  "copilot-provisioning",
+ "copilot-reports",
  "copilot-response",
  "copilot-scheduler",
  "copilot-scoutsuite",
@@ -824,6 +841,21 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "copilot-docx"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "copilot-jinja",
+ "crc32fast",
+ "fancy-regex",
+ "flate2",
+ "hex",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -1182,6 +1214,7 @@ dependencies = [
 name = "copilot-jinja"
 version = "0.2.0"
 dependencies = [
+ "chrono",
  "num-bigint-dig",
  "num-integer",
  "num-traits",
@@ -1395,6 +1428,48 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tracing",
+]
+
+[[package]]
+name = "copilot-reports"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-db",
+ "copilot-docx",
+ "copilot-gateway",
+ "copilot-grafana",
+ "copilot-incidents",
+ "copilot-jinja",
+ "copilot-license",
+ "copilot-notifications",
+ "copilot-objectstore",
+ "copilot-sla",
+ "copilot-soc-management",
+ "copilot-upstream",
+ "copilot-web",
+ "copilot-yaml",
+ "crc32fast",
+ "flate2",
+ "futures",
+ "hex",
+ "http",
+ "md-5",
+ "miniz_oxide",
+ "pretty_assertions",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "ttf-parser",
 ]
 
 [[package]]
@@ -2261,6 +2336,17 @@ checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
 dependencies = [
  "parking",
  "pin-project-lite",
+]
+
+[[package]]
+name = "fancy-regex"
+version = "0.19.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d301f5bf187b3c295fce6468d3875037a0bccc5f6b151c63cac2f85babf21912"
+dependencies = [
+ "bit-set",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -4585,6 +4671,12 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "ttf-parser"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "typenum"

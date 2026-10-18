@@ -6,9 +6,8 @@
 //! | `GET /policies`, `/policies/overrides`, `/calendars` | admin, analyst |
 //! | `PUT /policies`, `DELETE /policies/{code}`, `PUT /calendars`, `DELETE /calendars/{code}` | admin |
 //!
-//! `GET /report` (the PDF operations report: matplotlib charts, Jinja
-//! templates, wkhtmltopdf) is not a route here and falls through to the
-//! Python backend.
+//! `GET /report` (the PDF operations report) is `copilot-reports`'
+//! (`soc_report`), merged at its full path beside this router.
 //!
 //! Check order is FastAPI's: the scope, then the endpoint's parameters (path,
 //! then query, all reported in one 422), then the handler (400 for a bad
@@ -85,8 +84,8 @@ fn list_param(q: &QueryPairs, name: &str) -> Vec<String> {
     out
 }
 
-/// `fact_filters(request)`.
-fn fact_filters(q: &QueryPairs) -> FactFilters {
+/// `fact_filters(request)` (also the SOC report's, `copilot-reports`).
+pub fn fact_filters(q: &QueryPairs) -> FactFilters {
     FactFilters {
         severities: list_param(q, "severities"),
         sources: list_param(q, "sources"),
@@ -94,7 +93,11 @@ fn fact_filters(q: &QueryPairs) -> FactFilters {
 }
 
 /// A required `datetime` query, converted to naive UTC (`_naive_utc`).
-fn req_datetime(v: &mut Validator, q: &QueryPairs, name: &str) -> Option<chrono::NaiveDateTime> {
+pub fn req_datetime(
+    v: &mut Validator,
+    q: &QueryPairs,
+    name: &str,
+) -> Option<chrono::NaiveDateTime> {
     match q.get(name) {
         None => {
             v.missing(loc("query", name));
@@ -126,7 +129,7 @@ fn bool_query(v: &mut Validator, q: &QueryPairs, name: &str) -> bool {
 }
 
 /// `_period(date_from, date_to)`: the 400 with the `ValueError` text.
-fn period(from: chrono::NaiveDateTime, to: chrono::NaiveDateTime) -> Result<Period, ApiError> {
+pub fn period(from: chrono::NaiveDateTime, to: chrono::NaiveDateTime) -> Result<Period, ApiError> {
     requested_period(from, to).map_err(ApiError::bad_request)
 }
 

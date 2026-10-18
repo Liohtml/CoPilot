@@ -261,6 +261,54 @@ pub static GRAFANA_GENERATE_IFRAME_LINKS_RESPONSE: Model = Model::new(
     ],
 );
 
+/// `RequestPanel` (a panel of `POST /reporting/generate-report`).
+pub static REQUEST_PANEL: Model = Model::new(
+    "RequestPanel",
+    &[
+        Field::req("panel_id", Ty::Int),
+        Field::req("org_id", Ty::Int),
+        Field::req("dashboard_title", Ty::Str),
+        Field::req("dashboard_uid", Ty::Str),
+        Field::opt("panel_url", Ty::Nullable(&Ty::Str)),
+        Field::opt("panel_base64", Ty::Nullable(&Ty::Str)),
+        Field::opt("row_id", Ty::Nullable(&Ty::Int)),
+        Field::req("panel_width", Ty::Int),
+        Field::req("panel_height", Ty::Int),
+        Field::opt("theme", Ty::Nullable(&Ty::Str)),
+    ],
+);
+
+/// `RequestRow`.
+pub static REQUEST_ROW: Model = Model::new(
+    "RequestRow",
+    &[
+        Field::req("id", Ty::Int),
+        Field::req("panels", Ty::List(&Ty::Model(&REQUEST_PANEL))),
+    ],
+);
+
+/// `GenerateReportRequest`.
+pub static GENERATE_REPORT_REQUEST: Model = Model::new(
+    "GenerateReportRequest",
+    &[
+        Field::req("company_name", Ty::Str),
+        Field::req("timerange_text", Ty::Str),
+        Field::req("logo_base64", Ty::Str),
+        Field::req("timerange", Ty::Str),
+        Field::req("rows", Ty::List(&Ty::Model(&REQUEST_ROW))),
+    ],
+);
+
+/// `GenerateReportResponse`.
+pub static GENERATE_REPORT_RESPONSE: Model = Model::new(
+    "GenerateReportResponse",
+    &[
+        Field::req("base64_result", Ty::Str),
+        Field::req("message", Ty::Str),
+        Field::req("success", Ty::Bool),
+    ],
+);
+
 /// `UserOrganizationAddRequest`.
 pub static USER_ORGANIZATION_ADD_REQUEST: Model = Model::new(
     "UserOrganizationAddRequest",
@@ -314,6 +362,10 @@ pub fn registry() -> Vec<(&'static str, &'static Model)> {
             "GrafanaGenerateIframeLinksResponse",
             &GRAFANA_GENERATE_IFRAME_LINKS_RESPONSE,
         ),
+        ("RequestPanel", &REQUEST_PANEL),
+        ("RequestRow", &REQUEST_ROW),
+        ("GenerateReportRequest", &GENERATE_REPORT_REQUEST),
+        ("GenerateReportResponse", &GENERATE_REPORT_RESPONSE),
         ("UserOrganizationAddRequest", &USER_ORGANIZATION_ADD_REQUEST),
         (
             "UserOrganizationAddResponse",
