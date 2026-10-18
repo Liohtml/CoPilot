@@ -7,9 +7,9 @@
 //! written like `csv.DictWriter` (`excel` dialect, `\n` line ends: a field is
 //! quoted when it holds `,`, `"`, `\r` or `\n`, quotes doubled, `None` empty).
 //!
-//! Still Python: `/generate-report-docx` and `/generate-report-pdf` (the
-//! template comes from MinIO, the document is rendered by docxtpl or
-//! wkhtmltopdf).
+//! `/generate-report-docx` and `/generate-report-pdf` (the template from
+//! MinIO, the document rendered by docxtpl or wkhtmltopdf) are
+//! `copilot-reports`', merged beside this router.
 //!
 //! Difference by design: `POST /generate-report-csv` exports the caller's
 //! customers' cases only. Python exported every tenant's cases to any

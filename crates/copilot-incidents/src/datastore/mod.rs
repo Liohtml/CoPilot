@@ -4,9 +4,8 @@
 //!
 //! `POST /case-report-template/default-template` uploads the templates
 //! shipped under `backend/app/incidents/templates`, compiled in
-//! ([`default_templates`]). Still Python: the case DOCX/PDF reports and the
-//! customer report generation (docxtpl, the Jinja report templates,
-//! wkhtmltopdf).
+//! ([`default_templates`]). The case DOCX/PDF reports and the customer
+//! report generation are `copilot-reports`'.
 
 use axum::extract::FromRef;
 

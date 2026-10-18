@@ -2,9 +2,9 @@
 //! `app/incidents/routes/customer_report.py`: the report list (CoPilot and
 //! the Customer Portal) and the portal-visibility switch.
 //!
-//! Still Python: `/generate/background` (the PDF is rendered by
-//! wkhtmltopdf from indexer and database figures, then stored in MinIO),
-//! `/{report_id}/download` and `DELETE /{report_id}` (MinIO).
+//! `/generate/background` (the PDF rendered by wkhtmltopdf, then stored in
+//! MinIO) is `copilot-reports`'; `/{report_id}/download` and
+//! `DELETE /{report_id}` are the `datastore` module's (MinIO).
 
 use axum::Router;
 use axum::extract::{Path, State};

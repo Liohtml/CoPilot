@@ -10,7 +10,7 @@
 //!   notifier
 //! - [`schema`]   — the Pydantic models, field for field
 //! - [`routes`]   — `/api/soc_management/*` (but `GET /report`, the PDF,
-//!   which stays in Python) and `/api/customer_portal/sla/*`
+//!   which is `copilot-reports`') and `/api/customer_portal/sla/*`
 //!
 //! The SLA domain itself (evaluation, policy resolution and writes,
 //! business-hours calendars, re-targeting) is `copilot-sla`, the one Rust
