@@ -524,6 +524,7 @@ dependencies = [
  "copilot-siem",
  "copilot-sla",
  "copilot-soc-management",
+ "copilot-standalone",
  "copilot-status",
  "copilot-sublime",
  "copilot-talon",
@@ -641,7 +642,6 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-threat-intel",
  "copilot-uba",
  "copilot-upstream",
@@ -652,7 +652,6 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tokio",
- "tower",
  "tracing",
 ]
 
@@ -755,7 +754,6 @@ dependencies = [
  "chrono",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-jinja",
  "copilot-web",
  "http",
@@ -871,7 +869,6 @@ dependencies = [
  "copilot-core",
  "copilot-customer-portal",
  "copilot-db",
- "copilot-gateway",
  "copilot-jinja",
  "copilot-objectstore",
  "copilot-threat-intel",
@@ -1088,7 +1085,6 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-incidents",
  "copilot-scheduler",
  "copilot-sla",
@@ -1179,7 +1175,6 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-grafana",
  "copilot-graylog",
  "copilot-jinja",
@@ -1265,7 +1260,6 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "copilot-auth",
- "copilot-gateway",
  "copilot-threat-intel",
  "copilot-upstream",
  "copilot-wazuh",
@@ -1333,7 +1327,6 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-upstream",
  "copilot-web",
  "flate2",
@@ -1359,7 +1352,6 @@ dependencies = [
  "axum",
  "chrono",
  "copilot-auth",
- "copilot-gateway",
  "copilot-jinja",
  "copilot-threat-intel",
  "copilot-uba",
@@ -1451,7 +1443,6 @@ dependencies = [
  "copilot-core",
  "copilot-db",
  "copilot-docx",
- "copilot-gateway",
  "copilot-grafana",
  "copilot-incidents",
  "copilot-jinja",
@@ -1493,7 +1484,6 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-ingest",
  "copilot-integrations",
  "copilot-objectstore",
@@ -1542,7 +1532,6 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "copilot-auth",
- "copilot-gateway",
  "copilot-objectstore",
  "copilot-patch-tuesday",
  "copilot-upstream",
@@ -1567,7 +1556,6 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-graylog",
  "copilot-ingest",
  "copilot-jinja",
@@ -1624,7 +1612,6 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-jinja",
  "copilot-upstream",
  "copilot-wazuh",
@@ -1675,6 +1662,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "copilot-standalone"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "copilot-file-analysis",
+ "copilot-gateway",
+ "copilot-reports",
+ "copilot-status",
+ "copilot-web",
+ "flate2",
+ "futures",
+ "http",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tracing",
+]
+
+[[package]]
 name = "copilot-status"
 version = "0.2.0"
 dependencies = [
@@ -1718,7 +1728,6 @@ dependencies = [
  "copilot-auth",
  "copilot-connectors",
  "copilot-db",
- "copilot-gateway",
  "copilot-incidents",
  "copilot-upstream",
  "copilot-wazuh",
@@ -1763,7 +1772,6 @@ dependencies = [
  "copilot-auth",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-incidents",
  "copilot-ingest",
  "copilot-jinja",
@@ -1934,7 +1942,6 @@ dependencies = [
  "copilot-connectors",
  "copilot-core",
  "copilot-db",
- "copilot-gateway",
  "copilot-scheduler",
  "copilot-upstream",
  "copilot-web",

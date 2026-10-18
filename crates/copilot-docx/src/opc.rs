@@ -289,7 +289,6 @@ fn parse_part_xml(blob: &[u8]) -> Result<Element, DocxError> {
         blob,
         ParseOptions {
             remove_blank_text: true,
-            recover: false,
         },
     )
     .map_err(|e| internal(e.0))

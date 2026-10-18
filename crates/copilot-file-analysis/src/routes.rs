@@ -46,7 +46,6 @@ const MAX_UPLOAD_MB: usize = 100;
 
 /// The router to nest at `/api/file-analysis`.
 pub fn router(st: FileAnalysisState) -> Router {
-    let legacy = st.legacy.clone();
     Router::new()
         .route("/velociraptor/agents", get(agents))
         .route("/velociraptor/enumerate", post(enumerate))
@@ -61,10 +60,6 @@ pub fn router(st: FileAnalysisState) -> Router {
         .route("/history", get(history))
         .route("/search/{sha256}", get(search))
         .with_state(st)
-        .layer(axum::middleware::from_fn_with_state(
-            legacy,
-            copilot_objectstore::web::encoded_slash_to_legacy,
-        ))
 }
 
 fn unhandled(e: PyExc) -> ApiError {

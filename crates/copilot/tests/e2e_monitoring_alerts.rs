@@ -665,27 +665,21 @@ async fn the_test_event_is_one_gelf_frame() {
 }
 
 #[tokio::test]
-async fn other_methods_go_to_python() {
+async fn other_methods_are_fastapi_s_405_here() {
     if !configured() {
         eprintln!("COPILOT_TEST_DATABASE_URL not set; skipping");
         return;
     }
     let legacy = stand_in(3).await;
     let h = harness_or_skip!(Some(&legacy));
-    Mock::given(method("DELETE"))
-        .and(path("/api/monitoring_alert/provision"))
-        .respond_with(
-            ResponseTemplate::new(405).set_body_json(json!({"detail": "Method Not Allowed"})),
-        )
-        .expect(1)
-        .mount(&legacy)
-        .await;
-    let (status, _) = h
+    let (status, body) = h
         .call("DELETE", &format!("{P}/provision"), None, None)
         .await;
     assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(body, json!({"detail": "Method Not Allowed"}));
     // The routes themselves are answered here.
     let (status, _) = h.call("GET", &format!("{P}/available"), None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(legacy.received_requests().await.unwrap().len(), 1);
+    // The legacy backend is never asked.
+    assert!(legacy.received_requests().await.unwrap().is_empty());
 }

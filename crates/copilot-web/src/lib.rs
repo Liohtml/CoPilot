@@ -14,7 +14,9 @@
 //! - [`pyurl`]      — `urllib.parse.quote`/`urlencode`, redirect `Location`s, Starlette cookies
 //! - [`query`]      — query strings, `customer_codes_query`
 //! - [`context`]    — [`AppContext`], the shared dependencies
-//! - [`middleware`] — CORS, gzip, `log_entries` writes, security headers
+//! - [`middleware`] — gzip, `log_entries` writes, security headers
+//! - [`cors`]       — Starlette's `CORSMiddleware` as `copilot.py` configures it
+//! - [`routing`]    — Starlette's routing of the decoded path, once for the service
 //! - [`respond`]    — the `{success, message, …}` response helper
 //!
 //! ## Handler shape
@@ -36,6 +38,7 @@
 pub mod auth;
 pub mod body;
 pub mod context;
+pub mod cors;
 pub mod datetime;
 pub mod email;
 pub mod error;
@@ -45,6 +48,7 @@ pub mod pyjson;
 pub mod pyurl;
 pub mod query;
 pub mod respond;
+pub mod routing;
 pub mod validate;
 
 pub use auth::{

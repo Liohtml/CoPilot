@@ -47,7 +47,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use axum::Router;
-use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::extract::{DefaultBodyLimit, State};
 use axum::middleware::{from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -79,8 +79,8 @@ use copilot_talon::{TalonConnector, TalonState};
 use copilot_velociraptor::VelociraptorClient;
 use copilot_waf::{WafClient, WafEnv, WafState};
 use copilot_wazuh::WazuhState;
-use copilot_web::middleware::{compression, cors, log_handled_errors, security_headers};
-use copilot_web::{ApiError, AppContext, AppDeps};
+use copilot_web::middleware::{compression, log_handled_errors, security_headers};
+use copilot_web::{AppContext, AppDeps};
 use copilot_webauthn::RelyingParty;
 
 /// Route prefixes this build answers itself. Everything else is proxied.
@@ -343,7 +343,7 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // stored alerts.
     "/api/sublime",
     // ScoutSuite (copilot-scoutsuite): the scans and the reports on disk (the
-    // static `/scoutsuite-report` mount stays Python's).
+    // static `/scoutsuite-report` mount is copilot-standalone's, below).
     "/api/scoutsuite",
     // The GitHub organization audit and the Nuclei scans
     // (copilot-assessments), routed on the decoded path as Starlette does.
@@ -352,6 +352,13 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // File analysis (copilot-file-analysis): uploads and endpoint
     // collections, the inspector, CAPE, VirusTotal and the PDF report.
     "/api/file-analysis",
+    // What `copilot.py`'s app serves around its routers (copilot-standalone):
+    // FastAPI's documentation, `GET /` and the static mount. The front routes
+    // every path of the Python app, so no route of it reaches Python.
+    "/openapi.json",
+    "/docs",
+    "/redoc",
+    "/scoutsuite-report",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -536,6 +543,11 @@ impl App {
             .map(LegacyProxy::new)
             .transpose()
             .context("building the legacy backend client")?;
+        // The Python app's routes, pages and document (copilot-standalone),
+        // compiled in: the front routes every request on them.
+        copilot_standalone::python::app()
+            .map_err(anyhow::Error::msg)
+            .context("reading the Python app's route table")?;
         let ttl = if legacy.is_some() {
             cfg.connector_cache_ttl.min(CONNECTOR_TTL_WITH_LEGACY)
         } else {
@@ -585,14 +597,12 @@ impl App {
             http: reqwest::Client::new(),
             log_handled_errors: true,
         });
-        let wazuh =
-            WazuhState::new(ctx.clone(), legacy.clone()).context("building the Wazuh clients")?;
+        let wazuh = WazuhState::new(ctx.clone()).context("building the Wazuh clients")?;
         let ingest = IngestState::new(
             ctx.clone(),
             wazuh.es.clone(),
             talon.clone(),
             cfg.ingest.clone(),
-            legacy.clone(),
         )
         .context("building the ingest clients")?;
         let agents = AgentsState {
@@ -652,7 +662,6 @@ impl App {
             ctx.clone(),
             ingest.clone(),
             cfg.copilot_api_key.clone(),
-            legacy.clone(),
         )
         .context("building the threat-intel clients")?;
         let objectstore = ObjectStore::from_env(&cfg.minio)
@@ -664,7 +673,6 @@ impl App {
             threat_intel.clone(),
             &cfg.file_analysis,
             cfg.backend_data_dir.clone(),
-            legacy.clone(),
         );
         let response = copilot_response::ResponseState {
             ctx: ctx.clone(),
@@ -681,7 +689,6 @@ impl App {
                 &cfg.ingest,
                 &cfg.response,
             )),
-            legacy: legacy.clone(),
         };
         let shuffle = copilot_shuffle::ShuffleClient::new(ctx.connectors.clone())
             .context("building the Shuffle client")?;
@@ -701,7 +708,6 @@ impl App {
             wazuh.clone(),
             graylog.clone(),
             objectstore.clone(),
-            legacy.clone(),
         )
         .context("building the catalog clients")?;
         let portal = copilot_customer_portal::PortalState::new(
@@ -747,21 +753,15 @@ impl App {
             },
         );
         let _ = sidebar.scheduler.set(scheduler.clone());
-        let patch_tuesday =
-            copilot_patch_tuesday::PatchTuesdayState::new(ctx.clone(), legacy.clone());
-        let mcp = copilot_mcp::McpState::new(ctx.clone(), threat_intel.clone(), legacy.clone());
+        let patch_tuesday = copilot_patch_tuesday::PatchTuesdayState::new(ctx.clone());
+        let mcp = copilot_mcp::McpState::new(ctx.clone(), threat_intel.clone());
         let sublime = copilot_sublime::SublimeState::new(
             ctx.clone(),
             copilot_sublime::SublimeClient::new(ctx.connectors.clone())
                 .context("building the Sublime client")?,
-            legacy.clone(),
         );
-        let scoutsuite = copilot_scoutsuite::ScoutState::new(ctx.clone(), legacy.clone());
-        let assessments = copilot_assessments::AssessmentsState::new(
-            ctx.clone(),
-            &cfg.assessments,
-            legacy.clone(),
-        );
+        let scoutsuite = copilot_scoutsuite::ScoutState::new(ctx.clone());
+        let assessments = copilot_assessments::AssessmentsState::new(ctx.clone(), &cfg.assessments);
         let sso_secret = cfg.sso_state_secret.as_ref().unwrap_or(&cfg.jwt_secret);
         let sso = SsoClient::new(sso_secret, cfg.sso_idp_url.clone())
             .context("building the SSO client")?;
@@ -838,12 +838,9 @@ impl App {
         })
     }
 
-    /// One Wazuh router, with the encoded-slash hand-off to Python.
+    /// One Wazuh router.
     fn wazuh_routes(&self, build: fn(WazuhState) -> Router) -> Router {
-        build(self.wazuh.clone()).layer(axum::middleware::from_fn_with_state(
-            self.wazuh.legacy.clone(),
-            copilot_wazuh::decoded_slash_to_legacy,
-        ))
+        build(self.wazuh.clone())
     }
 
     /// The Velociraptor routes' state (the agents routes' client).
@@ -879,23 +876,14 @@ impl App {
             // merged below with full paths); an encoded `/` is Python's.
             .nest(
                 "/api/customer_portal",
-                copilot_customer_portal::router(state, self.portal.clone()).layer(
-                    from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    ),
-                ),
+                copilot_customer_portal::router(state, self.portal.clone()),
             )
             .nest(
                 "/api/customers",
                 copilot_customers::router(copilot_customers::CustomersState {
                     ctx: self.ctx.clone(),
                     license: self.license.clone(),
-                })
-                .layer(from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
-                )),
+                }),
             )
             .nest(
                 "/api/healthcheck",
@@ -920,11 +908,7 @@ impl App {
             .nest(
                 "/api/incidents/case_templates",
                 copilot_incidents::case_templates(self.ctx.clone())
-                    .merge(copilot_case_templates::router(self.case_templates.clone()))
-                    .layer(axum::middleware::from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    )),
+                    .merge(copilot_case_templates::router(self.case_templates.clone())),
             )
             .nest(
                 "/api/incidents/tag_access",
@@ -985,13 +969,8 @@ impl App {
                 copilot_connectors::router(ConnectorsState {
                     ctx: self.ctx.clone(),
                     verifiers: self.verifiers.clone(),
-                    legacy: self.legacy.clone(),
                     data_dir: self.backend_data_dir.clone(),
-                })
-                .layer(from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
-                )),
+                }),
             )
             // Only the Graylog connector's routes; `POST /invoke` (active
             // response) falls through to the legacy backend.
@@ -1107,64 +1086,32 @@ impl App {
                     http: self.worker_http.clone(),
                 },
             ))
-            .nest(
-                "/api/agents",
-                copilot_agents::router(self.agents.clone()).layer(from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
-                )),
-            )
+            .nest("/api/agents", copilot_agents::router(self.agents.clone()))
             .nest(
                 "/api/artifacts",
-                copilot_velociraptor::artifacts_router(self.velociraptor_state()).layer(
-                    from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    ),
-                ),
+                copilot_velociraptor::artifacts_router(self.velociraptor_state()),
             )
             .nest(
                 "/api/flows",
-                copilot_velociraptor::flows_router(self.velociraptor_state()).layer(
-                    from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    ),
-                ),
+                copilot_velociraptor::flows_router(self.velociraptor_state()),
             )
             .nest(
                 "/api/vulnerabilities",
-                copilot_agent_reports::vulnerabilities::router(self.agent_reports.clone()).layer(
-                    from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    ),
-                ),
+                copilot_agent_reports::vulnerabilities::router(self.agent_reports.clone()),
             )
             .nest(
                 "/api/sca",
-                copilot_agent_reports::sca::router(self.agent_reports.clone()).layer(
-                    from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    ),
-                ),
+                copilot_agent_reports::sca::router(self.agent_reports.clone()),
             )
             .nest(
                 "/api/syscollector",
-                copilot_agent_reports::syscollector::router(self.agent_reports.clone()).layer(
-                    from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    ),
-                ),
+                copilot_agent_reports::syscollector::router(self.agent_reports.clone()),
             )
             .nest(
                 "/api/agent_data_store",
                 copilot_objectstore::router(DataStoreState {
                     ctx: self.ctx.clone(),
                     store: self.objectstore.clone(),
-                    legacy: self.legacy.clone(),
                 }),
             )
             // The case DOCX and PDF reports and the customer reports'
@@ -1174,7 +1121,6 @@ impl App {
                 copilot_reports::case::CaseReportState {
                     ctx: self.ctx.clone(),
                     store: self.objectstore.clone(),
-                    legacy: self.legacy.clone(),
                 },
             ))
             .merge(copilot_reports::customer_report::router(
@@ -1189,7 +1135,6 @@ impl App {
                 copilot_incidents::datastore::DatastoreState {
                     ctx: self.ctx.clone(),
                     store: self.objectstore.clone(),
-                    legacy: self.legacy.clone(),
                 },
             ))
             // Full paths: `/api/integrations/*` (only this router's routes),
@@ -1200,14 +1145,12 @@ impl App {
                     graylog: self.graylog.clone(),
                     grafana: self.grafana.clone(),
                     wazuh: self.wazuh.clone(),
-                    legacy: self.legacy.clone(),
                 },
             ))
             // Full paths: `/api/siem/dashboards`, `/event_sources`, `/events`.
             .merge(copilot_siem::router(copilot_siem::SiemState {
                 ctx: self.ctx.clone(),
                 es: self.wazuh.es.clone(),
-                legacy: self.legacy.clone(),
             }))
             // Full paths: `/api/threat_intel/*`.
             .merge(copilot_threat_intel::router(self.threat_intel.clone()))
@@ -1220,64 +1163,35 @@ impl App {
             .merge(copilot_searches::router(self.searches.clone()))
             .nest(
                 "/api/active_response",
-                copilot_response::active_response_router(self.response.clone()).layer(
-                    from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    ),
-                ),
+                copilot_response::active_response_router(self.response.clone()),
             )
             // Full path beside the nested Graylog connector.
             .merge(copilot_response::graylog_router(self.response.clone()))
             // `POST /upload` (ElementTree's XML validation) falls through.
             .nest(
                 "/api/sysmon_config",
-                copilot_response::sysmon_router(self.response.clone()).layer(from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
-                )),
+                copilot_response::sysmon_router(self.response.clone()),
             )
             .nest(
                 "/api/copilot_action",
-                copilot_response::copilot_action_router(self.response.clone()).layer(
-                    from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    ),
-                ),
+                copilot_response::copilot_action_router(self.response.clone()),
             )
             // The Shuffle connector, by full path: `/api/workflows`,
             // `/api/shuffle/*` and the case notification beside the nested
             // `/api/incidents/db_operations`.
             .merge(copilot_shuffle::router(self.shuffle_state()))
-            .merge(
-                copilot_shuffle::organizations_router(self.shuffle_state()).layer(
-                    from_fn_with_state(
-                        self.wazuh.legacy.clone(),
-                        copilot_wazuh::decoded_slash_to_legacy,
-                    ),
-                ),
-            )
+            .merge(copilot_shuffle::organizations_router(self.shuffle_state()))
             .merge(copilot_shuffle::case_notification_router(
                 self.shuffle_state(),
             ))
             // Full paths: `/api/opencti/*` and `/api/analyzers*`.
-            .merge(
-                copilot_intel_connectors::router(self.intel.clone()).layer(from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
-                )),
-            )
+            .merge(copilot_intel_connectors::router(self.intel.clone()))
             .nest(
                 "/api/uba",
                 copilot_uba::router(copilot_uba::UbaState::new(
                     self.ctx.clone(),
                     self.graylog.clone(),
                     self.wazuh.clone(),
-                ))
-                .layer(from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
                 )),
             )
             // Full paths: `/api/integrations/modules/*` beside
@@ -1286,22 +1200,13 @@ impl App {
             .merge(copilot_integration_modules::router(self.modules.clone()))
             // Full paths under `/api/wazuh_manager` (the manager's other
             // routes are nested above).
-            .merge(copilot_wazuh_rules::router(self.wazuh_rules.clone()).layer(
-                axum::middleware::from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
-                ),
-            ))
+            .merge(copilot_wazuh_rules::router(self.wazuh_rules.clone()))
             .nest(
                 "/api/license",
                 copilot_license::router(copilot_license::LicenseState {
                     ctx: self.ctx.clone(),
                     client: self.license.clone(),
-                })
-                .layer(from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
-                )),
+                }),
             )
             .nest(
                 "/api/status",
@@ -1309,18 +1214,9 @@ impl App {
             )
             .nest(
                 "/api/performance",
-                copilot_status::performance::router(self.ctx.clone()).layer(from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
-                )),
+                copilot_status::performance::router(self.ctx.clone()),
             )
-            .nest(
-                "/api/logs",
-                copilot_status::logs::router(self.ctx.clone()).layer(from_fn_with_state(
-                    self.wazuh.legacy.clone(),
-                    copilot_wazuh::decoded_slash_to_legacy,
-                )),
-            )
+            .nest("/api/logs", copilot_status::logs::router(self.ctx.clone()))
             // Full paths: `/api/patch-tuesday*`.
             .merge(copilot_patch_tuesday::router(self.patch_tuesday.clone()))
             // Full paths: `/api/copilot_mcp/*`.
@@ -1335,7 +1231,6 @@ impl App {
             .layer(from_fn_with_state(self.ctx.clone(), log_handled_errors))
             .layer(from_fn(security_headers))
             .layer(compression())
-            .layer(cors())
             .layer(DefaultBodyLimit::max(max_body_bytes));
         let health = Router::new()
             .route("/_copilot/health", get(health))
@@ -1343,28 +1238,16 @@ impl App {
                 ctx: self.ctx.clone(),
                 legacy: self.legacy.is_some(),
             });
-        let app = Router::new().merge(ported).merge(health);
-        let app = match &self.legacy {
-            // Unported paths *and* methods go to Python, which answers its
-            // own 404/405 when it does not know them either.
-            Some(proxy) => {
-                let fallback = Router::new()
-                    .fallback(copilot_gateway::proxy_handler)
-                    .with_state(proxy.clone());
-                app.method_not_allowed_fallback({
-                    let proxy = proxy.clone();
-                    move |req: Request| async move { proxy.forward(req).await }
-                })
-                .fallback_service(fallback)
-            }
-            None => app
-                .method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
-                .fallback(root_or_404),
-        };
-        // Last, so it wraps every route and the fallback (the proxy to
-        // Python included) after routing: the request timer of
-        // `/api/performance`, `X-Process-Time-Ms` and `X-Request-Id`.
-        app.layer(from_fn(copilot_status::performance::middleware::timing))
+        let app = Router::new()
+            .merge(ported)
+            .merge(health)
+            // FastAPI's documentation, `GET /` and the `/scoutsuite-report`
+            // mount (copilot-standalone).
+            .merge(copilot_standalone::router(self.scoutsuite.report_dir()));
+        // Every request routed as Starlette routes it, behind the request
+        // timer and CORS; the legacy backend only for a path outside the
+        // Python app's routers (copilot-standalone).
+        copilot_standalone::front(app, self.legacy.clone())
     }
 }
 
@@ -1400,14 +1283,6 @@ pub fn scheduled_jobs(
     jobs.extend(copilot_searches::refresher::job_specs(searches));
     jobs.extend(copilot_status::sidebar::refresher::job_specs(sidebar));
     jobs
-}
-
-/// Without a legacy backend: the Python root greeting, else FastAPI's 404.
-async fn root_or_404(req: Request) -> Response {
-    if req.uri().path() == "/" && req.method() == http::Method::GET {
-        return axum::Json(json!({"message": "CoPilot - We Made It!"})).into_response();
-    }
-    ApiError::RouteNotFound.into_response()
 }
 
 #[derive(Clone)]

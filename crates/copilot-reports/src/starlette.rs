@@ -405,6 +405,35 @@ pub fn file_response(
     filename: Option<&str>,
     request: &HeaderMap,
 ) -> Result<Response, ApiError> {
+    file_response_for(path, media_type, filename, request, false)
+}
+
+/// The headers `FileResponse.__init__` and `set_stat_headers` give a file:
+/// `content-type`, `accept-ranges`, `content-length`, `last-modified`, `etag`
+/// (`StaticFiles` decides on them before the response is sent).
+pub fn file_headers(path: &Path, media_type: &str) -> Result<Vec<(String, Vec<u8>)>, ApiError> {
+    let mut raw = init_headers(StatusCode::OK, Some(media_type), &[], None)?;
+    raw.push(("accept-ranges".into(), b"bytes".to_vec()));
+    let (st_mtime, secs, size) = stat(path).map_err(|_| {
+        ApiError::internal(format!("File at path {} does not exist.", path.display()))
+    })?;
+    let etag_base = format!("{}-{size}", float_repr(st_mtime));
+    let etag = format!("\"{}\"", hex::encode(Md5::digest(etag_base.as_bytes())));
+    raw.push(("content-length".into(), size.to_string().into_bytes()));
+    raw.push(("last-modified".into(), formatdate(secs).into_bytes()));
+    raw.push(("etag".into(), etag.into_bytes()));
+    Ok(raw)
+}
+
+/// [`file_response`], sending the headers only when `head` (Starlette's
+/// `send_header_only` for a `HEAD` request: one empty body message).
+pub fn file_response_for(
+    path: &Path,
+    media_type: &str,
+    filename: Option<&str>,
+    request: &HeaderMap,
+    head: bool,
+) -> Result<Response, ApiError> {
     let mut raw = init_headers(StatusCode::OK, Some(media_type), &[], None)?;
     raw.push(("accept-ranges".into(), b"bytes".to_vec()));
     if let Some(name) = filename {
@@ -449,10 +478,15 @@ pub fn file_response(
         (Some(_), Some(ir)) => *ir == last_modified || *ir == etag,
     };
     let size_i = i64::try_from(size).unwrap_or(i64::MAX);
+    let header_only = || vec![(Bytes::new(), false)];
     let asgi = if !use_range {
         let mut body = Vec::new();
         let mut pos = 0;
         loop {
+            if head {
+                body = header_only();
+                break;
+            }
             let end = (pos + CHUNK_SIZE).min(data.len());
             let chunk = Bytes::copy_from_slice(&data[pos..end]);
             pos = end;
@@ -494,7 +528,11 @@ pub fn file_response(
                 Asgi {
                     status: StatusCode::PARTIAL_CONTENT,
                     headers: raw,
-                    body: range_messages(&data, start, end),
+                    body: if head {
+                        header_only()
+                    } else {
+                        range_messages(&data, start, end)
+                    },
                 }
             }
             Ok(ranges) => {
@@ -542,6 +580,9 @@ pub fn file_response(
                     body.push((Bytes::from_static(b"\r\n"), true));
                 }
                 body.push((Bytes::from(format!("--{boundary}--")), false));
+                if head {
+                    body = header_only();
+                }
                 Asgi {
                     status: StatusCode::PARTIAL_CONTENT,
                     headers: raw,

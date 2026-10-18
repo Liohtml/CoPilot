@@ -4,43 +4,34 @@
 //! |---|---|---|
 //! | `GET ""` | `get_current_user(scopes=["admin"])` | Rust |
 //! | `GET /{connector_id}` | `require_any_scope("admin")` | Rust |
-//! | `PUT /{connector_id}` | `get_current_user(scopes=["admin"])` | Rust for a connector this build verifies, else Python |
-//! | `POST /verify/{connector_id}` | `require_any_scope("admin", "analyst")` | Rust for a connector this build verifies, else Python |
-//! | `POST /upload/{connector_identifier}` | `get_current_user(scopes=["admin"])` | Rust ([`crate::upload`]); the verification that follows as `POST /verify` |
+//! | `PUT /{connector_id}` | `get_current_user(scopes=["admin"])` | Rust |
+//! | `POST /verify/{connector_id}` | `require_any_scope("admin", "analyst")` | Rust |
+//! | `POST /upload/{connector_identifier}` | `get_current_user(scopes=["admin"])` | Rust ([`crate::upload`]), the verification that follows included |
 //!
 //! An update writes the row, then verifies the connector (the tool's API
-//! is called) and records `connector.update`. Both steps need the tool's
-//! verifier, so a connector whose tool is still served by Python is handed
-//! to Python whole — after the same 404 / validation checks — and this
-//! process forgets its cached row once Python has answered. Without a
-//! legacy backend such a connector is updated here and left as verified as
-//! it was. The binary registers a verifier for every connector
-//! `get_connector_service` knows (`copilot-verifiers` brought the last
-//! twelve), so in it the hand-off is never taken.
-
-use std::net::SocketAddr;
+//! is called) and records `connector.update`. The binary registers a
+//! verifier for every connector `get_connector_service` knows
+//! ([`crate::verify::PYTHON_VERIFIED`], pinned by the standalone e2e suite),
+//! so a connector without one is a name Python does not support either:
+//! its update is written and left unverified, its verification is the 404
+//! `verify_connector_by_id`'s `None` is.
 
 use axum::Json;
 use axum::Router;
-use axum::body::{Body, Bytes};
-use axum::extract::connect_info::ConnectInfo;
-use axum::extract::{FromRequest, FromRequestParts, OriginalUri, Path, Request, State};
+use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use chrono::Utc;
-use http::{HeaderMap, Method, Uri};
 
 use copilot_core::audit::AuditRecord;
-use copilot_web::body::JsonBody;
 use copilot_web::validate::path_int;
 use copilot_web::{
-    AdminOnly, AdminOrAnalyst, ApiError, ApiResult, Authorized, CurrentUser, ScopedUser,
+    AdminOnly, AdminOrAnalyst, ApiError, ApiResult, Authorized, CurrentUser, ScopedUser, WithJson,
 };
 
 use crate::ConnectorsState;
 use crate::schema::{ConnectorListResponse, ConnectorOut, ConnectorsListResponse, UpdateConnector};
 use crate::services;
-use crate::verify::PYTHON_VERIFIED;
 
 /// The router, mounted at `/api/connectors`.
 pub fn router(state: ConnectorsState) -> Router {
@@ -93,98 +84,12 @@ fn not_found(id: i64) -> ApiError {
     ApiError::not_found(format!("No connector found for ID: {id}"))
 }
 
-/// The request as it came in, for a hand-off to the Python backend.
-pub(crate) struct Received {
-    method: Method,
-    uri: Uri,
-    pub(crate) headers: HeaderMap,
-    peer: Option<ConnectInfo<SocketAddr>>,
-    body: Bytes,
-}
-
-impl Received {
-    /// What `parts` carry, the URI as the client sent it; the body follows
-    /// ([`Received::with_body`]).
-    pub(crate) fn capture(parts: &http::request::Parts) -> Self {
-        Self {
-            method: parts.method.clone(),
-            uri: parts
-                .extensions
-                .get::<OriginalUri>()
-                .map_or_else(|| parts.uri.clone(), |o| o.0.clone()),
-            headers: parts.headers.clone(),
-            peer: parts.extensions.get::<ConnectInfo<SocketAddr>>().cloned(),
-            body: Bytes::new(),
-        }
-    }
-
-    /// The same request with its body.
-    pub(crate) fn with_body(self, body: Bytes) -> Self {
-        Self { body, ..self }
-    }
-
-    /// The request again, for the legacy proxy.
-    pub(crate) fn into_request(self) -> Request {
-        let mut req = Request::new(Body::from(self.body));
-        *req.method_mut() = self.method;
-        *req.uri_mut() = self.uri;
-        *req.headers_mut() = self.headers;
-        if let Some(peer) = self.peer {
-            req.extensions_mut().insert(peer);
-        }
-        req
-    }
-}
-
-/// `WithJson` that also keeps the raw request.
-struct WithJsonRaw<A>(A, JsonBody, Received);
-
-impl<A, S> FromRequest<S> for WithJsonRaw<A>
-where
-    A: FromRequestParts<S> + Send,
-    A::Rejection: IntoResponse,
-    S: Send + Sync,
-{
-    type Rejection = Response;
-
-    async fn from_request(req: Request, state: &S) -> Result<Self, Response> {
-        let (mut parts, body) = req.into_parts();
-        let ct = parts
-            .headers
-            .get(http::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_string);
-        let guard = A::from_request_parts(&mut parts, state)
-            .await
-            .map_err(IntoResponse::into_response);
-        let received = Received::capture(&parts);
-        let bytes = Bytes::from_request(Request::from_parts(parts, body), state)
-            .await
-            .map_err(IntoResponse::into_response)?;
-        let json = JsonBody::read(ct.as_deref(), &bytes).map_err(IntoResponse::into_response)?;
-        let guard = guard?;
-        Ok(Self(guard, json, received.with_body(bytes)))
-    }
-}
-
-/// Python answers for this connector: forward, then forget the row here.
-pub(crate) async fn hand_off(
-    st: &ConnectorsState,
-    name: &str,
-    received: Received,
-) -> Option<Response> {
-    let proxy = st.legacy.as_ref()?;
-    let response = proxy.forward(received.into_request()).await;
-    st.ctx.connectors.invalidate(name);
-    Some(response)
-}
-
 /// `PUT /{connector_id}`: `update_connector_by_id`, then
 /// `verify_connector_by_id`, then the `connector.update` audit row.
 async fn update(
     State(st): State<ConnectorsState>,
     Path(raw): Path<String>,
-    WithJsonRaw(user, body, received): WithJsonRaw<ScopedUser<AdminOnly>>,
+    WithJson(user, body): WithJson<ScopedUser<AdminOnly>>,
 ) -> ApiResult {
     let id = path_int("connector_id", &raw)?;
     let body = body.model(UpdateConnector::read)?;
@@ -193,11 +98,6 @@ async fn update(
     };
     let name = row.connector_name.clone();
     let verifier = st.verifiers.get(&name);
-    if verifier.is_none() && PYTHON_VERIFIED.contains(&name.as_str()) {
-        if let Some(response) = hand_off(&st, &name, received).await {
-            return Ok(response);
-        }
-    }
     let now = Utc::now().naive_utc();
     services::write_update(&st.ctx.db, row.id, &body, now).await?;
     st.ctx.connectors.invalidate(&name);
@@ -258,7 +158,6 @@ async fn verify(
     _user: Authorized<AdminOrAnalyst>,
     State(st): State<ConnectorsState>,
     Path(raw): Path<String>,
-    req: Request,
 ) -> ApiResult {
     let id = path_int("connector_id", &raw)?;
     let Some((row, _)) = services::load(&st.ctx.db, id).await? else {
@@ -266,25 +165,6 @@ async fn verify(
     };
     let name = row.connector_name;
     let Some(verifier) = st.verifiers.get(&name) else {
-        if PYTHON_VERIFIED.contains(&name.as_str()) {
-            let (parts, body) = req.into_parts();
-            let body = axum::body::to_bytes(body, 1 << 20)
-                .await
-                .map_err(|e| ApiError::bad_request(e.to_string()))?;
-            let received = Received {
-                method: parts.method,
-                uri: parts
-                    .extensions
-                    .get::<OriginalUri>()
-                    .map_or_else(|| parts.uri.clone(), |o| o.0.clone()),
-                headers: parts.headers,
-                peer: parts.extensions.get::<ConnectInfo<SocketAddr>>().cloned(),
-                body,
-            };
-            if let Some(response) = hand_off(&st, &name, received).await {
-                return Ok(response);
-            }
-        }
         // Python's "not supported" (`get_connector_service` → `None`).
         return Err(not_found(id));
     };

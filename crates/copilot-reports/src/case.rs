@@ -12,10 +12,7 @@
 //! §4), the template (`download_data_store`'s 404), the rendering.
 //!
 //! A DOCX template whose rendered body is not well-formed XML is repaired
-//! in Python by lxml's recovering parser (libxml2's heuristics, which
-//! `copilot-docx` does not port): such a request — its tenancy already
-//! checked here — is handed to the Python backend as it came in, so the
-//! document is Python's (without a legacy backend it is a bare 500).
+//! as lxml's recovering parser repairs it (`copilot_docx::recover`).
 
 use axum::Router;
 use axum::extract::State;
@@ -25,7 +22,6 @@ use serde_json::{Map, Value};
 
 use copilot_auth::pyvalue::PyValue;
 use copilot_db::Db;
-use copilot_gateway::LegacyProxy;
 use copilot_incidents::access;
 use copilot_incidents::store::{self, Include};
 use copilot_jinja::{Autoescape, Data, Directory, Environment};
@@ -50,84 +46,6 @@ pub struct CaseReportState {
     pub ctx: AppContext,
     /// The MinIO store.
     pub store: ObjectStore,
-    /// The Python backend, for the DOCX only it can repair.
-    pub legacy: Option<LegacyProxy>,
-}
-
-/// The request as it came in, for the hand-off to the Python backend.
-struct Received {
-    method: http::Method,
-    uri: http::Uri,
-    headers: http::HeaderMap,
-    peer: Option<axum::extract::ConnectInfo<std::net::SocketAddr>>,
-    body: bytes::Bytes,
-}
-
-impl Received {
-    fn into_request(self) -> axum::extract::Request {
-        let mut req = axum::extract::Request::new(axum::body::Body::from(self.body));
-        *req.method_mut() = self.method;
-        *req.uri_mut() = self.uri;
-        *req.headers_mut() = self.headers;
-        if let Some(peer) = self.peer {
-            req.extensions_mut().insert(peer);
-        }
-        req
-    }
-}
-
-/// `WithJson` that also keeps the raw request.
-struct WithJsonRaw<A>(A, JsonBody, Received);
-
-impl<A, S> axum::extract::FromRequest<S> for WithJsonRaw<A>
-where
-    A: axum::extract::FromRequestParts<S> + Send,
-    A::Rejection: axum::response::IntoResponse,
-    S: Send + Sync,
-{
-    type Rejection = Response;
-
-    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Response> {
-        use axum::response::IntoResponse as _;
-        let (mut parts, body) = req.into_parts();
-        let ct = parts
-            .headers
-            .get(http::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_string);
-        let guard = A::from_request_parts(&mut parts, state)
-            .await
-            .map_err(axum::response::IntoResponse::into_response);
-        let received = Received {
-            method: parts.method.clone(),
-            uri: parts
-                .extensions
-                .get::<axum::extract::OriginalUri>()
-                .map_or_else(|| parts.uri.clone(), |o| o.0.clone()),
-            headers: parts.headers.clone(),
-            peer: parts
-                .extensions
-                .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-                .cloned(),
-            body: bytes::Bytes::new(),
-        };
-        let bytes = <bytes::Bytes as axum::extract::FromRequest<S>>::from_request(
-            axum::extract::Request::from_parts(parts, body),
-            state,
-        )
-        .await
-        .map_err(|e| e.into_response())?;
-        let json = JsonBody::read(ct.as_deref(), &bytes).map_err(|e| e.into_response())?;
-        let guard = guard?;
-        Ok(Self(
-            guard,
-            json,
-            Received {
-                body: bytes,
-                ..received
-            },
-        ))
-    }
 }
 
 impl axum::extract::FromRef<CaseReportState> for AppContext {
@@ -410,9 +328,7 @@ async fn prepare(
 fn docx_error(e: copilot_docx::DocxError) -> ApiError {
     match e {
         copilot_docx::DocxError::Value(m) => ApiError::bad_request(m),
-        copilot_docx::DocxError::Internal(m) | copilot_docx::DocxError::Recover(m) => {
-            ApiError::internal(m)
-        }
+        copilot_docx::DocxError::Internal(m) => ApiError::internal(m),
     }
 }
 
@@ -423,9 +339,9 @@ fn jinja_error(e: copilot_jinja::Error) -> ApiError {
 /// `POST /generate-report-docx`.
 async fn generate_docx(
     State(st): State<CaseReportState>,
-    WithJsonRaw(auth, body, received): WithJsonRaw<Soc>,
+    headers: http::HeaderMap,
+    WithJson(auth, body): WithJson<Soc>,
 ) -> Result<Response, ApiError> {
-    let headers = received.headers.clone();
     let (req, vars, template) = prepare(&st, &auth, &body).await?;
     let template_path = tempfile::named(".docx", &template).map_err(ApiError::internal)?;
     let path_text = template_path.to_string_lossy().into_owned();
@@ -442,16 +358,7 @@ async fn generate_docx(
     .await
     .map_err(ApiError::internal);
     tempfile::remove(&template_path);
-    let rendered = match rendered? {
-        Err(copilot_docx::DocxError::Recover(m)) => {
-            tracing::info!("The rendered document needs lxml's recovery ({m}): Python renders it");
-            return match &st.legacy {
-                Some(proxy) => Ok(proxy.forward(received.into_request()).await),
-                None => Err(ApiError::internal(m)),
-            };
-        }
-        other => other.map_err(docx_error)?,
-    };
+    let rendered = rendered?.map_err(docx_error)?;
     let out = tempfile::named(".docx", &rendered).map_err(ApiError::internal)?;
     let response =
         starlette::file_response(&out, DOCX_MEDIA_TYPE, req.file_name.as_deref(), &headers);

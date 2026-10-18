@@ -17,15 +17,10 @@ type Reader = Authorized<AdminOrAnalyst>;
 
 /// The two routes (full paths), behind the encoded-slash hand-off.
 pub fn router(state: SublimeState) -> Router {
-    let legacy = state.legacy.clone();
     Router::new()
         .route("/api/sublime/alert", post(receive_sublime_alert))
         .route("/api/sublime/alerts", get(get_sublime_alerts))
         .with_state(state)
-        .layer(axum::middleware::from_fn_with_state(
-            legacy,
-            copilot_wazuh::decoded_slash_to_legacy,
-        ))
 }
 
 async fn receive_sublime_alert(

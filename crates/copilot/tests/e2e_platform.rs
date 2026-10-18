@@ -1058,7 +1058,8 @@ async fn performance_reports_this_process_like_python_reports_its_own() {
     assert_eq!(
         rows,
         [
-            ("GET".into(), "/api/logs/{segment}".into(), 2),
+            // The template of the route Starlette chose, as Python records it.
+            ("GET".into(), "/api/logs/{user_id}".into(), 2),
             ("POST".into(), "/api/performance/reset".into(), 1),
             ("GET".into(), "/api/performance/summary".into(), 1),
         ]

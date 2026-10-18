@@ -34,7 +34,6 @@ mod vectors;
 use std::sync::Arc;
 
 use axum::extract::FromRef;
-use copilot_gateway::LegacyProxy;
 use copilot_web::AppContext;
 
 pub use routes::router;
@@ -46,8 +45,6 @@ pub struct PatchTuesdayState {
     pub ctx: AppContext,
     /// The feeds.
     pub urls: Arc<urls::Urls>,
-    /// The Python backend, for a path with an encoded `/`.
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl std::fmt::Debug for PatchTuesdayState {
@@ -60,11 +57,10 @@ impl std::fmt::Debug for PatchTuesdayState {
 
 impl PatchTuesdayState {
     /// The state, the feeds' URLs read from the environment.
-    pub fn new(ctx: AppContext, legacy: Option<LegacyProxy>) -> Self {
+    pub fn new(ctx: AppContext) -> Self {
         Self {
             ctx,
             urls: Arc::new(urls::Urls::from_env()),
-            legacy,
         }
     }
 }

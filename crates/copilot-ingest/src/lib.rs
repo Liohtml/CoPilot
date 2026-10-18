@@ -42,7 +42,6 @@ use std::time::Duration;
 
 use copilot_core::ingest_env::IngestEnv;
 use copilot_db::schema::TableRequirement;
-use copilot_gateway::LegacyProxy;
 use copilot_scheduler::{JobError, JobSpec};
 use copilot_talon::TalonConnector;
 use copilot_upstream::http::PyHttp;
@@ -70,8 +69,6 @@ pub struct IngestState {
     pub mdr: reqwest::Client,
     /// The environment the ingest reads.
     pub env: Arc<IngestEnv>,
-    /// The Python backend (a path with an encoded `/` is its).
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl std::fmt::Debug for IngestState {
@@ -87,7 +84,6 @@ impl IngestState {
         es: EsHttp,
         talon: TalonConnector,
         env: IngestEnv,
-        legacy: Option<LegacyProxy>,
     ) -> Result<Self, reqwest::Error> {
         Ok(Self {
             ctx,
@@ -96,7 +92,6 @@ impl IngestState {
             shuffle: PyHttp::new(Duration::from_secs(60), false)?,
             mdr: notify::mdr_client()?,
             env: Arc::new(env),
-            legacy,
         })
     }
 }

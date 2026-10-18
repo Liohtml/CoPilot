@@ -1341,11 +1341,14 @@ async fn velo_sigma_exclusions_crud_tenancy_and_fall_through() {
     );
 
     // The rest of /api/incidents/alerts is copilot-ingest's (e2e_ingest);
-    // a method no Rust router takes is Python's.
+    // a method the Python app has no route for is FastAPI's 405 here, the
+    // legacy backend never asked (`GET /exclusion/{id}` is the first route
+    // whose path matches: its `Allow`).
     for (m, p) in [("PUT", "/create/velo-sigma/exclusion/1".to_string())] {
         Mock::given(method(m))
             .and(path(format!("{A}{p}")))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
+            .expect(0)
             .mount(&legacy)
             .await;
         let (st, out) = h
@@ -1353,10 +1356,11 @@ async fn velo_sigma_exclusions_crud_tenancy_and_fall_through() {
             .await;
         assert_eq!(
             (st.as_u16(), out),
-            (200, json!({"from": "python"})),
+            (405, json!({"detail": "Method Not Allowed"})),
             "{m} {p}"
         );
     }
+    legacy.verify().await;
 }
 
 // ---------------------------------------------------------------------------

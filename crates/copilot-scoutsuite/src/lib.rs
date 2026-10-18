@@ -16,8 +16,8 @@
 //! **The working directory.** Python runs `scout` in its own working
 //! directory, where ScoutSuite writes `scoutsuite-report/` (the HTML report,
 //! `scoutsuite-results/`), and lists and deletes reports relative to it; the
-//! static mount `/scoutsuite-report` (still Python's, `copilot.py`) serves
-//! that directory. This process uses `COPILOT_SCOUTSUITE_DIR` (default: its
+//! static mount `/scoutsuite-report` (`copilot-standalone`'s, as `copilot.py`
+//! mounts it) serves that directory. This process uses `COPILOT_SCOUTSUITE_DIR` (default: its
 //! own working directory): under Compose the two containers share
 //! `scoutsuite-report` as a volume and the Rust one names the backend's
 //! working directory (`docker-compose.rust.yml`). The binary creates
@@ -42,7 +42,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::FromRef;
-use copilot_gateway::LegacyProxy;
 use copilot_web::AppContext;
 
 pub use routes::router;
@@ -62,8 +61,6 @@ pub struct ScoutState {
     /// The program run (`scout`, found on `PATH` as `subprocess.Popen`
     /// finds it; the e2e tests name a stand-in).
     pub program: Arc<str>,
-    /// The Python backend, for a path with an encoded `/`.
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl std::fmt::Debug for ScoutState {
@@ -78,7 +75,7 @@ impl std::fmt::Debug for ScoutState {
 impl ScoutState {
     /// The state, the working directory from `COPILOT_SCOUTSUITE_DIR` (else
     /// this process's).
-    pub fn new(ctx: AppContext, legacy: Option<LegacyProxy>) -> Self {
+    pub fn new(ctx: AppContext) -> Self {
         let dir = std::env::var("COPILOT_SCOUTSUITE_DIR")
             .ok()
             .map(|v| v.trim().to_string())
@@ -90,7 +87,6 @@ impl ScoutState {
             ctx,
             dir: Arc::new(dir),
             program: Arc::from("scout"),
-            legacy,
         }
     }
 

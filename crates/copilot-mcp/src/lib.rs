@@ -26,7 +26,6 @@ pub mod schema;
 mod vectors;
 
 use axum::extract::FromRef;
-use copilot_gateway::LegacyProxy;
 use copilot_threat_intel::ThreatIntelState;
 use copilot_web::AppContext;
 
@@ -46,8 +45,6 @@ pub struct McpState {
     /// The local services' base (`COPILOT_MCP_LOCAL_URL` — parity harness
     /// only — else [`LOCAL_BASE`]).
     pub local_base: String,
-    /// The Python backend, for a path with an encoded `/`.
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl std::fmt::Debug for McpState {
@@ -60,11 +57,7 @@ impl std::fmt::Debug for McpState {
 
 impl McpState {
     /// The state, the local base read from the environment.
-    pub fn new(
-        ctx: AppContext,
-        threat_intel: ThreatIntelState,
-        legacy: Option<LegacyProxy>,
-    ) -> Self {
+    pub fn new(ctx: AppContext, threat_intel: ThreatIntelState) -> Self {
         let local_base = std::env::var("COPILOT_MCP_LOCAL_URL")
             .ok()
             .map(|v| v.trim().trim_end_matches('/').to_string())
@@ -74,7 +67,6 @@ impl McpState {
             ctx,
             threat_intel,
             local_base,
-            legacy,
         }
     }
 }

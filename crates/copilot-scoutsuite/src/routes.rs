@@ -25,7 +25,6 @@ type Reader = Authorized<AdminOrAnalyst>;
 /// The six routes (full paths), behind the encoded-slash hand-off.
 pub fn router(state: ScoutState) -> Router {
     let p = |s: &str| format!("/api/scoutsuite{s}");
-    let legacy = state.legacy.clone();
     Router::new()
         .route(&p("/report-generation-options"), get(options))
         .route(&p("/available-reports"), get(available_reports))
@@ -34,10 +33,6 @@ pub fn router(state: ScoutState) -> Router {
         .route(&p("/generate-gcp-report"), post(generate_gcp_report))
         .route(&p("/delete-report/{report_name}"), delete(delete_report))
         .with_state(state)
-        .layer(axum::middleware::from_fn_with_state(
-            legacy,
-            copilot_wazuh::decoded_slash_to_legacy,
-        ))
 }
 
 async fn options(_: Reader) -> ApiResult {

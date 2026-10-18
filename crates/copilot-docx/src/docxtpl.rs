@@ -12,6 +12,7 @@ use fancy_regex::Regex;
 use crate::DocxError;
 use crate::opc::{self, Content, Package, Target};
 use crate::pyre::{self, group};
+use crate::recover::{self, RecoverError, Recovered};
 use crate::xml::{self, Element, Node, ParseOptions};
 
 const W_NS: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -406,16 +407,23 @@ fn scopes_along<'a>(root: &'a Element, path: &[usize]) -> Vec<&'a [(Option<Strin
     out
 }
 
-/// `DocxTemplate.fix_tables` on the rendered body.
+/// `DocxTemplate.fix_tables` on the rendered body, which
+/// `etree.fromstring(xml, XMLParser(recover=True))` repairs as libxml2 does
+/// ([`crate::recover`]).
 pub fn fix_tables(xml_src: &str) -> Result<Element, DocxError> {
-    let mut tree = xml::parse_str(
-        xml_src,
-        ParseOptions {
-            remove_blank_text: false,
-            recover: true,
-        },
-    )
-    .map_err(|e| DocxError::Recover(format!("lxml recover: {}", e.0)))?;
+    let mut tree = match recover::parse(xml_src) {
+        Ok(Recovered::Root(root)) => root,
+        // `tree.nsmap` of the `None` a document without a root gives.
+        Ok(Recovered::NoRoot) => {
+            return Err(DocxError::Internal(
+                "AttributeError: 'NoneType' object has no attribute 'nsmap'".into(),
+            ));
+        }
+        Err(RecoverError::Syntax(m)) => {
+            return Err(DocxError::Internal(format!("XMLSyntaxError: {m}")));
+        }
+        Err(RecoverError::Unsupported(m)) => return Err(DocxError::Internal(m)),
+    };
     // `tree.nsmap["w"]`
     let Some(ns) = tree
         .ns_defs
@@ -837,7 +845,6 @@ fn parse_strict(blob: &[u8]) -> Result<Element, DocxError> {
         blob,
         ParseOptions {
             remove_blank_text: true,
-            recover: false,
         },
     )
     .map_err(|e| DocxError::Internal(format!("XMLSyntaxError: {}", e.0)))

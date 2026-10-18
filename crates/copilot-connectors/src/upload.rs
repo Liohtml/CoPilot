@@ -15,25 +15,21 @@
 //! - the file goes to `{COPILOT_BACKEND_DATA_DIR}/{secure_filename(name)}`
 //!   (werkzeug 3.1's), the row gets `connector_configured` and the path,
 //!   this process's cached row is dropped after the commit, then the
-//!   connector is verified — here when this build verifies the tool, else by
-//!   Python's `POST /api/connectors/verify/{id}` with the caller's token,
-//!   its answer unread as Python ignores `verify_connector_by_id`'s; any
-//!   failure of the write is the 500 `Failed to upload file`.
+//!   connector is verified (its answer unread, as Python ignores
+//!   `verify_connector_by_id`'s); any failure of the write is the 500
+//!   `Failed to upload file`.
 //!
 //! The Rust container mounts the backend's data directory at the path
 //! Python uses (`docker-compose.rust.yml`), so the file is where Python —
-//! and the Velociraptor client — reads it. That directory is the Python
-//! container's (root's) and this one runs as uid 10001: when the file
-//! cannot be written for want of permission (or on a read-only mount),
-//! nothing has been written yet and the request is handed to Python whole —
-//! without a legacy backend that is the 500 any write failure is.
+//! and the Velociraptor client — reads it. A directory this process may not
+//! write (its permissions, a read-only mount) fails the write as it fails
+//! Python's: the 500 `Failed to upload file`, nothing written.
 
 use axum::Json;
-use axum::body::{Body, Bytes};
+use axum::body::Bytes;
 use axum::extract::{FromRequest, FromRequestParts, Path, Request, State};
 use axum::response::{IntoResponse, Response};
 use chrono::Utc;
-use http::{HeaderValue, Method};
 use unicode_normalization::UnicodeNormalization;
 
 use copilot_web::form::{FormError, FormValue, UploadPart, read_form_files};
@@ -41,17 +37,14 @@ use copilot_web::validate::{LocPart, Validator};
 use copilot_web::{AdminOnly, ApiError, ApiResult, ScopedUser};
 
 use crate::ConnectorsState;
-use crate::routes::Received;
 use crate::verify::PYTHON_VERIFIED;
 
 /// The connector ids that take a YAML upload.
 pub const YAML_CONNECTOR_IDS: [i64; 2] = [5, 6];
 
 /// `file: UploadFile = File(...)` beside the guard, read in FastAPI's order
-/// (the form's errors first), with the request as received (its
-/// `Authorization` for the verification Python does, all of it for a
-/// hand-off).
-pub struct WithUpload<A>(pub A, pub Result<UploadPart, ApiError>, pub(crate) Received);
+/// (the form's errors first).
+pub struct WithUpload<A>(pub A, pub Result<UploadPart, ApiError>);
 
 fn missing_file() -> ApiError {
     let mut v = Validator::new();
@@ -80,7 +73,6 @@ where
         let guard = A::from_request_parts(&mut parts, state)
             .await
             .map_err(IntoResponse::into_response);
-        let received = Received::capture(&parts);
         let raw = Bytes::from_request(Request::from_parts(parts, body), state)
             .await
             .map_err(IntoResponse::into_response)?;
@@ -110,7 +102,7 @@ where
             }
             None => Err(missing_file()),
         };
-        Ok(Self(guard, file, received.with_body(raw)))
+        Ok(Self(guard, file))
     }
 }
 
@@ -222,15 +214,6 @@ async fn resolve(st: &ConnectorsState, identifier: &str) -> Result<i64, ApiError
     }
 }
 
-/// Why `save` failed.
-enum SaveError {
-    /// This process may not write the directory (the container's user, a
-    /// read-only mount): nothing was written yet.
-    Denied(std::io::Error),
-    /// Anything else, Python's 500.
-    Failed(String),
-}
-
 /// `save_file`: the file written, then the row. `Ok(None)`: no row has the
 /// id (Python's `False`).
 async fn save(
@@ -238,23 +221,18 @@ async fn save(
     id: i64,
     filename: &str,
     data: &[u8],
-) -> Result<Option<String>, SaveError> {
+) -> Result<Option<String>, String> {
     let path = st.data_dir.join(secure_filename(filename));
     let path_text = path.to_string_lossy().into_owned();
     tokio::fs::write(&path, data)
         .await
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem => {
-                SaveError::Denied(e)
-            }
-            _ => SaveError::Failed(e.to_string()),
-        })?;
+        .map_err(|e| e.to_string())?;
     let row: Option<(String,)> =
         sqlx::query_as("SELECT connector_name FROM connectors WHERE connectors.id = ?")
             .bind(id)
             .fetch_optional(st.ctx.db.pool())
             .await
-            .map_err(|e| SaveError::Failed(e.to_string()))?;
+            .map_err(|e| e.to_string())?;
     let Some((name,)) = row else {
         return Ok(None);
     };
@@ -266,61 +244,41 @@ async fn save(
     .bind(id)
     .execute(st.ctx.db.pool())
     .await
-    .map_err(|e| SaveError::Failed(e.to_string()))?;
+    .map_err(|e| e.to_string())?;
     st.ctx.connectors.invalidate(&name);
     Ok(Some(name))
 }
 
 /// `verify_connector_by_id(id)` after the upload: its answer and its own
 /// failures are not looked at.
-async fn verify_after(
-    st: &ConnectorsState,
-    id: i64,
-    name: &str,
-    authorization: Option<HeaderValue>,
-) {
-    if let Some(verifier) = st.verifiers.get(name) {
-        if let Some(outcome) = verifier.verify(&st.ctx.connectors, name).await {
-            let now = Utc::now().naive_utc();
-            if let Err(e) = crate::services::write_verified(
-                &st.ctx.db,
-                i32::try_from(id).unwrap_or_default(),
-                outcome.connection_successful,
-                now,
-            )
-            .await
-            {
-                tracing::error!("Failed to create ConnectorResponse object: {e}");
-            }
-            st.ctx.connectors.invalidate(name);
+async fn verify_after(st: &ConnectorsState, id: i64, name: &str) {
+    let Some(verifier) = st.verifiers.get(name) else {
+        if !PYTHON_VERIFIED.contains(&name) {
+            tracing::error!("Connector type {name} is not supported");
         }
         return;
-    }
-    if !PYTHON_VERIFIED.contains(&name) {
-        tracing::error!("Connector type {name} is not supported");
-        return;
-    }
-    let Some(proxy) = st.legacy.as_ref() else {
-        return;
     };
-    let mut req = Request::new(Body::empty());
-    *req.method_mut() = Method::POST;
-    if let Ok(uri) = format!("/api/connectors/verify/{id}").parse() {
-        *req.uri_mut() = uri;
+    if let Some(outcome) = verifier.verify(&st.ctx.connectors, name).await {
+        let now = Utc::now().naive_utc();
+        if let Err(e) = crate::services::write_verified(
+            &st.ctx.db,
+            i32::try_from(id).unwrap_or_default(),
+            outcome.connection_successful,
+            now,
+        )
+        .await
+        {
+            tracing::error!("Failed to create ConnectorResponse object: {e}");
+        }
+        st.ctx.connectors.invalidate(name);
     }
-    if let Some(auth) = authorization {
-        req.headers_mut().insert(http::header::AUTHORIZATION, auth);
-    }
-    let answer = proxy.forward(req).await;
-    tracing::info!("Python verified connector {name}: {}", answer.status());
-    st.ctx.connectors.invalidate(name);
 }
 
 /// `POST /upload/{connector_identifier}` (`get_current_user(scopes=["admin"])`).
 pub async fn upload(
     State(st): State<ConnectorsState>,
     Path(identifier): Path<String>,
-    WithUpload(_admin, file, received): WithUpload<ScopedUser<AdminOnly>>,
+    WithUpload(_admin, file): WithUpload<ScopedUser<AdminOnly>>,
 ) -> ApiResult {
     let file = file?;
     let id = resolve(&st, &identifier).await?;
@@ -329,8 +287,7 @@ pub async fn upload(
     }
     match save(&st, id, &file.filename, &file.data).await {
         Ok(Some(name)) => {
-            let authorization = received.headers.get(http::header::AUTHORIZATION).cloned();
-            verify_after(&st, id, &name, authorization).await;
+            verify_after(&st, id, &name).await;
             Ok(Json(serde_json::json!({
                 "success": true,
                 "message": "File uploaded successfully",
@@ -341,32 +298,7 @@ pub async fn upload(
             tracing::error!("Failed to upload file: 500: Failed to upload file");
             Err(failed())
         }
-        Err(SaveError::Denied(e)) => {
-            // Python can write the directory (its container runs as root):
-            // the whole request is its, as nothing was written here.
-            if st.legacy.is_some() {
-                tracing::warn!(
-                    "{} is not writable here ({e}); the upload is handed to Python",
-                    st.data_dir.display()
-                );
-                let name: Option<String> =
-                    sqlx::query_scalar("SELECT connector_name FROM connectors WHERE id = ?")
-                        .bind(id)
-                        .fetch_optional(st.ctx.db.pool())
-                        .await
-                        .ok()
-                        .flatten();
-                if let Some(response) =
-                    crate::routes::hand_off(&st, name.as_deref().unwrap_or_default(), received)
-                        .await
-                {
-                    return Ok(response);
-                }
-            }
-            tracing::error!("Failed to upload file: {e}");
-            Err(failed())
-        }
-        Err(SaveError::Failed(e)) => {
+        Err(e) => {
             tracing::error!("Failed to upload file: {e}");
             Err(failed())
         }

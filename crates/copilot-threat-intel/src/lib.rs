@@ -39,7 +39,6 @@ use std::sync::Arc;
 use axum::extract::FromRef;
 use copilot_core::config::Secret;
 use copilot_db::schema::TableRequirement;
-use copilot_gateway::LegacyProxy;
 use copilot_ingest::IngestState;
 use copilot_upstream::http::PyHttp;
 use copilot_web::AppContext;
@@ -61,8 +60,6 @@ pub struct ThreatIntelState {
     /// `requests` towards the licence server (10 s, TLS verified,
     /// requests' header order: `copilot_license::client::license_http`).
     pub license_http: PyHttp,
-    /// The Python backend, for a path with an encoded `/`.
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl std::fmt::Debug for ThreatIntelState {
@@ -79,7 +76,6 @@ impl ThreatIntelState {
         ctx: AppContext,
         ingest: IngestState,
         api_key: Option<Secret>,
-        legacy: Option<LegacyProxy>,
     ) -> Result<Self, reqwest::Error> {
         Ok(Self {
             ctx,
@@ -87,7 +83,6 @@ impl ThreatIntelState {
             urls: Arc::new(urls::Urls::from_env()),
             api_key,
             license_http: copilot_license::client::license_http()?,
-            legacy,
         })
     }
 }

@@ -51,7 +51,6 @@ use std::sync::atomic::AtomicBool;
 
 use axum::extract::FromRef;
 use copilot_core::file_analysis_env::FileAnalysisEnv;
-use copilot_gateway::LegacyProxy;
 use copilot_objectstore::ObjectStore;
 use copilot_threat_intel::ThreatIntelState;
 use copilot_velociraptor::VelociraptorClient;
@@ -207,8 +206,6 @@ pub struct FileAnalysisState {
     /// The Python backend's data directory (the Velociraptor fallback
     /// config).
     pub backend_data_dir: PathBuf,
-    /// The Python backend, for a path with an encoded `/`.
-    pub legacy: Option<LegacyProxy>,
 }
 
 impl std::fmt::Debug for FileAnalysisState {
@@ -228,7 +225,6 @@ impl FileAnalysisState {
         threat_intel: ThreatIntelState,
         env: &FileAnalysisEnv,
         backend_data_dir: PathBuf,
-        legacy: Option<LegacyProxy>,
     ) -> Self {
         let settings = Settings::from_env(
             env,
@@ -247,7 +243,6 @@ impl FileAnalysisState {
             jobs: Arc::new(Semaphore::new(max_jobs)),
             uploads: Arc::new(Semaphore::new(max_jobs)),
             backend_data_dir,
-            legacy,
         }
     }
 }

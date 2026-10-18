@@ -14,7 +14,6 @@ copilot-threat-intel = { workspace = true }
 copilot-jinja = { workspace = true }
 copilot-uba = { workspace = true }
 copilot-wazuh = { workspace = true }
-copilot-gateway = { workspace = true }
 copilot-yaml = { workspace = true }
 axum = { workspace = true }
 http = { workspace = true }

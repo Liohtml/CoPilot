@@ -1,0 +1,31 @@
+[package]
+name = "copilot-standalone"
+description = "The service answering every request itself: Starlette's routing of the decoded path, FastAPI's 404/405 and CORS, the documentation pages and OpenAPI document, the /scoutsuite-report static mount"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-web = { workspace = true }
+copilot-gateway = { workspace = true }
+copilot-reports = { workspace = true }
+copilot-file-analysis = { workspace = true }
+copilot-status = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+tower = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tempfile = { workspace = true }
+flate2 = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true

@@ -4,9 +4,10 @@
 //! *decoded* path as Starlette does: the routes in declaration order, each
 //! path a regular expression (`{x}` is `[^/]+`, `{x:path}` is `.*`, `$` also
 //! before a final newline), the first route whose path and method match
-//! answers. A request no route takes — an unknown path, a method no route
-//! of that path has (405), a trailing slash Starlette redirects — goes to
-//! the Python backend, whose answer does not depend on its caches.
+//! answers. The service's front (`copilot-standalone`) has taken the same
+//! decision on the app's whole table before (a path no route has is its
+//! 404, a method no route of the path has its 405), so a request reaching
+//! this router is one of these routes'; anything else is the 404.
 //!
 //! Each handler keeps FastAPI's order: the body is read first (malformed
 //! JSON is a 422 before anything), then the scope check, the path, the
@@ -219,10 +220,7 @@ async fn dispatch(State(st): State<SearchesState>, req: Request) -> Response {
         .and_then(|rel| find(req.method(), rel));
     match found {
         Some((route, params)) => handle(st, route, params, req).await,
-        None => match &st.legacy {
-            Some(proxy) => proxy.forward(req).await,
-            None => ApiError::RouteNotFound.into_response(),
-        },
+        None => ApiError::RouteNotFound.into_response(),
     }
 }
 

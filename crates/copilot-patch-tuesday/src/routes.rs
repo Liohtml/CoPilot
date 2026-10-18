@@ -28,7 +28,6 @@ pub const CYCLE_PATTERN: &str = r"^\d{4}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oc
 /// The six routes (full paths), behind the encoded-slash hand-off.
 pub fn router(state: PatchTuesdayState) -> Router {
     let p = |s: &str| format!("/api/patch-tuesday{s}");
-    let legacy = state.legacy.clone();
     Router::new()
         .route(&p(""), get(full))
         .route(&p("/summary"), get(summary))
@@ -37,10 +36,6 @@ pub fn router(state: PatchTuesdayState) -> Router {
         .route(&p("/priority/{priority_level}"), get(by_priority))
         .route(&p("/kev"), get(kev))
         .with_state(state)
-        .layer(axum::middleware::from_fn_with_state(
-            legacy,
-            copilot_wazuh::decoded_slash_to_legacy,
-        ))
 }
 
 fn ok(dump: &copilot_auth::pyvalue::PyValue) -> Response {

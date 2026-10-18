@@ -786,21 +786,18 @@ async fn unported_routes_are_proxied_to_the_python_backend() {
     let req = &legacy.received_requests().await.unwrap()[0];
     assert_eq!(req.url.query(), Some("customer_code=x"));
 
-    // A method the Rust router does not serve on a ported path goes to Python too.
-    Mock::given(method("DELETE"))
-        .and(path("/api/ai_analyst/jobs/x"))
-        .respond_with(
-            ResponseTemplate::new(405).set_body_json(json!({"detail": "Method Not Allowed"})),
-        )
-        .mount(&legacy)
-        .await;
-    let (st, _) = h
+    // A method no route of a Python path has is answered here, as Starlette
+    // answers it (the first route whose path matched names `Allow`): the
+    // legacy backend is not asked about a path of the Python app.
+    let before = legacy.received_requests().await.unwrap().len();
+    let (st, body) = h
         .call("DELETE", "/api/ai_analyst/jobs/x", Some("abc"), None)
         .await;
     assert_eq!(st, 405);
+    assert_eq!(body, json!({"detail": "Method Not Allowed"}));
+    assert_eq!(legacy.received_requests().await.unwrap().len(), before);
 
     // Ported routes are not proxied.
-    let before = legacy.received_requests().await.unwrap().len();
     let (st, _) = h
         .call("GET", "/api/ai_analyst/alerts_with_reports", None, None)
         .await;
@@ -1291,7 +1288,7 @@ async fn customer_portal_ai_reports_flow() {
     );
     assert_eq!(wait_count(&h, &failed_talon, 1).await, 1);
 
-    // --- Unported paths and methods still reach Python ------------------------------
+    // --- A path outside the Python app still reaches the legacy backend --------------
     Mock::given(method("GET"))
         .and(path("/api/legacy-only-e2e/history"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
@@ -1302,18 +1299,22 @@ async fn customer_portal_ai_reports_flow() {
         .call("GET", "/api/legacy-only-e2e/history", Some(&portal), None)
         .await;
     assert_eq!((st.as_u16(), body), (200, json!({"from": "python"})));
+    // A method the Python app's path does not take is Starlette's 405, here.
     Mock::given(method("DELETE"))
         .and(path(settings_url(&acme)))
         .respond_with(
             ResponseTemplate::new(405).set_body_json(json!({"detail": "Method Not Allowed"})),
         )
-        .expect(1)
+        .expect(0)
         .mount(&legacy)
         .await;
-    let (st, _) = h
+    let (st, body) = h
         .call("DELETE", &settings_url(&acme), Some(&admin), None)
         .await;
-    assert_eq!(st, 405);
+    assert_eq!(
+        (st.as_u16(), body),
+        (405, json!({"detail": "Method Not Allowed"}))
+    );
 }
 
 #[tokio::test]

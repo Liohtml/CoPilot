@@ -35,7 +35,6 @@ pub mod web;
 pub mod xml;
 
 pub use client::Minio;
-pub use copilot_gateway::LegacyProxy;
 pub use copilot_upstream::py::PyExc;
 pub use error::{MinioError, S3Error};
 pub use routes::{DataStoreState, router};

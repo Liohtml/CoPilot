@@ -12,7 +12,6 @@ copilot-web = { workspace = true }
 copilot-upstream = { workspace = true }
 copilot-threat-intel = { workspace = true }
 copilot-wazuh = { workspace = true }
-copilot-gateway = { workspace = true }
 axum = { workspace = true }
 http = { workspace = true }
 tracing = { workspace = true }

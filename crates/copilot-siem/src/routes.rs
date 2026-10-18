@@ -67,16 +67,11 @@ pub fn router(state: SiemState) -> Router {
             get(event_document),
         )
         .route("/{customer_code}/{source_name}/fields", get(field_mappings));
-    let legacy = state.legacy.clone();
     Router::new()
         .nest("/api/siem/dashboards", dashboards)
         .nest("/api/siem/event_sources", event_sources)
         .nest("/api/siem/events", events)
         .with_state(state)
-        .layer(axum::middleware::from_fn_with_state(
-            legacy,
-            copilot_wazuh::decoded_slash_to_legacy,
-        ))
 }
 
 // --- responses ------------------------------------------------------------------------

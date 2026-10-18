@@ -1,14 +1,13 @@
 //! HTTP plumbing the MinIO-backed routes share: the multipart body FastAPI
 //! reads before its dependencies (`UploadFile = File(...)`, `Form(...)`),
-//! Starlette's `StreamingResponse` for downloads, path parameters decoded the
-//! way uvicorn decodes the path, and the hand-off of an encoded `/`.
+//! Starlette's `StreamingResponse` for downloads, and path parameters decoded
+//! the way uvicorn decodes the path (the service's front routes the decoded
+//! path, as Starlette does).
 
 use axum::body::{Body, Bytes};
-use axum::extract::{FromRequest, FromRequestParts, OriginalUri, Request, State};
-use axum::middleware::Next;
+use axum::extract::{FromRequest, FromRequestParts, Request};
 use axum::response::{IntoResponse, Response};
 
-use copilot_gateway::LegacyProxy;
 use copilot_upstream::py::PyExc;
 use copilot_web::ApiError;
 use copilot_web::form::{FormData, FormError, FormValue, UploadPart, read_form_files};
@@ -77,30 +76,6 @@ pub fn segment_from_end(uri: &http::Uri, n: usize) -> String {
         .copied()
         .unwrap_or_default();
     py_unquote(raw)
-}
-
-/// Starlette routes the *decoded* path: `…/files/a%2Fb` is `…/files/a/b`
-/// there, which none of these routes is. Such a request goes to the Python
-/// backend (FastAPI's 404 without one).
-pub async fn encoded_slash_to_legacy(
-    State(legacy): State<Option<LegacyProxy>>,
-    mut req: Request,
-    next: Next,
-) -> Response {
-    let original = req
-        .extensions()
-        .get::<OriginalUri>()
-        .map_or_else(|| req.uri().clone(), |o| o.0.clone());
-    if !original.path().to_ascii_lowercase().contains("%2f") {
-        return next.run(req).await;
-    }
-    match legacy {
-        Some(proxy) => {
-            *req.uri_mut() = original;
-            proxy.forward(req).await
-        }
-        None => ApiError::RouteNotFound.into_response(),
-    }
 }
 
 /// `str.encode("latin-1")` of a header value, or the `UnicodeEncodeError`

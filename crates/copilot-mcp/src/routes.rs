@@ -28,7 +28,6 @@ type Reader = Authorized<AdminOrAnalyst>;
 /// The five routes (full paths), behind the encoded-slash hand-off.
 pub fn router(state: McpState) -> Router {
     let p = |s: &str| format!("/api/copilot_mcp{s}");
-    let legacy = state.legacy.clone();
     Router::new()
         .route(&p("/servers"), get(servers))
         .route(&p("/servers/{mcp_server}"), get(server))
@@ -36,10 +35,6 @@ pub fn router(state: McpState) -> Router {
         .route(&p("/categories"), get(categories))
         .route(&p("/query"), post(query))
         .with_state(state)
-        .layer(axum::middleware::from_fn_with_state(
-            legacy,
-            copilot_wazuh::decoded_slash_to_legacy,
-        ))
 }
 
 fn ok(dump: &PyValue) -> Response {
