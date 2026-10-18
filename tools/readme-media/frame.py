@@ -249,14 +249,16 @@ def tour(tour_dir: Path, out_dir: Path, host: dict, fps: int, gif_width: int, sp
             subprocess.run([*ffmpeg, *mp4_args, "-movflags", "+faststart", str(video)], check=True)
         palette = work / "palette.png"
         gif = out_dir / f"{name}.gif"
-        # Two-pass palette; fewer frames per second until the GIF fits its budget.
-        for gif_fps in sorted({fps, max(8, fps - 2), 8}, reverse=True):
-            filters = f"fps={gif_fps},scale={gif_width}:-1:flags=lanczos"
+        # Two-pass palette. Over budget: a slightly narrower GIF first, then fewer frames per second.
+        narrower = round(gif_width * 0.93 / 2) * 2
+        attempts = [(fps, gif_width), (fps, narrower), (max(8, fps - 2), narrower), (8, narrower)]
+        for gif_fps, width in attempts:
+            filters = f"fps={gif_fps},scale={width}:-1:flags=lanczos"
             subprocess.run([*ffmpeg, "-vf", f"{filters},palettegen=stats_mode=diff:max_colors=128", str(palette)], check=True)
             use = f"{filters} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"
             subprocess.run([*ffmpeg, "-i", str(palette), "-lavfi", use, "-loop", "0", str(gif)], check=True)
             megabytes = gif.stat().st_size / 1024 / 1024
-            print(f"{gif}: {megabytes:.2f} MB at {gif_fps} fps")
+            print(f"{gif}: {megabytes:.2f} MB at {gif_fps} fps, {width} px")
             if megabytes <= gif_budget_mb:
                 break
         if mp4:

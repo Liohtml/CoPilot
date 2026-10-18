@@ -56,6 +56,6 @@ dashboards show "today" and the SLA clocks that are about to run out.
   would only report those missing tools, along with toasts, Vite's DevTools button and the
   chat launcher.
 - Recordings cut out page-load time and play back faster than recorded (`--speed`: 1.1× for
-  the tour, 1.4× for a clip). A GIF is 1200 px, 12 fps, 128 colours, and drops to a lower
-  frame rate if it would exceed `--gif-budget` (5 MB for the tour, 3 MB for a clip).
+  the tour, 1.4× for a clip). A GIF is 1200 px, 12 fps, 128 colours; over `--gif-budget`
+  (5 MB for the tour, 3 MB for a clip) it is made 7 % narrower, then given fewer frames.
 - `CHROMIUM=/path/to/chrome` runs `capture.mjs` on a browser Playwright did not download.
