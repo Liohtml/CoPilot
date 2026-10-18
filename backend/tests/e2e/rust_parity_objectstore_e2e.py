@@ -1505,10 +1505,10 @@ async def agent_checks(p, t):
     async def refused(label, obj, who="analyst"):
         S3.faults = []
         start = S3.snapshot()
-        form = lambda: multipart(
-            fields=[("bucket_name", bucket), ("object_name", obj)],
-            files=[("file", "a.txt", None, b"x")],
-        )  # noqa: E731
+
+        def form():
+            return multipart(fields=[("bucket_name", bucket), ("object_name", obj)], files=[("file", "a.txt", None, b"x")])
+
         r1, _ = await p.call(p.py, "POST", f"{DS}/upload", t[who], **form())
         wrote = changes(start, S3.snapshot(), ())
         S3.restore(start)
