@@ -139,6 +139,12 @@ jobs:
       - name: Load schema
         run: mysql -h 127.0.0.1 -uroot -proot copilot < crates/copilot/tests/fixtures/schema.sql
 
+      # As on the disposable local instances the suites are written against: the
+      # test user may create and drop databases and users (an empty database for
+      # the migration runner, the PRODUCTION bootstrap's throwaway user).
+      - name: Test user privileges
+        run: mysql -h 127.0.0.1 -uroot -proot -e "GRANT ALL PRIVILEGES ON *.* TO 'copilot'@'%' WITH GRANT OPTION"
+
       # The report suites' success paths (e2e_reports, e2e_file_analysis): the
       # PDFs through wkhtmltopdf where pdfkit looks for it, the charts' DejaVu
       # Sans, and the Chromium headless shell Playwright 1.59 installs (the
