@@ -7,6 +7,7 @@
 //! Module map:
 //! - [`config`] — process-wide configuration from env / `.env`
 //! - [`env`](mod@env)    — `.env` reader that never pollutes `std::env` (vendored from Talon)
+//! - [`env_vars`] — every environment variable this build knows (`copilot doctor`)
 //! - [`roles`]  — `RoleEnum`, role extension and token scopes
 //! - [`audit`]  — `audit_log` records and the sink abstraction
 //! - [`notify`] — notification events and the sink the legacy bridge implements
@@ -21,6 +22,7 @@ pub mod catalog_env;
 pub mod cloud_env;
 pub mod config;
 pub mod env;
+pub mod env_vars;
 pub mod error;
 pub mod file_analysis_env;
 pub mod ingest_env;

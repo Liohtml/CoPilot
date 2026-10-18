@@ -5,7 +5,8 @@
 //!
 //! ```text
 //! copilot serve           serve the API (default)
-//! copilot doctor          check configuration, database, schema, Talon, legacy backend
+//! copilot doctor          check configuration (and list unknown variables), database,
+//!                         schema, Talon, legacy backend
 //! copilot routes          list the route prefixes this build serves itself
 //! copilot jobs            list the scheduled jobs this build can run, and who runs them
 //!                         (`doctor` also checks APScheduler against COPILOT_SCHEDULER_OWNER)
@@ -231,6 +232,17 @@ async fn wait_for_signal() {
 async fn doctor(cfg: CopilotConfig) -> anyhow::Result<()> {
     let mut failures = 0;
     println!("config      ok (bind {}:{})", cfg.bind, cfg.port);
+    // Variables this build does not know (a typo, another release's), the
+    // obsolete ones and the test harnesses' stand-ins: listed, never fatal.
+    let env = EnvFile::load(&cfg.project_root);
+    let process: Vec<String> = std::env::vars_os()
+        .filter_map(|(k, _)| k.into_string().ok())
+        .collect();
+    let report =
+        copilot_core::env_vars::report(env.file_keys(), process.iter().map(String::as_str));
+    for line in report.lines() {
+        println!("env         {line}");
+    }
     let db = Db::connect_lazy(&cfg.database)?;
     match db.ping().await {
         Ok(()) => println!("database    ok"),
