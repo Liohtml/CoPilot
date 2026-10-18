@@ -22,6 +22,7 @@ pub mod cloud_env;
 pub mod config;
 pub mod env;
 pub mod error;
+pub mod file_analysis_env;
 pub mod ingest_env;
 pub mod notify;
 pub mod response_env;

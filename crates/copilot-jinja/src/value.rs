@@ -1,7 +1,7 @@
 //! Values with Python's types: what a Jinja2 template sees and builds.
 
 use std::any::Any;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
@@ -48,6 +48,26 @@ impl fmt::Debug for Value {
             Err(_) => f.write_str("<value>"),
         }
     }
+}
+
+thread_local! {
+    /// Set while a page renders with Jinja2's default `Undefined` (see
+    /// [`crate::page`]); unset, every undefined value is a `StrictUndefined`.
+    static LENIENT: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Run `f` with the environment's `undefined` class set to the plain
+/// `Undefined` (`lenient`) or to `StrictUndefined`.
+pub(crate) fn with_undefined_class<T>(lenient: bool, f: impl FnOnce() -> T) -> T {
+    let previous = LENIENT.with(|l| l.replace(lenient));
+    let out = f();
+    LENIENT.with(|l| l.set(previous));
+    out
+}
+
+/// Whether the environment's `undefined` is `StrictUndefined`.
+pub(crate) fn strict_undefined() -> bool {
+    !LENIENT.with(Cell::get)
 }
 
 impl Value {
@@ -117,7 +137,7 @@ impl Value {
             obj: None,
             name: Some(Value::str(name)),
             exc: "UndefinedError",
-            strict: true,
+            strict: strict_undefined(),
         }))
     }
 
@@ -128,7 +148,7 @@ impl Value {
             obj: None,
             name: None,
             exc: "UndefinedError",
-            strict: true,
+            strict: strict_undefined(),
         }))
     }
 
@@ -139,7 +159,7 @@ impl Value {
             obj: Some(obj.clone()),
             name: Some(name),
             exc: "UndefinedError",
-            strict: true,
+            strict: strict_undefined(),
         }))
     }
 
@@ -154,7 +174,7 @@ impl Value {
             obj: Some(obj.clone()),
             name: Some(Value::str(attr)),
             exc: "SecurityError",
-            strict: true,
+            strict: strict_undefined(),
         }))
     }
 

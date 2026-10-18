@@ -340,6 +340,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // (copilot-assessments), routed on the decoded path as Starlette does.
     "/api/github-audit",
     "/api/nuclei",
+    // File analysis (copilot-file-analysis): uploads and endpoint
+    // collections, the inspector, CAPE, VirusTotal and the PDF report.
+    "/api/file-analysis",
 ];
 
 /// While the Python backend can still write `connectors`, its cache
@@ -385,6 +388,7 @@ pub fn schema_requirements() -> Vec<TableRequirement> {
     all.extend_from_slice(copilot_integration_modules::REQUIREMENTS);
     all.extend_from_slice(copilot_wazuh_rules::REQUIREMENTS);
     all.extend_from_slice(copilot_case_templates::REQUIREMENTS);
+    all.extend_from_slice(copilot_file_analysis::REQUIREMENTS);
     all.extend_from_slice(copilot_license::REQUIREMENTS);
     all.extend_from_slice(copilot_status::REQUIREMENTS);
     all.extend_from_slice(copilot_sublime::REQUIREMENTS);
@@ -508,6 +512,8 @@ pub struct App {
     /// The case-template library (with its per-process cache) and the
     /// template suggestions (`copilot-case-templates`).
     pub case_templates: copilot_case_templates::CaseTemplatesState,
+    /// File analysis (`/api/file-analysis`) and its bounded job runner.
+    pub file_analysis: copilot_file_analysis::FileAnalysisState,
     /// The Python backend's data directory (`COPILOT_BACKEND_DATA_DIR`).
     pub backend_data_dir: std::path::PathBuf,
 }
@@ -646,6 +652,15 @@ impl App {
         .context("building the threat-intel clients")?;
         let objectstore = ObjectStore::from_env(&cfg.minio)
             .map_err(|e| anyhow::anyhow!("MinIO settings: {e}"))?;
+        let file_analysis = copilot_file_analysis::FileAnalysisState::new(
+            ctx.clone(),
+            objectstore.clone(),
+            agents.velociraptor.clone(),
+            threat_intel.clone(),
+            &cfg.file_analysis,
+            cfg.backend_data_dir.clone(),
+            legacy.clone(),
+        );
         let response = copilot_response::ResponseState {
             ctx: ctx.clone(),
             wazuh: wazuh.clone(),
@@ -796,6 +811,7 @@ impl App {
             assessments,
             wazuh_rules,
             case_templates,
+            file_analysis,
             backend_data_dir: cfg.backend_data_dir.clone(),
         })
     }
@@ -1143,6 +1159,10 @@ impl App {
             }))
             // Full paths: `/api/threat_intel/*`.
             .merge(copilot_threat_intel::router(self.threat_intel.clone()))
+            .nest(
+                "/api/file-analysis",
+                copilot_file_analysis::router(self.file_analysis.clone()),
+            )
             // Full paths: `/api/copilot_searches/*`, dispatched on the decoded
             // path as Starlette routes it.
             .merge(copilot_searches::router(self.searches.clone()))

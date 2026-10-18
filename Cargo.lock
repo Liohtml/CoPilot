@@ -460,6 +460,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "clap",
@@ -475,6 +476,7 @@ dependencies = [
  "copilot-customer-portal",
  "copilot-customers",
  "copilot-db",
+ "copilot-file-analysis",
  "copilot-gateway",
  "copilot-grafana",
  "copilot-grafana-dashboards",
@@ -516,6 +518,7 @@ dependencies = [
  "copilot-wazuh-rules",
  "copilot-web",
  "copilot-webauthn",
+ "hex",
  "http",
  "num-bigint-dig",
  "p256",
@@ -821,6 +824,42 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "copilot-file-analysis"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "copilot-auth",
+ "copilot-core",
+ "copilot-customer-portal",
+ "copilot-db",
+ "copilot-gateway",
+ "copilot-jinja",
+ "copilot-objectstore",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-velociraptor",
+ "copilot-web",
+ "crc32fast",
+ "flate2",
+ "futures",
+ "hex",
+ "http",
+ "md-5",
+ "num-bigint-dig",
+ "num-traits",
+ "rand 0.8.8",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

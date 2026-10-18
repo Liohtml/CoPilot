@@ -60,6 +60,12 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*; \
     useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin copilot; \
     install -d -o copilot -g copilot -m 0755 /opt/copilot/backend/scoutsuite-report
+# wkhtmltopdf for the File Analysis PDF report (copilot-file-analysis runs it
+# as pdfkit does, from /usr/bin), the package the backend image installs.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y wkhtmltopdf; \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=rust-builder /out/copilot /usr/local/bin/copilot
 USER copilot
 WORKDIR /tmp
