@@ -709,6 +709,80 @@ def mgr_answer(rec, method, raw_path, headers, body):
     return 404, "text/plain", b"no stub for " + raw_path.encode(), None
 
 
+# --- The MITRE alert searches (the fix sweep) --------------------------------------------
+def _mitre_field_of(body):
+    """The MITRE id field a search body is about, and whether it counts."""
+    if "aggs" in body:
+        flt = body["query"]["bool"]["filter"]
+        field = next(f["exists"]["field"] for f in flt if "exists" in f)
+        return field, body["aggs"]["techniques"]["terms"]["size"] == 10000
+    should = body["query"]["bool"]["filter"][1]["bool"]["should"]
+    return next(iter(should[0]["term"])), False
+
+
+def mitre_es_answer(rec, method, raw_path, headers, body):
+    """An indexer for the two MITRE searches, by `rec.mode["mitre"]`."""
+    mode = rec.mode.get("mitre", "ok")
+    ok = lambda obj: (200, "application/json; charset=UTF-8", jbody(obj), None)  # noqa: E731
+    if mode == "busy":
+        return 503, "application/json", jbody({"error": "busy"}), None
+    if method != "POST" or not raw_path.split("?")[0].endswith("/_search"):
+        return 404, "text/plain", b"no stub", None
+    parsed = json.loads(body)
+    field, counting = _mitre_field_of(parsed)
+    if field == "rule_mitre_id" and mode != "odd":
+        if "track_total_hits" not in parsed:
+            return ok({"hits": {"total": {"value": 0}}, "aggregations": {"techniques": {"buckets": []}}})
+        total = {"str_total": "2", "float_total": 2.0, "plain_total": 2}.get(mode, {"value": 2, "relation": "eq"})
+        return ok({"hits": {"total": total, "hits": [{"_source": {"rule_mitre_id": "T1078", "n": 1}}, {"_source": {"n": 2, "é": None}}]}})
+    if field == "custom.mitre":
+        return es_error(400, "query_shard_exception", "failed to create query")
+    if counting:
+        n = 1 if mode == "odd" else 3
+        return ok(
+            {
+                "hits": {"total": {"value": 9}},
+                "aggregations": {"techniques": {"buckets": [{"key": f"k{i}", "doc_count": 1} for i in range(n)]}},
+            },
+        )
+    if mode == "odd" and field == "rule_mitre_id":
+        return ok({"hits": {"total": {"value": 1}}, "aggregations": {"techniques": {"buckets": {"T1078": 1}}}})
+    if mode == "no_aggs":
+        return ok({"hits": {"total": 4}})
+    count = "x" if mode == "bad_count" else 4
+    return ok(
+        {
+            "hits": {"total": {"value": 9, "relation": "eq"}},
+            "aggregations": {
+                "techniques": {
+                    "buckets": [
+                        {"key": "T1078", "doc_count": count, "technique_name": {"buckets": []}},
+                        {
+                            "key": " 1078.002 ",
+                            "doc_count": 3,
+                            "technique_name": {"buckets": [{"key": "Domain Accounts (doc)", "doc_count": 3}]},
+                        },
+                        {"key": "T9999", "doc_count": 2},
+                        {"key": "", "doc_count": 1},
+                        {"key": 0, "doc_count": 1},
+                    ],
+                },
+            },
+        },
+    )
+
+
+def tenant_clause(code, name):
+    """The `_index` clause a scoped caller's search gains in Rust (§4)."""
+    found = []
+    lower = name.lower()
+    for m in (code.lower(), lower.replace(" ", "_"), lower.replace(" ", "-"), lower):
+        if m not in found:
+            found.append(m)
+    usable = [m for m in found if not any(ch in m for ch in '\\/*?"<>| ,#:')]
+    return {"bool": {"should": [{"wildcard": {"_index": f"*{m}*"}} for m in usable], "minimum_should_match": 1}}
+
+
 # --- The tools whose verification moved to Rust (the fix sweep) --------------------------
 #: The answers by (method, path) for the scenario in `rec.mode["scenario"]`.
 INFLUX_STATUS_CSV = (
@@ -1646,6 +1720,103 @@ async def main():
     await both("rule files: the manager failing", "GET", f"{M}/rules/files", t_admin, rec=mgr)
     mgr.mode.clear()
 
+    # -- D2b. the MITRE alert searches (the fix sweep) --------------------------------
+    esm = Recorder(mitre_es_answer, "esm")
+    mitre_idx = await add_connector("Wazuh-Indexer", esm.url, ES_USER, ES_PASS)
+    await settle()
+    T = f"{M}/mitre/techniques"
+    await both("mitre alerts: no token", "GET", f"{T}/alerts")
+    await both("mitre alerts: portal user", "GET", f"{T}/alerts", t_portal)
+    await both("mitre alerts: page 0, a bad field, size not an int", "GET", f"{T}/alerts?page=0&mitre_field=a%20b&size=x", t_admin, rec=esm)
+    await both("mitre alerts: an empty rule_level", "GET", f"{T}/alerts?rule_level=", t_admin, rec=esm)
+    await both("technique alerts: the path pattern", "GET", f"{T}/X1078/alerts?page=-1&mitre_field=", t_admin, rec=esm)
+    await both("technique alerts: a sub-technique too long", "GET", f"{T}/T1078.0021/alerts", t_admin, rec=esm)
+    for label, path_ in (
+        ("mitre alerts (defaults)", f"{T}/alerts"),
+        (
+            "mitre alerts: every parameter",
+            f"{T}/alerts?time_range=now-7d&size=2&page=3&rule_level=010&rule_group=sshd%20é&index_pattern=wazuh-alerts-*,-x",
+        ),
+        ("mitre alerts: the caller's field first", f"{T}/alerts?mitre_field=custom.mitre"),
+        ("mitre alerts: an empty index pattern", f"{T}/alerts?index_pattern="),
+        ("technique alerts (defaults)", f"{T}/T1078/alerts"),
+        (
+            "technique alerts: every parameter",
+            f"{T}/1078.002/alerts?time_range=now-2d&size=1&page=2&rule_level=3&rule_group=g&alert_id=a%22b&mitre_field=custom.mitre",
+        ),
+    ):
+        await both(label, "GET", path_, t_admin, rec=esm, norm=masked)
+    for mode, label in (
+        ("odd", "odd shapes: the next field"),
+        ("no_aggs", "no aggregations on the page"),
+        ("bad_count", "a doc_count the model refuses"),
+        ("str_total", "a string total"),
+        ("float_total", "a float total"),
+        ("plain_total", "an int total"),
+        ("busy", "the indexer busy: retried, then nothing found"),
+    ):
+        esm.mode["mitre"] = mode
+        await both(f"mitre alerts: {label}", "GET", f"{T}/alerts", t_admin, rec=esm, norm=masked)
+        await both(f"technique alerts: {label}", "GET", f"{T}/T1078/alerts", t_admin, rec=esm, norm=masked)
+    esm.mode.clear()
+    await both("technique alerts: size 0 (ZeroDivisionError)", "GET", f"{T}/T1078/alerts?size=0", t_admin, rec=esm)
+    await both("mitre alerts: size 0", "GET", f"{T}/alerts?size=0", t_admin, rec=esm, norm=masked)
+    await both("mitre alerts: size -1", "GET", f"{T}/alerts?size=-1&page=2", t_admin, rec=esm, norm=masked)
+    mgr.mode["fail"] = "/mitre/tactics"
+    await both("mitre alerts: the tactics failing (no tactics, names kept)", "GET", f"{T}/alerts", t_admin, rec=esm, norm=masked)
+    mgr.mode["fail"] = "/mitre/techniques"
+    await both("mitre alerts: the techniques failing (no mappings)", "GET", f"{T}/alerts", t_admin, rec=esm, norm=masked)
+    await both("technique alerts: the techniques failing", "GET", f"{T}/T1078/alerts", t_admin, rec=esm, norm=masked)
+    mgr.mode.clear()
+
+    # By design (§4): a scoped analyst's search is narrowed to the indices
+    # named after their customers; Python searched every tenant's.
+    clause = tenant_clause(CUST_A, f"{CUST_A} Corp")
+    for label, path_ in (("mitre alerts", f"{T}/alerts?rule_group=x"), ("technique alerts", f"{T}/T1078/alerts?alert_id=7")):
+        sent = {}
+        answers = {}
+        for tag, client in (("py", py), ("rs", rs)):
+            esm.captured.clear()
+            answers[tag] = await call(client, "GET", path_, t_analyst)
+            sent[tag] = [json.loads(c["body"]) for c in esm.captured]
+        widened = []
+        for b in sent["py"]:
+            b["query"]["bool"]["filter"].append(clause)
+            widened.append(json.dumps(b, ensure_ascii=False, separators=(",", ":")))
+        rs_text = [json.dumps(b, ensure_ascii=False, separators=(",", ":")) for b in sent["rs"]]
+        check(
+            f"by design: {label} of a scoped analyst cover their customers' indices only",
+            answers["py"].status_code == answers["rs"].status_code == 200
+            and masked(answers["py"].json()) == masked(answers["rs"].json())
+            and widened == rs_text
+            and len(rs_text) > 0,
+            f"python {widened}\n        rust   {rs_text}",
+        )
+    lonely = f"con_lonely{SFX}"
+    await sql(
+        "INSERT INTO `user` (username, password, email, created_at, role_id) VALUES (:n, 'x', 'lonely@parity.test', UTC_TIMESTAMP(), 2)",
+        n=lonely,
+    )
+    t_lonely = token(lonely, ["analyst"])
+    for label, path_ in (("mitre alerts", f"{T}/alerts"), ("technique alerts", f"{T}/T1078/alerts")):
+        esm.captured.clear()
+        r2 = await call(rs, "GET", path_, t_lonely)
+        body2 = r2.json()
+        check(
+            f"by design: {label} of an analyst without a customer never reach the indexer",
+            r2.status_code == 200 and body2["total_alerts"] == 0 and body2["field_used"] is None and not esm.captured,
+            f"{r2.status_code} {body2} {len(esm.captured)}",
+        )
+    await sql("DELETE FROM `user` WHERE username = :n", n=lonely)
+
+    await sql("UPDATE connectors SET connector_url = 'http://indexer:port' WHERE id = :i", i=mitre_idx)
+    await settle()
+    await both("mitre alerts: an unparsable indexer port", "GET", f"{T}/alerts", t_admin)
+    await sql("DELETE FROM connectors WHERE id = :i", i=mitre_idx)
+    await settle()
+    await both("mitre alerts: no Wazuh-Indexer connector", "GET", f"{T}/alerts", t_admin)
+    await both("technique alerts: no Wazuh-Indexer connector (TypeError)", "GET", f"{T}/T1078/alerts", t_admin)
+    esm.server.shutdown()
     await both("restart (no cluster)", "POST", f"{M}/management/restart", t_admin, rec=mgr)
     mgr.mode["cluster"] = "yes"
     await both("restart (cluster)", "POST", f"{M}/management/restart", t_admin, rec=mgr)

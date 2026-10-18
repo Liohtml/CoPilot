@@ -176,6 +176,68 @@ pub mod atomic {
     };
 }
 
+/// The MITRE alert searches' response models (`schema/mitre.py`).
+pub mod mitre_alerts {
+    use copilot_searches::pyd::{Default, Field, Model, Ty};
+
+    /// `MitreTechniqueInAlert`.
+    pub static MITRE_TECHNIQUE_IN_ALERT: Model = Model {
+        title: "MitreTechniqueInAlert",
+        fields: &[
+            Field::req("technique_id", Ty::Str),
+            Field::req("technique_name", Ty::Str),
+            Field::req("count", Ty::Int),
+            Field::def("last_seen", Ty::Opt(&Ty::Str), Default::None),
+            Field::def(
+                "tactics",
+                Ty::List(&Ty::DictOf(&Ty::Str, &Ty::Str)),
+                Default::EmptyList,
+            ),
+        ],
+        after: None,
+    };
+
+    /// `MitreTechniquesInAlertsResponse`.
+    pub static MITRE_TECHNIQUES_IN_ALERTS_RESPONSE: Model = Model {
+        title: "MitreTechniquesInAlertsResponse",
+        fields: &[
+            Field::def("success", Ty::Bool, Default::Bool(true)),
+            Field::req("message", Ty::Str),
+            Field::req("total_alerts", Ty::Int),
+            Field::req("techniques_count", Ty::Int),
+            Field::req(
+                "techniques",
+                Ty::List(&Ty::Model(&MITRE_TECHNIQUE_IN_ALERT)),
+            ),
+            Field::req("time_range", Ty::Str),
+            Field::req("field_used", Ty::Opt(&Ty::Str)),
+            Field::def("page", Ty::Int, Default::Int(1)),
+            Field::req("page_size", Ty::Int),
+            Field::req("total_pages", Ty::Int),
+        ],
+        after: None,
+    };
+
+    /// `MitreTechniqueAlertsResponse`.
+    pub static MITRE_TECHNIQUE_ALERTS_RESPONSE: Model = Model {
+        title: "MitreTechniqueAlertsResponse",
+        fields: &[
+            Field::def("success", Ty::Bool, Default::Bool(true)),
+            Field::req("message", Ty::Str),
+            Field::req("technique_id", Ty::Str),
+            Field::req("technique_name", Ty::Str),
+            Field::req("total_alerts", Ty::Int),
+            Field::req("alerts", Ty::List(&Ty::Dict)),
+            Field::req("field_used", Ty::Opt(&Ty::Str)),
+            Field::req("time_range", Ty::Str),
+            Field::def("page", Ty::Int, Default::Int(1)),
+            Field::req("page_size", Ty::Int),
+            Field::req("total_pages", Ty::Int),
+        ],
+        after: None,
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

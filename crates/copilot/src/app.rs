@@ -155,8 +155,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/snapshots",
     // The Wazuh manager: rules and rule files (the upload included), groups,
     // the six MITRE listings and the restart; the rule switches, the
-    // exclusion and the Atomic Red Team listings are copilot-wazuh-rules'.
-    // The two MITRE alert searches stay in Python.
+    // exclusion, the Atomic Red Team listings and the two MITRE alert
+    // searches are copilot-wazuh-rules'.
     "/api/wazuh_manager/rules",
     "/api/wazuh_manager/groups",
     "GET /api/wazuh_manager/mitre/groups",
@@ -169,6 +169,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/wazuh_manager/rule",
     "GET /api/wazuh_manager/mitre/atomic-tests",
     "GET /api/wazuh_manager/mitre/techniques/{technique_id}/atomic-tests",
+    "GET /api/wazuh_manager/mitre/techniques/alerts",
+    "GET /api/wazuh_manager/mitre/techniques/{technique_id}/alerts",
     // The Graylog connector (copilot-graylog); `POST /api/graylog/invoke`,
     // the active-response webhook, is copilot-response's (below).
     "GET /api/graylog/indices",

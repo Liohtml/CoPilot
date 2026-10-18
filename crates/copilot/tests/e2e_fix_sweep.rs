@@ -864,6 +864,16 @@ async fn portal_me_without_a_role_and_agents_past_the_end() {
 
 // --- the connector verifications -----------------------------------------------------------
 
+/// A connector row: name, URL, user, password, API key, extra data.
+type ConnectorSpec<'a> = (
+    &'a str,
+    String,
+    Option<&'a str>,
+    Option<&'a str>,
+    Option<&'a str>,
+    Option<&'a str>,
+);
+
 /// The twelve connectors whose verification Python still answered.
 const VERIFIED_NOW: [&str; 12] = [
     "Graylog",
@@ -968,14 +978,7 @@ async fn every_connector_is_verified_in_rust() {
             .await;
     }
     let gport = gelf.port.to_string();
-    let rows: [(
-        &str,
-        String,
-        Option<&str>,
-        Option<&str>,
-        Option<&str>,
-        Option<&str>,
-    ); 12] = [
+    let rows: [ConnectorSpec<'_>; 12] = [
         (
             "Graylog",
             format!("{t}/graylog"),
@@ -1271,5 +1274,483 @@ async fn every_connector_is_verified_in_rust() {
             .unwrap();
     }
     restore_connectors(&h).await;
+    legacy.verify().await;
+}
+
+// --- the MITRE alert searches -------------------------------------------------------------
+
+/// The painless source `_build_mitre_search_query` sends for `field`.
+fn painless(field: &str) -> String {
+    [
+        "",
+        &format!("    def field_value = doc['{field}'].value;"),
+        "    if (field_value != null && field_value != '') {",
+        "        def techniques = new ArrayList();",
+        "        // Split by comma and clean up whitespace",
+        "        def parts = field_value.splitOnToken(',');",
+        "        for (def part : parts) {",
+        "            def cleaned = part.trim();",
+        "            if (cleaned != '') {",
+        "                techniques.add(cleaned);",
+        "            }",
+        "        }",
+        "        return techniques;",
+        "    }",
+        "    return [];",
+        "    ",
+    ]
+    .join("\n")
+}
+
+/// The aggregation body Python sends (`size` 0, the terms' size, `from`).
+fn aggregation(field: &str, name: Option<&str>, terms: i64, from: i64, extra: &[Value]) -> String {
+    let mut filters = vec![
+        json!({"match_all": {}}),
+        json!({"range": {"timestamp": {"from": "now-24h", "to": "now"}}}),
+        json!({"exists": {"field": field}}),
+    ];
+    filters.extend(extra.iter().cloned());
+    let mut techniques = json!({"terms": {
+        "script": {"source": painless(field), "lang": "painless"},
+        "size": terms,
+        "order": {"_count": "desc"},
+    }});
+    if let Some(n) = name {
+        techniques["aggs"] = json!({"technique_name": {"terms": {"field": n, "size": 1}}});
+    }
+    serde_json::to_string(&json!({
+        "size": 0,
+        "from": from,
+        "query": {"bool": {"must": [], "filter": filters, "should": [], "must_not": []}},
+        "aggs": {"techniques": techniques},
+    }))
+    .unwrap()
+}
+
+fn mitre_answer(items: Value) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_json(json!({
+        "data": {"affected_items": items, "total_affected_items": 2},
+        "error": 0,
+    }))
+}
+
+#[tokio::test]
+async fn mitre_alert_searches_follow_python() {
+    use wiremock::matchers::body_string_contains;
+    let legacy = MockServer::start().await;
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&legacy)
+        .await;
+    let h = harness_or_skip!(Some(&legacy));
+    h.seed().await;
+    let s = h.suffix.clone();
+    let admin = h.token(&h.code("admin"), "admin");
+    let analyst = h.token(&h.code("analyst"), "analyst");
+    h.exec(&format!(
+        "INSERT INTO `user` (username, password, email, created_at, role_id) VALUES \
+         ('lonely{s}', 'x', 'lonely@example.com', UTC_TIMESTAMP(), 2)"
+    ))
+    .await;
+    let lonely = h.token(&format!("lonely{s}"), "analyst");
+    backup_connectors(&h, &["Wazuh-Manager", "Wazuh-Indexer"]).await;
+
+    let manager = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/security/user/authenticate"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"data": {"token": "tok"}, "error": 0})),
+        )
+        .mount(&manager)
+        .await;
+    let technique = |id: &str, ext: &str, name: &str, tactic: &str| {
+        json!({"description": "d", "name": name, "id": id, "modified_time": "m",
+               "created_time": "c", "tactics": [tactic], "url": "u", "source": "s",
+               "external_id": ext})
+    };
+    Mock::given(method("GET"))
+        .and(path("/mitre/techniques"))
+        .respond_with(mitre_answer(json!([
+            technique(
+                "attack-pattern--x1",
+                "T1047",
+                "Windows Management Instrumentation",
+                "tac--exec"
+            ),
+            technique(
+                "T1059",
+                "T1059",
+                "Command and Scripting Interpreter",
+                "tac--gone"
+            ),
+        ])))
+        .mount(&manager)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/mitre/tactics"))
+        .respond_with(mitre_answer(json!([{
+            "description": "d", "name": "Execution", "id": "tac--exec", "modified_time": "m",
+            "created_time": "c", "short_name": "execution", "techniques": [], "url": "u",
+            "source": "s", "external_id": "TA0002"
+        }])))
+        .mount(&manager)
+        .await;
+
+    let indexer = MockServer::start().await;
+    let empty = json!({"hits": {"total": {"value": 0}, "hits": []},
+                       "aggregations": {"techniques": {"buckets": []}}});
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(empty))
+        .with_priority(10)
+        .mount(&indexer)
+        .await;
+    let bucket = |key: &str| json!({"key": key, "doc_count": 1});
+    Mock::given(method("POST"))
+        .and(path("/wazuh-*/_search"))
+        .and(body_string_contains("doc['rule.mitre.id']"))
+        .and(body_string_contains("\"size\":10000"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "hits": {"total": {"value": 7}},
+            "aggregations": {"techniques": {"buckets": [bucket("a"), bucket("b"), bucket("c")]}},
+        })))
+        .mount(&indexer)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/wazuh-*/_search"))
+        .and(body_string_contains("doc['rule.mitre.id']"))
+        .and(body_string_contains("\"size\":25"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "hits": {"total": {"value": 7, "relation": "eq"}},
+            "aggregations": {"techniques": {"buckets": [
+                {"key": "T1047", "doc_count": 4, "technique_name": {"buckets": []}},
+                {"key": " 1059 ", "doc_count": 3,
+                 "technique_name": {"buckets": [{"key": "Command Interpreter", "doc_count": 3}]}},
+                {"key": "", "doc_count": 1},
+            ]}},
+        })))
+        .mount(&indexer)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/wazuh-*/_search"))
+        .and(body_string_contains("{\"term\":{\"custom.mitre\""))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({"error": "boom"})))
+        .mount(&indexer)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/wazuh-*/_search"))
+        .and(body_string_contains(
+            "{\"term\":{\"rule_mitre_id\":\"T1059\"}}",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "hits": {"total": {"value": 2, "relation": "eq"},
+                     "hits": [{"_source": {"a": 1}}, {"_source": {"b": 2}}]},
+        })))
+        .mount(&indexer)
+        .await;
+    connector_row(
+        &h,
+        "Wazuh-Manager",
+        &manager.uri(),
+        Some("wazuh"),
+        Some("pw"),
+        None,
+        None,
+    )
+    .await;
+    connector_row(
+        &h,
+        "Wazuh-Indexer",
+        &indexer.uri(),
+        Some("admin"),
+        Some("pw"),
+        None,
+        None,
+    )
+    .await;
+    let searches = |all: Vec<Request>| {
+        all.into_iter()
+            .filter(|r| r.url.path().ends_with("/_search"))
+            .map(|r| String::from_utf8(r.body).unwrap())
+            .collect::<Vec<_>>()
+    };
+
+    // The aggregation, as an admin: Python's requests exactly.
+    let base = "/api/wazuh_manager/mitre/techniques";
+    let (st, body) = h
+        .call("GET", &format!("{base}/alerts"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    let techniques = body["techniques"].as_array().unwrap();
+    assert_eq!(techniques.len(), 2, "{body}");
+    for t in techniques {
+        assert!(t["last_seen"].as_str().unwrap().ends_with('Z'));
+    }
+    let mut masked = body.clone();
+    for t in masked["techniques"].as_array_mut().unwrap() {
+        t["last_seen"] = json!("<now>");
+    }
+    assert_eq!(
+        masked,
+        json!({
+            "success": true,
+            "message": "Found 3 MITRE techniques in 7 alerts (page 1 of 1,)",
+            "total_alerts": 7,
+            "techniques_count": 3,
+            "techniques": [
+                {"technique_id": "T1047", "technique_name": "Unknown Technique", "count": 4,
+                 "last_seen": "<now>",
+                 "tactics": [{"id": "tac--exec", "name": "Execution", "short_name": "execution"}]},
+                {"technique_id": "1059", "technique_name": "Command Interpreter", "count": 3,
+                 "last_seen": "<now>",
+                 "tactics": [{"id": "tac--gone", "name": "Unknown", "short_name": ""}]},
+            ],
+            "time_range": "now-24h",
+            "field_used": "rule.mitre.id",
+            "page": 1,
+            "page_size": 25,
+            "total_pages": 1,
+        })
+    );
+    let sent_bodies = searches(indexer.received_requests().await.unwrap());
+    assert_eq!(
+        sent_bodies,
+        vec![
+            aggregation("rule_mitre_id", Some("rule_mitre_technique"), 10000, 0, &[]),
+            aggregation("rule.mitre.id", Some("rule.mitre.technique"), 10000, 0, &[]),
+            aggregation("rule.mitre.id", Some("rule.mitre.technique"), 25, 0, &[]),
+        ]
+    );
+    let manager_calls: Vec<String> = manager
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.url.path().starts_with("/mitre"))
+        .map(|r| format!("{}?{}", r.url.path(), r.url.query().unwrap_or("")))
+        .collect();
+    assert_eq!(
+        manager_calls,
+        [
+            "/mitre/techniques?limit=1000",
+            "/mitre/techniques?limit=1000",
+            "/mitre/tactics?limit=1000"
+        ]
+    );
+
+    // A scoped analyst's search is narrowed to the indices named after
+    // their customers (§4); Python searched every tenant's.
+    indexer.reset().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "hits": {"total": {"value": 0}, "hits": []},
+            "aggregations": {"techniques": {"buckets": []}},
+        })))
+        .mount(&indexer)
+        .await;
+    let tenant = json!({"bool": {"should": [
+        {"wildcard": {"_index": format!("*acme{s}*")}},
+        {"wildcard": {"_index": "*acme_corp*"}},
+        {"wildcard": {"_index": "*acme-corp*"}},
+    ], "minimum_should_match": 1}});
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("{base}/alerts?rule_level=007&rule_group=sshd&page=3&size=10"),
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["field_used"], Value::Null);
+    assert_eq!(
+        body["message"],
+        "Found 0 MITRE techniques in 0 alerts (page 3 of 1,)"
+    );
+    let extra = [
+        json!({"match_phrase": {"rule_level": {"query": "7"}}}),
+        json!({"match_phrase": {"rule_groups": {"query": "sshd"}}}),
+        tenant.clone(),
+    ];
+    assert_eq!(
+        searches(indexer.received_requests().await.unwrap()),
+        vec![
+            aggregation(
+                "rule_mitre_id",
+                Some("rule_mitre_technique"),
+                10000,
+                0,
+                &extra
+            ),
+            aggregation(
+                "rule.mitre.id",
+                Some("rule.mitre.technique"),
+                10000,
+                0,
+                &extra
+            ),
+            aggregation("mitre.id", Some("mitre.technique"), 10000, 0, &extra),
+        ]
+    );
+
+    // A scoped caller without a customer reads nothing: the indexer is not asked.
+    indexer.reset().await;
+    let (st, body) = h
+        .call("GET", &format!("{base}/alerts"), Some(&lonely), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["techniques"], json!([]));
+    assert_eq!(body["total_pages"], 1);
+    let (st, body) = h
+        .call("GET", &format!("{base}/T1059/alerts"), Some(&lonely), None)
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["technique_name"], "Command and Scripting Interpreter");
+    assert_eq!(body["total_alerts"], 0);
+    assert!(indexer.received_requests().await.unwrap().is_empty());
+
+    // The alerts of one technique: the caller's field first, a failing
+    // field skipped, Python's paging arithmetic.
+    Mock::given(method("POST"))
+        .and(body_string_contains("{\"term\":{\"custom.mitre\""))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({"error": "boom"})))
+        .mount(&indexer)
+        .await;
+    Mock::given(method("POST"))
+        .and(body_string_contains(
+            "{\"term\":{\"rule_mitre_id\":\"T1059\"}}",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "hits": {"total": {"value": 2, "relation": "eq"},
+                     "hits": [{"_source": {"a": 1}}, {"_source": {"b": 2}}]},
+        })))
+        .mount(&indexer)
+        .await;
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!(
+                "{base}/T1059/alerts?time_range=now-7d&size=1&page=2&rule_level=7&\
+                 mitre_field=custom.mitre&alert_id=doc-1"
+            ),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        body,
+        json!({
+            "success": true,
+            "message": "Found 2 alerts for MITRE technique T1059 (page 2 of 2,)",
+            "technique_id": "T1059",
+            "technique_name": "Command and Scripting Interpreter",
+            "total_alerts": 2,
+            "alerts": [{"a": 1}, {"b": 2}],
+            "field_used": "rule_mitre_id",
+            "time_range": "now-7d",
+            "page": 2,
+            "page_size": 1,
+            "total_pages": 2,
+        })
+    );
+    let expected = |field: &str| {
+        serde_json::to_string(&json!({
+            "size": 1,
+            "from": 1,
+            "query": {"bool": {"filter": [
+                {"range": {"timestamp": {"from": "now-7d", "to": "now"}}},
+                {"bool": {"should": [
+                    {"term": {field: "T1059"}},
+                    {"wildcard": {field: "*T1059*"}},
+                    {"query_string": {
+                        "query": format!("{field}:\"T1059\" OR {field}:\"*T1059*\""),
+                        "analyze_wildcard": true,
+                    }},
+                ], "minimum_should_match": 1}},
+                {"match_phrase": {"rule_level": {"query": "7"}}},
+                {"term": {"id": "doc-1"}},
+            ]}},
+            "_source": true,
+            "sort": [{"timestamp": {"order": "desc"}}],
+            "track_total_hits": true,
+        }))
+        .unwrap()
+    };
+    assert_eq!(
+        searches(indexer.received_requests().await.unwrap()),
+        vec![expected("custom.mitre"), expected("rule_mitre_id")]
+    );
+
+    // `size=0`: `(0 + 0 - 1) // 0` is Python's ZeroDivisionError, a bare 500.
+    let (st, _) = h
+        .call(
+            "GET",
+            &format!("{base}/T1059/alerts?size=0"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 500);
+
+    // The FastAPI checks: the path pattern, then the query in its order.
+    let (st, body) = h
+        .call(
+            "GET",
+            &format!("{base}/X1059/alerts?page=0&mitre_field=a%20b"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(st, 422, "{body}");
+    let failed: Vec<(&str, &str)> = body["details"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| {
+            (
+                d["field"].as_str().unwrap(),
+                d["error_type"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        failed,
+        [
+            ("technique_id", "string_pattern_mismatch"),
+            ("page", "greater_than"),
+            ("mitre_field", "string_pattern_mismatch"),
+        ]
+    );
+
+    // Without an indexer connector: the 503 wrapped by the service's 500,
+    // and for the second route the `except AsyncElasticsearch` TypeError.
+    sqlx::query("DELETE FROM connectors WHERE connector_name = 'Wazuh-Indexer'")
+        .execute(h.db.pool())
+        .await
+        .unwrap();
+    let (st, body) = h
+        .call("GET", &format!("{base}/alerts"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 500, "{body}");
+    assert_eq!(
+        body["message"],
+        "Error searching MITRE techniques: 503: Unable to connect to Wazuh Indexer: 500: No \
+         Wazuh-Indexer connector found in the database"
+    );
+    let (st, _) = h
+        .call("GET", &format!("{base}/T1059/alerts"), Some(&admin), None)
+        .await;
+    assert_eq!(st, 500);
+
+    sqlx::query(
+        "DELETE FROM connectors WHERE connector_name IN ('Wazuh-Manager', 'Wazuh-Indexer')",
+    )
+    .execute(h.db.pool())
+    .await
+    .unwrap();
+    restore_connectors(&h).await;
+    h.exec(&format!("DELETE FROM `user` WHERE username = 'lonely{s}'"))
+        .await;
     legacy.verify().await;
 }
