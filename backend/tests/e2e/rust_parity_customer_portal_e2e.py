@@ -578,7 +578,9 @@ async def main():  # noqa: C901 - one scenario after the other
     await seed()
     rust = start_rust()
     py = httpx.AsyncClient(transport=httpx.ASGITransport(app=build_python_app(), raise_app_exceptions=False), base_url="http://py")
-    rs = httpx.AsyncClient(base_url=RUST, timeout=60)
+    # A connection per request: Rust answers some requests (an encoded `/`) before reading their
+    # body and then closes the connection; the next request could be written onto it first.
+    rs = httpx.AsyncClient(base_url=RUST, timeout=60, limits=httpx.Limits(max_keepalive_connections=0))
     T = {key: token(uname(key), SCOPES[key]) for key in USERS}
     A, B = CUST_A, CUST_B
 
