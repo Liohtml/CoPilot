@@ -805,20 +805,22 @@ async fn notifier_claims_then_sends_once_per_clock() {
 }
 
 #[tokio::test]
-async fn report_falls_through_and_the_notifier_job_is_registered() {
+async fn report_is_answered_here_and_the_notifier_job_is_registered() {
     let legacy = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/api/soc_management/report"))
         .respond_with(ResponseTemplate::new(200).set_body_string("%PDF-1.4 python"))
+        .expect(0)
         .mount(&legacy)
         .await;
     let h = harness_or_skip!(Some(&legacy));
     h.seed().await;
     let admin = h.token(&format!("admin{}", h.suffix), "admin");
-    let (status, body) = h
+    // The PDF report is copilot-reports' (e2e_reports covers its content).
+    let (_, body) = h
         .call("GET", &format!("{S}/report?{PERIOD}"), Some(&admin), None)
         .await;
-    assert_eq!((status.as_u16(), body), (200, json!("%PDF-1.4 python")));
+    assert_ne!(body, json!("%PDF-1.4 python"));
     assert!(
         h.app
             .scheduler
