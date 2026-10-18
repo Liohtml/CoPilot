@@ -7,7 +7,8 @@
 //! declarations before the attributes, `<a/>` for an element without
 //! children, libxml2's escapes. A recovering parse (`recover=True`) only
 //! drops the characters XML does not allow, as libxml2 does; any other
-//! malformation is an error here (a difference recorded in §4).
+//! malformation is an error here ([`crate::DocxError::Recover`]: the report
+//! route hands such a request to the Python backend).
 
 use std::fmt::Write as _;
 

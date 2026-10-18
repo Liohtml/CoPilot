@@ -1403,6 +1403,7 @@ dependencies = [
  "copilot-core",
  "copilot-db",
  "copilot-docx",
+ "copilot-gateway",
  "copilot-grafana",
  "copilot-incidents",
  "copilot-jinja",

@@ -415,7 +415,7 @@ pub fn fix_tables(xml_src: &str) -> Result<Element, DocxError> {
             recover: true,
         },
     )
-    .map_err(|e| DocxError::Internal(format!("lxml recover: {}", e.0)))?;
+    .map_err(|e| DocxError::Recover(format!("lxml recover: {}", e.0)))?;
     // `tree.nsmap["w"]`
     let Some(ns) = tree
         .ns_defs

@@ -20,6 +20,7 @@ copilot-notifications = { workspace = true }
 copilot-soc-management = { workspace = true }
 copilot-sla = { workspace = true }
 copilot-upstream = { workspace = true }
+copilot-gateway = { workspace = true }
 copilot-grafana = { workspace = true }
 copilot-license = { workspace = true }
 copilot-yaml = { workspace = true }

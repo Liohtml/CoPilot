@@ -22,12 +22,16 @@ pub enum DocxError {
     Value(String),
     /// Anything else: a bare 500.
     Internal(String),
+    /// The rendered body is not well-formed XML beyond the characters XML
+    /// refuses: lxml's recovering parser (libxml2's repair, not ported)
+    /// would still make a document of it.
+    Recover(String),
 }
 
 impl std::fmt::Display for DocxError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Value(m) | Self::Internal(m) => f.write_str(m),
+            Self::Value(m) | Self::Internal(m) | Self::Recover(m) => f.write_str(m),
         }
     }
 }

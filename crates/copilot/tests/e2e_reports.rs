@@ -28,6 +28,7 @@ use common::*;
 const LOCATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<LocationConstraint xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"></LocationConstraint>";
 const BUNDLED_DOCX: &[u8] =
     include_bytes!("../../../backend/app/incidents/templates/case_report_jinja_template.docx");
+const DOCX_TYPE: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const BUNDLED_HTML: &[u8] =
     include_bytes!("../../../backend/app/incidents/templates/case_report_jinja_template.html");
 
@@ -783,4 +784,108 @@ async fn grafana_report_logs_in_shoots_panels_and_prints() {
     assert_eq!(st, 403);
     grafana_restore(&h, &key, saved).await;
     cleanup(&h, &[]).await;
+}
+
+// --- A DOCX only lxml can repair -------------------------------------------------------------------
+
+/// `REPORTS_E2E_LEGACY_PORT` (6308 by default): the Python backend's stand-in.
+fn legacy_port() -> u16 {
+    std::env::var("REPORTS_E2E_LEGACY_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(6308)
+}
+
+async fn legacy_server() -> MockServer {
+    let mut tries = 0;
+    let listener = loop {
+        match std::net::TcpListener::bind(("127.0.0.1", legacy_port())) {
+            Ok(l) => break l,
+            Err(_) if tries < 50 => {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            Err(e) => panic!("cannot bind the legacy stand-in on {}: {e}", legacy_port()),
+        }
+    };
+    MockServer::builder().listener(listener).start().await
+}
+
+/// The bundled template with a body whose rendering is not well-formed
+/// (`clean_tags` turns the `&lt;` into `<`, `safe` keeps it raw).
+fn broken_docx() -> Vec<u8> {
+    let archive = copilot_docx::zip::Archive::open(BUNDLED_DOCX).unwrap();
+    let mut out = copilot_docx::zip::Writer::new(chrono::Utc::now().naive_utc());
+    for member in &archive.members {
+        let mut data = archive.read(&member.name).unwrap().unwrap();
+        if member.name == "word/document.xml" {
+            data = br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>{{ '&lt;b'|safe }}</w:t></w:r></w:p></w:body></w:document>"#
+                .to_vec();
+        }
+        out.write(&member.name, &data).unwrap();
+    }
+    out.finish()
+}
+
+#[tokio::test]
+async fn a_docx_only_lxml_can_repair_is_rendered_by_python() {
+    if !configured() {
+        return;
+    }
+    let s3 = minio().await;
+    let broken = broken_docx();
+    Mock::given(method("HEAD"))
+        .and(path("/copilot-case-report-templates/broken.docx"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("etag", "\"b\"")
+                .insert_header("content-length", broken.len().to_string().as_str()),
+        )
+        .mount(&s3)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/copilot-case-report-templates/broken.docx"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(broken, "application/octet-stream"))
+        .mount(&s3)
+        .await;
+    let legacy = legacy_server().await;
+    Mock::given(method("POST"))
+        .and(path("/api/incidents/report/generate-report-docx"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw("python's document", DOCX_TYPE))
+        .mount(&legacy)
+        .await;
+    let h = harness_or_skip!(Some(&legacy), &minio_env(&s3));
+    let (acme_alert, _) = h.seed().await;
+    let (acme, beta) = seed_cases(&h, acme_alert).await;
+    let admin = h.token(&format!("admin{}", h.suffix), "admin");
+    let analyst = h.token(&format!("analyst{}", h.suffix), "analyst");
+    let docx = "/api/incidents/report/generate-report-docx";
+    let request = json!({"case_id": acme, "template_name": "broken.docx", "file_name": "r"});
+
+    let (st, _, body) = raw(&h, "POST", docx, &admin, Some(request.clone())).await;
+    assert_eq!(st, 200);
+    assert_eq!(body, b"python's document");
+    let forwarded = legacy.received_requests().await.unwrap();
+    assert_eq!(forwarded.len(), 1);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&forwarded[0].body).unwrap(),
+        request
+    );
+    assert_eq!(
+        forwarded[0].headers.get("authorization").unwrap(),
+        &format!("Bearer {admin}")
+    );
+    // The tenancy is Rust's, before anything is rendered or forwarded.
+    let (st, _) = h
+        .call(
+            "POST",
+            docx,
+            Some(&analyst),
+            Some(json!({"case_id": beta, "template_name": "broken.docx"})),
+        )
+        .await;
+    assert_eq!(st, 403);
+    assert_eq!(legacy.received_requests().await.unwrap().len(), 1);
+    cleanup(&h, &[acme, beta]).await;
 }

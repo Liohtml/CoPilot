@@ -1137,6 +1137,7 @@ impl App {
                 copilot_reports::case::CaseReportState {
                     ctx: self.ctx.clone(),
                     store: self.objectstore.clone(),
+                    legacy: self.legacy.clone(),
                 },
             ))
             .merge(copilot_reports::customer_report::router(
