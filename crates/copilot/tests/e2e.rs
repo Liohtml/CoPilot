@@ -759,10 +759,11 @@ async fn talon_and_ai_analyst_flow() {
 async fn unported_routes_are_proxied_to_the_python_backend() {
     let legacy = MockServer::start().await;
     let h = harness_or_skip!(Some(&legacy));
-    // (`/api/agents`, its report routers, `GET /api/sysmon_config` and the
-    // Sublime connector are ported now; the file analysis is not.)
+    // (`/api/agents`, its report routers, `GET /api/sysmon_config`, the
+    // Sublime connector and the file analysis are ported now: a path no Python
+    // route has stands for the routes still in Python.)
     Mock::given(method("GET"))
-        .and(path("/api/file-analysis/history"))
+        .and(path("/api/legacy-only-e2e/history"))
         .and(header("authorization", "Bearer abc"))
         .respond_with(
             ResponseTemplate::new(200)
@@ -775,7 +776,7 @@ async fn unported_routes_are_proxied_to_the_python_backend() {
     let (st, body) = h
         .call(
             "GET",
-            "/api/file-analysis/history?customer_code=x",
+            "/api/legacy-only-e2e/history?customer_code=x",
             Some("abc"),
             None,
         )
@@ -1292,13 +1293,13 @@ async fn customer_portal_ai_reports_flow() {
 
     // --- Unported paths and methods still reach Python ------------------------------
     Mock::given(method("GET"))
-        .and(path("/api/file-analysis/history"))
+        .and(path("/api/legacy-only-e2e/history"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"from": "python"})))
         .expect(1)
         .mount(&legacy)
         .await;
     let (st, body) = h
-        .call("GET", "/api/file-analysis/history", Some(&portal), None)
+        .call("GET", "/api/legacy-only-e2e/history", Some(&portal), None)
         .await;
     assert_eq!((st.as_u16(), body), (200, json!({"from": "python"})));
     Mock::given(method("DELETE"))

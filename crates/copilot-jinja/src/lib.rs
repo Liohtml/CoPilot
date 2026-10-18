@@ -36,6 +36,7 @@ mod methods;
 pub mod notify;
 mod objects;
 mod ops;
+pub mod page;
 mod parser;
 mod pprint;
 mod pyrepr;
@@ -50,6 +51,7 @@ pub mod vm;
 
 pub use error::{Error, Result};
 pub use notify::{Event, Input, MAX_RENDERED_BYTES, compile_template, render};
+pub use page::render_page;
 
 /// The sandbox's `MAX_RANGE`.
 pub const MAX_RANGE: usize = 100_000;

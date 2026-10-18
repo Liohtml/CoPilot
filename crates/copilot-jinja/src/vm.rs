@@ -87,7 +87,7 @@ fn undefined_named(hint: String, name: &str) -> Value {
         obj: None,
         name: Some(Value::str(name)),
         exc: "UndefinedError",
-        strict: true,
+        strict: crate::value::strict_undefined(),
     }))
 }
 
