@@ -29,10 +29,10 @@ tracks your SLAs and gives every customer a portal of their own. Open source, se
 ## 🎬 Take the tour
 
 <p align="center">
-  <img alt="A 30-second tour: the alert queue, one alert, its case, the SOC Management dashboard and the customer portal" src="docs/assets/readme/tour.gif" width="100%">
+  <img alt="A 30-second tour: the alert queue, an alert's AI analyst report, the alert, its case timeline, the SOC Management dashboard and the customer portal" src="docs/assets/readme/tour.gif" width="100%">
 </p>
 
-<p align="center"><sub>Alert queue → one alert → its case → SLA dashboard → customer portal. All screens are real, the data is a demo.</sub></p>
+<p align="center"><sub>Alert queue → AI analyst report → the alert → its case → SLA dashboard → customer portal. Real screens, demo data. <a href="docs/assets/readme/tour.mp4">Watch it as a video</a>.</sub></p>
 
 <br>
 
@@ -53,10 +53,11 @@ Alerts from every connected tool land in **one list, in one format**. Assign the
 </td>
 <td width="50%" valign="top">
 
-<picture>
+<a href="docs/assets/readme/gif-triage.gif"><picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/alerts-light.png">
   <img alt="The alert queue" src="docs/assets/readme/screens/alerts.png" width="100%">
-</picture>
+</picture></a>
+<p align="center"><sub>▶ <a href="docs/assets/readme/gif-triage.gif">See an alert triaged in 10 seconds</a></sub></p>
 
 </td>
 </tr>
@@ -95,20 +96,22 @@ Group related alerts into a **case**, work through its tasks and keep the whole 
 </td>
 <td width="50%" valign="top">
 
-<picture>
+<a href="docs/assets/readme/gif-soc.gif"><picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/soc-overview-light.png">
   <img alt="SOC Management: SLA compliance, volumes and what needs attention" src="docs/assets/readme/screens/soc-overview.png" width="100%">
-</picture>
+</picture></a>
+<p align="center"><sub>▶ <a href="docs/assets/readme/gif-soc.gif">See the SLA, workload and period views</a></sub></p>
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-<picture>
+<a href="docs/assets/readme/gif-portal.gif"><picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/portal-overview-light.png">
   <img alt="The customer portal" src="docs/assets/readme/screens/portal-overview.png" width="100%">
-</picture>
+</picture></a>
+<p align="center"><sub>▶ <a href="docs/assets/readme/gif-portal.gif">See the portal from a customer's side</a></sub></p>
 
 </td>
 <td width="50%" valign="top">
@@ -144,6 +147,81 @@ Built for MSSPs: each customer signs in to **their own portal** and sees only th
 <td valign="top">🧠 <b>AI analyst</b><br><sub>Talon investigates new alerts and writes a report your analysts can review.</sub></td>
 </tr>
 </table>
+
+<details>
+<summary><b>📸 More screens</b> — the alert page, the AI report, cases, SLAs, workload and the portal</summary>
+
+<br>
+
+<table>
+<tr>
+<td width="50%" valign="top"><b>One alert, everything on it</b><br>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/alert-detail-light.png">
+  <img alt="An alert: status, verdict, assignee, SLA clocks, assets and tags" src="docs/assets/readme/screens/alert-detail.png" width="100%">
+</picture>
+</td>
+<td width="50%" valign="top"><b>The AI analyst's report</b><br>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/alert-ai-light.png">
+  <img alt="The AI analyst's report on an alert: verdict, timeline and evidence" src="docs/assets/readme/screens/alert-ai.png" width="100%">
+</picture>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Cases</b><br>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/cases-light.png">
+  <img alt="The case list with status, assignee and linked alerts" src="docs/assets/readme/screens/cases.png" width="100%">
+</picture>
+</td>
+<td width="50%" valign="top"><b>Customers</b><br>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/customers-light.png">
+  <img alt="The customers list: one entry per tenant" src="docs/assets/readme/screens/customers.png" width="100%">
+</picture>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>SLA by severity</b><br>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/soc-sla-light.png">
+  <img alt="SLA compliance by severity: targets, medians and how many were met" src="docs/assets/readme/screens/soc-sla.png" width="100%">
+</picture>
+</td>
+<td width="50%" valign="top"><b>Workload</b><br>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/soc-workload-light.png">
+  <img alt="Workload: the open backlog by severity and by analyst" src="docs/assets/readme/screens/soc-workload.png" width="100%">
+</picture>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Portal: alerts</b><br>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/portal-alerts-light.png">
+  <img alt="The customer portal's alert list with status counters" src="docs/assets/readme/screens/portal-alerts.png" width="100%">
+</picture>
+</td>
+<td width="50%" valign="top"><b>Portal: AI report</b><br>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/portal-ai-report-light.png">
+  <img alt="The AI report as the customer sees it, with recommended actions" src="docs/assets/readme/screens/portal-ai-report.png" width="100%">
+</picture>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Portal: service levels</b><br>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/screens/portal-sla-light.png">
+  <img alt="The customer's Service Levels page" src="docs/assets/readme/screens/portal-sla.png" width="100%">
+</picture>
+</td>
+<td></td>
+</tr>
+</table>
+
+</details>
 
 <br>
 

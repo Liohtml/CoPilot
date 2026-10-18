@@ -14,7 +14,9 @@ repos:
           - id: check-json
           - id: trailing-whitespace
             exclude: ^crates/copilot-searches/tests/fixtures/rules/
+          # docs/assets: the README's tour and clips and the docs' videos are larger by nature.
           - id: check-added-large-files
+            exclude: ^docs/assets/
           #- id: detect-private-key # Not using since uploading nginx key
           - id: requirements-txt-fixer
             args: ["backend/requirements.txt", "backend/requirements.in"]
