@@ -75,6 +75,19 @@ impl EnvFile {
         self.path.as_deref()
     }
 
+    /// Every key the `.env` file sets, an empty value included, sorted.
+    pub fn file_keys(&self) -> Vec<&str> {
+        let mut keys: Vec<&str> = self
+            .values
+            .keys()
+            .chain(self.empty.iter())
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        keys.dedup();
+        keys
+    }
+
     /// Value from the `.env` file only.
     pub fn file_value(&self, key: &str) -> Option<&str> {
         self.values.get(key).map(String::as_str)
@@ -200,6 +213,7 @@ mod tests {
         assert_eq!(env.get_raw("MISSING"), None);
         assert_eq!(env.file_value("D"), Some("spaced"));
         assert_eq!(env.file_value("E"), Some("v"));
+        assert_eq!(env.file_keys(), ["A", "B", "C", "D", "E", "EMPTY"]);
     }
 
     #[test]

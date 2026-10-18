@@ -5,6 +5,8 @@ description: Install SOCFortress CoPilot with Docker Compose, retrieve the initi
 
 CoPilot is shipped as Docker images and is intended to be deployed via **Docker Compose**.
 
+> ℹ️ The backend is now a Rust service (`ghcr.io/socfortress/copilot-rs`, still named `copilot-backend` in Compose). Upgrading from a release that ran the Python backend? Follow [Running CoPilot on the Rust backend](/getting-started/rust-backend) — it covers the database check, the rollback and what changed.
+
 > ❗ WARNING: CoPilot is **not** intended to be exposed directly to the public Internet. Deploy behind a VPN / private network or a properly secured reverse proxy.
 
 ---
@@ -30,12 +32,15 @@ git clone https://github.com/socfortress/CoPilot.git
 cd CoPilot
 ```
 
-**Option B: download just the Compose file for a specific release**
+**Option B: download just the Compose files for a specific release**
 
-Replace `<VERSION>` with a release tag (example: `v0.1.5`).
+Replace `<VERSION>` with a release tag (example: `v0.1.5`). The two overlays are only needed for a staged rollout or a rollback.
 
 ```bash
 wget https://raw.githubusercontent.com/socfortress/CoPilot/<VERSION>/docker-compose.yml
+wget https://raw.githubusercontent.com/socfortress/CoPilot/<VERSION>/docker-compose.rust.yml
+wget https://raw.githubusercontent.com/socfortress/CoPilot/<VERSION>/docker-compose.legacy.yml
+wget -O .env.example https://raw.githubusercontent.com/socfortress/CoPilot/<VERSION>/.env.example
 ```
 
 ### 2) Create required data paths
@@ -54,7 +59,7 @@ cp .env.example .env
 nano .env
 ```
 
-At minimum, make sure `SERVER_HOST` is correct for your environment.
+At minimum, set `JWT_SECRET`, the MySQL and MinIO passwords, and make sure `SERVER_HOST` is correct for your environment. `.env.example` documents every variable the backend reads.
 
 ### 4) Start CoPilot
 
@@ -67,8 +72,10 @@ docker compose up -d
 The **admin password is only printed the first time** CoPilot starts.
 
 ```bash
-docker logs "$(docker ps --filter ancestor=ghcr.io/socfortress/copilot-backend:latest --format "{{.ID}}")" 2>&1 | grep "Admin user password"
+docker compose logs copilot-backend 2>&1 | grep "Admin user password"
 ```
+
+Check the configuration at any time with `docker compose exec copilot-backend copilot doctor`.
 
 ### 6) Access the UI
 
@@ -229,6 +236,8 @@ From your CoPilot directory:
 docker compose pull
 docker compose up -d
 ```
+
+The first upgrade to the Rust backend has one extra step when the database is older than the last Python schema; see [Running CoPilot on the Rust backend](/getting-started/rust-backend#upgrade-an-existing-deployment). The same page explains how to roll back.
 
 If you need a clean restart (rare):
 

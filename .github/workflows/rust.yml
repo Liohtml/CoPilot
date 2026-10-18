@@ -1,7 +1,9 @@
 name: Rust
 
-# Same gates as Talon 2.0 (liohtml/talahon .github/workflows/ci.yml), plus the
-# end-to-end suite against MySQL at the Alembic head.
+# Same gates as Talon 2.0 (liohtml/talahon .github/workflows/ci.yml), plus every
+# end-to-end suite against MySQL at the Alembic head, and the deployment checks
+# (the Compose files, .env.example and the Rust image against what the binary
+# reads: scripts/check-compose.py; the Dockerfile through hadolint).
 
 on:
   pull_request:
@@ -33,6 +35,11 @@ on:
       - "backend/copilot.py"
       - "scripts/check-alembic-head.py"
       - ".github/workflows/rust.yml"
+      # The deployment checks.
+      - "docker-compose*.yml"
+      - ".env.example"
+      - "scripts/check-compose.py"
+      - ".github/workflows/docker.yml"
   push:
     branches: [main]
     paths:
@@ -52,6 +59,10 @@ on:
       - "backend/app/db/startup_lock.py"
       - "backend/copilot.py"
       - ".github/workflows/rust.yml"
+      - "docker-compose*.yml"
+      - ".env.example"
+      - "scripts/check-compose.py"
+      - ".github/workflows/docker.yml"
 
 permissions:
   contents: read
@@ -109,7 +120,7 @@ jobs:
   e2e:
     name: end-to-end (MySQL at the Alembic head)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 150
     services:
       mysql:
         image: mysql:8.0
@@ -138,19 +149,61 @@ jobs:
       - name: Load schema
         run: mysql -h 127.0.0.1 -uroot -proot copilot < crates/copilot/tests/fixtures/schema.sql
 
+      # As on the disposable local instances the suites are written against: the
+      # test user may create and drop databases and users (an empty database for
+      # the migration runner, the PRODUCTION bootstrap's throwaway user).
+      - name: Test user privileges
+        run: mysql -h 127.0.0.1 -uroot -proot -e "GRANT ALL PRIVILEGES ON *.* TO 'copilot'@'%' WITH GRANT OPTION"
+
+      # The report suites' success paths (e2e_reports, e2e_file_analysis): the
+      # PDFs through wkhtmltopdf where pdfkit looks for it, the charts' DejaVu
+      # Sans, and the Chromium headless shell Playwright 1.59 installs (the
+      # backend's requirements.txt pin, as the Rust image installs it) for the
+      # Grafana report. Without them those suites check the failure instead.
+      - name: Report tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wkhtmltopdf fonts-dejavu-core
+          python3 -m venv "$RUNNER_TEMP/playwright"
+          "$RUNNER_TEMP/playwright/bin/pip" install --no-cache-dir "playwright==1.59.0"
+          "$RUNNER_TEMP/playwright/bin/playwright" install --with-deps --only-shell chromium
+
+      - name: Build the suites
+        run: cargo test -p copilot --tests --locked --no-run
+
+      # Every crates/copilot/tests/e2e*.rs, one after another, each single-threaded.
       - name: End-to-end
         env:
           COPILOT_TEST_DATABASE_URL: mysql://copilot:copilot@127.0.0.1:3306/copilot
-        run: cargo test -p copilot --test e2e --locked -- --test-threads=1
-
-      - name: End-to-end (schema and startup)
-        env:
-          COPILOT_TEST_DATABASE_URL: mysql://copilot:copilot@127.0.0.1:3306/copilot
-          # Throwaway databases (the runner on an empty one, the seeding) and
-          # the PRODUCTION bootstrap through root.
+          # e2e_startup: throwaway databases (the runner on an empty one, the
+          # seeding) and the PRODUCTION bootstrap through root.
           COPILOT_TEST_ADMIN_DATABASE_URL: mysql://root:root@127.0.0.1:3306/copilot
           COPILOT_TEST_MYSQL_ROOT_PASSWORD: root
-        run: cargo test -p copilot --test e2e_startup --locked -- --test-threads=1
+        run: |
+          for suite in crates/copilot/tests/e2e*.rs; do
+            name=$(basename "$suite" .rs)
+            echo "::group::$name"
+            cargo test -p copilot --test "$name" --locked -- --test-threads=1
+            echo "::endgroup::"
+          done
+
+  deployment:
+    name: deployment (Compose, .env.example, the Rust image)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # docker compose config resolves the layouts without a daemon.
+      - name: Compose files, .env.example, the image's inputs
+        run: python3 scripts/check-compose.py
+
+      - name: Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: crates/copilot/Dockerfile
 
   advisories:
     name: dependency advisories (non-blocking)

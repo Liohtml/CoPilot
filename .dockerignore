@@ -3,9 +3,10 @@
 # The repo root is used as a Docker build context by exactly one build:
 # `build-inspector-runner` in .github/workflows/docker.yml
 # (context: . , dockerfile: ./inspector-runner/Dockerfile), whose Dockerfile
-# COPYs only inspector-runner/ and inspector/. Every other image builds from its
-# own subdirectory (./backend, ./frontend, ./inspector, …) and is unaffected by
-# this file.
+# COPYs only inspector-runner/ and inspector/. The Rust backend's image builds
+# from the root too, but BuildKit reads its own crates/copilot/Dockerfile.dockerignore
+# instead of this file. Every other image builds from its own subdirectory
+# (./backend, ./frontend, ./inspector, …) and is unaffected by this file.
 #
 # So: exclude everything, then re-include just the two directories that the
 # inspector-runner image needs — keeping its build context small and fast.

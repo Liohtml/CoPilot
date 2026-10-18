@@ -7,8 +7,9 @@
 //! copilot serve           serve the API (default): the startup tasks and the migrations
 //!                         first (copilot-startup, copilot-migrate), then the routes
 //! copilot migrate         bring the schema to this build's last migration, then exit
-//! copilot doctor          check configuration, database, schema, migrations, the startup's
-//!                         preconditions, Talon, legacy backend
+//! copilot doctor          check configuration (and list unknown variables), database,
+//!                         schema, migrations, the startup's preconditions, Talon,
+//!                         legacy backend
 //! copilot routes          list the route prefixes this build serves itself
 //! copilot jobs            list the scheduled jobs this build can run, and who runs them
 //!                         (`doctor` also checks APScheduler against COPILOT_SCHEDULER_OWNER)
@@ -311,6 +312,16 @@ async fn migrate(cfg: CopilotConfig) -> anyhow::Result<()> {
 async fn doctor(cfg: CopilotConfig, env: EnvFile) -> anyhow::Result<()> {
     let mut failures = 0;
     println!("config      ok (bind {}:{})", cfg.bind, cfg.port);
+    // Variables this build does not know (a typo, another release's), the
+    // obsolete ones and the test harnesses' stand-ins: listed, never fatal.
+    let process: Vec<String> = std::env::vars_os()
+        .filter_map(|(k, _)| k.into_string().ok())
+        .collect();
+    let report =
+        copilot_core::env_vars::report(env.file_keys(), process.iter().map(String::as_str));
+    for line in report.lines() {
+        println!("env         {line}");
+    }
     let startup = copilot_startup::Startup::new(&env);
     match copilot_objectstore::ObjectStore::from_env(&cfg.minio) {
         Ok(store) => {

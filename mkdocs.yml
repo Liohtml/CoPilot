@@ -73,7 +73,8 @@ extra_css:
 
 nav:
   - Home: index-mkdocs.md
-  - Getting Started: []
+  - Getting Started:
+      - Running CoPilot (Rust backend): getting-started/rust-backend.md
   - User Guide:
       - Overview: user/overview.md
       - Quickstart (Operators): user/operators-quickstart.md

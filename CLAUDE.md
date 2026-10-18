@@ -6,10 +6,10 @@ Repository orientation for AI coding assistants and human contributors. The note
 
 SOCFortress CoPilot — a "single pane of glass" SOC platform that wraps open-source security tooling (Wazuh, Graylog, Velociraptor, Cortex, Grafana, InfluxDB, Shuffle, Sublime, …) plus many commercial integrations (CrowdStrike, Carbon Black, Defender, Mimecast, Huntress, Bitdefender, Darktrace, Duo, …).
 
-Three independent apps in one repo, plus the Rust backend that is replacing `backend/` module by module:
+Three apps in one repo — the backend, two frontends — plus the Python backend it replaced:
 
-- `backend/` — Python 3.11 FastAPI (port 5000) + APScheduler
-- `crates/` — Rust workspace (`copilot` binary): serves the ported modules and proxies everything else to `backend/`; conventions are Talon 2.0's (see "Rust backend" below and `docs/architecture/RUST_MIGRATION.md`)
+- `crates/` — **the backend**: a Rust workspace whose `copilot` binary (image `ghcr.io/socfortress/copilot-rs`, Compose service `copilot-backend`, port 5000) answers every API route, applies the schema, runs the startup tasks and owns the schedule; conventions are Talon 2.0's (see "Rust backend" below and `docs/architecture/RUST_MIGRATION.md`)
+- `backend/` — Python 3.11 FastAPI + APScheduler: the **reference implementation** the parity harness compares the Rust backend against (`scripts/rust-parity.sh`), and an opt-in Compose profile (`legacy`) for a rollback; no longer started by default. Keep it working — the parity suites run its real routers
 - `frontend/` — Vue 3 / Vite SOC-analyst UI (Naive UI, Pinia, Tailwind, pnpm)
 - `customer-portal/` — Vue 3 / Vite end-customer UI (port 3001 in dev, separate build)
 
@@ -20,18 +20,27 @@ Plus `tools/remotion-*` (video generators) and `docs/` (mkdocs site, published b
 ### Stack
 
 ```bash
-docker compose pull && docker compose up -d   # backend, frontend, mysql, minio, nuclei, mcp
+docker compose pull && docker compose up -d   # Rust backend (+ its init step), frontend, mysql, minio, nuclei, mcp
+docker compose exec copilot-backend copilot doctor   # config (unknown variables listed), DB, schema, Talon, scheduler
 ./build-dockers.sh [version]                  # local image rebuild (frontend only; backend stanza commented)
 
-# Local backend rebuild + hot-swap into the running stack (~5–8 min build):
-cd backend && docker buildx build --load -t ghcr.io/socfortress/copilot-backend:latest .
+# Local Rust backend rebuild + hot-swap (repo root is the context; a release build):
+docker buildx build --load -f crates/copilot/Dockerfile -t ghcr.io/socfortress/copilot-rs:latest .
 docker compose up -d --force-recreate copilot-backend
-# Boot signal: "Application startup complete" + "Uvicorn running on 0.0.0.0:5000"
+# Boot signal: "CoPilot (Rust) listening"; healthy once /_copilot/health answers 200
+
+# The Python backend (reference implementation), opt-in:
+docker compose --profile legacy up -d                                     # standby next to Rust, APScheduler off
+docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d     # staged rollout: Rust in front of Python
+docker compose rm -sf copilot-backend && \
+  docker compose -f docker-compose.yml -f docker-compose.legacy.yml up -d # rollback: Python in Rust's place
+cd backend && docker buildx build --load -t ghcr.io/socfortress/copilot-backend:latest .   # its image (~5–8 min)
+# Python's boot signal: "Application startup complete" + "Uvicorn running on 0.0.0.0:5000"
 ```
 
-`.env` at repo root feeds compose; `.env.example` documents every var.
+`.env` at repo root feeds compose; `.env.example` documents every variable the Rust backend reads (grouped; the test harnesses' `COPILOT_*_URL` stand-ins left out), and `crates/copilot-core/src/env_vars.rs` is the list `copilot doctor` checks against. `python3 scripts/check-compose.py` (CI) checks the Compose layouts, `.env.example` and the image's inputs against the sources. Operator procedures (install, upgrade with the Alembic-head requirement, rollback, what changed): `docs/getting-started/rust-backend.md`; services and layouts: `docs/architecture/DEPLOYMENT.md`.
 
-### Backend (`cd backend`, Python 3.11)
+### Python backend — the reference implementation (`cd backend`, Python 3.11)
 
 ```bash
 uvicorn copilot:app --reload --port=5000      # dev
@@ -49,11 +58,11 @@ alembic revision --autogenerate -m "msg"
 cargo build --workspace
 cargo test --workspace                                   # unit tests, no services needed
 cargo clippy --workspace --all-targets -- -D warnings    # CI gate (fmt --check too)
-cargo run -p copilot -- doctor                           # config, DB, schema, Talon, legacy backend
+cargo run -p copilot -- doctor                           # config (unknown variables), DB, schema, Talon, legacy backend
 COPILOT_TEST_DATABASE_URL=mysql://copilot:copilot@127.0.0.1:13306/copilot \
-  cargo test -p copilot --test e2e -- --test-threads=1   # MySQL at the Alembic head
+  cargo test -p copilot --test e2e -- --test-threads=1   # MySQL at the Alembic head (CI runs every tests/e2e*.rs so)
 MYSQL_PASSWORD=… scripts/rust-parity.sh                  # Rust vs. Python, same DB, compared response by response
-docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d   # Rust in front of Python
+python3 scripts/check-compose.py                         # Compose layouts, .env.example, the image's inputs (needs docker compose)
 ```
 
 ### Frontend / Customer Portal (both pnpm, Node ≥ 18)
@@ -137,11 +146,14 @@ Hooks: black (py3.11, **line-length 140** per `pyproject.toml`), isort (`force_s
 - **The case-template library and the suggestions are `copilot-case-templates`**: `GET /library`, `POST /library/refresh`, `GET /library/{key}` (and `GET /library/refresh`, which Starlette routes there), `POST /library/{key}/import` and `GET /suggest` under `/api/incidents/case_templates` (admin/analyst), merged into `copilot-incidents`' template router (axum prefers the static paths to `/{template_id}`). The library is `template_library.py`'s: the `socfortress/CoPilot-Case-Templates` tree and its `sysmon/*.yaml|yml` blobs fetched as httpx 0.28 fetches them (one `AsyncClient(timeout=30, Accept: application/vnd.github+json)` per refresh, the files concurrently, no `GITHUB_TOKEN`), PyYAML's `safe_load` (`copilot-yaml`), `_normalize_entry` (Python's `strip`, truthiness, `isinstance(x, int)` taking a `bool`, `str()` of the match value), duplicate keys and every per-file failure in `invalid_paths`, cached per process for 30 minutes (`COPILOT_GITHUB_{API,RAW}_URL` for the parity harness only); a failed tree request — or Python's `AttributeError`/`TypeError` on odd JSON — is the list's and refresh's `success: false` with `str(e)` and leaves the cache as it was, the detail route and the import let it out (a `ValueError` the handler's 400, the rest the bare 500). The response and import models are Pydantic's on the YAML values (`copilot_searches::pyd`, which gained `max_length`): a task's `ValidationError` before the entry's, the list's message, the detail's and the import's 400. An import is a global template through `copilot_incidents::case_templates::create_template` after the name check (409, MySQL's collation). `/suggest` is `template_suggestions.py` exactly: `_in_scope`, the stored context (first asset wins), the raw document through `copilot-wazuh`'s `AsyncElasticsearch` only when an in-scope conditional template's field is missing from it, tags, MITRE ids and names, rule groups and title keywords against each template's text (`text.rs`: Python's `\w`/`\d`/`\b`, `str.lower`), usage (`round` half-even of `4·log2(1+n)`), the condition partition and the stable sort. Pinned by `case_templates_vectors.json` (`scripts/gen-case-templates-vectors.py`: the text helpers, the normalisation and the models on 30 documents, the scorer on seven templates and six signal sets). §4: an alert the caller may not see is answered as a missing one, a `customer_code` that is not the caller's is a 403, and without a customer a scoped caller's usage history counts their customers' cases only (Python counted every tenant's). Parity: `rust_parity_core_leftovers_e2e.py` section 5 (the library stand-in with failing trees, imports and their rows, the raw document from the indexer stand-in, the three differences).
 - **The reports are `copilot-reports`**: `POST /api/incidents/report/generate-report-docx` and `-pdf`, `POST /api/incidents/customer_reports/generate/background`, `GET /api/soc_management/report` and `POST /api/reporting/generate-report`. The templates are compiled in from the backend's tree (`templates.rs`: `incidents/templates`, `soc_management/templates`, Grafana's `reporting/report-template.html`; `crates/copilot/Dockerfile` copies them, Rust CI runs on them) and rendered by `copilot-jinja` in Python's environments (the sandbox with `select_autoescape` for the case PDF and the customer and SOC reports, no autoescape for Grafana's). The PDFs are wkhtmltopdf as pdfkit 1.0 runs it (`pdfkit.rs`: `/usr/bin` then `/usr/local/bin`, pdfkit's argument list with `disable-local-file-access` first, its error texts; `COPILOT_WKHTMLTOPDF` — parity harness only) on `NamedTemporaryFile`-named files; the files are Starlette's `FileResponse` / `Response` through the GZip middleware (`starlette.rs`). The case reports: body, token, model (a truthy non-string `file_name` is the `AttributeError`'s bare 500), the case (404), then the case's customer (403, §4), the template (MinIO's 404); the DOCX is `copilot-docx`'s (below) — a rendered body only lxml's recovering parser can repair is handed to Python whole, its tenancy checked first —, the PDF template's loader holds the template only (§4). The customer report: the `processing` row, then on a task the aggregations (SQLAlchemy's statement shapes), the case cards, `verdict_stats`, the theme through `copilot_notifications::branding` (a logo without a colour falls back to orange, §4), the SLA section (`sla.rs`: `customer_sla_context` on `copilot-soc-management`'s `compute_snapshot`, forced off for `customer_user`), the charts, wkhtmltopdf, MinIO, then the row `completed` or `failed` with the exception's text. The charts are drawn by Rust (`charts.rs`: matplotlib's layout, DejaVu Sans from the system — `COPILOT_REPORT_FONT_DIR` overrides —, the same data, different pixels, §4), each PNG carrying its call (a `tEXt` chunk `copilot-chart`). The SOC report is the dashboard's snapshot for the caller: 422, then 400, then any failure the route's 500 `Failed to generate the SOC report`. Grafana's report: the body, the `REPORTING` licence (`copilot-license`), `int(timerange[:-1])` (its `ValueError` the 400), each panel's iframe URL (`copilot-grafana`'s models — the request and response join its model vectors — and `unix_timestamps`), then `chromium/`: a headless Chromium driven as Playwright 1.59 drives it — `COPILOT_CHROMIUM`, else the newest `chromium_headless_shell-*` of Playwright's registry (`PLAYWRIGHT_BROWSERS_PATH`; the image installs 1.59's), Playwright's switches and its profile and artifacts directories, the protocol on fds 3 and 4 through `/bin/sh` (the browser's argument list is Playwright's), the same setup commands per context and page, `goto` / `fill` / `click` / `wait_for_load_state("networkidle")` on Playwright's own idle rule (`frames.rs`), the viewport (an unchanged size not sent again), the screenshots, `emulate_media` and `Page.printToPDF` with Playwright's defaults. A login failure is the 500 `Failed to login to Grafana`, a panel's failure leaves it `None`, and the page is written into a fresh temporary directory (§4). Parity: `rust_parity_reports_e2e.py` (recording wkhtmltopdf and browser wrappers, the MinIO stand-in, a Grafana stand-in recording every request and header; the chart calls, the pages, the argument lists, the PDFs' text compared); e2e: `e2e_reports.rs`.
 - **The DOCX renderer is `copilot-docx`**: docxtpl 0.20.2 over python-docx 1.2 and lxml 6 / libxml2 2.14 — the OPC package read and written back part by part as python-docx does (relationships walked depth-first, `[Content_Types].xml` derived again, a core-properties part made when there is none), the body patched by docxtpl's regular expressions (`pyre.rs`: Python `re` on fancy-regex), rendered through `copilot-jinja` (`resolve_listing`'s `\t \a \n \f`), `fix_tables`, the `docPr` ids from 1001, headers, footers and footnotes, the core properties (the 255-character and XML-character `ValueError`s are the 400). The XML tree keeps what libxml2 keeps (`remove_blank_text`'s `areBlanks`, `tostring`'s serialisation and escapes); a recovering parse only drops the characters XML refuses, anything else is `DocxError::Recover`, which the route hands to Python. The archive is `zipfile`'s: the members, their order, contents and times (the deflate streams differ, §4). Pinned by `docx_vectors.json` (`scripts/gen-docx-vectors.py`: every member of the documents Python writes for a set of templates, the bundled one included; regenerate after a docxtpl, python-docx, lxml or Jinja2 upgrade).
+- **The deployment is the Rust backend** (phase 5): `docker-compose.yml`'s `copilot-backend` is the `copilot-rs` image (same name, port 5000 and network name, so both nginx configs and every caller are unchanged), with `COPILOT_SCHEDULER_OWNER=rust` fixed (with no Python running, the hand-over would schedule nothing), the migration and startup-task switches, and the Python backend's paths (`COPILOT_BACKEND_DATA_DIR`, `COPILOT_SCOUTSUITE_DIR`, `COPILOT_MIMECAST_DIR`) on the same mounts, so files and the connector rows' paths stay valid across a rollback. The image runs as uid 10001; the one-shot `copilot-backend-init` (the same image as root) hands `./data/data` — MinIO's `minio-data/` pruned, links not followed — and the reports volume to that user before every start, rather than running the backend as root (it drives wkhtmltopdf, Chromium and ScoutSuite on tenant data). The Python backend is `copilot-backend-legacy` in the `legacy` profile (`COPILOT_PY_SCHEDULER=false` there); `docker-compose.rust.yml` is the staged-rollout overlay (Python behind Rust, APScheduler back unless `.env` names the Rust owner) and `docker-compose.legacy.yml` the rollback (Python as `copilot-backend` on 5000, the Rust services disabled through an unused profile). `crates/copilot-core/src/env_vars.rs` lists every variable the binary knows (read, connector seed, test-only, the Python backend's, other services', obsolete, system); `copilot doctor` lists the others it finds, and `scripts/check-compose.py` (CI) pins the sources, `.env.example`, the five Compose layouts and the image's inputs to it — a new `env::var`/`EnvFile` read needs a row there and a line in `.env.example` (a `COPILOT_*_URL` stand-in: a `Test` row, kept out of `.env.example`). The image carries `COPILOT_API_KEY` as Python's does (a build argument), but not Python's placeholder connector seeds (`1.1.1.1`): an unset seed is the empty URL.
 - Conventions match Talon: edition 2024, MSRV 1.85 (no let-chains), `unsafe` forbidden, no `unwrap` outside tests, `#![warn(missing_docs)]`, rustfmt width 100, `routes / services / schema` per module.
 
-### `backend/copilot.py` startup
+### `backend/copilot.py` startup (the reference implementation)
 
-One FastAPI app mounts ~50 routers under `/api`. Its `lifespan` runs in order (the Rust binary runs the same steps itself, `copilot-startup` — see "Rust backend"; both take one MySQL named lock around steps 2–7, `app/db/startup_lock.py`):
+The Rust backend's `copilot serve` runs the same chain itself, in this order, each step idempotent (`COPILOT_RUN_MIGRATIONS` and `COPILOT_STARTUP_TASKS`, both on by default, gate the migrations and the startup tasks); `docs/architecture/DEPLOYMENT.md` lists it. What follows is Python's, which the legacy profile still runs:
+
+One FastAPI app mounts ~50 routers under `/api`. Its `lifespan` runs in order (both backends take one MySQL named lock around steps 2–7, `app/db/startup_lock.py`; the Rust half is `copilot-startup`, see "Rust backend"):
 
 1. (PRODUCTION env only) `create_database_if_not_exists` + `create_copilot_user_if_not_exists` — bootstraps MySQL via root creds
 2. `apply_migrations()` — Alembic `upgrade head`
@@ -664,7 +676,8 @@ Tests: `tests/test_soc_management_{domain,analytics,lifecycle,metrics,routes,inc
 
 ### CI (`.github/workflows/`)
 
-- `docker.yml` — multi-arch builds → `ghcr.io/socfortress/copilot-{backend,frontend,customer-portal,mcp,nuclei-module,minio}`
+- `docker.yml` — image builds → `ghcr.io/socfortress/copilot-{backend,frontend,customer-portal,inspector,inspector-runner}:latest`, and the Rust backend `copilot-rs:latest` (built natively on amd64 and arm64 runners, pushed by digest, checked against its 2560 MiB size budget, joined into one multi-arch tag; `COPILOT_API_KEY` passed as a build argument like the Python image's)
+- `rust.yml` — fmt, clippy, the MSRV check (1.85), the unit tests, every `crates/copilot/tests/e2e*.rs` suite against a MySQL service loaded from the fixture (wkhtmltopdf, DejaVu Sans and Playwright 1.59's Chromium headless shell installed, so the report suites run their success paths), and `deployment` (`scripts/check-compose.py`, hadolint on `crates/copilot/Dockerfile`)
 - `pre-commit.yml` — runs the hooks above on PRs
 - `docs-pages.yml` — mkdocs → GitHub Pages from `docs/` (`mkdocs.yml`)
 

@@ -59,13 +59,16 @@ file.
   both implementations on one database and compares the answers
   (481 checks, all equal; see §5).
 
-Enable it:
+Since phase 5 the Rust service *is* the deployment: `docker-compose.yml`'s
+`copilot-backend` runs the `copilot-rs` image and no Python process starts.
+The seam stays available, opt-in (`docs/architecture/DEPLOYMENT.md`):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d
+docker compose up -d                                                      # Rust alone
+docker compose --profile legacy up -d                                     # + Python as a standby (APScheduler off)
+docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d     # staged rollout: Rust in front of Python
+docker compose -f docker-compose.yml -f docker-compose.legacy.yml up -d   # rollback: Python in Rust's place
 ```
-
-Roll back: run compose without the second file.
 
 ---
 
@@ -2191,6 +2194,7 @@ not provoked.
 | the schema | Alembic's 116 tables | the same 116 (`SHOW CREATE TABLE` equal), plus `copilot_rs_schema_history`, the Rust migrations' history | schema ownership |
 | the integrations' and network connectors' deployment instructions | read from `app/integrations/markdown/` relative to the working directory: a backend started elsewhere stores the placeholder | compiled in (copies pinned to the backend's files) | Python fails, Rust works |
 | the start's log | the new MySQL user's password, the scheduler user's password and the admin's password model (hash included) | the admin's password only (an operator's one way to it), every other secret redacted | secrets in logs |
+| the image's connector seeds (a fresh install whose `.env` lacks a connector's `<NAME>_URL`, …) | the Python image's `ENV` placeholders: `https://1.1.1.1:9200`, `admin`/`admin`, … (a public address) | none: an unset seed is the empty URL Python's `load_connector_data` writes without one, fixed on the Connectors page | nothing is sent to an address nobody configured (not provoked: `.env.example` sets every seed) |
 
 ---
 
@@ -2216,14 +2220,18 @@ MYSQL_PASSWORD=copilot scripts/rust-parity.sh     # Python venv in backend/.venv
 `crates/copilot/tests/fixtures/schema.sql` is the schema at this build's
 last migration (`scripts/dump-schema.sh`) — today the baseline, the Alembic
 head. CI (`.github/workflows/rust.yml`) runs fmt, clippy, tests, an MSRV check
-on 1.85, and the end-to-end suite on a MySQL service loaded from the fixture;
-`scripts/check-alembic-head.py` fails the build on a new Alembic migration
-(Alembic is frozen: schema changes are Rust migrations) or a fixture,
-baseline or `TESTED_ALEMBIC_HEAD` at another revision. `e2e_startup.rs` runs
-the runner on an empty database and compares the result with the fixture; it
-needs a user that can create databases (`COPILOT_TEST_ADMIN_DATABASE_URL`,
-else the test user) and, for the PRODUCTION bootstrap, root's password
-(`COPILOT_TEST_MYSQL_ROOT_PASSWORD`); CI runs it next to `e2e` with root for both.
+on 1.85, every end-to-end suite (`crates/copilot/tests/e2e*.rs`, one after
+another) on a MySQL service loaded from the fixture, with wkhtmltopdf and
+Playwright 1.59's Chromium headless shell installed so the report suites take
+their success paths, and the deployment checks (`scripts/check-compose.py`,
+hadolint); `scripts/check-alembic-head.py` fails the build on a new Alembic
+migration (Alembic is frozen: schema changes are Rust migrations) or a
+fixture, baseline or `TESTED_ALEMBIC_HEAD` at another revision.
+`e2e_startup.rs` runs the runner on an empty database and compares the result
+with the fixture; it needs a user that can create databases
+(`COPILOT_TEST_ADMIN_DATABASE_URL`, else the test user) and, for the
+PRODUCTION bootstrap, root's password (`COPILOT_TEST_MYSQL_ROOT_PASSWORD`); CI
+runs it with root for both. `docker.yml` builds and pushes the Rust image.
 
 ---
 
@@ -2238,10 +2246,61 @@ Python backend today: ~200 k lines in 930 files.
 | **2 — done** | `auth` (5 k), every `/api/auth` route (`copilot-identity`, `copilot-webauthn`): login, refresh and all of `/2fa/*` — the Rust service issues tokens; user management (register, list, detail, password resets, delete, role change, customer assignment, `/me/customers`, the deprecated JSON login); SSO (settings, allowlist, Azure, Google, Cloudflare Access); passkeys; the Security tab, the temporary-password email included (templates rendered by `copilot-jinja`, SMTP) | the login slice moved as one so the 2FA counter lives in one process. `copilot-jinja` is the renderer phase 3's notification templates will use |
 | **3 — done** (what needs the indexer, Graylog, MinIO or a PDF renderer moves with phase 4) | `notifications` (7.2 k) — **done**: `copilot-notifications`, `copilot-markdown`, the bridge retired (in-process `DispatchingSink`); `schedulers` (2.6 k) — APScheduler → tokio, job by job via the `enabled` hand-over; `incidents` (21 k) incl. ingest | ingest then triggers Talon from Rust. Schedulers: the runner, `/api/scheduler` (reads; run/start/pause, forwarding what acts on APScheduler) and the DB-only jobs (`prune_audit_log`, the palace jobs) are ported; the jobs that call connectors (`agent_sync`, `resize_wazuh_index_fields`, `invoke_snapshot_schedules`, the `invoke_*` integrations) and the in-process cache refreshers stay in APScheduler until phase 4; `invoke_alert_creation_collect` moves with incidents, `notify_sla_transitions` with `soc_management`. Incidents so far: `/db_operations` but for its Wazuh-indexer and Shuffle routes, `/case_templates` but the library and `/suggest`, `/tag_access`, the exclusion rules of `/alerts`, the CSV exports of `/report`, the list and visibility switch of `/customer_reports` (`copilot-incidents`, SLA recorder `copilot-sla`, `rust_parity_incidents_e2e.py`); alert creation and the Sigma ingest (with the exclusion draft and dry-run) moved in phase 4, the DOCX/PDF reports and customer report generation for a PDF renderer (the MinIO routes moved in phase 4) |
 | 4 | the phase-3 remainder: alert creation and the Sigma ingest (with the exclusion draft and dry-run) and the three indexer reads of `/db_operations` — **done** (`copilot-ingest`, `rust_parity_ingest_e2e.py`) —, the incidents' MinIO routes — **done** (`copilot-objectstore`: case files, report templates, `DELETE /case/{id}`, the customer reports' download and delete, `/api/agent_data_store`; `rust_parity_objectstore_e2e.py`; the default-template upload and the Sysmon config upload in wave 6; `file_analysis`'s state store in wave 7, with its module; Velociraptor's collection upload and the agents' report files moved with their modules) — and DOCX/PDF reports — **done** in wave 7 (`copilot-reports` on `copilot-docx`: the case DOCX and PDF, the customer reports with their charts and SLA section, the SOC operations report and Grafana's panel report on headless Chromium; `rust_parity_reports_e2e.py`) —, the connector-bound scheduler jobs (`invoke_snapshot_schedules`, `resize_wazuh_index_fields`, `invoke_alert_creation_collect` and `agent_sync` **done**); `agents` (9.8 k) — **done** (`/api/agents`: `copilot-agents` on `copilot-velociraptor`, the `agent_sync` job, `rust_parity_agents_e2e.py`; `/api/vulnerabilities`, `/api/sca` and `/api/syscollector`: `copilot-agent-reports`, `rust_parity_agent_reports_e2e.py`) —, `soc_management` (4.4 k) — **done**, its PDF report with the reports (`copilot-soc-management`: dashboard, policies, calendars, the portal's SLA page, `notify_sla_transitions`; `rust_parity_soc_e2e.py`), the rest of `customer_portal` (2.1 k) — **done** (`copilot-customer-portal`: the global settings and branding with their logos and a branding cache each process checks against the tables, the Overview, the dashboard counters, the agents page and CSV, `/me`; `rust_parity_customer_portal_e2e.py`), `customer_waf` — **done** (`copilot-waf`; `rust_parity_provisioning_e2e.py`), the monitoring-alert catalog — **done** (`copilot-monitoring-alerts`: every alert, custom alerts, the Event Shipper test, on both Graylogs; `rust_parity_monitoring_alert_e2e.py`), the response routes — `/api/active_response`, the Graylog webhook, `/api/sysmon_config` (its upload in wave 6) and `/api/copilot_action` **done** (`copilot-response`, `rust_parity_response_e2e.py`) —, the Shuffle connector with the case notification **done** (`copilot-shuffle`, the same suite) —, `siem` (1.7 k) — **done** (`copilot-siem`: dashboards, custom templates, panel data, event sources, the event search; `rust_parity_siem_e2e.py`), `threat_intel` (2.1 k) — **done** (`copilot-threat-intel`: EPSS, SOCFortress intel and AI, the process-name analysis, VirusTotal lookups and file analysis, the licence check; `rust_parity_siem_e2e.py`), `file_analysis` — **done** in wave 7 (`copilot-file-analysis`: the 12 routes, the orchestrator, the MinIO state store both backends read, the CAPE sandbox, the PDF report; `rust_parity_file_analysis_e2e.py`) —, `customer_provisioning` — **done** (the provisioning itself in waves 5 and 6: `/provision/dashboards` `copilot-grafana-dashboards`, `POST /provision` and `/provision/wazuh_worker` `copilot-integration-provisioning`, `rust_parity_remaining_provisioning_e2e.py`), `stack_provisioning` — **done** (`copilot-provisioning`; the Fortinet / SonicWall / SentinelOne provisioning in wave 5: `copilot-integration-provisioning`, `rust_parity_grafana_provisioning_e2e.py`), then `connectors` (29.6 k: Wazuh — the connector reads, the cross-process cache check, the indexer, the manager routes the UI uses and the two indexer jobs **done** (`copilot-connectors`, `copilot-wazuh`) —, Graylog, Velociraptor — `/api/artifacts` with its two MinIO collections and `/api/flows` **done** (`copilot-velociraptor`) —, …) and `integrations` (37.5 k), one vendor at a time — **Graylog, InfluxDB, Grafana and Portainer done** (`copilot-graylog`, `copilot-influxdb`, `copilot-grafana`, `copilot-portainer` on `copilot-upstream`, `rust_parity_graylog_e2e.py`; Grafana's PDF report **done** with the reports, Portainer's stack creation **done** in wave 6 with the customer provisioning; the dashboard provisioning — `POST /api/grafana/dashboards`, `POST /api/customer_provisioning/provision/dashboards` — **done** in wave 5: `copilot-grafana-dashboards`, the templates compiled in from `backend/`, `rust_parity_grafana_provisioning_e2e.py`); the integrations core — `/api/integrations` but `/modules/*`, the alert creation settings and `/api/network_connectors` — **done** (`copilot-integrations`, `rust_parity_integrations_e2e.py`; the delete of a deployed AWS instance moved with AWS provisioning in wave 6), the integrations' provisioning — **done** in wave 5 but CrowdStrike, Defender for Endpoint, Bitdefender, Office365 and AWS (`copilot-integration-provisioning`, the scheduler jobs handed to Python; `rust_parity_grafana_provisioning_e2e.py`); Office365's and AWS's, with the delete of a deployed AWS instance — **done** in wave 6 (`copilot-cloud-provisioning`, `rust_parity_remaining_provisioning_e2e.py`); CrowdStrike's, Defender for Endpoint's and Bitdefender's, their collectors' files included — **done** in wave 6 (`copilot-integration-provisioning`'s `collectors.rs`, the same suite); OpenCTI and Cortex — **done** (`copilot-intel-connectors`, `rust_parity_intel_connectors_e2e.py`); the integration modules — `/api/integrations/modules/*` (Huntress, Mimecast, Duo, Cato, SAP SIEM and its analyses), Mimecast's `/invoke` and `/ttp/urls` and the collection jobs but Cato's — **done** (`copilot-integration-modules`, `rust_parity_integration_modules_e2e.py`; Mimecast and SAP SIEM provisioning still Python); Sublime — **done** in wave 6 (its tables created by migration `d6c01a2b3c4d`; `copilot-sublime`, `rust_parity_ext_tools_e2e.py`); ScoutSuite — **done** in wave 6 but the static `/scoutsuite-report` mount (`copilot-scoutsuite`, the CLI in the Rust image, the reports a shared volume; `rust_parity_ext_tools_e2e.py`); the SOCFortress UBA connector — `/api/uba`, setup, mode and rollback included — **done** (`copilot-uba`, `rust_parity_uba_e2e.py`); `integrations/copilot_searches` (the Detections Catalog, 7.7 k) — **done** (`copilot-searches` on `copilot-yaml`, `rust_parity_catalog_e2e.py`; its caches refreshed by each process for itself); the GitHub organization audit and the Nuclei scans — `/api/github-audit`, `/api/nuclei` — **done** (`copilot-assessments`, `rust_parity_github_audit_e2e.py`; no scheduled audits exist to port: `auto_audit_enabled` and `audit_schedule_cron` are stored only); the platform's own surfaces — `/api/logs`, `/api/license` (the licence check shared with `threat_intel`), `status/sidebar` and `/api/performance` (reporting the Rust process) — **done** (`copilot-status`, `copilot-license`, `rust_parity_platform_e2e.py`); Microsoft Patch Tuesday — **done** in wave 6 (`copilot-patch-tuesday`, `rust_parity_ext_tools_e2e.py`); CoPilot MCP — **done** in wave 6 (`copilot-mcp` on `copilot-threat-intel`'s query, the same suite); `POST /healthcheck/logs` once the connectors it reads are ported (**done** in wave 6, below); the core leftovers (wave 6) — the customer writes (`copilot-customers`) **done**, the Wazuh rule switches, the exclusion and the Atomic Red Team listings (`copilot-wazuh-rules`) **done**, `POST /api/healthcheck/logs` and `GET /api/carbonblack/test` **done** (`GET /api/graylog/pipelines` was already `copilot-graylog`'s) (`rust_parity_core_leftovers_e2e.py`), the uploads — the connector YAML file (`copilot-connectors`; Python's when the data directory is not writable here), the default case report templates (`copilot-incidents`) and the Sysmon config (`copilot-response`, on an expat-exact parser) — **done** (`rust_parity_core_leftovers_e2e.py` section 4, `rust_parity_objectstore_e2e.py`), the case-template library and `/suggest` (`copilot-case-templates`) **done** (`rust_parity_core_leftovers_e2e.py` section 5); the Scheduler's remainder (wave 7) — every `/api/scheduler` route (the writes and `/provisioning_jobs`, APScheduler's own calls handed to Python while it owns the schedule), Mimecast's `/invoke/scheduler/{siem,ttp}`, the last six jobs (Cato's, the four cache refreshers, `wazuh_index_fields_resize` as `resize_wazuh_index_fields`' old id) and the ownership switch (`COPILOT_SCHEDULER_OWNER=rust`, APScheduler off with `COPILOT_PY_SCHEDULER=false`) — **done** (`copilot-scheduler`, `rust_parity_schedulers_e2e.py`); the fix sweep — **done**: what Python never ran made to work (Mimecast's SIEM and TTP collections, SAP SIEM with one key, the portal's `/me` without a role and `/agents` past the end, the rollback of a failed provisioning run, the datasource on the `Wazuh-Indexer` row by name, the AWS metadata row deleted), the tenant leaks the earlier waves kept and flagged closed (Grafana dashboard organizations, the vulnerability syncs and background reports, the catalog's custom rules, the data store upload; the GitHub audit token no longer echoed), the last twelve connector verifiers (`copilot-verifiers`: no connector update or verification reaches Python), the two MITRE alert searches (`copilot-wazuh-rules`, narrowed to a scoped caller's indices), and the e2e stand-ins' port races (`rust_parity_connectors_e2e.py` sections D2b and E5, the suites of each module) | largest surface; each is independent |
-| 5 | schema ownership → Rust migrations (baseline = Alembic head) — **done** (`copilot-migrate`: the baseline, forward-only checksummed migrations, adoption of a database at the head, the refusals, `copilot migrate`, doctor's lines) — and the startup tasks — **done** (`copilot-startup`: `lifespan`'s steps in its order under the startup lock both backends take, `COPILOT_STARTUP_TASKS` / `COPILOT_RUN_MIGRATIONS`; `rust_parity_startup_e2e.py`, `e2e_startup.rs`) —, Python retired | `copilot-gateway` stays, opt-in, for a staged rollout or a rollback |
+| 5 | schema ownership → Rust migrations (baseline = Alembic head) — **done** (`copilot-migrate`: the baseline, forward-only checksummed migrations, adoption of a database at the head, the refusals, `copilot migrate`, doctor's lines) —, the startup tasks — **done** (`copilot-startup`: `lifespan`'s steps in its order under the startup lock both backends take, `COPILOT_STARTUP_TASKS` / `COPILOT_RUN_MIGRATIONS`; `rust_parity_startup_e2e.py`, `e2e_startup.rs`) —, the deployment — **done**: `copilot-backend` is the Rust image in `docker-compose.yml` (scheduler owner `rust`, the data directory handed to uid 10001 by `copilot-backend-init`), the Python backend the opt-in `legacy` profile, `docker-compose.rust.yml` the staged rollout and `docker-compose.legacy.yml` the rollback; `.env.example` documents every variable the binary reads (`copilot_core::env_vars`, which `copilot doctor` checks the environment against); `docker.yml` pushes `copilot-rs` (amd64 + arm64, size budget), `rust.yml` runs every e2e suite and `scripts/check-compose.py`; the operator docs (`docs/getting-started/rust-backend.md`) —, Python retired | `copilot-gateway` stays, opt-in, for a staged rollout, the parity harness or a rollback |
 
 The Vue frontends (`frontend/`, `customer-portal/`) are not part of the
 rewrite: they talk to the same API.
+
+### Phase 5 — the deployment: decisions
+
+- **The data directory changes owner, the backend does not run as root.** The
+  Rust image runs as uid 10001; the Python backend ran as root, so an existing
+  `./data/data` and ScoutSuite's reports volume are root's. Of the three ways
+  to reconcile them — run the service as root (`user: "0"`), let the image
+  create the directory (useless on a bind mount), or hand the files over —
+  Compose takes the last: `copilot-backend-init`, the same image as root, runs
+  `find … ! -user 10001 -exec chown -h 10001:10001 {} +` on the two mounts before
+  every start of `copilot-backend` (`service_completed_successfully`). It is
+  idempotent, follows no link, prunes MinIO's `minio-data/` (another service's
+  files inside the same host directory) and fails closed (a mount it cannot
+  change stops the backend, which could not write there either). Running the
+  backend as root was refused because it drives wkhtmltopdf, Chromium and
+  ScoutSuite over tenant data. A rollback to the Python backend (root) reads
+  and writes the handed-over files as before.
+- **The schedule is Rust's, fixed.** `COPILOT_SCHEDULER_OWNER=rust` is set in
+  `docker-compose.yml`'s `environment:` (which `.env` cannot override): with
+  no Python backend running, the hand-over mode would leave every job
+  unscheduled. Only `docker-compose.rust.yml` reads the owner from `.env`, and
+  sets `COPILOT_PY_SCHEDULER` from the same variable (`${…:+false}`), so the two
+  can never both own it; `scripts/check-compose.py` counts exactly one owner in
+  each of the five layouts.
+- **The migrations and the startup tasks are the Rust backend's in every
+  layout** (`COPILOT_RUN_MIGRATIONS` / `COPILOT_STARTUP_TASKS` default on, and
+  `docker-compose.yml` passes them through from `.env`). The Rust backend owns
+  the schema, so turning them off where Python runs too would leave a
+  post-baseline migration unapplied; the Python backend's lifespan, which has
+  no switch, runs its own idempotent startup under the same named lock, one
+  after the other. With `ENVIRONMENT=PRODUCTION` that makes
+  `MYSQL_ROOT_PASSWORD` required by the Rust service (checked).
+- **The rollback is an overlay, not a second service name.** The frontends'
+  nginx configs proxy to `copilot-backend:5000`; a Python service that also
+  answered to that name while Rust runs would split requests between them.
+  `docker-compose.legacy.yml` therefore disables the two Rust services (an
+  unused profile) and gives `copilot-backend-legacy` the name and the port;
+  the `legacy` profile alone starts Python unpublished, as a standby.
+- **The image carries `COPILOT_API_KEY` like the Python image** (a build
+  argument `docker.yml` fills from the same secret): without it every licence
+  check is sent `x-api-key: None` and the licensed features stay off. It does
+  **not** carry the Python image's placeholder connector seeds (`1.1.1.1`, a
+  public address): §4.
+- **Per-process state with both backends running** is listed in
+  `DEPLOYMENT.md` ("What each backend keeps in memory"), each with the rule
+  that keeps it safe.
+- **Not verified here** (no Docker daemon on the build host): the image build
+  itself on either architecture, Playwright's `--with-deps` on
+  `bookworm-slim` for arm64, the size budget's margin (2560 MiB, from the
+  measured 980 MiB ScoutSuite venv plus estimates), and `docker compose up` of
+  each layout; `docker compose config` resolves all five and hadolint passes.
 
 ### Porting a module — checklist
 
