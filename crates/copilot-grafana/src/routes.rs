@@ -1,6 +1,7 @@
 //! The Grafana routes CoPilot mounts from `app/connectors/grafana/routes/`:
 //! `reporting.py` under `/api/reporting` (but `POST /generate-report`: a
-//! Playwright browser and the licence check, still Python) and `user.py`
+//! headless browser and the licence check, `copilot-reports::grafana`) and
+//! `user.py`
 //! under `/api/user` (`/user/organization/add`), all
 //! `require_any_scope("admin", "analyst")`. `POST /api/grafana/dashboards`
 //! (`dashboards.py`) is `copilot-grafana-dashboards`' (the templates compiled

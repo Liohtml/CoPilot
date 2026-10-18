@@ -324,6 +324,16 @@ def influxdb_cases():
     return cases
 
 
+REPORT_PANEL = {
+    "panel_id": 5,
+    "org_id": 1,
+    "dashboard_title": "HUNTRESS - _SUMMARY",
+    "dashboard_uid": "ab9bab2c-5d86-43e7-bac2-c1d68fc91342",
+    "panel_width": 500,
+    "panel_height": 300,
+}
+
+
 def grafana_cases():
     from app.connectors.grafana.schema import reporting
     from app.connectors.grafana.schema import user
@@ -367,6 +377,29 @@ def grafana_cases():
             "GrafanaGenerateIframeLinksResponse",
             reporting.GrafanaGenerateIframeLinksResponse,
             {"message": "m", "links": [{"panel_id": 5, "panel_url": "http://g/d-solo/x"}], "success": True},
+        ),
+        ("RequestPanel", reporting.RequestPanel, REPORT_PANEL),
+        (
+            "RequestPanel",
+            reporting.RequestPanel,
+            {**REPORT_PANEL, "panel_url": "http://g/d-solo/x", "panel_base64": None, "row_id": 3, "theme": "light"},
+        ),
+        ("RequestRow", reporting.RequestRow, {"id": 1710437961108, "panels": [REPORT_PANEL]}),
+        (
+            "GenerateReportRequest",
+            reporting.GenerateReportRequest,
+            {
+                "company_name": "SOC Fortress",
+                "timerange_text": "Last 7 days",
+                "logo_base64": "data:image/png;base64,iVBORw0KGgo=",
+                "timerange": "7d",
+                "rows": [{"id": 1710437961108, "panels": [REPORT_PANEL]}],
+            },
+        ),
+        (
+            "GenerateReportResponse",
+            reporting.GenerateReportResponse,
+            {"base64_result": "JVBERi0xLjQK", "message": "Report generated successfully", "success": True},
         ),
         (
             "UserOrganizationAddRequest",

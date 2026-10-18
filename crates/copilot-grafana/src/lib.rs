@@ -1,7 +1,8 @@
 //! # copilot-grafana — the Grafana connector
 //!
 //! Port of `app/connectors/grafana/` as CoPilot serves it over HTTP:
-//! `/api/reporting/*` (but the Playwright PDF report) and
+//! `/api/reporting/*` (but the Playwright PDF report, which is
+//! `copilot-reports`' — its models are here) and
 //! `/api/user/user/organization/add`.
 //!
 //! - [`client`]   — [`GrafanaClient`]: `create_grafana_client` and the

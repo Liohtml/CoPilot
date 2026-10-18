@@ -20,8 +20,8 @@
 //!                      │ (every module emits in-process: DispatchingSink)     │   Resend, Shuffle
 //!                      │ /api/soc_management/*, /api/customer_portal/sla/*    │
 //!                      │                    → copilot-soc-management          │
-//!                      │ the case, customer and SOC reports (PDF, DOCX)       │
-//!                      │                    → copilot-reports ────────────────► wkhtmltopdf, MinIO
+//!                      │ the case, customer, SOC, Grafana reports (PDF, DOCX) │
+//!                      │                    → copilot-reports ────────────────► wkhtmltopdf, Chromium, MinIO
 //!                      │ /api/agent_data_store/*, the incidents' MinIO routes │
 //!                      │                    → copilot-objectstore ────────────────► MinIO :9000
 //!                      │ /api/siem/dashboards, /event_sources, /events        │
@@ -191,10 +191,12 @@ pub const PORTED_PREFIXES: &[&str] = &[
     // The InfluxDB connector (copilot-influxdb): alerts and metrics.
     "GET /api/influxdb",
     // The Grafana connector (copilot-grafana): the reporting reads and iframe
-    // links, adding a user to an org. `POST /api/reporting/generate-report`
-    // (Playwright) stays in Python.
+    // links, adding a user to an org; the panel report
+    // `POST /api/reporting/generate-report` (copilot-reports, headless
+    // Chromium as Playwright drives it).
     "GET /api/reporting",
     "POST /api/reporting/generate_iframe_links",
+    "POST /api/reporting/generate-report",
     "POST /api/user/user/organization/add",
     // Dashboard provisioning (copilot-grafana-dashboards, the templates
     // compiled in from backend/); its customer-provisioning twin
@@ -976,6 +978,14 @@ impl App {
                 ctx: self.ctx.clone(),
                 client: self.grafana.clone(),
             }))
+            // `POST /api/reporting/generate-report` (the licence, Grafana in a
+            // headless Chromium), at its full path.
+            .merge(copilot_reports::grafana::router(
+                copilot_reports::grafana::GrafanaReportState {
+                    ctx: self.ctx.clone(),
+                    license: self.license.clone(),
+                },
+            ))
             // All but `POST /create-wazuh-customer-stack`, which is
             // copilot-integration-provisioning's (merged below).
             .nest(

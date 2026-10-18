@@ -6,7 +6,8 @@ The real FastAPI routers (in-process) and a Rust instance this suite starts answ
 on one database: the case DOCX and PDF reports (`/api/incidents/report/generate-report-{docx,pdf}`),
 the customer reports' generation (`/api/incidents/customer_reports/generate/background`, every
 layout and theme, the SLA section, a customer user, a failing wkhtmltopdf) and the SOC operations
-report (`GET /api/soc_management/report`).
+report (`GET /api/soc_management/report`) and the Grafana panel report
+(`POST /api/reporting/generate-report`).
 
 wkhtmltopdf is a recording wrapper on both sides (Python's `pdfkit.configuration` is pointed at it,
 the Rust instance through `COPILOT_WKHTMLTOPDF`): it keeps every invocation's arguments and the HTML
@@ -18,8 +19,17 @@ are drawn by Rust (§4): each chart's PNG carries the call that drew it, and Pyt
 are replaced by recorders writing the same call into a PNG, so the pages are compared with each
 chart reduced to its call. MinIO is the objectstore suite's stand-in.
 
+The Grafana report runs a headless Chromium on both sides: Python's Playwright is pointed at a
+recording wrapper of the browser (`executable_path`), the Rust instance through `COPILOT_CHROMIUM`.
+The wrapper keeps each launch's arguments (the profile directory masked) and the report page the
+second launch is given (Python's `report.html` in its working directory, Rust's in its temporary
+directory); a Grafana stand-in serves a login page, `/`, and the `d-solo` pages, and records every
+request the browser sends it, headers included (the time window masked). The PDFs are compared by
+their page count and text (`pdfinfo`, `pdftotext`), the screenshots by their size.
+
 Deliberate differences (RUST_MIGRATION.md §4): the case reports check the case's customer (403 for
-a scoped analyst on another tenant's case; Python rendered it).
+a scoped analyst on another tenant's case; Python rendered it); the Grafana report's page is written
+into a fresh temporary directory, not the working directory.
 
     PARITY_SUITES=tests/e2e/rust_parity_reports_e2e.py scripts/rust-parity.sh
 """
@@ -27,6 +37,7 @@ a scoped analyst on another tenant's case; Python rendered it).
 import asyncio
 import base64
 import datetime
+import http.server
 import io
 import json
 import os
@@ -36,6 +47,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 import zipfile
@@ -100,11 +112,19 @@ def rows(statement, **params):
 
 # --- wkhtmltopdf, recorded ----------------------------------------------------------------------------
 
+GRAFANA_PORT = int(os.environ.get("REPORTS_GRAFANA_STUB_PORT", "6302"))
+CLOSED_PORT = int(os.environ.get("REPORTS_CLOSED_PORT", "6307"))
+CHROME = os.environ.get("REPORTS_CHROMIUM", "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell")
 WORK = tempfile.mkdtemp(prefix="reports-parity-")
 RECORDS = os.path.join(WORK, "records")
 CONTROL = os.path.join(WORK, "mode")
 WRAPPER = os.path.join(WORK, "wkhtmltopdf")
+BROWSER_RECORDS = os.path.join(WORK, "browser")
+BROWSER = os.path.join(WORK, "chromium")
+RUST_TMP = os.path.join(WORK, "rust-tmp")
 os.makedirs(RECORDS)
+os.makedirs(BROWSER_RECORDS)
+os.makedirs(RUST_TMP)
 
 WRAPPER_SOURCE = f"""#!{sys.executable} -I
 import json, os, sys, time
@@ -124,6 +144,39 @@ os.execv("/usr/bin/wkhtmltopdf", ["/usr/bin/wkhtmltopdf"] + argv[1:])
 with open(WRAPPER, "w") as fh:
     fh.write(WRAPPER_SOURCE)
 os.chmod(WRAPPER, 0o755)
+
+
+BROWSER_SOURCE = f"""#!{sys.executable} -I
+import glob, json, os, sys, time
+def read(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return None
+tmp = os.environ.get("TMPDIR") or "/tmp"
+record = {{
+    "argv": sys.argv[1:],
+    "cwd_html": read(os.path.join(os.getcwd(), "report.html")),
+    "tmp_html": [read(p) for p in sorted(glob.glob(os.path.join(tmp, "copilot-grafana-report-*", "report.html")))],
+}}
+with open(os.path.join({BROWSER_RECORDS!r}, "%020d.json" % time.time_ns()), "w") as fh:
+    json.dump(record, fh)
+os.execv({CHROME!r}, [{CHROME!r}] + sys.argv[1:])
+"""
+with open(BROWSER, "w") as fh:
+    fh.write(BROWSER_SOURCE)
+os.chmod(BROWSER, 0o755)
+
+
+def take_browser_records():
+    out = []
+    for name in sorted(os.listdir(BROWSER_RECORDS)):
+        path = os.path.join(BROWSER_RECORDS, name)
+        with open(path) as fh:
+            out.append(json.load(fh))
+        os.remove(path)
+    return out
 
 
 def set_mode(mode):
@@ -172,6 +225,17 @@ def patch_python():
         for name in ("donut_png", "hbar_png", "evolution_png", "line_png"):
             if hasattr(module, name):
                 setattr(module, name, recorder(name))
+
+    # Playwright's own Chromium revision is not installed here: the same headless shell the Rust
+    # instance runs, through the recording wrapper.
+    from playwright.async_api._generated import BrowserType
+
+    launch = BrowserType.launch
+
+    async def launch_wrapped(self, **kwargs):
+        return await launch(self, **{**kwargs, "executable_path": BROWSER})
+
+    BrowserType.launch = launch_wrapped
 
 
 def fake_png(call):
@@ -239,12 +303,14 @@ def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
     from app.middleware.exception_handlers import value_error_handler
+    from app.routers import grafana
     from app.routers import incidents
     from app.routers import soc_management
 
     api = APIRouter(prefix="/api")
     api.include_router(incidents.router)
     api.include_router(soc_management.router)
+    api.include_router(grafana.router)
     app = FastAPI(redirect_slashes=False)
     app.include_router(api)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -269,6 +335,8 @@ def start_rust(port):
         "MINIO_ROOT_PASSWORD": S3_SECRET,
         "COPILOT_MINIO_ENDPOINT": f"127.0.0.1:{S3_PORT}",
         "COPILOT_WKHTMLTOPDF": WRAPPER,
+        "COPILOT_CHROMIUM": BROWSER,
+        "TMPDIR": RUST_TMP,
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
     }
     proc = subprocess.Popen([binary, "--root", "/nonexistent", "serve"], env=env)
@@ -758,11 +826,373 @@ async def soc_report_checks(p, t):
     set_mode("")
 
 
+# --- The Grafana report -------------------------------------------------------------------------------
+
+GR = "/api/reporting/generate-report"
+LICENSE_ID, GRAFANA_ID, CACHE_ID = BASE + 901, BASE + 902, BASE + 903
+LICENSE_KEY = f"rpt-license-{SFX}"
+GRAFANA_SAVED = {}
+
+LOGIN_PAGE = b"""<!doctype html><html><head><meta charset="utf-8"><title>Grafana</title></head>
+<body class="login-page">
+<form onsubmit="return false">
+<input name="user" value="prefilled"><input name="password" type="password">
+<button data-testid="data-testid Login button" type="submit" id="login">Log in</button>
+</form>
+<script>
+fetch('/api/live/hold').catch(() => {});
+document.getElementById('login').addEventListener('click', async () => {
+  const body = JSON.stringify({
+    user: document.querySelector('input[name="user"]').value,
+    password: document.querySelector('input[name="password"]').value,
+  });
+  const r = await fetch('/login', {method: 'POST', headers: {'content-type': 'application/json'}, body});
+  if (r.ok) { window.location.href = '/'; }
+});
+</script></body></html>"""
+HOME_PAGE = b"""<!doctype html><html><head><meta charset="utf-8"><title>Home</title></head>
+<body class="app-grafana no-overlay-scrollbar"><p>home</p></body></html>"""
+SOLO_PAGE = b"""<!doctype html><html><head><meta charset="utf-8"><title>Panel</title>
+<style>body{margin:0;background:#123}div{width:100%;height:100vh;background:linear-gradient(90deg,#f00,#00f)}</style>
+</head><body class="app-grafana"><div></div>
+<script>fetch('/api/ds/query', {method: 'POST', body: '{"queries":[]}'});</script></body></html>"""
+
+
+class GrafanaStandIn:
+    """Grafana as the browser sees it: the login page (a request held 2.5 s, so that the page
+    is not idle before the click), the login, `/`, the `d-solo` pages; every request recorded."""
+
+    def __init__(self):
+        self.mode = "ok"
+        self.requests = []
+        self.lock = threading.Lock()
+        self.server = None
+
+    def start(self):
+        stand_in = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *args):
+                pass
+
+            def record(self, body):
+                with stand_in.lock:
+                    stand_in.requests.append(
+                        {
+                            "method": self.command,
+                            "path": self.path,
+                            "headers": [[k, v] for k, v in self.headers.items()],
+                            "body": body.decode("latin-1"),
+                        },
+                    )
+
+            def reply(self, code, body, ctype="text/html; charset=UTF-8", extra=()):
+                try:
+                    self.send_response(code)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(len(body)))
+                    for k, v in extra:
+                        self.send_header(k, v)
+                    self.end_headers()
+                    self.wfile.write(body)
+                except OSError:
+                    pass
+
+            def do_GET(self):
+                self.record(b"")
+                path = self.path.split("?")[0]
+                if path == "/login":
+                    self.reply(200, LOGIN_PAGE)
+                elif path == "/api/live/hold":
+                    time.sleep(2.5)
+                    self.reply(200, b"{}", "application/json")
+                elif path == "/":
+                    self.reply(200, HOME_PAGE)
+                elif path.startswith("/d-solo/"):
+                    self.reply(200, SOLO_PAGE)
+                else:
+                    self.reply(404, b"not found", "text/plain")
+
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers.get("content-length") or 0))
+                self.record(body)
+                if self.path == "/login" and stand_in.mode == "deny":
+                    self.reply(401, b'{"message":"Invalid username or password"}', "application/json")
+                elif self.path == "/login":
+                    self.reply(
+                        200,
+                        b'{"message":"Logged in","redirectUrl":"/"}',
+                        "application/json",
+                        [("Set-Cookie", "grafana_session=parity; Path=/; HttpOnly")],
+                    )
+                else:
+                    self.reply(200, b'{"results":{}}', "application/json")
+
+        for attempt in range(50):
+            try:
+                self.server = http.server.ThreadingHTTPServer(("127.0.0.1", GRAFANA_PORT), Handler)
+                break
+            except OSError:
+                if attempt == 49:
+                    raise
+                time.sleep(0.1)
+        self.server.daemon_threads = True
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def take(self):
+        with self.lock:
+            out, self.requests = self.requests, []
+        return out
+
+    def stop(self):
+        if self.server:
+            self.server.shutdown()
+            self.server.server_close()
+
+
+GRAFANA = GrafanaStandIn()
+BACKEND_DIR = os.path.join(REPO, "backend")
+
+
+def clear_report_files():
+    """Python's `report.html` / `report.pdf` in its working directory."""
+    for name in ("report.html", "report.pdf"):
+        for d in (os.getcwd(), BACKEND_DIR):
+            try:
+                os.remove(os.path.join(d, name))
+            except FileNotFoundError:
+                pass
+
+
+def grafana_seed(url=None, user="admin", password="pässword", license_state="enabled"):
+    """The `Grafana` connector row (none when `url` is None) and the licence (absent, or cached
+    as enabled or disabled), the deployment's own rows put aside first."""
+    if not GRAFANA_SAVED:
+        GRAFANA_SAVED["connectors"] = rows("SELECT * FROM connectors WHERE connector_name = 'Grafana'")
+        GRAFANA_SAVED["license"] = rows("SELECT * FROM license")
+        sql("DELETE FROM connectors WHERE connector_name = 'Grafana'")
+        sql("DELETE FROM license")
+    sql("DELETE FROM connectors WHERE id = :i", i=GRAFANA_ID)
+    sql("DELETE FROM license_cache WHERE id = :i", i=CACHE_ID)
+    sql("DELETE FROM license WHERE id = :i", i=LICENSE_ID)
+    if url is not None:
+        sql(
+            "INSERT INTO connectors (id, connector_name, connector_type, connector_url, connector_last_updated, connector_username, "
+            "connector_password, connector_api_key, connector_description, connector_supports, connector_configured, "
+            "connector_verified, connector_accepts_host_only, connector_accepts_api_key, connector_accepts_username_password, "
+            "connector_accepts_file, connector_accepts_extra_data, connector_extra_data, connector_enabled) VALUES (:i, "
+            "'Grafana', '3', :u, UTC_TIMESTAMP(), :user, :pw, NULL, 'parity', 'parity', 1, 1, 0, 0, 1, 0, 0, NULL, 1)",
+            i=GRAFANA_ID,
+            u=url,
+            user=user,
+            pw=password,
+        )
+    if license_state is not None:
+        sql(
+            "INSERT INTO license (id, license_key, customer_name, customer_email, company_name) "
+            "VALUES (:i, :k, 'Parity', 'p@parity.test', 'Parity Co')",
+            i=LICENSE_ID,
+            k=LICENSE_KEY,
+        )
+        sql(
+            "INSERT INTO license_cache (id, license_key, feature_name, is_enabled, cached_at, expires_at, license_data) VALUES "
+            "(:i, :k, 'REPORTING', :e, UTC_TIMESTAMP(), UTC_TIMESTAMP() + INTERVAL 1 HOUR, '{}')",
+            i=CACHE_ID,
+            k=LICENSE_KEY,
+            e=1 if license_state == "enabled" else 0,
+        )
+
+
+def grafana_cleanup():
+    sql("DELETE FROM connectors WHERE id = :i", i=GRAFANA_ID)
+    sql("DELETE FROM license_cache WHERE id = :i", i=CACHE_ID)
+    sql("DELETE FROM license WHERE id = :i", i=LICENSE_ID)
+    for row in GRAFANA_SAVED.get("connectors", []):
+        sql(f"INSERT INTO connectors ({', '.join(row)}) VALUES ({', '.join(':' + c for c in row)})", **row)
+    for row in GRAFANA_SAVED.get("license", []):
+        sql(f"INSERT INTO license ({', '.join(row)}) VALUES ({', '.join(':' + c for c in row)})", **row)
+    GRAFANA_SAVED.clear()
+    clear_report_files()
+
+
+PNG_DATA = re.compile(r"data:image/png;base64,([A-Za-z0-9+/=]+)")
+WINDOW = re.compile(r"from=(\d+)&to=(\d+)")
+PROFILE = re.compile(r"^--user-data-dir=.*/playwright_chromiumdev_profile-[A-Za-z0-9]{6}$")
+
+
+def png_size(match):
+    try:
+        data = base64.b64decode(match.group(1), validate=True)
+    except ValueError:
+        return match.group(0)
+    if not data.startswith(b"\x89PNG\r\n\x1a\n") or len(data) < 24:
+        return match.group(0)
+    width, height = struct.unpack(">II", data[16:24])
+    return f"<png {width}x{height}>"
+
+
+def mask_window(text_):
+    return WINDOW.sub(lambda m: f"from=<to - {int(m.group(2)) - int(m.group(1))}>&to=<now>", text_)
+
+
+def grafana_requests(records):
+    return [
+        {
+            "method": r["method"],
+            "path": mask_window(r["path"]),
+            "headers": [[k, mask_window(v)] for k, v in r["headers"]],
+            "body": r["body"],
+        }
+        for r in records
+    ]
+
+
+def browser_launches(records, side):
+    out = []
+    for r in records:
+        argv = ["--user-data-dir=<profile>" if PROFILE.match(a) else a for a in r["argv"]]
+        page = r["cwd_html"] if side == "p" else (r["tmp_html"][0] if r["tmp_html"] else None)
+        out.append({"argv": argv, "page": PNG_DATA.sub(png_size, page) if page is not None else None})
+    return out
+
+
+def pdf_summary(b64):
+    with tempfile.NamedTemporaryFile(suffix=".pdf", dir=WORK, delete=False) as fh:
+        fh.write(base64.b64decode(b64))
+        name = fh.name
+    try:
+        info = subprocess.run(["pdfinfo", name], capture_output=True, text=True).stdout
+        pages = next((line.split()[-1] for line in info.splitlines() if line.startswith("Pages:")), None)
+        words = subprocess.run(["pdftotext", name, "-"], capture_output=True, text=True).stdout.split()
+        return {"pdf": open(name, "rb").read(5) == b"%PDF-", "pages": pages, "text": words}
+    finally:
+        os.remove(name)
+
+
+async def grafana_same(p, name, tok, body=None, raw=None, expect=None):
+    GRAFANA.take()
+    take_browser_records()
+    clear_report_files()
+    if raw is not None:
+        kw = {"content": raw, "headers": {"content-type": "application/json"}}
+    elif body is not None:
+        kw = {"json": body}
+    else:
+        kw = {}
+    r1 = await p.call(p.py, "POST", GR, tok, **kw)
+    g1, l1 = grafana_requests(GRAFANA.take()), browser_launches(take_browser_records(), "p")
+    clear_report_files()
+    r2 = await p.call(p.rs, "POST", GR, tok, **kw)
+    g2, l2 = grafana_requests(GRAFANA.take()), browser_launches(take_browser_records(), "r")
+    b1, b2 = body_of(r1), body_of(r2)
+    if r1.status_code == 200 and isinstance(b1, dict) and isinstance(b2, dict):
+        b1 = {**b1, "base64_result": pdf_summary(b1["base64_result"])}
+        b2 = {**b2, "base64_result": pdf_summary(b2["base64_result"])}
+    ok = r1.status_code == r2.status_code and b1 == b2 and (b1 is not None or r1.content == r2.content)
+    detail = f"python {r1.status_code} {str(b1 if b1 is not None else r1.content[:200])[:800]}\n        rust   {r2.status_code} {str(b2 if b2 is not None else r2.content[:200])[:800]}"
+    if g1 != g2:
+        ok = False
+        detail += f"\n        grafana python {len(g1)} requests, rust {len(g2)}"
+        for a, b in zip(g1, g2):
+            if a != b:
+                detail += f"\n        python {a}\n        rust   {b}"
+                break
+        if len(g1) != len(g2):
+            detail += f"\n        python {[x['method'] + ' ' + x['path'] for x in g1]}\n        rust   {[x['method'] + ' ' + x['path'] for x in g2]}"
+    if l1 != l2:
+        ok = False
+        detail += f"\n        browser launches python {len(l1)} rust {len(l2)}"
+        for a, b in zip(l1, l2):
+            if a["argv"] != b["argv"]:
+                detail += f"\n        argv python {a['argv']}\n        argv rust   {b['argv']}"
+            if a["page"] != b["page"]:
+                x, y = a["page"] or "", b["page"] or ""
+                at = next((i for i, (c, d) in enumerate(zip(x, y)) if c != d), min(len(x), len(y)))
+                detail += f"\n        page differs at {at}\n        python …{x[max(0, at - 200):at + 300]!r}\n        rust   …{y[max(0, at - 200):at + 300]!r}"
+    if r1.status_code == 200 and (len(l1) != 2 or l1[1]["page"] is None or not g1):
+        ok = False
+        detail += f"\n        not recorded: {len(l1)} launches, a page {bool(l1 and l1[-1]['page'])}, {len(g1)} requests"
+    if expect and r1.status_code != expect:
+        ok = False
+        detail += f"\n        expected {expect}"
+    check(f"{name} [{r1.status_code}]", ok, detail)
+    return r1, r2, g1, l1
+
+
+def report_panel(panel_id, width=400, height=250, theme="light", title="HUNTRESS - _SUMMARY", uid="ab9bab2c"):
+    panel = {
+        "panel_id": panel_id,
+        "org_id": 1,
+        "dashboard_title": title,
+        "dashboard_uid": uid,
+        "panel_width": width,
+        "panel_height": height,
+    }
+    if theme is not None:
+        panel["theme"] = theme
+    return panel
+
+
+async def grafana_report_checks(p, t):
+    print("\n=== Grafana panel report ===")
+    grafana_url = f"http://127.0.0.1:{GRAFANA_PORT}"
+    body = {
+        "company_name": "Acme <SOC> & Co",
+        "timerange_text": "Last 7 days",
+        "logo_base64": "data:image/png;base64,iVBORw0KGgo=",
+        "timerange": "7d",
+        "rows": [
+            {"id": 1710437961108, "panels": [report_panel(5), report_panel(5, 300, 200), report_panel(7, 0, 200)]},
+            {"id": 1710437961109, "panels": [report_panel(9, theme=None, title="SAP - USERS", uid="a1891b09")]},
+            {"id": 1710437961108, "panels": [report_panel(11, 320, 180)]},
+        ],
+    }
+    one = {**body, "rows": [{"id": 1, "panels": [report_panel(5)]}]}
+    grafana_seed(grafana_url, license_state=None)
+    GRAFANA.mode = "ok"
+    await grafana_same(p, "grafana: no token", None, body)
+    await grafana_same(p, "grafana: portal user", t["portal"], body)
+    await grafana_same(p, "grafana: malformed JSON", t["admin"], raw=b'{"rows": ')
+    await grafana_same(p, "grafana: missing fields", t["admin"], {"company_name": "x", "rows": [{"id": "a", "panels": [{}]}]})
+    await grafana_same(p, "grafana: rows not a list", t["admin"], {**body, "rows": {"id": 1}})
+    await grafana_same(p, "grafana: no licence", t["admin"], body)
+    grafana_seed(grafana_url, license_state="disabled")
+    await grafana_same(p, "grafana: licence without REPORTING", t["analyst"], body)
+    grafana_seed(grafana_url)
+    await grafana_same(p, "grafana: timerange not an int", t["admin"], {**body, "timerange": "xd"})
+    await grafana_same(p, "grafana: empty timerange", t["admin"], {**body, "timerange": ""})
+    await grafana_same(p, "grafana: unit not m, h or d", t["admin"], {**one, "timerange": "7w"})
+    await grafana_same(p, "grafana: a timedelta too large", t["admin"], {**one, "timerange": "99999999999d"})
+    grafana_seed(None)
+    await grafana_same(p, "grafana: no Grafana connector", t["admin"], one)
+    grafana_seed(f"http://127.0.0.1:{CLOSED_PORT}")
+    await grafana_same(p, "grafana: Grafana unreachable", t["admin"], one)
+    grafana_seed(grafana_url)
+    GRAFANA.mode = "deny"
+    _, _, seen, launches = await grafana_same(p, "grafana: the login refused", t["admin"], one)
+    posted = [x["body"] for x in seen if x["method"] == "POST" and x["path"] == "/login"]
+    check(
+        "grafana: the refused login was filled and sent, in one browser",
+        posted == ['{"user":"admin","password":"pässword"}'.encode().decode("latin-1")] and len(launches) == 1,
+        f"{posted} {len(launches)}",
+    )
+    GRAFANA.mode = "ok"
+    await grafana_same(p, "grafana: three rows, five panels", t["admin"], body, expect=200)
+    await grafana_same(p, "grafana: analyst, hours", t["analyst"], {**one, "timerange": " +1_2h"}, expect=200)
+    grafana_seed(grafana_url, user=None, password="")
+    await grafana_same(p, "grafana: no rows, no user name, empty password", t["admin"], {**body, "rows": []}, expect=200)
+    grafana_seed(f"127.0.0.1:{GRAFANA_PORT}")
+    await grafana_same(p, "grafana: a URL without a scheme", t["admin"], {**one, "timerange": "30m"}, expect=200)
+
+
 S3 = S3StandIn(S3_USER, S3_SECRET)
 
 
 async def main():
     server = S3.serve(S3_PORT)
+    GRAFANA.start()
     patch_python()
     seed()
     proc = start_rust(RS_PORT)
@@ -774,15 +1204,19 @@ async def main():
         "analyst_b": token(ANALYST_B, ["analyst"]),
     }
     try:
-        sections = os.environ.get("REPORTS_PARITY_SECTIONS", "case,customer,soc").split(",")
+        sections = os.environ.get("REPORTS_PARITY_SECTIONS", "case,customer,soc,grafana").split(",")
         if "case" in sections:
             await case_report_checks(p, t)
         if "customer" in sections:
             await customer_report_checks(p, t)
         if "soc" in sections:
             await soc_report_checks(p, t)
+        if "grafana" in sections:
+            await grafana_report_checks(p, t)
     finally:
         await p.close()
+        grafana_cleanup()
+        GRAFANA.stop()
         proc.terminate()
         try:
             proc.wait(timeout=20)

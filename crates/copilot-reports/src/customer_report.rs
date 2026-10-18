@@ -686,9 +686,7 @@ fn case_type(name: &str) -> Option<String> {
         for t in ["RFI", "INC", "CONF", "CTI"] {
             let n = t.len();
             let cand: String = upper.iter().skip(i + 1).take(n).collect();
-            if cand.eq_ignore_ascii_case(t)
-                && cand.is_ascii()
-                && upper.get(i + 1 + n) == Some(&']')
+            if cand.eq_ignore_ascii_case(t) && cand.is_ascii() && upper.get(i + 1 + n) == Some(&']')
             {
                 return Some(t.to_string());
             }
