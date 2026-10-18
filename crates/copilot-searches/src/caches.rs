@@ -986,3 +986,20 @@ pub async fn firing_for_customer(st: &SearchesState, customer_code: &str) -> Fir
     }
     HashMap::new()
 }
+
+/// The rules `scope` may see: the shared catalog's and the custom rules of
+/// its customers. Python listed every tenant's custom rules to every caller
+/// (RUST_MIGRATION.md §4); a custom repository belongs to the customer whose
+/// pointer (`custom-repos/<customer_code>.json`) names it. Admins see all.
+pub fn visible_rules(
+    st: &SearchesState,
+    scope: &copilot_auth::AccessScope,
+) -> std::sync::Arc<rules::RuleSet> {
+    let set = st.caches.rules.get();
+    let keep = |owner: Option<&str>| owner.is_none_or(|code| scope.can_access(code));
+    if set.all_owners(keep) {
+        set
+    } else {
+        std::sync::Arc::new(set.retain_owners(keep))
+    }
+}

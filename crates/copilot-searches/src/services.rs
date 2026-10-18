@@ -2,6 +2,7 @@
 //! `publish.py` and `custom_repos.test_repo_fetch`, and the Wazuh logtest
 //! wrapper (`wazuh_manager/services/logtest.py`).
 
+use copilot_auth::AccessScope;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -258,9 +259,13 @@ pub struct ExecuteRequest {
 }
 
 /// `execute_rule_search(request)`.
-pub async fn execute_rule_search(st: &SearchesState, req: &ExecuteRequest) -> PyResult<Value> {
+pub async fn execute_rule_search(
+    st: &SearchesState,
+    scope: &AccessScope,
+    req: &ExecuteRequest,
+) -> PyResult<Value> {
     caches::ensure_loaded(st, Kind::Rules).await?;
-    let set = st.caches.rules.get();
+    let set = crate::caches::visible_rules(st, scope);
     let Some(rule) = set.by_id(&req.rule_id) else {
         return Err(PyExc::ValueError(format!(
             "Rule with ID '{}' not found",
@@ -377,11 +382,12 @@ pub fn search_response(
 /// `generate_graylog_query(request)`.
 pub async fn generate_graylog_query(
     st: &SearchesState,
+    scope: &AccessScope,
     rule_id: &str,
     parameters: &[(String, Value)],
 ) -> PyResult<Value> {
     caches::ensure_loaded(st, Kind::Rules).await?;
-    let set = st.caches.rules.get();
+    let set = crate::caches::visible_rules(st, scope);
     let Some(rule) = set.by_id(rule_id) else {
         return Err(PyExc::ValueError(format!(
             "Rule with ID '{rule_id}' not found"
@@ -554,9 +560,13 @@ fn provider(template: &str) -> PyValue {
 }
 
 /// `provision_graylog_alert_from_rule(request)`: the response dump.
-pub async fn provision_from_rule(st: &SearchesState, req: &ProvisionRequest) -> PyResult<Value> {
+pub async fn provision_from_rule(
+    st: &SearchesState,
+    scope: &AccessScope,
+    req: &ProvisionRequest,
+) -> PyResult<Value> {
     caches::ensure_loaded(st, Kind::Rules).await?;
-    let set = st.caches.rules.get();
+    let set = crate::caches::visible_rules(st, scope);
     let Some(rule) = set.by_id(&req.rule_id) else {
         return Err(PyExc::ValueError(format!(
             "Rule with ID '{}' not found",

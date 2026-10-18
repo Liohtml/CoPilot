@@ -31,8 +31,9 @@ version, the Wazuh manager's authentication (each process keeps its token), and 
 raw rule files are fetched in (twelve at a time on both sides: compared as a set).
 
 Deliberate differences (RUST_MIGRATION.md §4), each a check of its own: `/backtest`, `/publish`
-and `/custom-repos/test` refuse a body customer the caller may not see, and `GET /custom-repos`
-lists a scoped caller's customers only.
+and `/custom-repos/test` refuse a body customer the caller may not see, `GET /custom-repos`
+lists a scoped caller's customers only, and a scoped caller's rule lists hold the shared rules and
+their customers' custom rules only.
 
 Ports (all overridable): CATALOG_PARITY_RUST_PORT, CATALOG_GH_API_STUB_PORT,
 CATALOG_GH_RAW_STUB_PORT, CATALOG_MANAGER_STUB_PORT, CATALOG_INDEXER_STUB_PORT,
@@ -1640,7 +1641,6 @@ async def main():  # noqa: C901 - one scenario after the other
         await both("by-ids: wrong item types", "POST", BI, t_analyst, {"ids": [1, None, True]})
         await both("by-ids: too many", "POST", BI, t_analyst, {"ids": [str(i) for i in range(501)]})
         await both("by-ids: portal user", "POST", BI, t_portal, {"ids": []})
-
         # ==================================================================
         print("\n=== D. ATT&CK ===")
         await both("coverage", "GET", f"{P}/mitre/coverage", t_portal)
@@ -2037,6 +2037,39 @@ async def main():  # noqa: C901 - one scenario after the other
         await both("stats after", "GET", f"{P}/stats", t_analyst)
         await both("list ?provenance=custom", "GET", f"{P}?provenance=custom", t_analyst)
         await both("by id: the custom rule", "GET", f"{P}/id/acme-custom-0001", t_analyst)
+        # §4: a caller without A among their customers sees the shared rules and none of A's
+        # custom rules (Python listed every tenant's custom rules to every caller).
+        pr = await send(py, "GET", f"{P}/id/acme-custom-0001", t_nobody, None, None, None)
+        rr = await send(rs, "GET", f"{P}/id/acme-custom-0001", t_nobody, None, None, None)
+        check(
+            "by id: another tenant's custom rule [diff by design (200, 404)]",
+            pr.status_code == 200
+            and pr.json()["rule"]["owner_customer_code"] == A
+            and rr.status_code == 404
+            and rr.json().get("message") == "Rule with ID 'acme-custom-0001' not found",
+            f"python {pr.status_code} {pr.text[:300]}\n        rust   {rr.status_code} {rr.text[:300]}",
+        )
+        pr = await send(py, "GET", f"{P}?provenance=custom", t_nobody, None, None, None)
+        rr = await send(rs, "GET", f"{P}?provenance=custom", t_nobody, None, None, None)
+        theirs = [r["id"] for r in pr.json().get("rules", [])]
+        check(
+            "list: custom rules, another tenant's caller [diff by design: none listed]",
+            pr.status_code == rr.status_code == 200
+            and "acme-custom-0001" in theirs
+            and rr.json().get("rules") == []
+            and rr.json().get("filtered") == 0,
+            f"python {pr.status_code} {theirs}\n        rust   {rr.status_code} {rr.text[:300]}",
+        )
+        pr = await send(py, "GET", f"{P}/stats", t_nobody, None, None, None)
+        rr = await send(rs, "GET", f"{P}/stats", t_nobody, None, None, None)
+        ra = await send(rs, "GET", f"{P}/stats", t_analyst, None, None, None)
+        check(
+            "stats: another tenant's caller counts the shared rules [diff by design]",
+            pr.status_code == rr.status_code == 200
+            and pr.json()["total_rules"] == ra.json()["total_rules"] == rr.json()["total_rules"] + len(theirs),
+            f"python {pr.text[:200]}\n        rust   {rr.text[:200]}\n        rust (A) {ra.text[:200]}",
+        )
+
         await both("by id: the duplicate kept the catalog's", "GET", f"{P}/id/parity-minimal-0001", t_analyst)
         await both("coverage ?provenance=custom", "GET", f"{P}/mitre/coverage?provenance=custom", t_analyst)
         await both("stories after", "GET", f"{P}/catalog/stories", t_analyst)
