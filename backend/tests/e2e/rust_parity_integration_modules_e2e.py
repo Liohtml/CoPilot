@@ -18,14 +18,22 @@ run, the `last_success` stamp included; the Python guard is checked to skip a ha
 to run one whose row is enabled. A third Rust instance reaches the modules on a closed port.
 
 Deliberate differences are asserted as such (RUST_MIGRATION.md §4): a body naming another tenant's
-customer, or an IRIS id none of the caller's customers carries, is refused.
+customer, or an IRIS id none of the caller's customers carries, is refused. Two features Python never
+runs work in Rust ("Python fails, Rust works"): Mimecast's SIEM download and TTP URL pages (Python's
+`HttpUrl + str` is a `TypeError` on every run) and the SAP SIEM collection with one API key
+(`get_customer_meta_attribute`'s `Depends` default). Each is shown twice: Python as it is against Rust
+(the two answers), then Python patched to do what its code says past the crash — the region's URL as
+the string Mimecast sent, the one key sent down the several-keys path — compared request by request,
+with the checkpoint and log files (one directory both backends write, laid out as Python lays it out)
+and every GELF frame the Event Shipper stand-in receives.
 
     PARITY_SUITES=tests/e2e/rust_parity_integration_modules_e2e.py scripts/rust-parity.sh
 
 Ports: INTEGRATION_MODULES_STUB_PORT (6610), INTEGRATION_MODULES_PARITY_RUST_PORT (6611),
 INTEGRATION_MODULES_PARITY_PY_PORT (6612, the legacy Python), INTEGRATION_MODULES_RUST_JOBS_PORT
 (6613), INTEGRATION_MODULES_CLOSED_PORT (6614, nothing listens), INTEGRATION_MODULES_PARITY_RUST_CLOSED_PORT
-(6615). Seeded ids are seven digits in 7725000-7725999.
+(6615), INTEGRATION_MODULES_GELF_PORT (6900, the Event Shipper's GELF input). Seeded ids are seven digits in
+7725000-7725999.
 """
 
 import asyncio
@@ -35,8 +43,11 @@ import fnmatch
 import json
 import os
 import re
+import shutil
+import socketserver
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import types
@@ -79,14 +90,19 @@ PY_PORT = int(os.environ.get("INTEGRATION_MODULES_PARITY_PY_PORT", "6612"))
 JOBS_PORT = int(os.environ.get("INTEGRATION_MODULES_RUST_JOBS_PORT", "6613"))
 CLOSED_PORT = int(os.environ.get("INTEGRATION_MODULES_CLOSED_PORT", "6614"))
 RS_CLOSED_PORT = int(os.environ.get("INTEGRATION_MODULES_PARITY_RUST_CLOSED_PORT", "6615"))
+GELF_PORT = int(os.environ.get("INTEGRATION_MODULES_GELF_PORT", "6900"))
 STUB = f"http://127.0.0.1:{STUB_PORT}"
+# The Mimecast module directory both backends keep their files in (Rust's COPILOT_MIMECAST_DIR;
+# Python's `__file__` is pointed at `services/mimecast.py` under it).
+MIMECAST_DIR = os.environ.get("INTEGRATION_MODULES_MIMECAST_DIR") or tempfile.mkdtemp(prefix="parity-mimecast-")
+os.environ["INTEGRATION_MODULES_MIMECAST_DIR"] = MIMECAST_DIR
 CLOSED = f"http://127.0.0.1:{CLOSED_PORT}"
 
-CUST_A, CUST_B, CUST_C, CUST_D = (f"IMA{SFX}", f"IMB{SFX}", f"IMC{SFX}", f"IMD{SFX}")
-CUSTOMERS = (CUST_A, CUST_B, CUST_C, CUST_D)
+CUST_A, CUST_B, CUST_C, CUST_D, CUST_E = (f"IMA{SFX}", f"IMB{SFX}", f"IMC{SFX}", f"IMD{SFX}", f"IME{SFX}")
+CUSTOMERS = (CUST_A, CUST_B, CUST_C, CUST_D, CUST_E)
 ADMIN, ANALYST, ANALYST_B, UNASSIGNED = (f"im_admin{SFX}", f"im_analyst{SFX}", f"im_analyst_b{SFX}", f"im_unassigned{SFX}")
 USERS = (ADMIN, ANALYST, ANALYST_B, UNASSIGNED)
-IRIS_A, IRIS_B, IRIS_UNKNOWN = 7725101, 7725102, 7725999
+IRIS_A, IRIS_B, IRIS_E, IRIS_UNKNOWN = 7725101, 7725102, 7725103, 7725999
 CONNECTOR_IDS = {1: f"IM Indexer {SFX}", 10: f"IM Graylog10 {SFX}", 14: f"IM Graylog14 {SFX}"}
 JOB_DESCRIPTION = f"parity-im{SFX}"
 results = []
@@ -132,7 +148,8 @@ DISCOVERY_OK = {
             "authenticate": ["Basic-AD"],
             "region": {
                 "code": "us",
-                "api": "https://us-api.mimecast.com",
+                # Mimecast's API is the URL its discovery names: the stand-in, for both backends.
+                "api": f"{STUB}/us-api.mimecast.com",
                 "mpp": "https://us-mpp.mimecast.com",
                 "adminConsole": "https://us-console.mimecast.com",
                 "name": "USA",
@@ -170,6 +187,10 @@ class Stub:
         j = "application/json"
         if path.startswith("/api.mimecast.com/"):
             return 200, j, json.dumps(DISCOVERY_OK).encode(), []
+        if path.startswith("/us-api.mimecast.com/api/audit/get-siem-logs"):
+            return 200, j, json.dumps({"meta": {"status": 200}, "data": [], "fail": []}).encode(), []
+        if path.startswith("/us-api.mimecast.com/api/ttp/url/get-logs"):
+            return 200, j, json.dumps(ttp_page([])).encode(), []
         if path.startswith("/copilot-"):
             return 200, j, json.dumps({"message": "collected"}).encode(), []
         return 404, j, b'{"detail": "no such stand-in route"}', []
@@ -219,6 +240,192 @@ def start_stub():
     return server
 
 
+def ttp_page(clicks, next_token=None):
+    """One page of `/api/ttp/url/get-logs`."""
+    pagination = {"pageSize": len(clicks), "totalCount": len(clicks)}
+    if next_token is not None:
+        pagination["next"] = next_token
+    return {"meta": {"pagination": pagination, "status": 200}, "data": [{"clickLogs": clicks}], "fail": []}
+
+
+def click_log(n):
+    return {
+        "userEmailAddress": f"user{n}@a.example",
+        "fromUserEmailAddress": "x@evil.example",
+        "url": f"https://evil.example/{n}",
+        "ttpDefinition": "Default",
+        "subject": "hello",
+        "action": "block",
+        "adminOverride": "N/A",
+        "userOverride": "None",
+        "scanResult": "malicious",
+        "category": "phishing",
+        "sendingIp": "198.51.100.7",
+        "userAwarenessAction": "n/a",
+        "date": "2026-10-17T10:00:00+0000",
+        "actions": "Blocked",
+        "route": "inbound",
+        "creationMethod": "User Click",
+        "emailPartsDescription": ["Body"],
+        "messageId": f"<m{n}@a.example>",
+        "notInTheModel": "dropped",
+    }
+
+
+# --- The Event Shipper's GELF input -------------------------------------------------------------------
+
+GELF_FRAMES = []
+GELF_LOCK = threading.Lock()
+
+
+class _GelfHandler(socketserver.StreamRequestHandler):
+    def handle(self):
+        data = self.rfile.read()
+        with GELF_LOCK:
+            GELF_FRAMES.extend(f for f in data.split(b"\0") if f)
+
+
+def start_gelf_stub():
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", GELF_PORT), _GelfHandler)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def take_gelf(settle=0.3, timeout=8.0):
+    """The frames received so far (sorted: each event is a connection of its own, which a threaded
+    input may finish in any order), once no new one came for `settle` seconds."""
+    deadline = time.time() + timeout
+    seen = -1
+    while time.time() < deadline:
+        with GELF_LOCK:
+            n = len(GELF_FRAMES)
+        if n == seen:
+            break
+        seen = n
+        time.sleep(settle)
+    with GELF_LOCK:
+        out, GELF_FRAMES[:] = list(GELF_FRAMES), []
+    return sorted(f.decode("utf-8", "replace") for f in out)
+
+
+def mimecast_files():
+    """Every file under the Mimecast directory (Python's `services/` stand-in aside), with its bytes."""
+    out = {}
+    for root, dirs, files in os.walk(MIMECAST_DIR):
+        rel = os.path.relpath(root, MIMECAST_DIR)
+        if rel.split(os.sep)[0] == "services":
+            continue
+        for d in dirs:
+            if rel == "." and d == "services":
+                continue
+            out[os.path.normpath(os.path.join(rel, d)) + "/"] = None
+        for f in files:
+            with open(os.path.join(root, f), "rb") as fh:
+                out[os.path.normpath(os.path.join(rel, f))] = fh.read().decode("utf-8", "replace")
+    return out
+
+
+def reset_mimecast_files(checkpoints=None):
+    """An empty Mimecast directory, but for `services/` and the given `{customer: token}` checkpoints."""
+    for name in os.listdir(MIMECAST_DIR):
+        if name != "services":
+            shutil.rmtree(os.path.join(MIMECAST_DIR, name), ignore_errors=True)
+    os.makedirs(os.path.join(MIMECAST_DIR, "services"), exist_ok=True)
+    for code, token in (checkpoints or {}).items():
+        os.makedirs(os.path.join(MIMECAST_DIR, "checkpoint"), exist_ok=True)
+        with open(os.path.join(MIMECAST_DIR, "checkpoint", f"mimecast_{code}.checkpoint"), "w") as fh:
+            fh.write(token)
+
+
+# --- Python as its code reads past its crashes -------------------------------------------------------
+
+PATCHED = {"mimecast": False, "sap_one_key": False}
+
+
+class _OneKey(str):
+    """A key without a comma that takes the several-keys path: `"," in key`, `key.split(",") == [key]`."""
+
+    def __contains__(self, sub):
+        return sub == "," or str.__contains__(self, sub)
+
+    def split(self, sep=None, maxsplit=-1):
+        if sep == ",":
+            return [str(self)]
+        return str.split(self, sep, maxsplit)
+
+
+def install_python_patches(always=False):
+    """`always=False`: only while `PATCHED[...]` says so (this process); `True`: for good (the legacy
+    process). Both point the Mimecast module's files at MIMECAST_DIR."""
+    from app.integrations.mimecast.schema import mimecast as mimecast_schema
+    from app.integrations.mimecast.services import mimecast as mimecast_service
+    from app.integrations.modules.routes import sap_siem as sap_route
+    from app.integrations.modules.schema import sap_siem as sap_schema
+
+    original_response = mimecast_schema.MimecastAPIEndpointResponse
+
+    def endpoint_response(**kwargs):
+        # The same validation (the `HttpUrl`s still have to be URLs), then the region's `api` as the
+        # string Mimecast sent: `HttpUrl + str` is the `TypeError` every Python run ends in.
+        model = original_response(**kwargs)
+        if always or PATCHED["mimecast"]:
+            for item, raw in zip(model.data.data, kwargs["data"]["data"]):
+                object.__setattr__(item.region, "api", raw["region"]["api"])
+        return model
+
+    mimecast_service.MimecastAPIEndpointResponse = endpoint_response
+    mimecast_service.__file__ = os.path.join(MIMECAST_DIR, "services", "mimecast.py")
+    os.makedirs(os.path.join(MIMECAST_DIR, "services"), exist_ok=True)
+
+    original_keys = sap_schema.SapSiemAuthKeys
+
+    def sap_keys(**kwargs):
+        # A key without a comma takes the several-keys branch (a list of one): Python's own
+        # one-key branch calls `get_customer_meta_attribute` without its session and never sends.
+        # (The keys the loop builds are wrapped too, which their dump does not show.)
+        model = original_keys(**kwargs)
+        if (always or PATCHED["sap_one_key"]) and isinstance(model.API_KEY, str) and "," not in model.API_KEY:
+            object.__setattr__(model, "API_KEY", _OneKey(model.API_KEY))
+        return model
+
+    sap_route.SapSiemAuthKeys = sap_keys
+
+
+@contextlib.contextmanager
+def python_patched(*names):
+    for name in names:
+        PATCHED[name] = True
+    try:
+        yield
+    finally:
+        for name in names:
+            PATCHED[name] = False
+
+
+APP_KEYS = {"acc-a": ("appkey-a", b"secret-a"), "acc-b": ("appkey-b", None)}
+TTP_TIME_RE = re.compile(r"'(from|to)': '(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)\+0000'")
+
+
+def mimecast_signature_ok(headers, path):
+    """`MC <access>:<b64 hmac-sha1(date:req_id:uri:app_key)>` with the decoded secret."""
+    import base64
+    import hashlib
+    import hmac
+
+    h = dict(headers)
+    auth = h.get("authorization", "")
+    access, _, sig = auth[3:].partition(":")
+    app_key, secret = APP_KEYS.get(access, (None, None))
+    if secret is None:
+        return False
+    uri = "/api/ttp/url/get-logs" if "/ttp/" in path else "/api/audit/get-siem-logs"
+    unsigned = f"{h.get('x-mc-date')}:{h.get('x-mc-req-id')}:{uri}:{app_key}"
+    want = base64.b64encode(hmac.new(secret, unsigned.encode(), hashlib.sha1).digest()).decode()
+    return sig == want
+
+
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 DATE_RE = re.compile(r"^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d\d (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d\d:\d\d:\d\d UTC$")
 BOUND_RE = re.compile(rb'"(lower_bound|upper_bound)":"(\d{1,4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)"')
@@ -230,7 +437,9 @@ def normalised(captured):
     for method, path, headers, body in captured:
         hs = []
         for k, v in headers:
-            if k == "x-mc-req-id":
+            if k == "authorization" and v.startswith("MC "):
+                v = "<MC signature ok>" if mimecast_signature_ok(headers, path) else f"<bad MC signature {v}>"
+            elif k == "x-mc-req-id":
                 v = "<uuid>" if UUID_RE.match(v) else f"<bad uuid {v}>"
             elif k == "x-mc-date":
                 ok = (
@@ -245,6 +454,16 @@ def normalised(captured):
             if abs((upper - datetime.datetime.utcnow()).total_seconds()) > 120:
                 body = body + b" <upper bound not now>"
         body = BOUND_RE.sub(lambda m: b'"' + m.group(1) + b'":"<' + m.group(1) + b'>"', body)
+        times = TTP_TIME_RE.findall(body.decode("utf-8", "replace"))
+        if times:
+            stale = [
+                t
+                for _, t in times
+                if abs((datetime.datetime.strptime(t, "%Y-%m-%dT%H:%M:%S") - datetime.datetime.utcnow()).total_seconds()) > 3 * 86400
+            ]
+            body = TTP_TIME_RE.sub(lambda m: f"'{m.group(1)}': '<time>'", body.decode("utf-8", "replace")).encode()
+            if stale:
+                body += b" <ttp time not near now>"
         out.append({"method": method, "path": path, "headers": hs, "body": body.decode("utf-8", "replace"), "bounds": sorted(bounds)})
     return out
 
@@ -337,6 +556,12 @@ INTEGRATIONS = (
     (7725016, CUST_B, "CarbonBlack", (("API_URL", "https://cb.example"), ("API_KEY", "cbk"), ("ORGANIZATION_KEY", "org-b"))),
     (7725017, CUST_B, "Darktrace", (("PUBLIC_TOKEN", "pub-b"),)),
     (7725025, CUST_D, "SAP SIEM", (("API_KEY", "d1,d2"), ("SECRET_KEY", "s-d"), ("API_DOMAIN", "audit.eu1.gigya.com"))),
+    (
+        7725026,
+        CUST_E,
+        "SAP SIEM",
+        (("API_KEY", "e-single"), ("SECRET_KEY", "s-e"), ("USER_KEY", "u-e"), ("API_DOMAIN", "audit.eu1.gigya.com")),
+    ),
 )
 
 JOB_IDS = (
@@ -457,7 +682,7 @@ def seed():
     seed_connectors()
     for code in CUSTOMERS:
         sql("INSERT INTO customers (customer_code, customer_name, created_at) VALUES (:c, :n, UTC_TIMESTAMP())", c=code, n=f"{code} name")
-    for code, iris in ((CUST_A, IRIS_A), (CUST_B, None), (CUST_C, IRIS_B)):
+    for code, iris in ((CUST_A, IRIS_A), (CUST_B, None), (CUST_C, IRIS_B), (CUST_E, IRIS_E)):
         sql(
             "INSERT INTO customersmeta (customer_code, customer_name, customer_meta_graylog_index, customer_meta_graylog_stream, "
             "customer_meta_grafana_org_id, customer_meta_wazuh_group, customer_meta_iris_customer_id) VALUES (:c, :n, 'i', 's', '1', 'g', :r)",
@@ -630,6 +855,7 @@ def start_python_legacy():
     its own (its event loop owns its database connections)."""
     code = (
         "import sys; sys.path.insert(0, %r); import rust_parity_integration_modules_e2e as m; m.redirect_python_httpx(); "
+        "m.install_python_patches(always=True); "
         "import uvicorn; uvicorn.run(m.build_python_app(with_scheduler=True), host='127.0.0.1', port=%d, log_level='warning')"
     ) % (HERE, PY_PORT)
     env = {**os.environ, "PYTHONPATH": BACKEND, "INTEGRATION_MODULES_PARITY_SFX": SFX}
@@ -652,6 +878,7 @@ def start_rust(port, modules_url, rs_jobs=None):
         "COPILOT_PORT": str(port),
         "COPILOT_LEGACY_URL": f"http://127.0.0.1:{PY_PORT}",
         "COPILOT_INTEGRATION_MODULES_URL": modules_url,
+        "COPILOT_MIMECAST_DIR": MIMECAST_DIR,
         "CONNECTOR_CACHE_TTL_SECONDS": "0",
         "RUST_LOG": os.environ.get("RUST_LOG", "warn"),
     }
@@ -697,21 +924,42 @@ class Pair:
             logs = log_rows(mark)
         return r, normalised(STUB_STATE.take()), logs
 
-    async def same(self, name, method, path, tok=None, before=None, stub=None, closed=False, expect=None, **kw):
+    async def same(
+        self,
+        name,
+        method,
+        path,
+        tok=None,
+        before=None,
+        stub=None,
+        closed=False,
+        expect=None,
+        patched=(),
+        files=None,
+        **kw,
+    ):
         """Python, then Rust, each from the same seed (`before()` on top) and stand-in (`stub`).
         `closed`: the modules are on a port nothing listens on. `expect=(python, rust)`: the
-        statuses of a deliberate difference."""
+        statuses of a deliberate difference. `patched`: Python runs as its code reads past its
+        crash (`python_patched`). `files`: the Mimecast checkpoints each side starts from; the
+        Mimecast directory and the GELF frames are compared too."""
         sides = []
         for client in (self.py, self.rs_closed if closed else self.rs):
             seed_integrations()
             with_license()
+            if files is not None:
+                reset_mimecast_files(files)
+                take_gelf(settle=0.0, timeout=0.0)
             if before:
                 before()
             STUB_STATE.reset(stub)
             REDIRECT["base"] = CLOSED if closed else STUB
-            sides.append(await self.call(client, method, path, tok, **kw))
+            with python_patched(*(patched if client is self.py else ())):
+                r, out, logs = await self.call(client, method, path, tok, **kw)
+            extra = (mimecast_files(), take_gelf()) if files is not None else None
+            sides.append((r, out, logs, extra))
         REDIRECT["base"] = STUB
-        (r1, o1, l1), (r2, o2, l2) = sides
+        (r1, o1, l1, x1), (r2, o2, l2, x2) = sides
         if expect:
             ok = (r1.status_code, r2.status_code) == expect
             check(
@@ -720,18 +968,21 @@ class Pair:
                 f"python {r1.status_code} {r1.content[:400]!r}\n        rust   {r2.status_code} {r2.content[:400]!r}",
             )
             return r1, r2
-        ok = r1.status_code == r2.status_code and r1.content == r2.content and o1 == o2 and l1 == l2
+        ok = r1.status_code == r2.status_code and r1.content == r2.content and o1 == o2 and l1 == l2 and x1 == x2
         detail = f"python {r1.status_code} {r1.content[:900]!r}\n        rust   {r2.status_code} {r2.content[:900]!r}"
         if o1 != o2:
             detail += f"\n        outbound python {o1}\n        outbound rust   {o2}"
         if l1 != l2:
             detail += f"\n        log_entries python {l1}\n        log_entries rust   {l2}"
+        if x1 != x2:
+            detail += f"\n        files+gelf python {x1}\n        files+gelf rust   {x2}"
         if r1.headers.get("content-type") != r2.headers.get("content-type"):
             ok = False
             detail += f"\n        content-type {r1.headers.get('content-type')} / {r2.headers.get('content-type')}"
-        check(f"{name} [{r1.status_code}, {len(o1)} out]", ok, detail)
+        suffix = f", {len(x1[0])} files, {len(x1[1])} gelf" if x1 else ""
+        check(f"{name} [{r1.status_code}, {len(o1)} out{suffix}]", ok, detail)
         if os.environ.get("PARITY_VERBOSE"):
-            print(f"        {r1.content[:600]!r}\n        outbound {o1}")
+            print(f"        {r1.content[:600]!r}\n        outbound {o1}\n        extra {x1}")
         return r1, r2
 
     async def close(self):
@@ -879,7 +1130,42 @@ async def sap_checks(p, t):
         t["admin"],
         json={"customer_code": CUST_A, "time_range": None, "threshold": None},
     )
-    await p.same("sap: one key (Depends.execute)", "POST", path, t["admin"], json={"customer_code": CUST_B})
+    # One key: Python's `get_customer_meta_attribute` without its session (a bare 500 on every run);
+    # Rust POSTs it as the several-keys path POSTs each key — compared with Python taking that path.
+    await p.same("sap: one key, Python's Depends.execute", "POST", path, t["admin"], json={"customer_code": CUST_E}, expect=(500, 200))
+    await p.same(
+        "sap: one key, as the several-keys path",
+        "POST",
+        path,
+        t["admin"],
+        json={"customer_code": CUST_E},
+        patched=("sap_one_key",),
+    )
+    await p.same(
+        "sap: one key, 1h, threshold 9",
+        "POST",
+        path,
+        t["admin"],
+        json={"customer_code": CUST_E, "time_range": "1h", "threshold": 9},
+        patched=("sap_one_key",),
+    )
+    await p.same(
+        "sap: one key, no IRIS id (CustomerDetails)",
+        "POST",
+        path,
+        t["admin"],
+        json={"customer_code": CUST_B},
+        patched=("sap_one_key",),
+    )
+    await p.same(
+        "sap: one key, the module is not there (swallowed)",
+        "POST",
+        path,
+        t["admin"],
+        json={"customer_code": CUST_E},
+        patched=("sap_one_key",),
+        closed=True,
+    )
     await p.same("sap: no IRIS id (CustomerDetails)", "POST", path, t["admin"], json={"customer_code": CUST_D})
     await p.same("sap: no integrations", "POST", path, t["admin"], json={"customer_code": CUST_C})
     await p.same("sap: another name", "POST", path, t["admin"], json={"customer_code": CUST_A, "integration_name": "Huntress"})
@@ -991,102 +1277,220 @@ def discovery(body, status=200, ctype=J, extra=()):
     }
 
 
+def mimecast_zip(members):
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in members:
+            z.writestr(name, data)
+    return buf.getvalue()
+
+
+SIEM = "/us-api.mimecast.com/api/audit/get-siem-logs"
+TTP = "/us-api.mimecast.com/api/ttp/url/get-logs"
+OCTET = "application/octet-stream"
+
+
+def siem_page(name, body, token="token-1", disposition=None, extra=()):
+    headers = [("Content-Disposition", disposition or f'attachment; filename="{name}"')]
+    if token is not None:
+        headers.append(("mc-siem-token", token))
+    return (200, OCTET, body, headers + list(extra))
+
+
+def event_shipper_at_gelf():
+    sql(
+        "UPDATE connectors SET connector_url = '127.0.0.1', connector_extra_data = :p WHERE connector_name = 'Event Shipper'",
+        p=str(GELF_PORT),
+    )
+
+
+def event_shipper_back_to_seed():
+    sql("UPDATE connectors SET connector_url = '10.0.0.5', connector_extra_data = '12201' WHERE connector_name = 'Event Shipper'")
+
+
 async def mimecast_checks(p, t):
     region = DISCOVERY_OK["data"][0]["region"]
     bad_url = {**DISCOVERY_OK, "data": [{**DISCOVERY_OK["data"][0], "region": {**region, "mpp": "ftp://x"}}]}
     no_data = {**DISCOVERY_OK, "data": []}
-    for route in ("invoke", "ttp/urls"):
-        path = f"/api/mimecast/{route}"
-        await p.same(f"mimecast {route}: no token", "POST", path, json={"customer_code": CUST_A})
-        await p.same(f"mimecast {route}: no body", "POST", path, t["admin"])
-        await p.same(f"mimecast {route}: a list", "POST", path, t["admin"], json=[])
-        await p.same(f"mimecast {route}: time_range 0m", "POST", path, t["admin"], json={"customer_code": CUST_A, "time_range": "0m"})
-        await p.same(f"mimecast {route}: time_range 5", "POST", path, t["admin"], json={"customer_code": 5, "time_range": 5})
-        await p.same(f"mimecast {route}: A", "POST", path, t["analyst"], json={"customer_code": CUST_A})
-        await p.same(f"mimecast {route}: A, 2d", "POST", path, t["admin"], json={"customer_code": CUST_A, "time_range": "2d"})
-        await p.same(f"mimecast {route}: A, no window", "POST", path, t["admin"], json={"customer_code": CUST_A, "time_range": None})
-        await p.same(f"mimecast {route}: B (no email, a bad secret)", "POST", path, t["admin"], json={"customer_code": CUST_B})
-        await p.same(f"mimecast {route}: no integrations", "POST", path, t["admin"], json={"customer_code": CUST_C})
-        await p.same(f"mimecast {route}: another name", "POST", path, t["admin"], json={"customer_code": CUST_A, "integration_name": "DUO"})
+    event_shipper_at_gelf()
+    mc = {"patched": ("mimecast",), "files": {}}
+    try:
+        for route in ("invoke", "ttp/urls"):
+            path = f"/api/mimecast/{route}"
+            # Python as it is: the region's `HttpUrl + str` (/invoke's 400, /ttp/urls' bare 500).
+            await p.same(
+                f"mimecast {route}: A, Python's HttpUrl + str",
+                "POST",
+                path,
+                t["analyst"],
+                json={"customer_code": CUST_A},
+                expect=(400 if route == "invoke" else 500, 200),
+            )
+            await p.same(f"mimecast {route}: no token", "POST", path, json={"customer_code": CUST_A}, **mc)
+            await p.same(f"mimecast {route}: no body", "POST", path, t["admin"], **mc)
+            await p.same(f"mimecast {route}: a list", "POST", path, t["admin"], json=[], **mc)
+            await p.same(
+                f"mimecast {route}: time_range 0m",
+                "POST",
+                path,
+                t["admin"],
+                json={"customer_code": CUST_A, "time_range": "0m"},
+                **mc,
+            )
+            await p.same(f"mimecast {route}: time_range 5", "POST", path, t["admin"], json={"customer_code": 5, "time_range": 5}, **mc)
+            await p.same(f"mimecast {route}: A", "POST", path, t["analyst"], json={"customer_code": CUST_A}, **mc)
+            await p.same(f"mimecast {route}: A, 2d", "POST", path, t["admin"], json={"customer_code": CUST_A, "time_range": "2d"}, **mc)
+            await p.same(
+                f"mimecast {route}: A, no window",
+                "POST",
+                path,
+                t["admin"],
+                json={"customer_code": CUST_A, "time_range": None},
+                **mc,
+            )
+            await p.same(f"mimecast {route}: B (no email, a bad secret)", "POST", path, t["admin"], json={"customer_code": CUST_B}, **mc)
+            await p.same(f"mimecast {route}: no integrations", "POST", path, t["admin"], json={"customer_code": CUST_C}, **mc)
+            await p.same(
+                f"mimecast {route}: another name",
+                "POST",
+                path,
+                t["admin"],
+                json={"customer_code": CUST_A, "integration_name": "DUO"},
+                **mc,
+            )
+            for label, stub in (
+                ("discovery 500", discovery({"x": 1}, 500)),
+                ("discovery, an ftp URL", discovery(bad_url)),
+                ("discovery, no region", discovery(no_data)),
+                ("discovery, not JSON", discovery(b"<html>", 200, "text/html")),
+                ("discovery, broken JSON", discovery(b"{", 200, J)),
+                (
+                    "discovery 429, then fine",
+                    {
+                        ("POST", "/api.mimecast.com/*"): [
+                            (429, J, b"{}", [("X-RateLimit-Reset", "0")]),
+                            (200, J, json.dumps(DISCOVERY_OK).encode(), []),
+                        ],
+                    },
+                ),
+                ("discovery 429, an unreadable reset", {("POST", "/api.mimecast.com/*"): (429, J, b"{}", [("X-RateLimit-Reset", "soon")])}),
+                ("discovery hangs up", {("POST", "/api.mimecast.com/*"): "close"}),
+            ):
+                await p.same(f"mimecast {route}: {label}", "POST", path, t["admin"], json={"customer_code": CUST_A}, stub=stub, **mc)
+            await p.same(
+                f"mimecast {route}: Mimecast is not there",
+                "POST",
+                path,
+                t["admin"],
+                json={"customer_code": CUST_A},
+                closed=True,
+                **mc,
+            )
+            await p.same(
+                f"mimecast {route}: analyst of B for A",
+                "POST",
+                path,
+                t["analyst_b"],
+                json={"customer_code": CUST_A},
+                expect=(200, 403),
+                patched=("mimecast",),
+            )
+            await p.same(f"mimecast {route}: GET (405 from Python)", "GET", path, t["admin"])
+
+        # The SIEM download: a zip of log files, each line an event, the next token kept.
+        inv = "/api/mimecast/invoke"
+        a = {"customer_code": CUST_A}
+        logs = mimecast_zip(
+            [
+                ("mta_1.log", b"datetime=2026-10-17T10:00:00+0000|aCode=a1|acc=C0A0|Sender=x@evil.example\nAct=Acc | Dir = in | x==y\n"),
+                ("mta_2.log", "aCode=a2|Subject=caf\u00e9|junk\r\nlast=1".encode()),
+            ],
+        )
+        for label, stub, files in (
+            ("a zip of two files", {("POST", SIEM): siem_page("mta_1.zip", logs)}, {}),
+            ("a zip, the stored token sent", {("POST", SIEM): siem_page("mta_2.zip", logs, token="token-2")}, {CUST_A: "token-1"}),
+            ("an empty zip", {("POST", SIEM): siem_page("e.zip", mimecast_zip([]))}, {}),
+            ("a zip holding a directory", {("POST", SIEM): siem_page("d.zip", mimecast_zip([("sub/x.log", b"a=1")]))}, {}),
+            ("a broken zip", {("POST", SIEM): siem_page("bad.zip", b"PK not really")}, {}),
+            ("not a zip (bytes to a text file)", {("POST", SIEM): siem_page("mta.log", b"a=1")}, {}),
+            ("no Content-Disposition", {("POST", SIEM): (200, OCTET, logs, [("mc-siem-token", "t")])}, {}),
+            ('a Content-Disposition without ="', {("POST", SIEM): siem_page("x", logs, disposition="attachment")}, {}),
+            ("no mc-siem-token", {("POST", SIEM): siem_page("m.zip", logs, token=None)}, {}),
+            ("no Content-Type", {("POST", SIEM): (200, None, b"x", [])}, {}),
+            ("text/plain (nothing to do)", {("POST", SIEM): (200, "text/plain", b"x", [])}, {}),
+            ("JSON with a charset (nothing to do)", {("POST", SIEM): (200, "application/json; charset=utf-8", b"{}", [])}, {}),
+            ("a 500 in JSON (no more logs)", {("POST", SIEM): (500, J, b'{"fail": []}', [])}, {}),
+            ("Mimecast hangs up", {("POST", SIEM): "close"}, {}),
+            ("a line that is not UTF-8", {("POST", SIEM): siem_page("u.zip", mimecast_zip([("u.log", b"a=1\nb=\xff\n")]))}, {}),
+            (
+                "a line naming customer_code",
+                {("POST", SIEM): siem_page("c.zip", mimecast_zip([("c.log", b"x=1\ncustomer_code=evil\n")]))},
+                {},
+            ),
+        ):
+            await p.same(f"mimecast siem: {label}", "POST", inv, t["admin"], json=a, stub=stub, patched=("mimecast",), files=files)
+        # A plain file left in the log directory by an earlier run is Python's crash on the walk.
         await p.same(
-            f"mimecast {route}: discovery 500",
+            "mimecast siem: a leftover plain file",
             "POST",
-            path,
+            inv,
             t["admin"],
-            json={"customer_code": CUST_A},
-            stub=discovery({"x": 1}, 500),
+            json=a,
+            before=lambda: (
+                os.makedirs(os.path.join(MIMECAST_DIR, "logs", CUST_A), exist_ok=True),
+                open(os.path.join(MIMECAST_DIR, "logs", CUST_A, "left.log"), "w").close(),
+            ),
+            patched=("mimecast",),
+            files={CUST_A: "token-9"},
         )
         await p.same(
-            f"mimecast {route}: discovery, an ftp URL",
+            "mimecast siem: no Event Shipper",
             "POST",
-            path,
+            inv,
             t["admin"],
-            json={"customer_code": CUST_A},
-            stub=discovery(bad_url),
+            json=a,
+            before=no_event_shipper,
+            stub={("POST", SIEM): siem_page("m.zip", logs)},
+            patched=("mimecast",),
+            files={},
         )
-        await p.same(
-            f"mimecast {route}: discovery, no region",
-            "POST",
-            path,
-            t["admin"],
-            json={"customer_code": CUST_A},
-            stub=discovery(no_data),
-        )
-        await p.same(
-            f"mimecast {route}: discovery, not JSON",
-            "POST",
-            path,
-            t["admin"],
-            json={"customer_code": CUST_A},
-            stub=discovery(b"<html>", 200, "text/html"),
-        )
-        await p.same(
-            f"mimecast {route}: discovery, broken JSON",
-            "POST",
-            path,
-            t["admin"],
-            json={"customer_code": CUST_A},
-            stub=discovery(b"{", 200, J),
-        )
-        await p.same(
-            f"mimecast {route}: discovery 429, then fine",
-            "POST",
-            path,
-            t["admin"],
-            json={"customer_code": CUST_A},
-            stub={
-                ("POST", "/api.mimecast.com/*"): [
-                    (429, J, b"{}", [("X-RateLimit-Reset", "0")]),
-                    (200, J, json.dumps(DISCOVERY_OK).encode(), []),
-                ],
-            },
-        )
-        await p.same(
-            f"mimecast {route}: discovery 429, an unreadable reset",
-            "POST",
-            path,
-            t["admin"],
-            json={"customer_code": CUST_A},
-            stub={("POST", "/api.mimecast.com/*"): (429, J, b"{}", [("X-RateLimit-Reset", "soon")])},
-        )
-        await p.same(
-            f"mimecast {route}: discovery hangs up",
-            "POST",
-            path,
-            t["admin"],
-            json={"customer_code": CUST_A},
-            stub={("POST", "/api.mimecast.com/*"): "close"},
-        )
-        await p.same(f"mimecast {route}: Mimecast is not there", "POST", path, t["admin"], json={"customer_code": CUST_A}, closed=True)
-        await p.same(
-            f"mimecast {route}: analyst of B for A",
-            "POST",
-            path,
-            t["analyst_b"],
-            json={"customer_code": CUST_A},
-            expect=(400 if route == "invoke" else 500, 403),
-        )
-        await p.same(f"mimecast {route}: GET (405 from Python)", "GET", path, t["admin"])
+        event_shipper_back()
+
+        # The TTP URL pages: the page token carried, the same signed headers on every page.
+        ttp = "/api/mimecast/ttp/urls"
+        for label, stub in (
+            ("one page", {("POST", TTP): (200, J, json.dumps(ttp_page([click_log(1), click_log(2)])).encode(), [])}),
+            (
+                "two pages",
+                {
+                    ("POST", TTP): [
+                        (200, J, json.dumps(ttp_page([click_log(1)], next_token="p'2\"")).encode(), []),
+                        (200, J, json.dumps(ttp_page([click_log(2)], next_token="")).encode(), []),
+                    ],
+                },
+            ),
+            ("an empty page", {("POST", TTP): (200, J, json.dumps(ttp_page([])).encode(), [])}),
+            ("no data item (IndexError)", {("POST", TTP): (200, J, json.dumps({**ttp_page([]), "data": []}).encode(), [])}),
+            ("a click log missing a field", {("POST", TTP): (200, J, json.dumps(ttp_page([{"url": "x"}])).encode(), [])}),
+            ("not JSON", {("POST", TTP): (200, "text/html", b"<html>", [])}),
+            ("a list (TypeError)", {("POST", TTP): (200, J, b"[1]", [])}),
+            ("a 500", {("POST", TTP): (500, J, b'{"meta": {}}', [])}),
+            ("Mimecast hangs up", {("POST", TTP): "close"}),
+        ):
+            await p.same(
+                f"mimecast ttp: {label}",
+                "POST",
+                ttp,
+                t["admin"],
+                json={"customer_code": CUST_A, "time_range": "1h"},
+                stub=stub,
+                **mc,
+            )
+    finally:
+        event_shipper_back_to_seed()
 
 
 # --- The jobs -----------------------------------------------------------------------------------------
@@ -1114,9 +1518,18 @@ async def job_checks(t):
                 before()
             STUB_STATE.reset(stub)
             STUB_STATE.take()
+            reset_mimecast_files()
+            take_gelf(settle=0.0, timeout=0.0)
             r = await client.post(f"/api/scheduler/jobs/run/{job_id}", headers=admin)
             await asyncio.sleep(0.05)
-            got[tag] = {"status": r.status_code, "body": r.content.decode(), "out": normalised(STUB_STATE.take()), "stamped": job_state()}
+            got[tag] = {
+                "status": r.status_code,
+                "body": r.content.decode(),
+                "out": normalised(STUB_STATE.take()),
+                "stamped": job_state(),
+                "files": mimecast_files(),
+                "gelf": take_gelf(),
+            }
         check(
             f"job {name} [{got['py']['status']}, {len(got['py']['out'])} out]",
             expect(got) if expect else json.dumps(got["py"], default=str) == json.dumps(got["rs"], default=str),
@@ -1158,10 +1571,27 @@ async def job_checks(t):
             and len(got["rs"]["out"]) == 1
             and got["rs"]["stamped"]["invoke_carbonblack_integration_collection"] is True,
         )
-        await both("mimecast: the first customer fails the run", "invoke_mimecast_integration")
+        # The legacy Python runs Mimecast and SAP SIEM as their code reads past the crash (above, the
+        # in-process Python shows the crash itself: `mimecast_job_crash`).
+        event_shipper_at_gelf()
+        await both("mimecast: A collects, B's secret fails the run", "invoke_mimecast_integration")
+        await both(
+            "mimecast: A only, a zip downloaded",
+            "invoke_mimecast_integration",
+            before=only(7725002),
+            stub={("POST", SIEM): siem_page("j.zip", mimecast_zip([("j.log", b"a=1|b=2\n")]))},
+        )
         await both("mimecast: no customer (stamped)", "invoke_mimecast_integration", before=only())
-        await both("mimecast ttp: the first customer fails the run", "invoke_mimecast_integration_ttp")
-        await both("sap collection: B's single key fails the run", "invoke_sap_siem_integration_collection")
+        await both("mimecast ttp: B fails the run", "invoke_mimecast_integration_ttp")
+        await both(
+            "mimecast ttp: A only, a page",
+            "invoke_mimecast_integration_ttp",
+            before=only(7725002),
+            stub={("POST", TTP): (200, J, json.dumps(ttp_page([click_log(5)])).encode(), [])},
+        )
+        event_shipper_back_to_seed()
+        await both("sap collection: B's single key (no IRIS id) fails the run", "invoke_sap_siem_integration_collection")
+        await both("sap collection: E's single key", "invoke_sap_siem_integration_collection", before=only(7725026))
         await both("sap collection: A only", "invoke_sap_siem_integration_collection", before=only(7725005))
         await both(
             "sap collection: a 0-minute interval (pattern)",
@@ -1268,9 +1698,33 @@ async def job_checks(t):
         await rs.aclose()
 
 
+async def mimecast_job_crash():
+    """The Python job as it is: its first customer's `HttpUrl + str` raises out of the job."""
+    from app.schedulers.services.invoke_mimecast import invoke_mimecast_integration
+
+    seed_integrations()
+    sql("UPDATE scheduled_job_metadata SET enabled = 1 WHERE job_id = 'invoke_mimecast_integration'")
+    try:
+        await invoke_mimecast_integration()
+        outcome = "ran"
+    except HTTPException as e:
+        outcome = f"{e.status_code}: {e.detail}"
+    finally:
+        sql("UPDATE scheduled_job_metadata SET enabled = 0, last_success = NULL WHERE job_id = 'invoke_mimecast_integration'")
+        reset_mimecast_files()
+    check(
+        "python's invoke_mimecast_integration raises as it is (HttpUrl + str), Rust's collects",
+        outcome == "400: Unable to retrieve MTA SIEM logs from Mimecast integration.",
+        outcome,
+    )
+
+
 async def main():
     redirect_python_httpx()
+    install_python_patches()
+    reset_mimecast_files()
     server = start_stub()
+    gelf_server = start_gelf_stub()
     procs = []
     try:
         seed()
@@ -1298,6 +1752,7 @@ async def main():
                 await mimecast_checks(p, t)
             if "jobs" in sections:
                 print("\n=== the collection jobs, handed over ===")
+                await mimecast_job_crash()
                 await job_checks(t)
         finally:
             await p.close()
@@ -1315,6 +1770,8 @@ async def main():
             cleanup()
         finally:
             server.shutdown()
+            gelf_server.shutdown()
+            shutil.rmtree(MIMECAST_DIR, ignore_errors=True)
     failed = [n for n, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
     return 1 if failed else 0

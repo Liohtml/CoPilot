@@ -9,10 +9,13 @@
 //! table), so there is nothing of them to port.
 //!
 //! The collection (`POST …/sap_siem`) has no `try`: every failure is the
-//! exception's own answer. With one API key Python calls
-//! `get_customer_meta_attribute(code, column)` without its session, so the
-//! route always ends in the `AttributeError` of `Depends.execute` — uvicorn's
-//! bare 500, reproduced; with comma-separated keys each key is POSTed.
+//! exception's own answer. With comma-separated keys each key is POSTed as
+//! a `CollectSapSiemRequest`. With one API key Python calls
+//! `get_customer_meta_attribute(code, column)` without its session, so its
+//! route always ends in the `AttributeError` of `Depends.execute` (uvicorn's
+//! bare 500) and never collects; here that key is POSTed exactly as the
+//! several-keys path POSTs each of its keys (RUST_MIGRATION.md §4, "Python
+//! fails, Rust works").
 
 use chrono::{Datelike, NaiveDateTime, TimeDelta, Timelike};
 use copilot_auth::pyvalue::PyValue;
@@ -293,14 +296,8 @@ pub async fn collect(st: &ModulesState, request: &PyValue) -> FailResult<()> {
     let keys = lookups::extract_auth_keys(ci, "SAP SIEM")?;
     let auth = copilot_upstream::model::construct(&schema::SAP_KEYS, &keys)?;
     let api_key = text(field(&auth, "API_KEY"));
-    if !api_key.contains(',') {
-        // `get_customer_meta_attribute(code, column)`: `session` is its
-        // `Depends(get_session)` default.
-        return Err(Fail::other(
-            "AttributeError",
-            "'Depends' object has no attribute 'execute'",
-        ));
-    }
+    // `auth_keys.API_KEY.split(",")` — one key is a list of one (Python's
+    // single-key branch fails before it sends anything, §4).
     for key in api_key.split(',') {
         let auth_keys = copilot_upstream::model::construct(
             &schema::SAP_KEYS,

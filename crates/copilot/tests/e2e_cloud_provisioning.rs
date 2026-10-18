@@ -1378,7 +1378,8 @@ async fn aws_accounts_are_validated_provisioned_resynced_and_deleted() {
 
     // The deployed instance deleted in Rust: its bucket off the manager, its
     // stream, the index set, datasource and folder (the customer's last
-    // instance); the metadata row stays, as Python leaves it.
+    // instance); the metadata row goes with it (Python left it behind:
+    // RUST_MIGRATION.md §4).
     let (st, body) = h
         .call(
             "DELETE",
@@ -1402,7 +1403,7 @@ async fn aws_accounts_are_validated_provisioned_resynced_and_deleted() {
     );
     assert_eq!(l.last().unwrap(), "PUT /wazuh/manager/restart");
     assert!(!e.tools.with(|w| w.ossec.contains("e2e-aws-bucket")));
-    assert_eq!(aws_meta(&h, &code).await.len(), 1);
+    assert!(aws_meta(&h, &code).await.is_empty());
 
     unseed(&h, &code).await;
     unseed(&h, &beta).await;
@@ -1801,7 +1802,11 @@ async fn collectors_provision_graylog_grafana_and_write_their_files() {
         body["message"],
         json!("Expecting value: line 1 column 1 (char 0)")
     );
-    assert_eq!(network_meta(&h, &code, "BITDEFENDER").await.len(), 2);
+    // The failed second run is rolled back (Python kept its second meta row): the
+    // first run's row and files stay, the files existing before were not removed.
+    assert_eq!(network_meta(&h, &code, "BITDEFENDER").await.len(), 1);
+    assert!(folder.join("config.json").exists());
+    assert_eq!(deployed(&h, 7_850_023).await, 1);
 
     unseed(&h, &code).await;
     leave(&h, e).await;

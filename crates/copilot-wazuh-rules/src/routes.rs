@@ -21,6 +21,7 @@ use copilot_web::{AdminOnly, AdminOrAnalyst, ApiError, Authorized, QueryPairs, S
 use copilot_yaml::Value;
 
 use crate::RulesState;
+use crate::mitre_alerts::{self as mitre, Search};
 use crate::rules::{self, NEW_LEVEL};
 use crate::schema::{self, atomic as models};
 use crate::services::{self as db, NewDisabledRule};
@@ -44,6 +45,14 @@ pub fn router(state: RulesState) -> Router {
         .route(
             "/api/wazuh_manager/mitre/techniques/{technique_id}/atomic-tests",
             get(technique_tests),
+        )
+        .route(
+            "/api/wazuh_manager/mitre/techniques/alerts",
+            get(techniques_in_alerts),
+        )
+        .route(
+            "/api/wazuh_manager/mitre/techniques/{technique_id}/alerts",
+            get(technique_alerts),
         )
         .with_state(state)
 }
@@ -387,6 +396,219 @@ async fn technique_tests(
     Ok(model_response(&out))
 }
 
+/// `Optional[int] = Query(None)`.
+fn opt_int_query(v: &mut Validator, q: &QueryPairs, name: &str) -> Option<i128> {
+    let raw = q.get(name)?;
+    let parsed = pyd_int(raw);
+    if parsed.is_none() {
+        v.push(
+            "int_parsing",
+            loc("query", name),
+            "Input should be a valid integer, unable to parse string as an integer",
+        );
+    }
+    parsed
+}
+
+/// `mitre_field`'s pattern.
+const MITRE_FIELD_PATTERN: &str = "^[A-Za-z0-9_.]+$";
+/// `technique_id`'s pattern.
+const TECHNIQUE_ID_PATTERN: &str = r"^T?[0-9]{4}(\.[0-9]{3})?$";
+
+/// `^[A-Za-z0-9_.]+$`.
+fn is_field_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.')
+}
+
+/// `^T?[0-9]{4}(\.[0-9]{3})?$`.
+fn is_technique_id(s: &str) -> bool {
+    let rest = s.strip_prefix('T').unwrap_or(s);
+    let digits = |t: &str, n: usize| t.len() == n && t.bytes().all(|b| b.is_ascii_digit());
+    match rest.split_once('.') {
+        None => digits(rest, 4),
+        Some((main, sub)) => digits(main, 4) && digits(sub, 3),
+    }
+}
+
+/// `Optional[str] = Query(None, pattern=…)`.
+fn mitre_field_query(v: &mut Validator, q: &QueryPairs) -> Option<String> {
+    let raw = q.get("mitre_field")?;
+    if !is_field_name(raw) {
+        v.push(
+            "string_pattern_mismatch",
+            loc("query", "mitre_field"),
+            format!("String should match pattern '{MITRE_FIELD_PATTERN}'"),
+        );
+        return None;
+    }
+    Some(raw.to_string())
+}
+
+/// The query both searches read, validated in declaration order, and the
+/// route's `additional_filters` (`alert_id` only for the second).
+fn search_query(v: &mut Validator, q: &QueryPairs, with_alert_id: bool) -> (Search, i128, i128) {
+    let time_range = q.get("time_range").unwrap_or("now-24h").to_string();
+    let size = int_query(v, q, "size", 25, None);
+    let page = int_query(v, q, "page", 1, Some(0));
+    let rule_level = opt_int_query(v, q, "rule_level");
+    let rule_group = q.get("rule_group").map(str::to_string);
+    let mitre_field = mitre_field_query(v, q);
+    let index_pattern = q.get("index_pattern").unwrap_or("wazuh-*").to_string();
+    let alert_id = if with_alert_id {
+        q.get("alert_id").map(str::to_string)
+    } else {
+        None
+    };
+    let phrase = |field: &str, text: String| {
+        py::dict(vec![(
+            "match_phrase",
+            py::dict(vec![(field, py::dict(vec![("query", py::s(text))]))]),
+        )])
+    };
+    let mut filters = Vec::new();
+    if let Some(level) = rule_level {
+        filters.push(phrase("rule_level", level.to_string()));
+    }
+    if let Some(group) = rule_group {
+        filters.push(phrase("rule_groups", group));
+    }
+    if let Some(id) = alert_id {
+        filters.push(py::dict(vec![("term", py::dict(vec![("id", py::s(id))]))]));
+    }
+    let size_big = BigInt::from(size);
+    let offset = (BigInt::from(page) - BigInt::from(1)) * &size_big;
+    (
+        Search {
+            time_range,
+            size: size_big,
+            offset,
+            filters,
+            index_pattern,
+            mitre_field,
+        },
+        size,
+        page,
+    )
+}
+
+/// A validated response model as FastAPI writes it.
+fn json_answer(model: &'static pyd::Model, value: &Value) -> Res {
+    let dump = pyd::build(model, value).map_err(PyExc::unhandled)?;
+    let text = dump
+        .to_pydantic_json()
+        .map_err(|e| ApiError::internal(format!("PydanticSerializationError: {e}")))?;
+    Ok((
+        StatusCode::OK,
+        [(http::header::CONTENT_TYPE, "application/json")],
+        text,
+    )
+        .into_response())
+}
+
+/// `GET /mitre/techniques/alerts`.
+async fn techniques_in_alerts(
+    auth: Authorized<AdminOrAnalyst>,
+    State(st): State<RulesState>,
+    q: QueryPairs,
+) -> Res {
+    let mut v = Validator::new();
+    let (search, size, page) = search_query(&mut v, &q, false);
+    v.finish()?;
+    tracing::info!(
+        "Searching for MITRE techniques in alerts from {} (page {page}, size {size})",
+        search.time_range
+    );
+    let scope = auth.access(&st.wazuh.ctx).await?.clone();
+    let tenant = mitre::tenant(&st.wazuh, &scope).await?;
+    let found = mitre::techniques_in_alerts(&st.wazuh, &search, &tenant)
+        .await
+        .map_err(PyExc::unhandled)?;
+    let total = py::as_bigint(&found.total_count).unwrap_or_default();
+    let size_big = BigInt::from(size);
+    let total_pages = if total > BigInt::from(0) {
+        mitre::floor_div(&(&total + &size_big - BigInt::from(1)), &size_big)
+            .map_err(PyExc::unhandled)?
+    } else {
+        BigInt::from(1)
+    };
+    let message = format!(
+        "Found {total} MITRE techniques in {} alerts (page {page} of {total_pages},)",
+        found.total_alerts.py_str()
+    );
+    let response = py::dict(vec![
+        ("success", Value::Bool(true)),
+        ("message", py::s(message)),
+        ("total_alerts", found.total_alerts),
+        ("techniques_count", Value::Int(total)),
+        ("techniques", py::list(found.techniques)),
+        ("time_range", py::s(search.time_range.clone())),
+        ("field_used", py::opt_str(found.field_used)),
+        ("page", big(page)),
+        ("page_size", big(size)),
+        ("total_pages", Value::Int(total_pages)),
+    ]);
+    json_answer(
+        &schema::mitre_alerts::MITRE_TECHNIQUES_IN_ALERTS_RESPONSE,
+        &response,
+    )
+}
+
+/// `GET /mitre/techniques/{technique_id}/alerts`.
+async fn technique_alerts(
+    auth: Authorized<AdminOrAnalyst>,
+    State(st): State<RulesState>,
+    Path(technique_id): Path<String>,
+    q: QueryPairs,
+) -> Res {
+    let mut v = Validator::new();
+    if !is_technique_id(&technique_id) {
+        v.push(
+            "string_pattern_mismatch",
+            loc("path", "technique_id"),
+            format!("String should match pattern '{TECHNIQUE_ID_PATTERN}'"),
+        );
+    }
+    let (search, size, page) = search_query(&mut v, &q, true);
+    v.finish()?;
+    tracing::info!(
+        "Request for alerts related to MITRE technique {technique_id} from {} (page {page}, \
+         size {size})",
+        search.time_range
+    );
+    let clean = py::py_strip(&technique_id).to_string();
+    let scope = auth.access(&st.wazuh.ctx).await?.clone();
+    let tenant = mitre::tenant(&st.wazuh, &scope).await?;
+    let found = mitre::alerts_for_technique(&st.wazuh, &search, &clean, &tenant)
+        .await
+        .map_err(PyExc::unhandled)?;
+    let size_big = BigInt::from(size);
+    let pages = mitre::pages_of(&found.total_alerts, &size_big).map_err(PyExc::unhandled)?;
+    let message = format!(
+        "Found {} alerts for MITRE technique {clean} (page {page} of {},)",
+        found.total_alerts.py_str(),
+        pages.py_str()
+    );
+    let response = py::dict(vec![
+        ("success", Value::Bool(true)),
+        ("message", py::s(message)),
+        ("technique_id", py::s(clean)),
+        ("technique_name", py::s(found.technique_name)),
+        ("total_alerts", found.total_alerts),
+        ("alerts", py::list(found.alerts)),
+        ("field_used", py::opt_str(found.field_used)),
+        ("time_range", py::s(search.time_range.clone())),
+        ("page", big(page)),
+        ("page_size", big(size)),
+        ("total_pages", pages),
+    ]);
+    json_answer(
+        &schema::mitre_alerts::MITRE_TECHNIQUE_ALERTS_RESPONSE,
+        &response,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,5 +625,26 @@ mod tests {
         assert_eq!(pyd_int("1.00"), Some(1));
         assert_eq!(pyd_int("1.5"), None);
         assert_eq!(pyd_int("_1"), None);
+    }
+
+    #[test]
+    fn the_route_patterns() {
+        for (id, ok) in [
+            ("T1047", true),
+            ("1047", true),
+            ("T1003.004", true),
+            ("T1003.04", false),
+            ("TT1047", false),
+            ("T104", false),
+            ("T1047\n", false),
+            ("T1047.", false),
+            ("t1047", false),
+        ] {
+            assert_eq!(is_technique_id(id), ok, "{id}");
+        }
+        assert!(is_field_name("rule.mitre.id"));
+        assert!(!is_field_name(""));
+        assert!(!is_field_name("rule mitre"));
+        assert!(!is_field_name("rule'].value"));
     }
 }

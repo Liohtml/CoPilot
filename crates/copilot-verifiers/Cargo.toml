@@ -1,0 +1,27 @@
+[package]
+name = "copilot-verifiers"
+description = "The connector verifications Python still answered: Graylog, InfluxDB, Grafana, the provisioning services, Event Shipper, VirusTotal, Portainer, Resend and Talon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+copilot-auth = { workspace = true }
+copilot-db = { workspace = true }
+copilot-web = { workspace = true }
+copilot-jinja = { workspace = true }
+copilot-upstream = { workspace = true }
+copilot-connectors = { workspace = true }
+copilot-graylog = { workspace = true }
+copilot-grafana = { workspace = true }
+copilot-influxdb = { workspace = true }
+copilot-portainer = { workspace = true }
+copilot-threat-intel = { workspace = true }
+async-trait = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

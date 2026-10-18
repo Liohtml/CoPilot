@@ -195,7 +195,7 @@ async fn create_config(
         .ok_or_else(|| ApiError::internal("created configuration not found"))?;
     Ok(config_response(
         "GitHub Audit configuration created successfully",
-        row.dump(false),
+        row.dump(),
         PyValue::None,
     ))
 }
@@ -211,7 +211,7 @@ async fn get_configs(State(s): State<AssessmentsState>, auth: Reader, q: QueryPa
         Some(c) if c.is_empty() => Vec::new(),
         other => store::configs(&s.ctx.db, other.as_deref()).await?,
     };
-    let configs: Vec<PyValue> = rows.iter().map(|r| r.dump(true)).collect();
+    let configs: Vec<PyValue> = rows.iter().map(|r| r.dump()).collect();
     Ok(config_response(
         &format!("Found {} configuration(s)", configs.len()),
         PyValue::None,
@@ -228,7 +228,7 @@ async fn get_config(
     let row = config_for(&s, &auth, &id).await?;
     Ok(config_response(
         "Configuration retrieved successfully",
-        row.dump(true),
+        row.dump(),
         PyValue::None,
     ))
 }
@@ -249,7 +249,7 @@ async fn update_config(
         .ok_or_else(|| ApiError::internal("updated configuration not found"))?;
     Ok(config_response(
         "Configuration updated successfully",
-        row.dump(true),
+        row.dump(),
         PyValue::None,
     ))
 }

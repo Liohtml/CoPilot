@@ -716,6 +716,7 @@ class Pair:
         expect=None,
         outbound="exact",
         table=True,
+        py_view=None,
         **kw,
     ):
         """Python, then Rust, each after `before()` and with the stand-ins set from `gh` / `nuclei`.
@@ -740,14 +741,17 @@ class Pair:
             )
             return r1, r2
 
-        def norm(r):
+        def norm(r, view=None):
             try:
                 value = json.loads(r.content)
             except ValueError:
                 return r.content
+            if view:
+                value = view(value)
             return masked(value, set(mask)) if mask else value
 
-        b1, b2 = norm(r1), norm(r2)
+        # `py_view` turns Python's answer into what Rust answers by design (§4).
+        b1, b2 = norm(r1, py_view), norm(r2)
         # Values with their JSON types (`1` is not `1.0`), keys compared as sets: a table model's
         # key order is process-dependent in Python (RUST_MIGRATION.md §4).
         ok = r1.status_code == r2.status_code and typed(b1) == typed(b2)
@@ -779,7 +783,7 @@ class Pair:
         if s1 != s2:
             ok = False
             detail += f"\n        rows python {s1}\n        rows rust   {s2}"
-        check(f"{name} [{r1.status_code}]", ok, detail)
+        check(f"{name} [{r1.status_code}]" + (" [diff by design: py_view]" if py_view else ""), ok, detail)
         if os.environ.get("PARITY_VERBOSE"):
             print(f"        {r1.content[:800]!r}")
         return r1, r2
@@ -855,7 +859,17 @@ async def config_checks(p, t):
         "minimum_passing_score": 55,
     }
     fresh = ("id", "created_at", "updated_at")
-    await p.same("create config", "POST", f"{G}/config", t["admin"], before=seed_rows, json=body, mask=fresh)
+
+    def token_masked(answer):
+        # §4: Python's create echoes the token in clear; Rust masks it as every other config
+        # answer does (`***` and its last four characters). The stored row is the same.
+        config = answer.get("config") if isinstance(answer, dict) else None
+        if not isinstance(config, dict) or not isinstance(config.get("github_token"), str):
+            return answer
+        token = config["github_token"]
+        return {**answer, "config": {**config, "github_token": "***" + token[-4:] if len(token) > 4 else "***"}}
+
+    await p.same("create config", "POST", f"{G}/config", t["admin"], before=seed_rows, json=body, mask=fresh, py_view=token_masked)
     full = {
         **body,
         "token_type": "app",
@@ -870,7 +884,16 @@ async def config_checks(p, t):
         "minimum_passing_score": "88.8",
         "created_by": "alice",
     }
-    await p.same("create config, every field", "POST", f"{G}/config", t["analyst"], before=seed_rows, json=full, mask=fresh)
+    await p.same(
+        "create config, every field",
+        "POST",
+        f"{G}/config",
+        t["analyst"],
+        before=seed_rows,
+        json=full,
+        mask=fresh,
+        py_view=token_masked,
+    )
     await p.same("create config, an existing pair", "POST", f"{G}/config", t["admin"], before=seed_rows, json={**body, "organization": ORG})
     await p.same("create config, missing fields", "POST", f"{G}/config", t["admin"], before=seed_rows, json={})
     await p.same(

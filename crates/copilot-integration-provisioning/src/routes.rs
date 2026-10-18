@@ -14,6 +14,7 @@ use axum::extract::State;
 use axum::routing::post;
 use copilot_auth::pyvalue::PyValue;
 use copilot_monitoring_alerts::body::{PyBody, WithPyJson};
+use copilot_provisioning::rollback::Rollback;
 use copilot_upstream::model::{Model, field};
 use copilot_upstream::py::{PyExc, type_name};
 use copilot_upstream::respond::model_response;
@@ -155,13 +156,23 @@ async fn provision_integration(
     integrations::integrations_of(&st.ctx, &code)
         .await
         .map_err(PyExc::unhandled)?;
-    integrations::provision(&st.ctx, tools(&st), integration, &code).await?;
-    integrations::hand_jobs(
-        &st.scheduler,
-        &auth.user,
-        integrations::jobs(integration, &request),
-    )
-    .await?;
+    // What the run creates is undone when it — or the jobs' registration —
+    // fails (jobs registered before a failure stay registered).
+    let mut rollback = Rollback::default();
+    let outcome: Result<(), ApiError> = async {
+        integrations::provision(&st.ctx, tools(&st), integration, &code, &mut rollback).await?;
+        integrations::hand_jobs(
+            &st.scheduler,
+            &auth.user,
+            integrations::jobs(integration, &request),
+        )
+        .await
+    }
+    .await;
+    if outcome.is_err() {
+        rollback.run(tools(&st).undo()).await;
+    }
+    outcome?;
     Ok(model_response(&copilot_upstream::model::kwargs(vec![
         ("success", PyValue::Bool(true)),
         ("message", PyValue::Str(integration.message.into())),

@@ -44,7 +44,19 @@ fn configured() -> bool {
 /// A stand-in on one of this suite's ports: 0 the default Graylog, 1 the
 /// network Graylog, 3 the Python backend (2 is the GELF input).
 async fn stand_in(offset: u16) -> MockServer {
-    let listener = std::net::TcpListener::bind(("127.0.0.1", port(offset))).unwrap();
+    // Retried while the previous test's server lets the port go (wiremock
+    // closes its listener on its own thread).
+    let mut tries = 0;
+    let listener = loop {
+        match std::net::TcpListener::bind(("127.0.0.1", port(offset))) {
+            Ok(l) => break l,
+            Err(_) if tries < 50 => {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            Err(e) => panic!("cannot bind the stand-in on {}: {e}", port(offset)),
+        }
+    };
     MockServer::builder().listener(listener).start().await
 }
 

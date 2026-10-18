@@ -9,10 +9,10 @@
 //! | `POST /management/restart` | admin |
 //!
 //! Not routed here: `/rule/disabled`, `/rule/disable`, `/rule/enable`,
-//! `/rule/exclude`, `/mitre/atomic-tests` and
-//! `/mitre/techniques/{id}/atomic-tests` are `copilot-wazuh-rules`'; the two
-//! MITRE alert searches (`/mitre/techniques/alerts`,
-//! `/mitre/techniques/{id}/alerts`) are served by the Python backend.
+//! `/rule/exclude`, `/mitre/atomic-tests`,
+//! `/mitre/techniques/{id}/atomic-tests` and the two MITRE alert searches
+//! (`/mitre/techniques/alerts`, `/mitre/techniques/{id}/alerts`) are
+//! `copilot-wazuh-rules`'.
 
 use axum::Router;
 use axum::body::Bytes;

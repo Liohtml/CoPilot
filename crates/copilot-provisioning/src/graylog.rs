@@ -22,6 +22,7 @@ use copilot_platform::pep440::Version;
 use copilot_upstream::model::{construct, construct_star, field, kwargs};
 use copilot_upstream::py::{PyExc, PyResult, getitem, type_name};
 
+use crate::rollback::{Rollback, Undo};
 use crate::schema::{CONTENT_PACK_LIST, GRAYLOG_SERVER_INFO};
 use crate::templates;
 
@@ -190,13 +191,55 @@ pub async fn install_content_pack_on(
 }
 
 /// `provision_content_pack(request)`: insert, then install.
-pub async fn provision_content_pack(c: &GraylogClient, name: &str) -> PyResult<()> {
+pub async fn provision_content_pack(
+    c: &GraylogClient,
+    name: &str,
+    rollback: &mut Rollback,
+) -> PyResult<()> {
     let pack = templates::content_pack(name)
         .ok_or_else(|| PyExc::http(404, "Content pack JSON file not found"))?;
-    insert_content_pack_on(c, DEFAULT_CONNECTOR, &pack).await?;
+    insert_and_install_on(c, DEFAULT_CONNECTOR, &pack, true, rollback).await
+}
+
+/// Insert `pack` on `connector` and install it — when Graylog took the
+/// insert, or always with `always_install` (`provision_content_pack`) —,
+/// registering what this run created: a pack it inserted (its installation
+/// with it).
+pub async fn insert_and_install_on(
+    c: &GraylogClient,
+    connector: &'static str,
+    pack: &PyValue,
+    always_install: bool,
+    rollback: &mut Rollback,
+) -> PyResult<()> {
+    let inserted = insert_content_pack_on(c, connector, pack).await?;
     let id = pack.get("id").cloned().unwrap_or(PyValue::None);
     let rev = pack.get("rev").cloned().unwrap_or(PyValue::None);
-    install_content_pack_on(c, DEFAULT_CONNECTOR, &id, &rev).await
+    let undo_id = crate::rollback::id_text(&id);
+    if inserted {
+        if let Some(pack_id) = &undo_id {
+            rollback.add(
+                format!("content pack {pack_id}"),
+                Undo::ContentPack {
+                    connector,
+                    id: pack_id.clone(),
+                    installed: false,
+                },
+            );
+        }
+    }
+    if !(inserted || always_install) {
+        return Ok(());
+    }
+    install_content_pack_on(c, connector, &id, &rev).await?;
+    if inserted {
+        if let Some(pack_id) = undo_id {
+            // The pack this run inserted is now installed: its undo removes
+            // the installation first.
+            rollback.set_installed(&pack_id);
+        }
+    }
+    Ok(())
 }
 
 /// The ETW rule's source, as `create_etw_rule` writes it.
@@ -210,7 +253,7 @@ pub fn etw_rule_source() -> String {
 }
 
 /// `check_pipeline_rules()`: create the ETW rule when no rule has its title.
-pub async fn check_pipeline_rules(c: &GraylogClient) -> PyResult<()> {
+pub async fn check_pipeline_rules(c: &GraylogClient, rollback: &mut Rollback) -> PyResult<()> {
     let rules = copilot_graylog::services::pipeline_rules(c).await?;
     let exists = match field(&rules, "pipeline_rules") {
         PyValue::List(items) => items
@@ -224,7 +267,16 @@ pub async fn check_pipeline_rules(c: &GraylogClient) -> PyResult<()> {
             ("description", st(ETW_RULE_TITLE)),
             ("source", PyValue::Str(etw_rule_source())),
         ]);
-        c.post("/api/system/pipelines/rule", Some(data)).await?;
+        let reply = c.post("/api/system/pipelines/rule", Some(data)).await?;
+        if let Some(id) = crate::rollback::id_text(field(&reply.data, "id")) {
+            rollback.add(
+                format!("pipeline rule {id}"),
+                Undo::PipelineRule {
+                    connector: DEFAULT_CONNECTOR,
+                    id,
+                },
+            );
+        }
     }
     Ok(())
 }

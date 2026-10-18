@@ -600,12 +600,20 @@ async fn manager_tokens_follow_the_row_and_a_401_is_retried_once() {
     give_back(&h, id, old).await;
 }
 
+/// Every connector Python verifies has a Rust verifier now
+/// (`copilot-verifiers`): an update and a verification of `Graylog` never
+/// reach the Python backend.
 #[tokio::test]
-async fn a_connector_python_verifies_is_updated_and_verified_by_python() {
-    use wiremock::matchers::{body_json, header, method, path};
+async fn a_graylog_connector_is_updated_and_verified_in_rust() {
+    use wiremock::matchers::{any, method, path};
     use wiremock::{Mock, ResponseTemplate};
 
     let legacy = wiremock::MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&legacy)
+        .await;
     let h = harness_or_skip!(Some(&legacy));
     h.seed().await;
     let s = &h.suffix;
@@ -617,6 +625,13 @@ async fn a_connector_python_verifies_is_updated_and_verified_by_python() {
         eprintln!("a Graylog connector exists in this database; skipping");
         return;
     }
+    let graylog = wiremock::MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/authz/roles/user/u2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"roles": []})))
+        .expect(2)
+        .mount(&graylog)
+        .await;
     let id = connector(
         &h,
         "Graylog",
@@ -625,27 +640,7 @@ async fn a_connector_python_verifies_is_updated_and_verified_by_python() {
         Some("p"),
     )
     .await;
-    let body =
-        json!({"connector_url": "https://graylog2.example:9000", "connector_username": "u2"});
-    Mock::given(method("PUT"))
-        .and(path(format!("/api/connectors/{id}")))
-        .and(header("authorization", format!("Bearer {admin}").as_str()))
-        .and(body_json(&body))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"answered_by": "python"})))
-        .expect(1)
-        .mount(&legacy)
-        .await;
-    Mock::given(method("POST"))
-        .and(path(format!("/api/connectors/verify/{id}")))
-        .respond_with(
-            ResponseTemplate::new(500).set_body_json(
-                json!({"success": false, "message": "Failed to verify connector: x"}),
-            ),
-        )
-        .expect(1)
-        .mount(&legacy)
-        .await;
-
+    let body = json!({"connector_url": graylog.uri(), "connector_username": "u2"});
     let (status, got) = h
         .call(
             "PUT",
@@ -654,17 +649,15 @@ async fn a_connector_python_verifies_is_updated_and_verified_by_python() {
             Some(body),
         )
         .await;
-    assert_eq!(
-        (status.as_u16(), got),
-        (200, json!({"answered_by": "python"}))
-    );
-    // Rust wrote nothing: Python did (here: a stand-in that does not).
-    let url: (String,) = sqlx::query_as("SELECT connector_url FROM connectors WHERE id = ?")
-        .bind(id)
-        .fetch_one(h.db.pool())
-        .await
-        .unwrap();
-    assert_eq!(url.0, "https://graylog.example:9000");
+    assert_eq!(status, 200, "{got}");
+    assert_eq!(got["message"], json!("Connector updated successfully"));
+    let row: (String, bool) =
+        sqlx::query_as("SELECT connector_url, connector_verified FROM connectors WHERE id = ?")
+            .bind(id)
+            .fetch_one(h.db.pool())
+            .await
+            .unwrap();
+    assert_eq!(row, (graylog.uri(), true));
 
     let (status, got) = h
         .call(
@@ -674,10 +667,12 @@ async fn a_connector_python_verifies_is_updated_and_verified_by_python() {
             None,
         )
         .await;
-    assert_eq!(status, 500, "{got}");
-    assert_eq!(got["message"], json!("Failed to verify connector: x"));
+    assert_eq!(status, 200, "{got}");
+    assert_eq!(
+        got,
+        json!({"connectionSuccessful": true, "message": "Graylog connection successful"})
+    );
 
-    // The checks before the hand-off are Rust's: a missing row never reaches Python.
     let (status, _) = h
         .call(
             "PUT",
@@ -688,6 +683,7 @@ async fn a_connector_python_verifies_is_updated_and_verified_by_python() {
         .await;
     assert_eq!(status, 404);
     legacy.verify().await;
+    graylog.verify().await;
     drop_connector(&h, id).await;
 }
 

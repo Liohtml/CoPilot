@@ -446,6 +446,69 @@ pub static DATA_ITEM: Model = Model::new(
     ],
 );
 
+/// `TTPResponseClickLogs`: one clicked TTP URL.
+pub static TTP_CLICK_LOGS: Model = Model::new(
+    "TTPResponseClickLogs",
+    &[
+        Field::req("userEmailAddress", Ty::Str),
+        Field::req("fromUserEmailAddress", Ty::Str),
+        Field::req("url", Ty::Str),
+        Field::req("ttpDefinition", Ty::Str),
+        Field::req("subject", Ty::Str),
+        Field::req("action", Ty::Str),
+        Field::req("adminOverride", Ty::Str),
+        Field::req("userOverride", Ty::Str),
+        Field::req("scanResult", Ty::Str),
+        Field::req("category", Ty::Str),
+        Field::req("sendingIp", Ty::Str),
+        Field::req("userAwarenessAction", Ty::Str),
+        Field::req("date", Ty::Str),
+        Field::req("actions", Ty::Str),
+        Field::req("route", Ty::Str),
+        Field::req("creationMethod", Ty::Str),
+        Field::req("emailPartsDescription", Ty::List(&Ty::Str)),
+        Field::req("messageId", Ty::Str),
+    ],
+);
+
+/// `TTPResponseDataItem`.
+pub static TTP_DATA_ITEM: Model = Model::new(
+    "TTPResponseDataItem",
+    &[Field::req(
+        "clickLogs",
+        Ty::List(&Ty::Model(&TTP_CLICK_LOGS)),
+    )],
+);
+
+/// `TTPResponsePagination`.
+pub static TTP_PAGINATION: Model = Model::new(
+    "TTPResponsePagination",
+    &[
+        Field::req("pageSize", Ty::Int),
+        Field::req("totalCount", Ty::Int),
+        Field::opt("next", Ty::Nullable(&Ty::Str)),
+    ],
+);
+
+/// `ResponseMeta`.
+pub static TTP_META: Model = Model::new(
+    "ResponseMeta",
+    &[
+        Field::req("pagination", Ty::Model(&TTP_PAGINATION)),
+        Field::req("status", Ty::Int),
+    ],
+);
+
+/// `TtpURLResponseBody`: one page of `/api/ttp/url/get-logs`.
+pub static TTP_RESPONSE: Model = Model::new(
+    "TtpURLResponseBody",
+    &[
+        Field::req("meta", Ty::Model(&TTP_META)),
+        Field::req("data", Ty::List(&Ty::Model(&TTP_DATA_ITEM))),
+        Field::req("fail", Ty::List(&Ty::Dict(&Ty::Any))),
+    ],
+);
+
 /// `{"success": …, "message": …}`.
 pub fn invoke_response(success: bool, message: &str) -> PyValue {
     PyValue::Dict(vec![

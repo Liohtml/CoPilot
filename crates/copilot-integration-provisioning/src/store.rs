@@ -5,6 +5,7 @@
 use copilot_auth::pyvalue::PyValue;
 use copilot_db::Db;
 use copilot_db::connectors::ConnectorRow;
+use copilot_provisioning::rollback::{Rollback, Undo};
 use copilot_upstream::py::{PyExc, PyResult};
 
 fn db(e: impl std::fmt::Display) -> PyExc {
@@ -75,8 +76,8 @@ pub struct NetworkMeta {
 
 /// `insert_into_customer_network_connectors_meta_table`: add, commit. A
 /// `NULL` in a `NOT NULL` column is MySQL's refusal (the `IntegrityError`).
-pub async fn insert_network_meta(pool: &Db, meta: &NetworkMeta) -> PyResult<()> {
-    sqlx::query(
+pub async fn insert_network_meta(pool: &Db, meta: &NetworkMeta) -> PyResult<i64> {
+    let done = sqlx::query(
         "INSERT INTO customer_network_connectors_meta (customer_code, network_connector_name, \
          graylog_input_id, graylog_index_id, graylog_stream_id, graylog_pipeline_id, \
          graylog_content_pack_input_id, graylog_content_pack_stream_id, grafana_org_id, \
@@ -98,14 +99,20 @@ pub async fn insert_network_meta(pool: &Db, meta: &NetworkMeta) -> PyResult<()> 
     .execute(pool.pool())
     .await
     .map_err(|e| PyExc::Other("IntegrityError", e.to_string()))?;
-    Ok(())
+    Ok(i64::try_from(done.last_insert_id()).unwrap_or_default())
 }
 
 /// `set_deployed_flag(code, service_name, True)`: the first matching
-/// `customer_network_connectors` row (`None.deployed` without one).
-pub async fn set_network_deployed(pool: &Db, code: &str, service_name: &str) -> PyResult<()> {
-    let ids: Vec<(i32,)> = sqlx::query_as(
-        "SELECT id FROM customer_network_connectors WHERE customer_code = ? AND \
+/// `customer_network_connectors` row (`None.deployed` without one); a row
+/// this run moves from `0` is registered in `rollback`.
+pub async fn set_network_deployed(
+    pool: &Db,
+    code: &str,
+    service_name: &str,
+    rollback: &mut Rollback,
+) -> PyResult<()> {
+    let ids: Vec<(i32, bool)> = sqlx::query_as(
+        "SELECT id, deployed FROM customer_network_connectors WHERE customer_code = ? AND \
          network_connector_service_name = ?",
     )
     .bind(code)
@@ -114,7 +121,7 @@ pub async fn set_network_deployed(pool: &Db, code: &str, service_name: &str) -> 
     .fetch_all(pool.pool())
     .await
     .map_err(db)?;
-    let Some((id,)) = ids.into_iter().next() else {
+    let Some((id, deployed)) = ids.into_iter().next() else {
         return Err(PyExc::AttributeError(
             "'NoneType' object has no attribute 'deployed'".into(),
         ));
@@ -124,5 +131,14 @@ pub async fn set_network_deployed(pool: &Db, code: &str, service_name: &str) -> 
         .execute(pool.pool())
         .await
         .map_err(db)?;
+    if !deployed {
+        rollback.add(
+            format!("customer_network_connectors {id} deployed"),
+            Undo::Deployed {
+                table: "customer_network_connectors",
+                ids: vec![i64::from(id)],
+            },
+        );
+    }
     Ok(())
 }

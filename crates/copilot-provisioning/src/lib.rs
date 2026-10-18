@@ -24,6 +24,7 @@
 pub mod customer;
 pub mod graylog;
 pub mod influx;
+pub mod rollback;
 pub mod routes;
 pub mod schema;
 pub mod templates;

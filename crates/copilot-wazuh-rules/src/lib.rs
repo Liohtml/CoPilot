@@ -9,6 +9,7 @@
 //! | `GET /rule/disabled`, `POST /rule/disable`, `POST /rule/enable` | `get_current_user(scopes=["admin"])` |
 //! | `POST /rule/exclude` | admin (`require_any_scope`) |
 //! | `GET /mitre/atomic-tests`, `GET /mitre/techniques/{technique_id}/atomic-tests` | admin/analyst (`require_any_scope`) |
+//! | `GET /mitre/techniques/alerts`, `GET /mitre/techniques/{technique_id}/alerts` | admin/analyst (`require_any_scope`) |
 //!
 //! - Disabling a rule finds its file through the manager, sets the rule's
 //!   level to `1` in the file's JSON, writes the file back as XML
@@ -21,14 +22,19 @@
 //!   wazuh-rule-exclusion`, httpx, 120 s) as Python does.
 //! - The Atomic Red Team listings come from GitHub over aiohttp
 //!   ([`aiohttp`], [`atomic`]), cached per process for a day.
+//! - The MITRE alert searches aggregate or list the alerts of an index
+//!   pattern by technique ([`mitre_alerts`]), with the manager's technique
+//!   names and tactics.
 //!
-//! Nothing is tenant-scoped: rules and the ATT&CK tests are
-//! deployment-wide, as in Python.
+//! Rules and the ATT&CK tests are deployment-wide, as in Python; the alert
+//! searches are narrowed to a scoped caller's customers' indices (Python
+//! searched every tenant's, RUST_MIGRATION.md §4).
 
 #![warn(missing_docs)]
 
 pub mod aiohttp;
 pub mod atomic;
+pub mod mitre_alerts;
 pub mod routes;
 pub mod rules;
 pub mod schema;

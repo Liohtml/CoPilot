@@ -56,6 +56,9 @@ pub struct PyRequest {
     pub basic_auth: Option<(Option<String>, Option<String>)>,
     /// `json=` (a value; `None` sends no body).
     pub json: Option<PyValue>,
+    /// `data=` of a `str`: the body as given, with no `Content-Type` of its
+    /// own (a non-empty one wins over `json=`, as in `prepare_body`).
+    pub data: Option<String>,
     /// How the client library serializes `json=`.
     pub dumps: Dumps,
 }
@@ -70,6 +73,7 @@ impl PyRequest {
             headers: Vec::new(),
             basic_auth: None,
             json: None,
+            data: None,
             dumps: Dumps::DEFAULT,
         }
     }
@@ -95,6 +99,13 @@ impl PyRequest {
     /// `json=`.
     pub fn json(mut self, body: Option<PyValue>) -> Self {
         self.json = body;
+        self
+    }
+
+    /// `data=` of a `str` (`requests` sends it UTF-8 encoded, as
+    /// urllib3 2.x does, with its `Content-Length` and no `Content-Type`).
+    pub fn data(mut self, body: impl Into<String>) -> Self {
+        self.data = Some(body.into());
         self
     }
 }
@@ -304,13 +315,15 @@ impl PyHttp {
     /// Send `req` the way `requests.request(...)` does.
     pub async fn send(&self, req: PyRequest) -> Result<PyResponse, PyExc> {
         let url = prepare_url(&req.url, &req.params)?;
-        let body = match &req.json {
-            None => None,
-            Some(v) => Some(
+        let body = match (&req.data, &req.json) {
+            (Some(d), _) if !d.is_empty() => Some(d.clone()),
+            (_, Some(v)) => Some(
                 py_dumps(v, req.dumps)
                     .map_err(|e| PyExc::Other("InvalidJSONError", format!("{e}")))?,
             ),
+            _ => None,
         };
+        let json_body = req.json.is_some() && req.data.as_deref().is_none_or(str::is_empty);
         let auth = match &req.basic_auth {
             None => None,
             Some((user, password)) => {
@@ -390,11 +403,13 @@ impl PyHttp {
         match body {
             Some(b) => {
                 // `prepare_body` sets `Content-Type` only when the caller's
-                // headers carry none (Portainer's helpers name it themselves).
-                if !req
-                    .headers
-                    .iter()
-                    .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                // headers carry none (Portainer's helpers name it themselves),
+                // and only for `json=`.
+                if json_body
+                    && !req
+                        .headers
+                        .iter()
+                        .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
                 {
                     let content_type = match self.flavor {
                         Flavor::Requests => "application/json",
@@ -674,6 +689,8 @@ fn requests_headers(
         }
     }
     if body.is_some()
+        && req.json.is_some()
+        && req.data.as_deref().is_none_or(str::is_empty)
         && !headers
             .iter()
             .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))

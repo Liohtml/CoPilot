@@ -14,7 +14,9 @@
 //! to Python whole — after the same 404 / validation checks — and this
 //! process forgets its cached row once Python has answered. Without a
 //! legacy backend such a connector is updated here and left as verified as
-//! it was.
+//! it was. The binary registers a verifier for every connector
+//! `get_connector_service` knows (`copilot-verifiers` brought the last
+//! twelve), so in it the hand-off is never taken.
 
 use std::net::SocketAddr;
 

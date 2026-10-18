@@ -1,10 +1,17 @@
 //! `/api/agent_data_store` — port of `app/data_store/data_store_routes.py`.
 //!
-//! - `POST /upload` (admin/analyst): a file to any bucket and object name,
-//!   the bucket created if missing. No tenant check, as in Python (the route
-//!   is closed to portal users for that reason, GHSA-6j26-wcv6-gp3f); every
-//!   failure, a missing file name included, is the 500 `Failed to upload
-//!   file: …`.
+//! - `POST /upload` (admin/analyst): a file to a bucket and object name,
+//!   the bucket created if missing; every failure, a missing file name
+//!   included, is the 500 `Failed to upload file: …`. Python wrote any bucket
+//!   and object for any analyst (the route is closed to portal users for
+//!   that reason, GHSA-6j26-wcv6-gp3f). Here a caller without
+//!   deployment-wide access may write only under their customers: the
+//!   object's first path segment must be one of their customer codes (the
+//!   reports', Sysmon configs' and file analysis' layout) or the id of an
+//!   agent of theirs (`velociraptor-artifacts/{agent_id}/…`); anything else
+//!   — an unknown owner, an empty, `.` or `..` first segment — is the 403
+//!   `Access denied to object {object_name}` before anything is sent
+//!   (RUST_MIGRATION.md §4). Admins stay deployment-wide.
 //! - `GET /agent/{agent_id}/artifacts[?flow_id=]`, `GET …/{artifact_id}`,
 //!   `GET …/{artifact_id}/download` (admin/analyst) and `DELETE
 //!   …/{artifact_id}` (admin): the agent's owner first
@@ -115,6 +122,28 @@ fn artifact_id_of(uri: &http::Uri, from_end: usize) -> ApiResult<i64> {
     Ok(id)
 }
 
+/// A scoped caller writes only under their customers: the object's first
+/// segment is one of their customer codes, or an agent id of theirs (fail
+/// closed).
+async fn verify_object(ctx: &AppContext, user: &CurrentUser, object: &str) -> ApiResult<()> {
+    let access = user.access(ctx).await?;
+    if access.is_all() {
+        return Ok(());
+    }
+    let subject = format!("object {object}");
+    // A `.` or `..` segment further on is refused by the client itself, as
+    // miniopy-async refuses it (the 500 of Python's).
+    let first = object.split('/').next().unwrap_or_default();
+    if first.is_empty() || first == "." || first == ".." {
+        return user.enforce_owned(ctx, None, &subject).await;
+    }
+    if access.can_access(first) {
+        return Ok(());
+    }
+    let owner = agents::customer_code_for_agent(&ctx.db, first).await?;
+    user.enforce_owned(ctx, owner.as_deref(), &subject).await
+}
+
 async fn upload(
     State(st): State<DataStoreState>,
     form: UploadForm<Authorized<AdminOrAnalyst>>,
@@ -127,6 +156,7 @@ async fn upload(
     let (Some(file), Some(bucket), Some(object)) = (file, bucket, object) else {
         return Err(ApiError::internal("validated form fields missing"));
     };
+    verify_object(&st.ctx, &form.auth, &object).await?;
     let result: Result<FileUploadResponse, PyExc> = async {
         tracing::info!(
             "Uploading file {} to bucket {bucket} as {object}",

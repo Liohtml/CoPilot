@@ -148,9 +148,9 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/customers/{customer_code}/notification_routes",
     "/api/customers/{customer_code}/notification_dispatch_log",
     "/api/customers/{customer_code}/shuffle_integrations",
-    // The connector list, rows, updates, verification and the YAML upload; a
-    // connector whose tool has no Rust verifier is updated and verified by
-    // Python.
+    // The connector list, rows, updates, verification and the YAML upload;
+    // every connector Python knows verifies in Rust (copilot-verifiers holds
+    // the last twelve), so none is handed to Python.
     "/api/connectors",
     // The Wazuh indexer: every route of its three routers.
     "/api/alerts",
@@ -158,8 +158,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/snapshots",
     // The Wazuh manager: rules and rule files (the upload included), groups,
     // the six MITRE listings and the restart; the rule switches, the
-    // exclusion and the Atomic Red Team listings are copilot-wazuh-rules'.
-    // The two MITRE alert searches stay in Python.
+    // exclusion, the Atomic Red Team listings and the two MITRE alert
+    // searches are copilot-wazuh-rules'.
     "/api/wazuh_manager/rules",
     "/api/wazuh_manager/groups",
     "GET /api/wazuh_manager/mitre/groups",
@@ -172,6 +172,8 @@ pub const PORTED_PREFIXES: &[&str] = &[
     "/api/wazuh_manager/rule",
     "GET /api/wazuh_manager/mitre/atomic-tests",
     "GET /api/wazuh_manager/mitre/techniques/{technique_id}/atomic-tests",
+    "GET /api/wazuh_manager/mitre/techniques/alerts",
+    "GET /api/wazuh_manager/mitre/techniques/{technique_id}/alerts",
     // The Graylog connector (copilot-graylog); `POST /api/graylog/invoke`,
     // the active-response webhook, is copilot-response's (below).
     "GET /api/graylog/indices",
@@ -623,7 +625,8 @@ impl App {
         let modules = copilot_integration_modules::ModulesState::new(
             ctx.clone(),
             cfg.integration_modules_url.clone(),
-        );
+        )
+        .with_mimecast_dir(cfg.mimecast_dir.clone());
         let graylog =
             GraylogClient::new(ctx.connectors.clone()).context("building the Graylog client")?;
         let influxdb =
@@ -795,7 +798,11 @@ impl App {
                     .chain(copilot_shuffle::verifiers(&shuffle))
                     .chain(copilot_intel_connectors::verify::verifiers())
                     .chain(copilot_uba::verifiers())
-                    .chain(copilot_sublime::verifiers(&sublime.client)),
+                    .chain(copilot_sublime::verifiers(&sublime.client))
+                    .chain(copilot_verifiers::verifiers(&copilot_verifiers::Tools {
+                        grafana: grafana.clone(),
+                        influxdb: influxdb.clone(),
+                    })),
             ),
             wazuh,
             ingest,

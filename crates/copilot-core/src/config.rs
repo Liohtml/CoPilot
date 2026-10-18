@@ -38,6 +38,7 @@
 //! | `COPILOT_CATALOG_REFRESH` | `true` | this process warms and refreshes its own catalog caches (`false`: they load on demand only — the parity suites, an air-gapped deployment) |
 //! | `COPILOT_GITHUB_API_URL`, `COPILOT_GITHUB_RAW_URL`, `COPILOT_MITRE_STIX_URL` | *(unset)* | tests only: the catalog's (and the Atomic Red Team listings') GitHub API, raw-file and ATT&CK bundle URLs (the parity harness's stand-ins); never set in production |
 //! | `COPILOT_INTEGRATION_MODULES_URL` | *(unset)* | tests only: every request to an integration module container (`http://copilot-<name>-module/…`, the AI module's rule exclusion included) and to Mimecast's region discovery goes to `{url}/{host}{path}` (the parity harness's stand-in); never set in production |
+//! | `COPILOT_MIMECAST_DIR` | `/opt/copilot/backend/app/integrations/mimecast` | the directory the Mimecast SIEM collection keeps its files in, as the Python module does next to itself: `checkpoint/mimecast_<code>.checkpoint` (the SIEM page token) and `logs/<code>/` (the downloads, extracted, shipped, then deleted) |
 //! | `AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_STS`, `AWS_ENDPOINT_URL_S3` | *(unset)* | botocore's endpoint overrides, honoured by the AWS provisioning's credential check as botocore honours them |
 //! | `COPILOT_BACKEND_DATA_DIR` | `/opt/copilot/backend/data` | the Python backend's `data/` directory (`UPLOAD_FOLDER`), where the connector YAML upload writes its file and records its path, and the CrowdStrike, Defender for Endpoint and Bitdefender provisioning write their collectors' docker-compose and configuration files (mounted read-write at that path by `docker-compose.rust.yml`) |
 //! | `COPILOT_AWS_PROFILE_CHECK_SECONDS`, `COPILOT_BITDEFENDER_URL`, `COPILOT_PROVISION_WORKER_PORT` | *(unset)* | tests only: how long the AWS provisioning watches the manager's log after a restart (`interval,timeout`), the GravityZone base URL the Bitdefender provisioning calls, and the port of the provisioning worker on the Wazuh master and each swarm node instead of `5003` (the parity harness's stand-ins); never set in production |
@@ -192,6 +193,9 @@ pub struct CopilotConfig {
     /// `COPILOT_INTEGRATION_MODULES_URL` — tests only: the stand-in the
     /// integration modules and Mimecast's discovery are reached at.
     pub integration_modules_url: Option<String>,
+    /// `COPILOT_MIMECAST_DIR`: where the Mimecast SIEM collection keeps
+    /// its checkpoint and log files (Python's module directory when unset).
+    pub mimecast_dir: Option<String>,
     /// The security assessments' test-only upstream overrides
     /// (`copilot-assessments`).
     pub assessments: crate::assessments_env::AssessmentsEnv,
@@ -470,6 +474,10 @@ impl CopilotConfig {
             integration_modules_url: env
                 .get("COPILOT_INTEGRATION_MODULES_URL")
                 .map(|v| v.trim().trim_end_matches('/').to_string())
+                .filter(|v| !v.is_empty()),
+            mimecast_dir: env
+                .get("COPILOT_MIMECAST_DIR")
+                .map(|v| v.trim().to_string())
                 .filter(|v| !v.is_empty()),
             assessments: crate::assessments_env::AssessmentsEnv::from_env(env),
             backend_data_dir: env

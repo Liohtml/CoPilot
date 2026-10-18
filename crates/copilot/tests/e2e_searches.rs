@@ -876,6 +876,43 @@ async fn caches_tenancy_and_upstreams() {
     .await;
     assert_eq!(body["rule"]["provenance"], json!("custom"), "{body}");
     assert_eq!(body["rule"]["owner_customer_code"], json!(acme), "{body}");
+    // §4: a caller scoped to another customer sees the shared rules only
+    // (Python listed every tenant's custom rules to everyone): the
+    // responder, moved to beta, reads acme's custom rule as missing.
+    h.exec(&format!(
+        "UPDATE user_customer_access SET customer_code = '{beta}' WHERE user_id = (SELECT id \
+         FROM `user` WHERE username = 'responder{}')",
+        h.suffix
+    ))
+    .await;
+    let other = h.token(&format!("responder{}", h.suffix), "analyst");
+    let (status, body) = call(
+        &router,
+        "GET",
+        &format!("{P}/id/acme-custom-0001"),
+        &other,
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (404, json!("Rule with ID 'acme-custom-0001' not found"))
+    );
+    for (token, want) in [(&other, total), (&analyst, total + 1), (&admin, total + 1)] {
+        let (_, body) = call(&router, "GET", &format!("{P}?limit=500"), token, None).await;
+        assert_eq!(body["total"].as_i64().unwrap(), want, "{body}");
+        let (_, body) = call(&router, "GET", &format!("{P}/stats"), token, None).await;
+        assert_eq!(body["total_rules"].as_i64().unwrap(), want, "{body}");
+    }
+    let (_, body) = call(
+        &router,
+        "POST",
+        &format!("{P}/by-ids"),
+        &other,
+        Some(json!({"ids": ["acme-custom-0001"]})),
+    )
+    .await;
+    assert_eq!(body["missing"], json!(["acme-custom-0001"]), "{body}");
 
     // §4: a body customer the caller may not see is refused before anything
     // is sent.

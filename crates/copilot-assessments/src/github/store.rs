@@ -197,14 +197,12 @@ pub fn mask_token(token: &str) -> String {
 }
 
 impl ConfigRow {
-    /// The table model's dump, in declaration order (`mask`: the routes that
-    /// mask the token before answering).
-    pub fn dump(&self, mask: bool) -> PyValue {
-        let token = if mask {
-            mask_token(&self.github_token)
-        } else {
-            self.github_token.clone()
-        };
+    /// The table model's dump, in declaration order, the token masked as the
+    /// routes answer it (`***` and its last four characters). Python's
+    /// `POST /config` answered the token in clear; every answer masks it
+    /// here (RUST_MIGRATION.md §4, a Python response artefact).
+    pub fn dump(&self) -> PyValue {
+        let token = mask_token(&self.github_token);
         dict(vec![
             ("id", int(self.id)),
             ("customer_code", PyValue::Str(self.customer_code.clone())),

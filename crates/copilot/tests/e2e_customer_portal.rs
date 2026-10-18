@@ -1202,7 +1202,7 @@ async fn agents_are_paged_filtered_and_exported_in_the_tenant() {
         ["critical", "page", "page_size"],
         "the dependency's error first"
     );
-    let (st, _) = h
+    let (st, body) = h
         .call(
             "GET",
             &page(&format!("page={}", "9".repeat(30))),
@@ -1210,7 +1210,10 @@ async fn agents_are_paged_filtered_and_exported_in_the_tenant() {
             None,
         )
         .await;
-    assert_eq!(st, 500, "an OFFSET MySQL refuses, as in Python");
+    // An OFFSET MySQL refuses was Python's bare 500; here the page past the
+    // end is empty (RUST_MIGRATION.md §4).
+    assert_eq!(st, 200, "{body}");
+    assert_eq!(body["agents"], json!([]));
     let (st, _) = h.call("GET", &page(""), Some(&responder), None).await;
     assert_eq!(st, 200, "a responder carries the analyst scope");
 
@@ -1295,7 +1298,8 @@ async fn me_lists_the_callers_customers_by_name_read_live() {
             json!("Insufficient permissions. Required one of: customer_user")
         )
     );
-    // A role id `RoleEnum` does not know is Python's ValueError: the 500.
+    // A role id `RoleEnum` does not know was Python's ValueError, the 500;
+    // here the user is refused (RUST_MIGRATION.md §4).
     h.exec(&format!(
         "UPDATE `user` SET role_id = NULL WHERE username = 'both{s}'"
     ))
@@ -1303,7 +1307,10 @@ async fn me_lists_the_callers_customers_by_name_read_live() {
     let (st, body) = h.call("GET", &format!("{P}/me"), Some(&both), None).await;
     assert_eq!(
         (st.as_u16(), body["message"].clone()),
-        (500, json!("Failed to load the portal profile"))
+        (
+            403,
+            json!(format!("Access denied - user both{s} has no role"))
+        )
     );
     cleanup(&h).await;
 }

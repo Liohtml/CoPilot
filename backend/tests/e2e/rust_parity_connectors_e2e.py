@@ -44,6 +44,7 @@ from fastapi import APIRouter  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from fastapi.exceptions import RequestValidationError  # noqa: E402
+from sqlalchemy import bindparam  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
@@ -85,12 +86,13 @@ TRANSPORT_HEADERS = {
 
 
 class Recorder:
-    def __init__(self, answer, name="r"):
+    def __init__(self, answer, name="r", keep_all=False):
         self.answer = answer
         self.name = name
         self.captured = []
         self.mode = {}
         recorder = self
+        dropped = set() if keep_all else TRANSPORT_HEADERS
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -98,7 +100,7 @@ class Recorder:
             def _handle(self):
                 length = int(self.headers.get("Content-Length") or 0)
                 body = self.rfile.read(length) if length else b""
-                headers = {k.lower(): v for k, v in self.headers.items() if k.lower() not in TRANSPORT_HEADERS}
+                headers = {k.lower(): v for k, v in self.headers.items() if k.lower() not in dropped}
                 recorder.captured.append({"method": self.command, "path": self.path, "headers": headers, "body": body})
                 status, ctype, payload, reason = recorder.answer(recorder, self.command, self.path, headers, body)
                 self.send_response(status, reason)
@@ -109,6 +111,11 @@ class Recorder:
                 self.wfile.write(payload)
 
             do_GET = do_POST = do_PUT = do_DELETE = _handle  # noqa: N815 - http.server API
+
+            def date_time_string(self, timestamp=None):
+                # A fixed Date: an answer quoted in a message (aiohttp's
+                # ApiException names every header) is the same on both sides.
+                return "Thu, 01 Jan 2026 00:00:00 GMT"
 
             def log_message(self, *args):
                 pass
@@ -702,6 +709,174 @@ def mgr_answer(rec, method, raw_path, headers, body):
     return 404, "text/plain", b"no stub for " + raw_path.encode(), None
 
 
+# --- The MITRE alert searches (the fix sweep) --------------------------------------------
+def _mitre_field_of(body):
+    """The MITRE id field a search body is about, and whether it counts."""
+    if "aggs" in body:
+        flt = body["query"]["bool"]["filter"]
+        field = next(f["exists"]["field"] for f in flt if "exists" in f)
+        return field, body["aggs"]["techniques"]["terms"]["size"] == 10000
+    should = body["query"]["bool"]["filter"][1]["bool"]["should"]
+    return next(iter(should[0]["term"])), False
+
+
+def mitre_es_answer(rec, method, raw_path, headers, body):
+    """An indexer for the two MITRE searches, by `rec.mode["mitre"]`."""
+    mode = rec.mode.get("mitre", "ok")
+    ok = lambda obj: (200, "application/json; charset=UTF-8", jbody(obj), None)  # noqa: E731
+    if mode == "busy":
+        return 503, "application/json", jbody({"error": "busy"}), None
+    if method != "POST" or not raw_path.split("?")[0].endswith("/_search"):
+        return 404, "text/plain", b"no stub", None
+    parsed = json.loads(body)
+    field, counting = _mitre_field_of(parsed)
+    if field == "rule_mitre_id" and mode != "odd":
+        if "track_total_hits" not in parsed:
+            return ok({"hits": {"total": {"value": 0}}, "aggregations": {"techniques": {"buckets": []}}})
+        total = {"str_total": "2", "float_total": 2.0, "plain_total": 2}.get(mode, {"value": 2, "relation": "eq"})
+        return ok({"hits": {"total": total, "hits": [{"_source": {"rule_mitre_id": "T1078", "n": 1}}, {"_source": {"n": 2, "é": None}}]}})
+    if field == "custom.mitre":
+        return es_error(400, "query_shard_exception", "failed to create query")
+    if counting:
+        n = 1 if mode == "odd" else 3
+        return ok(
+            {
+                "hits": {"total": {"value": 9}},
+                "aggregations": {"techniques": {"buckets": [{"key": f"k{i}", "doc_count": 1} for i in range(n)]}},
+            },
+        )
+    if mode == "odd" and field == "rule_mitre_id":
+        return ok({"hits": {"total": {"value": 1}}, "aggregations": {"techniques": {"buckets": {"T1078": 1}}}})
+    if mode == "no_aggs":
+        return ok({"hits": {"total": 4}})
+    count = "x" if mode == "bad_count" else 4
+    return ok(
+        {
+            "hits": {"total": {"value": 9, "relation": "eq"}},
+            "aggregations": {
+                "techniques": {
+                    "buckets": [
+                        {"key": "T1078", "doc_count": count, "technique_name": {"buckets": []}},
+                        {
+                            "key": " 1078.002 ",
+                            "doc_count": 3,
+                            "technique_name": {"buckets": [{"key": "Domain Accounts (doc)", "doc_count": 3}]},
+                        },
+                        {"key": "T9999", "doc_count": 2},
+                        {"key": "", "doc_count": 1},
+                        {"key": 0, "doc_count": 1},
+                    ],
+                },
+            },
+        },
+    )
+
+
+def tenant_clause(code, name):
+    """The `_index` clause a scoped caller's search gains in Rust (§4)."""
+    found = []
+    lower = name.lower()
+    for m in (code.lower(), lower.replace(" ", "_"), lower.replace(" ", "-"), lower):
+        if m not in found:
+            found.append(m)
+    usable = [m for m in found if not any(ch in m for ch in '\\/*?"<>| ,#:')]
+    return {"bool": {"should": [{"wildcard": {"_index": f"*{m}*"}} for m in usable], "minimum_should_match": 1}}
+
+
+# --- The tools whose verification moved to Rust (the fix sweep) --------------------------
+#: The answers by (method, path) for the scenario in `rec.mode["scenario"]`.
+INFLUX_STATUS_CSV = (
+    "#datatype,string,long,dateTime:RFC3339,string,string,string,string\r\n"
+    "#group,false,false,false,false,false,false,false\r\n"
+    "#default,_result,,,,,,\r\n"
+    ",result,table,time,message,checkID,checkName,level\r\n"
+    ",,0,2026-10-18T01:00:00Z,CPU high,0a1,CPU CHECK,crit\r\n\r\n"
+)
+
+
+def tool_answer(rec, method, raw_path, headers, body):
+    scenario = rec.mode.get("scenario", "ok")
+    path = raw_path.split("?", 1)[0]
+    j = "application/json"
+
+    def ok(obj):
+        return 200, j, jbody(obj), None
+
+    if path == "/graylog/api/authz/roles/user/u":
+        return ok({"roles": [], "total": 0}) if scenario == "ok" else (401, "text/plain", b"Unauthorized: bad credentials", None)
+    if path == "/influx/ping":
+        return (
+            (204, None, b"", None) if scenario != "influx-down" else (503, j, jbody({"code": "unavailable", "message": "starting"}), None)
+        )
+    if path == "/influx/api/v2/query":
+        csv = INFLUX_STATUS_CSV if scenario == "influx-record" else ""
+        return 200, "text/csv; charset=utf-8", csv.encode(), None
+    if path == "/grafanaapi/admin/users" and method == "POST":
+        if scenario == "grafana-exists":
+            return 412, j, jbody({"message": "User with same login already exists"}), None
+        return ok({"id": 9, "message": "User created"})
+    if path == "/grafanaapi/admin/users/9" and method == "DELETE":
+        return ok({"message": "User deleted"})
+    if path in ("/w1/provision_worker/healthcheck", "/ha/provision_worker/healthcheck"):
+        return ok({"status": "ok"})
+    if path == "/w2/provision_worker/healthcheck":
+        return 500, "text/plain", b"down", None
+    if path == "/ac/provision_alert/healthcheck":
+        return ok({"status": "ok"}) if scenario == "ok" else (503, "text/plain", b"busy", None)
+    if path == "/vt/files/99017f6eebbac24f351415dd410d522d":
+        return ok({"data": {"id": "x"}})
+    if path == "/talon/health":
+        return ok({"status": "ok"}) if scenario == "ok" else (500, j, jbody({"error": "down"}), None)
+    if path == "/pt/api/v1/apps/authentication":
+        return ok({}) if scenario == "portainer-key" else (401, "text/plain", b"no", None)
+    if path == "/api/auth" and method == "POST":
+        if scenario == "portainer-nojwt":
+            return ok({"token": "x"})
+        if scenario == "portainer-refused":
+            return 422, j, jbody({"message": "Invalid credentials"}), None
+        return ok({"jwt": "jwt-token"})
+    if path == "/resend/domains":
+        if scenario == "resend-verified":
+            return ok({"data": [{"name": "a.example", "status": "verified"}, {"name": "b.example", "status": "pending"}]})
+        if scenario == "resend-invalid":
+            return 400, j, jbody({"name": "validation_error", "message": "API key is invalid"}), None
+        return 401, j, jbody({"name": "restricted_api_key", "message": "This API key is restricted to only send emails"}), None
+    return 404, j, jbody({"message": f"no stand-in for {method} {path}"}), None
+
+
+class GelfInput:
+    """A Graylog GELF TCP input: every frame each connection sent (an empty one for a bare
+    connect)."""
+
+    def __init__(self):
+        self.frames = []
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(16)
+        self.port = self.sock.getsockname()[1]
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self):
+        while True:
+            try:
+                conn, _ = self.sock.accept()
+            except OSError:
+                return
+            data = b""
+            while True:
+                chunk = conn.recv(65536)
+                if not chunk:
+                    break
+                data += chunk
+            conn.close()
+            self.frames.append(data)
+
+    def take(self):
+        time.sleep(0.5)
+        out, self.frames = self.frames, []
+        return out
+
+
 def build_python_app():
     from app.middleware.exception_handlers import custom_http_exception_handler
     from app.middleware.exception_handlers import validation_exception_handler
@@ -722,16 +897,23 @@ def build_python_app():
     return app
 
 
+def _bind(query, params):
+    """`text(query)`, a list or tuple parameter expanded for `IN :name`."""
+    statement = text(query)
+    expanding = [bindparam(k, expanding=True) for k, v in params.items() if isinstance(v, (list, tuple))]
+    return statement.bindparams(*expanding) if expanding else statement
+
+
 async def sql(query, **params):
     async with AsyncSession(async_engine) as s:
-        r = await s.execute(text(query), params)
+        r = await s.execute(_bind(query, params), params)
         await s.commit()
         return r
 
 
 async def rows(query, **params):
     async with AsyncSession(async_engine) as s:
-        r = await s.execute(text(query), params)
+        r = await s.execute(_bind(query, params), params)
         return [dict(m) for m in r.mappings().all()]
 
 
@@ -1537,6 +1719,104 @@ async def main():
     mgr.mode["fail"] = "/rules/files"
     await both("rule files: the manager failing", "GET", f"{M}/rules/files", t_admin, rec=mgr)
     mgr.mode.clear()
+
+    # -- D2b. the MITRE alert searches (the fix sweep) --------------------------------
+    esm = Recorder(mitre_es_answer, "esm")
+    mitre_idx = await add_connector("Wazuh-Indexer", esm.url, ES_USER, ES_PASS)
+    await settle()
+    T = f"{M}/mitre/techniques"
+    await both("mitre alerts: no token", "GET", f"{T}/alerts")
+    await both("mitre alerts: portal user", "GET", f"{T}/alerts", t_portal)
+    await both("mitre alerts: page 0, a bad field, size not an int", "GET", f"{T}/alerts?page=0&mitre_field=a%20b&size=x", t_admin, rec=esm)
+    await both("mitre alerts: an empty rule_level", "GET", f"{T}/alerts?rule_level=", t_admin, rec=esm)
+    await both("technique alerts: the path pattern", "GET", f"{T}/X1078/alerts?page=-1&mitre_field=", t_admin, rec=esm)
+    await both("technique alerts: a sub-technique too long", "GET", f"{T}/T1078.0021/alerts", t_admin, rec=esm)
+    for label, path_ in (
+        ("mitre alerts (defaults)", f"{T}/alerts"),
+        (
+            "mitre alerts: every parameter",
+            f"{T}/alerts?time_range=now-7d&size=2&page=3&rule_level=010&rule_group=sshd%20é&index_pattern=wazuh-alerts-*,-x",
+        ),
+        ("mitre alerts: the caller's field first", f"{T}/alerts?mitre_field=custom.mitre"),
+        ("mitre alerts: an empty index pattern", f"{T}/alerts?index_pattern="),
+        ("technique alerts (defaults)", f"{T}/T1078/alerts"),
+        (
+            "technique alerts: every parameter",
+            f"{T}/1078.002/alerts?time_range=now-2d&size=1&page=2&rule_level=3&rule_group=g&alert_id=a%22b&mitre_field=custom.mitre",
+        ),
+    ):
+        await both(label, "GET", path_, t_admin, rec=esm, norm=masked)
+    for mode, label in (
+        ("odd", "odd shapes: the next field"),
+        ("no_aggs", "no aggregations on the page"),
+        ("bad_count", "a doc_count the model refuses"),
+        ("str_total", "a string total"),
+        ("float_total", "a float total"),
+        ("plain_total", "an int total"),
+        ("busy", "the indexer busy: retried, then nothing found"),
+    ):
+        esm.mode["mitre"] = mode
+        await both(f"mitre alerts: {label}", "GET", f"{T}/alerts", t_admin, rec=esm, norm=masked)
+        await both(f"technique alerts: {label}", "GET", f"{T}/T1078/alerts", t_admin, rec=esm, norm=masked)
+    esm.mode.clear()
+    await both("technique alerts: size 0 (ZeroDivisionError)", "GET", f"{T}/T1078/alerts?size=0", t_admin, rec=esm)
+    await both("mitre alerts: size 0", "GET", f"{T}/alerts?size=0", t_admin, rec=esm, norm=masked)
+    await both("mitre alerts: size -1", "GET", f"{T}/alerts?size=-1&page=2", t_admin, rec=esm, norm=masked)
+    mgr.mode["fail"] = "/mitre/tactics"
+    await both("mitre alerts: the tactics failing (no tactics, names kept)", "GET", f"{T}/alerts", t_admin, rec=esm, norm=masked)
+    mgr.mode["fail"] = "/mitre/techniques"
+    await both("mitre alerts: the techniques failing (no mappings)", "GET", f"{T}/alerts", t_admin, rec=esm, norm=masked)
+    await both("technique alerts: the techniques failing", "GET", f"{T}/T1078/alerts", t_admin, rec=esm, norm=masked)
+    mgr.mode.clear()
+
+    # By design (§4): a scoped analyst's search is narrowed to the indices
+    # named after their customers; Python searched every tenant's.
+    clause = tenant_clause(CUST_A, f"{CUST_A} Corp")
+    for label, path_ in (("mitre alerts", f"{T}/alerts?rule_group=x"), ("technique alerts", f"{T}/T1078/alerts?alert_id=7")):
+        sent = {}
+        answers = {}
+        for tag, client in (("py", py), ("rs", rs)):
+            esm.captured.clear()
+            answers[tag] = await call(client, "GET", path_, t_analyst)
+            sent[tag] = [json.loads(c["body"]) for c in esm.captured]
+        widened = []
+        for b in sent["py"]:
+            b["query"]["bool"]["filter"].append(clause)
+            widened.append(json.dumps(b, ensure_ascii=False, separators=(",", ":")))
+        rs_text = [json.dumps(b, ensure_ascii=False, separators=(",", ":")) for b in sent["rs"]]
+        check(
+            f"by design: {label} of a scoped analyst cover their customers' indices only",
+            answers["py"].status_code == answers["rs"].status_code == 200
+            and masked(answers["py"].json()) == masked(answers["rs"].json())
+            and widened == rs_text
+            and len(rs_text) > 0,
+            f"python {widened}\n        rust   {rs_text}",
+        )
+    lonely = f"con_lonely{SFX}"
+    await sql(
+        "INSERT INTO `user` (username, password, email, created_at, role_id) VALUES (:n, 'x', 'lonely@parity.test', UTC_TIMESTAMP(), 2)",
+        n=lonely,
+    )
+    t_lonely = token(lonely, ["analyst"])
+    for label, path_ in (("mitre alerts", f"{T}/alerts"), ("technique alerts", f"{T}/T1078/alerts")):
+        esm.captured.clear()
+        r2 = await call(rs, "GET", path_, t_lonely)
+        body2 = r2.json()
+        check(
+            f"by design: {label} of an analyst without a customer never reach the indexer",
+            r2.status_code == 200 and body2["total_alerts"] == 0 and body2["field_used"] is None and not esm.captured,
+            f"{r2.status_code} {body2} {len(esm.captured)}",
+        )
+    await sql("DELETE FROM `user` WHERE username = :n", n=lonely)
+
+    await sql("UPDATE connectors SET connector_url = 'http://indexer:port' WHERE id = :i", i=mitre_idx)
+    await settle()
+    await both("mitre alerts: an unparsable indexer port", "GET", f"{T}/alerts", t_admin)
+    await sql("DELETE FROM connectors WHERE id = :i", i=mitre_idx)
+    await settle()
+    await both("mitre alerts: no Wazuh-Indexer connector", "GET", f"{T}/alerts", t_admin)
+    await both("technique alerts: no Wazuh-Indexer connector (TypeError)", "GET", f"{T}/T1078/alerts", t_admin)
+    esm.server.shutdown()
     await both("restart (no cluster)", "POST", f"{M}/management/restart", t_admin, rec=mgr)
     mgr.mode["cluster"] = "yes"
     await both("restart (cluster)", "POST", f"{M}/management/restart", t_admin, rec=mgr)
@@ -1918,6 +2198,109 @@ async def main():
     await settle()
 
     # ======================================================================
+    # -- E5. the connectors whose verification moved to Rust ----------------------------------
+    print("\n=== E5. connector verifications that moved to Rust ===")
+    MOVED = (
+        "Graylog",
+        "Graylog-Network",
+        "InfluxDB",
+        "Grafana",
+        "Wazuh Worker Provisioning",
+        "HAProxy Provisioning",
+        "Event Shipper",
+        "Alert Creation Provisioning",
+        "VirusTotal",
+        "Portainer",
+        "Resend",
+        "Talon",
+    )
+    stashed = await rows("SELECT * FROM connectors WHERE connector_name IN :n", n=list(MOVED))
+    await sql("DELETE FROM connectors WHERE connector_name IN :n", n=list(MOVED))
+    tool = Recorder(tool_answer, "tools", keep_all=True)
+    gelf = GelfInput()
+    t = tool.url
+    rows_of = {
+        "Graylog": (f"{t}/graylog", "u", "p", None, None),
+        "Graylog-Network": (f"{t}/graylog", "u", "p", None, None),
+        "InfluxDB": (f"{t}/influx", None, None, "influx-token", "SOCFORTRESS,telegraf"),
+        "Grafana": (f"{t}/grafana", "admin", "pw", None, None),
+        "Wazuh Worker Provisioning": (f"{t}/w1, {t}/w2 ,,", None, None, None, None),
+        "HAProxy Provisioning": (f"{t}/ha", None, None, None, None),
+        "Event Shipper": ("127.0.0.1", None, None, None, str(gelf.port)),
+        "Alert Creation Provisioning": (f"{t}/ac", None, None, None, None),
+        "VirusTotal": (f"{t}/vt", None, None, "vt-key", None),
+        "Portainer": (f"{t}/pt", "u", "p", "pt-key", None),
+        "Resend": (f"{t}/resend", None, None, "re_key", None),
+        "Talon": (f"{t}/talon", None, None, None, None),
+    }
+    ids = {}
+    for name, (url, user, pw, key, extra) in rows_of.items():
+        ids[name] = await add_connector(name, url, user, pw, key)
+        await sql("UPDATE connectors SET connector_extra_data = :x WHERE id = :i", x=extra, i=ids[name])
+
+    async def verified(name, scenario="ok", change=None):
+        """Python's verification, then Rust's, from the same row: answer, outbound requests
+        (every header), the GELF frames, the row's `connector_verified`."""
+        got = {}
+        for tag, client in (("py", py), ("rs", rs)):
+            url, user, pw, key, extra = rows_of[name]
+            await sql(
+                "UPDATE connectors SET connector_url = :u, connector_username = :user, connector_password = :pw, "
+                "connector_api_key = :k, connector_extra_data = :x, connector_verified = 0 WHERE id = :i",
+                u=url,
+                user=user,
+                pw=pw,
+                k=key,
+                x=extra,
+                i=ids[name],
+            )
+            if change:
+                await sql(change, i=ids[name])
+            await settle()
+            tool.mode["scenario"] = scenario
+            tool.captured.clear()
+            gelf.take()
+            r = await call(client, "POST", f"/api/connectors/verify/{ids[name]}", t_admin)
+            found = await rows("SELECT connector_verified FROM connectors WHERE id = :i", i=ids[name])
+            got[tag] = {
+                "status": r.status_code,
+                "body": masked(body_of(r)),
+                "outbound": normalised(list(tool.captured)),
+                "gelf": [f.decode("utf-8", "replace") for f in gelf.take()],
+                "verified": found[0]["connector_verified"],
+            }
+        check(
+            f"verify {name} ({scenario}) [{got['py']['status']}]",
+            json.dumps(got["py"], default=str) == json.dumps(got["rs"], default=str),
+            f"python {json.dumps(got['py'], default=str)[:3000]}\n        rust   {json.dumps(got['rs'], default=str)[:3000]}",
+        )
+
+    for name in MOVED:
+        await verified(name)
+    await verified("Graylog", "refused")
+    await verified("InfluxDB", "influx-down")
+    await verified("InfluxDB", "influx-record")
+    await verified("Grafana", "grafana-exists")
+    await verified("Grafana", "a URL without a scheme", change="UPDATE connectors SET connector_url = 'grafana.local' WHERE id = :i")
+    await verified("Alert Creation Provisioning", "busy")
+    await verified("Talon", "down")
+    await verified("Portainer", "portainer-key")
+    await verified("Portainer", "portainer-nojwt")
+    await verified("Portainer", "portainer-refused")
+    await verified("Resend", "resend-verified")
+    await verified("Resend", "resend-invalid")
+    await verified("Resend", "no key", change="UPDATE connectors SET connector_api_key = NULL WHERE id = :i")
+    await verified("Event Shipper", "a closed port", change="UPDATE connectors SET connector_extra_data = '1' WHERE id = :i")
+    await verified("Wazuh Worker Provisioning", "no host", change="UPDATE connectors SET connector_url = ' , ' WHERE id = :i")
+    tool.stop()
+    await verified("Graylog", "refusing connections")
+    await verified("Talon", "refusing connections")
+    await sql("DELETE FROM connectors WHERE id IN :i", i=list(ids.values()))
+    await sql("DELETE FROM audit_log WHERE entity_type = 'connector' AND entity_id IN :i", i=[str(i) for i in ids.values()])
+    for row in stashed:
+        await sql(f"INSERT INTO connectors ({', '.join(row)}) VALUES ({', '.join(':' + c for c in row)})", **row)
+    await settle()
+
     print("\n=== F. the two indexer jobs, handed over ===")
     from app.schedulers.handover import manual_run
     from app.schedulers.services.invoke_snapshot_and_restore import (

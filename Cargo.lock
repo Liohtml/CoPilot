@@ -530,6 +530,7 @@ dependencies = [
  "copilot-threat-intel",
  "copilot-uba",
  "copilot-velociraptor",
+ "copilot-verifiers",
  "copilot-waf",
  "copilot-wazuh",
  "copilot-wazuh-rules",
@@ -941,6 +942,7 @@ dependencies = [
  "axum",
  "copilot-auth",
  "copilot-core",
+ "copilot-db",
  "copilot-grafana",
  "copilot-monitoring-alerts",
  "copilot-upstream",
@@ -949,6 +951,7 @@ dependencies = [
  "http",
  "serde_json",
  "sha2",
+ "sqlx",
  "tokio",
  "tracing",
 ]
@@ -1109,18 +1112,24 @@ name = "copilot-integration-modules"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "chrono",
  "copilot-auth",
  "copilot-core",
  "copilot-db",
+ "copilot-graylog",
  "copilot-integrations",
  "copilot-scheduler",
  "copilot-threat-intel",
  "copilot-upstream",
  "copilot-web",
+ "crc32fast",
+ "flate2",
+ "hmac",
  "http",
  "pretty_assertions",
  "serde_json",
+ "sha1",
  "sqlx",
  "tokio",
  "tracing",
@@ -1859,6 +1868,27 @@ dependencies = [
  "tokio-rustls",
  "tracing",
  "yaml_serde",
+]
+
+[[package]]
+name = "copilot-verifiers"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "copilot-auth",
+ "copilot-connectors",
+ "copilot-db",
+ "copilot-grafana",
+ "copilot-graylog",
+ "copilot-influxdb",
+ "copilot-jinja",
+ "copilot-portainer",
+ "copilot-threat-intel",
+ "copilot-upstream",
+ "copilot-web",
+ "http",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

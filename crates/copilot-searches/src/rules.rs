@@ -343,6 +343,39 @@ impl RuleSet {
         Ok(())
     }
 
+    /// The rules `keep` accepts (by their `_owner_customer_code`: `None` for
+    /// the shared catalog's), indexed as `fill` indexes them, with the
+    /// custom sources whose owner it accepts.
+    pub fn retain_owners(&self, keep: impl Fn(Option<&str>) -> bool) -> RuleSet {
+        let mut out = RuleSet {
+            last_refresh: self.last_refresh,
+            source_status: self
+                .source_status
+                .iter()
+                .filter(|s| keep(s.owner.as_deref()))
+                .cloned()
+                .collect(),
+            ..RuleSet::default()
+        };
+        let kept: Vec<Value> = self
+            .rules
+            .iter()
+            .filter(|r| keep(owner_of(r)))
+            .cloned()
+            .collect();
+        // Every rule here went through `fill` already: it cannot fail again.
+        if let Err(e) = out.fill(kept) {
+            tracing::warn!("Narrowing the rules failed: {}", e.text());
+        }
+        out
+    }
+
+    /// Whether every rule's owner is accepted by `keep`.
+    pub fn all_owners(&self, keep: impl Fn(Option<&str>) -> bool) -> bool {
+        self.rules.iter().all(|r| keep(owner_of(r)))
+            && self.source_status.iter().all(|s| keep(s.owner.as_deref()))
+    }
+
     /// `get_categories()`.
     pub fn categories(&self) -> Vec<Category> {
         let mut counts: Vec<(String, i64)> = Vec::new();
@@ -370,6 +403,14 @@ impl RuleSet {
                 .then_with(|| unicode::lower(&a.label).cmp(&unicode::lower(&b.label)))
         });
         out
+    }
+}
+
+/// A custom rule's customer (`_owner_customer_code`); `None` for a shared one.
+pub fn owner_of(rule: &Value) -> Option<&str> {
+    match rule.get("_owner_customer_code") {
+        Some(Value::Str(code)) => Some(code.as_str()),
+        _ => None,
     }
 }
 

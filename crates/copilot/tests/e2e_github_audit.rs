@@ -250,7 +250,18 @@ async fn configurations_reports_exclusions_and_baselines() {
         .await;
     assert_eq!(st, 200, "{body}");
     let created = &body["config"];
-    assert_eq!(created["github_token"], "ghp_secret_abcd");
+    // §4: the token is masked as every other answer masks it (Python
+    // echoed it in clear); the row keeps it.
+    assert_eq!(created["github_token"], "***abcd");
+    assert!(!body.to_string().contains("ghp_secret"));
+    let stored: String = sqlx::query_scalar(&format!(
+        "SELECT github_token FROM github_audit_config WHERE id = {}",
+        created["id"]
+    ))
+    .fetch_one(f.h.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(stored, "ghp_secret_abcd");
     assert_eq!(created["minimum_passing_score"], json!(70.0));
     assert_eq!(created["repo_filter_mode"], "all");
     let keys: Vec<&String> = created.as_object().unwrap().keys().collect();

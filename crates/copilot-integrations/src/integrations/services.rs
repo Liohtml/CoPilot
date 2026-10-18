@@ -837,7 +837,9 @@ pub async fn delete(
                 .map_err(internal)?;
             match meta {
                 // AWS records one index set, stream and datasource per
-                // service; its metadata row is left as Python leaves it.
+                // service. Python leaves its metadata row behind (a later
+                // provisioning of the instance then meets it); it goes with
+                // the instance here (RUST_MIGRATION.md §4).
                 Some(meta) if name == AWS => {
                     crate::aws::decommission::cleanup_aws_infrastructure(
                         db,
@@ -850,6 +852,7 @@ pub async fn delete(
                     )
                     .await
                     .map_err(internal)?;
+                    delete_meta = Some((false, instance.clone()));
                     None
                 }
                 Some(m) => Some(Resources {

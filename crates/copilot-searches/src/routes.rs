@@ -18,6 +18,7 @@ use axum::Router;
 use axum::extract::{FromRequest, FromRequestParts, OriginalUri, Request, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::any;
+use copilot_auth::AccessScope;
 use copilot_auth::pyvalue::PyValue;
 use copilot_upstream::py::PyExc;
 use copilot_web::auth::{AdminOrAnalyst, AnyPortalOrSoc, Authorized};
@@ -436,9 +437,9 @@ fn finish(v: Validator) -> Result<(), ApiError> {
     v.finish()
 }
 
-fn snapshot_parts(st: &SearchesState) -> Parts {
+fn snapshot_parts(st: &SearchesState, scope: &AccessScope) -> Parts {
     Parts {
-        rules: st.caches.rules.get(),
+        rules: caches::visible_rules(st, scope),
         mitre: st.caches.mitre.get(),
         wazuh: st.caches.wazuh.get(),
         firing: st.caches.firing.get(),
@@ -480,13 +481,14 @@ fn trigger(st: &SearchesState, kinds: &[Kind]) {
 /// `get_rules_list(...)` → the `RuleListResponse` dict.
 async fn rules_list(
     st: &SearchesState,
+    scope: &AccessScope,
     platform: Option<String>,
     f: Filters,
     skip: i64,
     limit: i64,
 ) -> Result<Value, PyExc> {
     caches::ensure_loaded(st, Kind::Rules).await?;
-    let set = st.caches.rules.get();
+    let set = caches::visible_rules(st, scope);
     if let Some(category) = &f.category {
         let known: Vec<String> = set
             .categories()
@@ -538,7 +540,8 @@ fn read_filters(q: &QueryPairs, v: &mut Validator, with_category: bool) -> Filte
 }
 
 async fn list_rules(st: &SearchesState, req: Request, fixed: Option<&str>) -> Res {
-    let (_user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     let mut v = Validator::new();
     let platform = match fixed {
         Some(p) => Some(p.to_string()),
@@ -568,20 +571,21 @@ async fn list_rules(st: &SearchesState, req: Request, fixed: Option<&str>) -> Re
     if fixed.is_some() {
         f.category = None;
     }
-    let out = rules_list(st, platform, f, skip, limit)
+    let out = rules_list(st, &scope, platform, f, skip, limit)
         .await
         .map_err(exc)?;
     json(&out)
 }
 
 async fn list_cve(st: &SearchesState, req: Request) -> Res {
-    let (_user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     let mut v = Validator::new();
     let f = read_filters(&q, &mut v, false);
     let skip = q_int(&q, &mut v, "skip", Some(0), None, 0);
     let limit = q_int(&q, &mut v, "limit", Some(1), Some(500), 100);
     finish(v)?;
-    let full = rules_list(st, Some("all".into()), f, 0, 500)
+    let full = rules_list(st, &scope, Some("all".into()), f, 0, 500)
         .await
         .map_err(exc)?;
     let cve_only: Vec<Value> = full
@@ -608,16 +612,18 @@ async fn list_cve(st: &SearchesState, req: Request) -> Res {
 }
 
 async fn stats(st: &SearchesState, req: Request) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     caches::ensure_loaded(st, Kind::Rules).await.map_err(exc)?;
-    let set = st.caches.rules.get();
+    let set = caches::visible_rules(st, &scope);
     json(&rules::stats(&set).map_err(exc)?)
 }
 
 async fn categories(st: &SearchesState, req: Request) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     caches::ensure_loaded(st, Kind::Rules).await.map_err(exc)?;
-    let set = st.caches.rules.get();
+    let set = caches::visible_rules(st, &scope);
     json(&py::dict(vec![
         (
             "categories",
@@ -642,9 +648,10 @@ fn detail_response(detail: Value) -> Value {
 }
 
 async fn rule_by_id(st: &SearchesState, req: Request, rule_id: &str) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     caches::ensure_loaded(st, Kind::Rules).await.map_err(exc)?;
-    let set = st.caches.rules.get();
+    let set = caches::visible_rules(st, &scope);
     let Some(rule) = set.by_id(rule_id) else {
         return Err(http(404, format!("Rule with ID '{rule_id}' not found")));
     };
@@ -652,9 +659,10 @@ async fn rule_by_id(st: &SearchesState, req: Request, rule_id: &str) -> Res {
 }
 
 async fn rule_by_name(st: &SearchesState, req: Request, name: &str) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     caches::ensure_loaded(st, Kind::Rules).await.map_err(exc)?;
-    let set = st.caches.rules.get();
+    let set = caches::visible_rules(st, &scope);
     let Some(rule) = set.by_name(name).map_err(exc)? else {
         return Err(http(404, format!("Rule with name '{name}' not found")));
     };
@@ -709,16 +717,17 @@ fn str_list_field(
 }
 
 async fn by_ids(st: &SearchesState, req: Request) -> Res {
-    let (_user, body) = match auth_json::<AnyPortalOrSoc>(st, req).await {
+    let (user, body) = match auth_json::<AnyPortalOrSoc>(st, req).await {
         Ok(x) => x,
         Err(r) => return Ok(*r),
     };
+    let scope = user.access(&st.ctx).await?.clone();
     let ids = body.model(|v, obj, at| str_list_field(v, obj, at, "ids", true, None, Some(500)))?;
     let (found, missing) = if ids.is_empty() {
         (Vec::new(), Vec::new())
     } else {
         caches::ensure_loaded(st, Kind::Rules).await.map_err(exc)?;
-        let set = st.caches.rules.get();
+        let set = caches::visible_rules(st, &scope);
         let mut found = Vec::new();
         let mut missing = Vec::new();
         for id in &ids {
@@ -740,7 +749,8 @@ async fn by_ids(st: &SearchesState, req: Request) -> Res {
 // --- MITRE --------------------------------------------------------------------------------
 
 async fn mitre_coverage(st: &SearchesState, req: Request) -> Res {
-    let (_user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     let mut v = Validator::new();
     let platform =
         q_enum(&q, &mut v, "platform", schema::PLATFORMS).unwrap_or_else(|| "all".into());
@@ -764,7 +774,7 @@ async fn mitre_coverage(st: &SearchesState, req: Request) -> Res {
         caches::ensure_loaded(st, Kind::Mitre).await?;
         caches::ensure_loaded(st, Kind::Rules).await?;
         let matrix = st.caches.mitre.get();
-        let set = st.caches.rules.get();
+        let set = caches::visible_rules(st, &scope);
         let out = mitre::coverage(&matrix, set.all(), set.last_refresh, &f)?;
         pyd::build(&schema::MITRE_COVERAGE_RESPONSE, &out)
     }
@@ -798,7 +808,8 @@ async fn mitre_refresh(st: &SearchesState, req: Request) -> Res {
 }
 
 async fn mitre_technique(st: &SearchesState, req: Request, technique_id: &str) -> Res {
-    let (_user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     let mut v = Validator::new();
     let platform =
         q_enum(&q, &mut v, "platform", schema::PLATFORMS).unwrap_or_else(|| "all".into());
@@ -809,7 +820,7 @@ async fn mitre_technique(st: &SearchesState, req: Request, technique_id: &str) -
         mitre_id: Some(technique_id.to_string()),
         ..Filters::default()
     };
-    let out = rules_list(st, Some(platform), f, 0, 100)
+    let out = rules_list(st, &scope, Some(platform), f, 0, 100)
         .await
         .map_err(exc)?;
     json(&out)
@@ -854,10 +865,11 @@ fn params_field(
 }
 
 async fn execute(st: &SearchesState, req: Request) -> Res {
-    let (_user, body) = match auth_json::<AdminOrAnalyst>(st, req).await {
+    let (user, body) = match auth_json::<AdminOrAnalyst>(st, req).await {
         Ok(x) => x,
         Err(r) => return Ok(*r),
     };
+    let scope = user.access(&st.ctx).await?.clone();
     let request = body.model(|v, obj, at| {
         let rule_id = v.req_str(obj, at, "rule_id", copilot_web::validate::StrRules::any());
         let index_pattern = v.req_str(
@@ -883,7 +895,7 @@ async fn execute(st: &SearchesState, req: Request) -> Res {
             size,
         }
     })?;
-    match services::execute_rule_search(st, &request).await {
+    match services::execute_rule_search(st, &scope, &request).await {
         Ok(v) => json(&v),
         Err(e) if e.is_value_error() => Err(http(400, e.text())),
         Err(e) => Err(http(
@@ -894,17 +906,18 @@ async fn execute(st: &SearchesState, req: Request) -> Res {
 }
 
 async fn graylog_query(st: &SearchesState, req: Request) -> Res {
-    let (_user, body) = match auth_json::<AdminOrAnalyst>(st, req).await {
+    let (user, body) = match auth_json::<AdminOrAnalyst>(st, req).await {
         Ok(x) => x,
         Err(r) => return Ok(*r),
     };
+    let scope = user.access(&st.ctx).await?.clone();
     let (rule_id, parameters) = body.model(|v, obj, at| {
         (
             v.req_str(obj, at, "rule_id", copilot_web::validate::StrRules::any()),
             params_field(v, obj, at),
         )
     })?;
-    match services::generate_graylog_query(st, &rule_id, &parameters).await {
+    match services::generate_graylog_query(st, &scope, &rule_id, &parameters).await {
         Ok(v) => json(&v),
         Err(e) if e.is_value_error() => Err(http(400, e.text())),
         Err(e) => Err(http(
@@ -915,10 +928,11 @@ async fn graylog_query(st: &SearchesState, req: Request) -> Res {
 }
 
 async fn provision_check(st: &SearchesState, req: Request) -> Res {
-    let (_user, body) = match auth_json::<AnyPortalOrSoc>(st, req).await {
+    let (user, body) = match auth_json::<AnyPortalOrSoc>(st, req).await {
         Ok(x) => x,
         Err(r) => return Ok(*r),
     };
+    let scope = user.access(&st.ctx).await?.clone();
     let ids = body.model(|v, obj, at| str_list_field(v, obj, at, "ids", true, None, Some(500)))?;
     let (titles, warning) = match services::event_definition_titles(st).await {
         Ok(t) => (t, None),
@@ -929,7 +943,7 @@ async fn provision_check(st: &SearchesState, req: Request) -> Res {
         }
     };
     caches::ensure_loaded(st, Kind::Rules).await.map_err(exc)?;
-    let set = st.caches.rules.get();
+    let set = caches::visible_rules(st, &scope);
     let mut provisioned: Vec<(Value, Value)> = Vec::new();
     for id in &ids {
         let Some(rule) = set.by_id(id) else {
@@ -993,10 +1007,11 @@ fn streams_field(v: &mut Validator, obj: &Map<String, Json>, at: &[LocPart]) -> 
 }
 
 async fn provision_bulk(st: &SearchesState, req: Request) -> Res {
-    let (_user, body) = match auth_json::<AdminOrAnalyst>(st, req).await {
+    let (user, body) = match auth_json::<AdminOrAnalyst>(st, req).await {
         Ok(x) => x,
         Err(r) => return Ok(*r),
     };
+    let scope = user.access(&st.ctx).await?.clone();
     let (rule_ids, base) = body.model(|v, obj, at| {
         let ids = str_list_field(v, obj, at, "rule_ids", true, Some(1), Some(200));
         let base = ProvisionRequest {
@@ -1037,7 +1052,7 @@ async fn provision_bulk(st: &SearchesState, req: Request) -> Res {
     for rule_id in &rule_ids {
         let outcome: Result<Value, PyExc> = async {
             caches::ensure_loaded(st, Kind::Rules).await?;
-            let set = st.caches.rules.get();
+            let set = caches::visible_rules(st, &scope);
             let Some(raw) = set.by_id(rule_id) else {
                 return Ok(result(
                     rule_id,
@@ -1076,7 +1091,7 @@ async fn provision_bulk(st: &SearchesState, req: Request) -> Res {
                 rule_id: rule_id.clone(),
                 ..base.clone()
             };
-            services::provision_from_rule(st, &single).await?;
+            services::provision_from_rule(st, &scope, &single).await?;
             titles.push(title.clone());
             Ok(result(
                 rule_id,
@@ -1116,10 +1131,11 @@ async fn provision_bulk(st: &SearchesState, req: Request) -> Res {
 }
 
 async fn provision(st: &SearchesState, req: Request) -> Res {
-    let (_user, body) = match auth_json::<AdminOrAnalyst>(st, req).await {
+    let (user, body) = match auth_json::<AdminOrAnalyst>(st, req).await {
         Ok(x) => x,
         Err(r) => return Ok(*r),
     };
+    let scope = user.access(&st.ctx).await?.clone();
     let request = body.model(|v, obj, at| ProvisionRequest {
         rule_id: v.req_str(obj, at, "rule_id", copilot_web::validate::StrRules::any()),
         search_within_seconds: int_rule(v, obj, at, "search_within_seconds", 60, 86400, 300),
@@ -1136,7 +1152,7 @@ async fn provision(st: &SearchesState, req: Request) -> Res {
     })?;
     let outcome: Result<Value, PyExc> = async {
         caches::ensure_loaded(st, Kind::Rules).await?;
-        let set = st.caches.rules.get();
+        let set = caches::visible_rules(st, &scope);
         let Some(raw) = set.by_id(&request.rule_id) else {
             return Err(PyExc::http(
                 404,
@@ -1179,7 +1195,7 @@ async fn provision(st: &SearchesState, req: Request) -> Res {
                 format!("Event definition '{title}' already exists in Graylog"),
             ));
         }
-        services::provision_from_rule(st, &request).await
+        services::provision_from_rule(st, &scope, &request).await
     }
     .await;
     match outcome {
@@ -1196,9 +1212,10 @@ async fn provision(st: &SearchesState, req: Request) -> Res {
 // --- the catalog --------------------------------------------------------------------------
 
 async fn catalog_stats(st: &SearchesState, req: Request) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     trigger(st, &[Kind::Rules, Kind::Mitre, Kind::Wazuh]);
-    let parts = snapshot_parts(st);
+    let parts = snapshot_parts(st, &scope);
     let outcome = catalog::catalog_stats(&parts.snapshot());
     match outcome {
         Ok(stats) => {
@@ -1263,12 +1280,13 @@ fn filter_and_limit(
 }
 
 async fn stories(st: &SearchesState, req: Request) -> Res {
-    let (_user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, q) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     let mut v = Validator::new();
     let (search, limit) = search_params(&q, &mut v);
     finish(v)?;
     trigger(st, &[Kind::Rules, Kind::Mitre]);
-    let parts = snapshot_parts(st);
+    let parts = snapshot_parts(st, &scope);
     match catalog::list_stories(&parts.snapshot()) {
         Ok(list) => {
             let rows = filter_and_limit(list, search.as_deref(), limit, |r| {
@@ -1290,9 +1308,10 @@ async fn stories(st: &SearchesState, req: Request) -> Res {
 }
 
 async fn story(st: &SearchesState, req: Request, name: &str) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     trigger(st, &[Kind::Rules, Kind::Mitre]);
-    let parts = snapshot_parts(st);
+    let parts = snapshot_parts(st, &scope);
     let outcome = catalog::story_detail(&parts.snapshot(), name).and_then(|d| match d {
         None => Ok(None),
         Some(d) => pyd::build(&schema::CATALOG_STORY_DETAIL_RESPONSE, &d).map(Some),
@@ -1324,7 +1343,8 @@ async fn wazuh_rules(st: &SearchesState, req: Request) -> Res {
         Some(code) => Some(caches::firing_for_customer(st, code).await),
         None => None,
     };
-    let parts = snapshot_parts(st);
+    let scope = user.access(&st.ctx).await?.clone();
+    let parts = snapshot_parts(st, &scope);
     let snap = parts.snapshot();
     let mut rows = catalog::wazuh_rows(&snap, customer.as_ref());
     let mut total = rows.len() as i64;
@@ -1361,7 +1381,8 @@ async fn wazuh_rules(st: &SearchesState, req: Request) -> Res {
 }
 
 async fn wazuh_rule(st: &SearchesState, req: Request, raw_id: &str) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     let mut v = Validator::new();
     let Some(id) = parse_int(raw_id) else {
         v.push(
@@ -1372,7 +1393,7 @@ async fn wazuh_rule(st: &SearchesState, req: Request, raw_id: &str) -> Res {
         return Err(v.finish().err().unwrap_or(ApiError::RouteNotFound));
     };
     trigger(st, &[Kind::Wazuh, Kind::Mitre, Kind::Firing]);
-    let parts = snapshot_parts(st);
+    let parts = snapshot_parts(st, &scope);
     let outcome = catalog::wazuh_rule_detail(&parts.snapshot(), &id).and_then(|d| match d {
         None => Ok(None),
         Some(d) => pyd::build(&schema::CATALOG_WAZUH_RULE_DETAIL_RESPONSE, &d).map(Some),
@@ -1388,9 +1409,10 @@ async fn wazuh_rule(st: &SearchesState, req: Request, raw_id: &str) -> Res {
 }
 
 async fn gaps(st: &SearchesState, req: Request) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     trigger(st, &[Kind::Rules, Kind::Mitre, Kind::Wazuh]);
-    let parts = snapshot_parts(st);
+    let parts = snapshot_parts(st, &scope);
     let outcome = catalog::coverage_gaps(&parts.snapshot()).and_then(|payload| {
         let get = |k: &str| payload.get(k).cloned().unwrap_or(Value::None);
         let message = format!(
@@ -1420,9 +1442,10 @@ async fn gaps(st: &SearchesState, req: Request) -> Res {
 }
 
 async fn gap(st: &SearchesState, req: Request, technique_id: &str) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     trigger(st, &[Kind::Rules, Kind::Mitre, Kind::Wazuh]);
-    let parts = snapshot_parts(st);
+    let parts = snapshot_parts(st, &scope);
     let Some(gap) = catalog::coverage_gap(&parts.snapshot(), technique_id).map_err(exc)? else {
         return Err(http(404, format!("Coverage gap {technique_id} not found")));
     };
@@ -1446,11 +1469,12 @@ async fn frameworks(st: &SearchesState, req: Request) -> Res {
 }
 
 async fn compliance(st: &SearchesState, req: Request, framework: &str) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     if catalog::FRAMEWORKS.iter().any(|(k, _)| *k == framework) {
         trigger(st, &[Kind::Wazuh, Kind::Firing]);
     }
-    let parts = snapshot_parts(st);
+    let parts = snapshot_parts(st, &scope);
     match catalog::compliance_pivot(&parts.snapshot(), framework) {
         Ok(payload) => {
             let get = |k: &str| payload.get(k).cloned().unwrap_or(Value::None);
@@ -1483,11 +1507,12 @@ async fn compliance(st: &SearchesState, req: Request, framework: &str) -> Res {
 }
 
 async fn compliance_group(st: &SearchesState, req: Request, framework: &str, control: &str) -> Res {
-    let _ = auth::<AnyPortalOrSoc>(st, req).await?;
+    let (user, _) = auth::<AnyPortalOrSoc>(st, req).await?;
+    let scope = user.access(&st.ctx).await?.clone();
     if catalog::FRAMEWORKS.iter().any(|(k, _)| *k == framework) {
         trigger(st, &[Kind::Wazuh, Kind::Firing]);
     }
-    let parts = snapshot_parts(st);
+    let parts = snapshot_parts(st, &scope);
     let payload = match catalog::compliance_group(&parts.snapshot(), framework, control) {
         Ok(p) => p,
         Err(e) if e.is_value_error() => return Err(http(400, e.text())),
@@ -1520,10 +1545,11 @@ async fn compliance_group(st: &SearchesState, req: Request, framework: &str, con
 }
 
 async fn log_test(st: &SearchesState, req: Request) -> Res {
-    let (_user, body) = match auth_json::<AnyPortalOrSoc>(st, req).await {
+    let (user, body) = match auth_json::<AnyPortalOrSoc>(st, req).await {
         Ok(x) => x,
         Err(r) => return Ok(*r),
     };
+    let scope = user.access(&st.ctx).await?.clone();
     let (event, log_format, location) = body.model(|v, obj, at| {
         let any = copilot_web::validate::StrRules::any();
         (
@@ -1537,7 +1563,7 @@ async fn log_test(st: &SearchesState, req: Request) -> Res {
     if let Err(reason) = &outcome {
         tracing::warn!("Logtest failed: {reason}");
     }
-    let parts = snapshot_parts(st);
+    let parts = snapshot_parts(st, &scope);
     let result = catalog::log_test_result(&parts.snapshot(), outcome);
     let built = result.and_then(|r| {
         let matched = r.get("matched").is_some_and(Value::truthy);

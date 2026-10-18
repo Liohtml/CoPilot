@@ -842,6 +842,7 @@ class Pair:
         unordered=False,
         py_view=None,
         expect=None,
+        py_state=None,
         **kw,
     ):
         """Python, then Rust, each from the same rows (`seed`, then `before()`) and the same
@@ -855,7 +856,10 @@ class Pair:
                 before()
             STUB.reset(*(stub or ()))
             r, out = await self.call(client, method, path, tok, **kw)
-            sides.append((r, out, state()))
+            left = state()
+            if py_state and client is self.py:
+                left = py_state(left)
+            sides.append((r, out, left))
         (r1, o1, s1), (r2, o2, s2) = sides
         if expect:
             ok = (r1.status_code, r2.status_code) == expect
@@ -895,7 +899,7 @@ class Pair:
             ok = False
             diff = {k: (s1[k], s2[k]) for k in s1 if s1[k] != s2[k]}
             detail += f"\n        state differs: {diff}"
-        check(f"{name} [{r1.status_code}]", ok, detail)
+        check(f"{name} [{r1.status_code}]" + (" [diff by design: state]" if py_state else ""), ok, detail)
         if os.environ.get("PARITY_VERBOSE"):
             print(f"        {b1[:800]!r}\n        outbound {[(m, p, b[:300]) for m, p, h, b in o1]}")
         return r1, r2
@@ -1367,7 +1371,16 @@ async def delete_checks(p, t_admin, t_analyst):
     await p.same("delete: a network integration (FORTINET, its network metadata)", "DELETE", url, t_admin, json=body(name="FORTINET"))
     await p.same("delete: Crowdstrike, undeployed (its note)", "DELETE", url, t_admin, json=body(name="Crowdstrike", code=CUST_B))
     await p.same("delete: AWS undeployed", "DELETE", url, t_admin, json=body(name="AWS", instance_name="acct-1"))
-    await p.same("delete: AWS deployed (Rust's own decommission)", "DELETE", url, t_admin, json=body(name="AWS", instance_name="acct-2"))
+    # Python leaves a deleted AWS instance's metadata row behind; Rust deletes it with the
+    # instance (§4).
+    await p.same(
+        "delete: AWS deployed (Rust's own decommission)",
+        "DELETE",
+        url,
+        t_admin,
+        json=body(name="AWS", instance_name="acct-2"),
+        py_state=lambda left: {**left, "meta": [m for m in left["meta"] if m["id"] != 7531503]},
+    )
     await p.same("delete: analyst of A, for A", "DELETE", url, t_analyst, json=body(name="Mimecast"))
     await p.same("delete: analyst of A, for B", "DELETE", url, t_analyst, json=body(name="Crowdstrike", code=CUST_B), expect=(200, 403))
 

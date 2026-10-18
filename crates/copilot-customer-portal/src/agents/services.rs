@@ -116,13 +116,14 @@ pub struct AgentsPage {
     pub os_list: Vec<String>,
 }
 
-/// `list_portal_agents`. `offset` is `(page - 1) * page_size`, which may not
-/// fit MySQL's `OFFSET` (the caller's bare 500, as in Python).
+/// `list_portal_agents`. `offset` is `(page - 1) * page_size`, clamped to
+/// the filtered total: past it the page is empty either way, and an offset
+/// MySQL would refuse (Python's bare 500) reads as that empty page.
 pub async fn list(
     db: &Db,
     scope: &AccessScope,
     filters: &AgentFilters,
-    offset: u64,
+    offset: u128,
     page_size: i64,
 ) -> Result<AgentsPage, DbError> {
     let Some(customers) = scope_clause(scope) else {
@@ -131,6 +132,7 @@ pub async fn list(
     let mut qb = QueryBuilder::<MySql>::new("SELECT count(agents.id) AS count_1 FROM agents");
     push_where(&mut qb, customers, Some(filters));
     let total = store::count(&mut qb, db).await?;
+    let offset = u64::try_from(offset.min(u128::try_from(total.max(0)).unwrap_or(0))).unwrap_or(0);
 
     let mut qb = QueryBuilder::<MySql>::new(format!("SELECT {AGENT_COLS} FROM agents"));
     push_where(&mut qb, customers, Some(filters));

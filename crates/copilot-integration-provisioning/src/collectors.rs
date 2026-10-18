@@ -27,9 +27,14 @@
 //!    answers whatever JSON came back as success.
 //!
 //! The customer's name has its spaces replaced by `_` before step 2 and
-//! names the directory. Nothing is rolled back, as in Python.
+//! names the directory. What the run creates — the packs it inserted with
+//! their installations, the stream they made, the index set, the
+//! datasource, the folder, the meta row, the files and directories that did
+//! not exist, `deployed` — is rolled back newest-first when a later step
+//! fails, Bitdefender's GravityZone push included
+//! ([`copilot_provisioning::rollback`]); Python left them (§4).
 //!
-//! Two deliberate differences (§4): the body's `customer_code` must be one of
+//! Two further deliberate differences (§4): the body's `customer_code` must be one of
 //! the caller's customers (403), and a customer name holding a `/` or a NUL,
 //! or `..`, is refused with a 400 before anything is created — Python
 //! provisioned Graylog and Grafana, then failed writing the docker-compose
@@ -44,6 +49,7 @@ use copilot_core::cloud_env::CloudEnv;
 use copilot_grafana_dashboards::templates::{self as dashboards, DashboardClass};
 use copilot_graylog::client::DEFAULT_CONNECTOR;
 use copilot_integrations::integrations::store::CustomerIntegration;
+use copilot_provisioning::rollback::{Rollback, Undo};
 use copilot_threat_intel::httpx;
 use copilot_upstream::json::{Dumps, py_dumps};
 use copilot_upstream::model::{Field, Model, Ty, construct, field, kwargs};
@@ -52,8 +58,11 @@ use copilot_web::AppContext;
 
 use crate::grafana::{self, Datasource};
 use crate::graylog::{self, IndexSet, Keywords};
-use crate::integrations::{integrations_of, set_deployed};
-use crate::network::{Tools, provision_dashboards};
+use crate::integrations::integrations_of;
+use crate::network::{
+    Tools, provision_dashboards, register_datasource, register_folder, register_index_set,
+    register_stream,
+};
 use crate::store::{self, NetworkMeta};
 
 /// Where the meta row's `graylog_pipeline_id` comes from.
@@ -625,7 +634,22 @@ pub async fn provision(
             ),
         ));
     }
-    provision_collector(ctx, tools, env, collector, &details, &name, &keys).await?;
+    let mut rollback = Rollback::default();
+    let outcome = provision_collector(
+        ctx,
+        tools,
+        env,
+        collector,
+        &details,
+        &name,
+        &keys,
+        &mut rollback,
+    )
+    .await;
+    if outcome.is_err() {
+        rollback.run(tools.undo()).await;
+    }
+    outcome?;
     Ok(kwargs(vec![
         ("success", PyValue::Bool(true)),
         ("message", s(collector.message)),
@@ -633,6 +657,7 @@ pub async fn provision(
 }
 
 /// `provision_<x>(customer_details, keys, session)`.
+#[allow(clippy::too_many_arguments)]
 async fn provision_collector(
     ctx: &AppContext,
     tools: Tools<'_>,
@@ -641,6 +666,7 @@ async fn provision_collector(
     details: &PyValue,
     name: &str,
     keys: &PyValue,
+    rollback: &mut Rollback,
 ) -> PyResult<()> {
     let (db, gl, conn) = (tools.db, tools.graylog, DEFAULT_CONNECTOR);
     let code = text(details, "customer_code");
@@ -658,7 +684,9 @@ async fn provision_collector(
         tls_cert_file: None,
         tls_key_file: None,
     };
-    graylog::provision_network_content_packs(gl, conn, collector.tag, &keywords).await?;
+    let own_stream =
+        graylog::provision_network_content_packs(gl, conn, collector.tag, &keywords, rollback)
+            .await?;
 
     // `get_stream_and_index_ids`.
     let stream_id =
@@ -676,6 +704,7 @@ async fn provision_collector(
         creation_date,
     })?;
     let index_id = graylog::create_index_set(gl, conn, index_set).await?;
+    register_index_set(rollback, conn, &index_id);
     let pack_stream_id =
         graylog::content_pack_id_by_name(gl, conn, &format!("{name}_{}_STREAM", collector.tag))
             .await?;
@@ -712,6 +741,12 @@ async fn provision_collector(
         grafana_datasource_uid: PyValue::None,
     };
     graylog::assign_stream_to_index(gl, conn, &stream_id, &index_id).await?;
+    if own_stream {
+        register_stream(rollback, conn, &stream_id);
+    } else if let Some(id) = copilot_provisioning::rollback::id_text(&index_id) {
+        // A stream found and reused now writes into the new index set.
+        rollback.keep_index_set(&id);
+    }
     if let Pipeline::Subscription(subscription) = collector.pipeline {
         let pipeline_ids = graylog::pipeline_id(gl, conn, subscription).await?;
         graylog::connect_stream_to_pipeline(gl, conn, &stream_id, &pipeline_ids).await?;
@@ -734,16 +769,25 @@ async fn provision_collector(
     .await?;
     meta.grafana_datasource_uid = datasource_uid.clone();
     let org = store::grafana_org_id(db, &code).await?;
+    register_datasource(rollback, &org, &datasource_uid);
     let folder = grafana::create_folder(tools.grafana, &org, collector.grafana_name).await?;
+    register_folder(rollback, &org, &folder);
     provision_dashboards(tools, collector.dashboards, &code, &folder, &datasource_uid).await?;
     meta.grafana_dashboard_folder_id = match collector.folder_field {
         FolderField::Uid => field(&folder, "uid").clone(),
         FolderField::Id => field(&folder, "id").clone(),
     };
-    store::insert_network_meta(db, &meta).await?;
+    let meta_id = store::insert_network_meta(db, &meta).await?;
+    rollback.add(
+        format!("{} meta row {meta_id}", collector.meta_name),
+        Undo::Row {
+            table: "customer_network_connectors_meta",
+            id: meta_id,
+        },
+    );
 
-    write_files(tools, env, collector, name, keys).await?;
-    set_deployed(ctx, &code, collector.service).await?;
+    write_files(tools, env, collector, name, keys, rollback).await?;
+    crate::integrations::set_deployed_undoable(ctx, &code, collector.service, rollback).await?;
     if collector.files == Files::Bitdefender {
         send_configuration_to_bitdefender(env, keys).await?;
     }
@@ -752,19 +796,53 @@ async fn provision_collector(
 
 /// The collector's directory and files, in Python's order (connector id 3,
 /// the syslog target, read between the two files).
+///
+/// The directories and files that did not exist before are registered in
+/// `rollback`, whatever the outcome (a later file failing leaves the earlier
+/// ones on disk).
 async fn write_files(
     tools: Tools<'_>,
     env: &CloudEnv,
     collector: &Collector,
     name: &str,
     keys: &PyValue,
+    rollback: &mut Rollback,
 ) -> PyResult<()> {
     let folder: PathBuf = Path::new(env.backend_data_dir()).join(name);
-    write_compose(&folder, collector.files, name, keys)?;
-    let url = store::connector_by_id(tools.db, 3)
-        .await?
-        .map(|row| row.connector_url);
-    write_config(&folder, collector, keys, &syslog_host(url.as_deref()))
+    let config = match collector.files {
+        Files::CrowdStrike => "cs.falconhoseclient.cfg",
+        Files::Defender => "filebeat.yml",
+        Files::Bitdefender => "config.json",
+    };
+    let mut paths = vec![(folder.clone(), true)];
+    if collector.files == Files::Defender {
+        paths.push((folder.join("data"), true));
+    }
+    paths.push((folder.join(compose_file_name(collector.files, name)), false));
+    paths.push((folder.join(config), false));
+    let existed: Vec<bool> = paths.iter().map(|(p, _)| p.exists()).collect();
+    let outcome = async {
+        write_compose(&folder, collector.files, name, keys)?;
+        let url = store::connector_by_id(tools.db, 3)
+            .await?
+            .map(|row| row.connector_url);
+        write_config(&folder, collector, keys, &syslog_host(url.as_deref()))
+    }
+    .await;
+    for ((path, dir), existed) in paths.into_iter().zip(existed) {
+        if !existed && path.exists() {
+            let description = format!("{}", path.display());
+            rollback.add(
+                description,
+                if dir {
+                    Undo::Directory(path)
+                } else {
+                    Undo::File(path)
+                },
+            );
+        }
+    }
+    outcome
 }
 
 /// The directory (and Defender's `data/`), then the docker-compose file.

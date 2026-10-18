@@ -44,6 +44,9 @@ services:
         environment:
             - COPILOT_LEGACY_URL=http://copilot-backend:5000
             - COPILOT_SCOUTSUITE_DIR=/opt/copilot/backend
+            # Mimecast's SIEM collection keeps its page token and its downloads
+            # here (Python keeps them next to its module, inside its image).
+            - COPILOT_MIMECAST_DIR=/opt/copilot/backend/data/mimecast
             # Opt-in: scheduled jobs this service may take over from APScheduler
             # (ids, comma-separated: prune_audit_log, invoke_palace_lesson_drainer,
             # invoke_palace_lesson_sweeper, or "all"; COPILOT_RS_PALACE_JOBS=true

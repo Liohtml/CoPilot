@@ -280,7 +280,80 @@ impl InfluxClient {
     }
 }
 
+impl InfluxClient {
+    /// `client.ping()`: see [`FluxHttp::ping`].
+    pub async fn ping(&self, session: &FluxSession) -> PyResult<()> {
+        self.flux.ping(session).await
+    }
+}
+
 impl FluxHttp {
+    /// `client.ping()` (`PingService.get_ping_async()`): `GET {url}/ping`
+    /// with the client's default headers (the token — or the URL's
+    /// credentials —, the user agent), the REST client's `Content-Type` and
+    /// aiohttp's `Accept: */*` and `Accept-Encoding`; a non-2xx answer is the `ApiException`, a transport
+    /// failure aiohttp's, the 10 s whole-request timeout the `TimeoutError`.
+    pub async fn ping(&self, session: &FluxSession) -> PyResult<()> {
+        let deadline = Instant::now() + self.timeout;
+        let base = session.url.strip_suffix('/').unwrap_or(&session.url);
+        let url = format!("{base}/ping");
+        let token = session.token.as_deref().filter(|t| !t.is_empty());
+        let target = aiohttp_target(&url)?;
+        if target.userinfo.is_some() && token.is_some() {
+            return Err(PyExc::ValueError(
+                "Cannot combine AUTHORIZATION header with AUTH argument or credentials encoded \
+                 in URL"
+                    .into(),
+            ));
+        }
+        let mut builder = self.http.request(Method::GET, target.url.clone());
+        if let Some(t) = token {
+            builder = builder.header(http::header::AUTHORIZATION, format!("Token {t}"));
+        } else if let Some((user, password)) = &target.userinfo {
+            builder = builder.header(http::header::AUTHORIZATION, basic(user, password));
+        }
+        // The REST client adds `Content-Type: application/json` after the
+        // default headers; aiohttp adds `Accept` and `Accept-Encoding`.
+        let builder = builder
+            .header(http::header::USER_AGENT, USER_AGENT)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .header(http::header::ACCEPT, "*/*")
+            .header(http::header::ACCEPT_ENCODING, "gzip, deflate");
+        let send = async {
+            let addrs = resolve(&target).await?;
+            builder
+                .send()
+                .await
+                .map_err(|e| transport_error(&e, &target, &addrs))
+        };
+        let resp = match tokio::time::timeout_at(deadline, send).await {
+            Ok(r) => r?,
+            Err(_) => return Err(PyExc::Other("TimeoutError", String::new())),
+        };
+        let status = resp.status();
+        let reason = resp
+            .extensions()
+            .get::<hyper::ext::ReasonPhrase>()
+            .map(|r| String::from_utf8_lossy(r.as_bytes()).into_owned())
+            .unwrap_or_else(|| status.canonical_reason().unwrap_or("").to_string());
+        let headers = resp.headers().clone();
+        let raw = match tokio::time::timeout_at(deadline, resp.bytes()).await {
+            Ok(Ok(b)) => b,
+            Ok(Err(_)) => {
+                return Err(PyExc::Other(
+                    "ClientPayloadError",
+                    "Response payload is not completed".into(),
+                ));
+            }
+            Err(_) => return Err(PyExc::Other("CancelledError", String::new())),
+        };
+        let body = decode_content(&headers, &raw)?;
+        if !status.is_success() {
+            return Err(api_exception(status.as_u16(), &reason, &headers, &body));
+        }
+        Ok(())
+    }
+
     /// The client library's transport: no certificate verification, no
     /// proxies, 10 redirects, the 10 s whole-request timeout.
     pub fn new() -> Result<Self, reqwest::Error> {

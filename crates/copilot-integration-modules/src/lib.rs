@@ -17,12 +17,15 @@
 //!   httpx POST, and the route's `except Exception` folding every failure
 //!   into `success: false` with `str(e)`;
 //! - [`sap_siem`] — the SAP SIEM collection (one POST per comma-separated API
-//!   key; a single key is Python's bare 500: `get_customer_meta_attribute`
-//!   is called without its session) and the seven analyses, whose rules run
-//!   in the module itself;
+//!   key; a single key is POSTed the same way, where Python's bare 500 —
+//!   `get_customer_meta_attribute` called without its session — stopped it)
+//!   and the seven analyses, whose rules run in the module itself;
 //! - [`mimecast`] — `POST /api/mimecast/invoke` and `/ttp/urls`: the
-//!   discovery call to Mimecast's API, then the failure every run ends in
-//!   (the region's `HttpUrl` is added to a `str`, a `TypeError`);
+//!   discovery call to Mimecast's API, then what Python would do had the
+//!   region's URL been a string (it is a Pydantic `HttpUrl`, and `HttpUrl +
+//!   str` is the `TypeError` every Python run ends in): the SIEM download
+//!   with its checkpoint file and the TTP URL pages, their events shipped to
+//!   Graylog (RUST_MIGRATION.md §4, "Python fails, Rust works");
 //! - [`jobs`] — the hand-over jobs (`copilot-scheduler`), one call per
 //!   customer with the integration, with each Python function's own failure
 //!   and `last_success` semantics; `GET /api/carbonblack/test` runs the
@@ -65,6 +68,9 @@ pub struct ModulesState {
     pub ctx: AppContext,
     /// Where the module containers and Mimecast's API are reached.
     pub upstream: Upstream,
+    /// Where the Mimecast SIEM collection keeps its checkpoint and log
+    /// files (`COPILOT_MIMECAST_DIR`).
+    pub mimecast_dir: std::path::PathBuf,
 }
 
 impl ModulesState {
@@ -73,7 +79,16 @@ impl ModulesState {
         Self {
             ctx,
             upstream: Upstream::new(base),
+            mimecast_dir: mimecast::files::DEFAULT_DIR.into(),
         }
+    }
+
+    /// The Mimecast files under `dir` (`None`: Python's module directory).
+    pub fn with_mimecast_dir(mut self, dir: Option<String>) -> Self {
+        if let Some(dir) = dir {
+            self.mimecast_dir = dir.into();
+        }
+        self
     }
 }
 

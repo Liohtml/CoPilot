@@ -133,6 +133,11 @@ class Grafana:
     def reset(self, overrides=None):
         self.overrides = copy.deepcopy(overrides or {})
         self.counter = 0
+        self.datasources = []
+        self.folders = []
+
+    def state(self):
+        return {"datasources": list(self.datasources), "folders": list(self.folders)}
 
     def answer(self, method, target, body):
         path = urlsplit(target).path.removeprefix("/grafanaapi")
@@ -142,6 +147,18 @@ class Grafana:
                     return reply.pop(0) if len(reply) > 1 else reply[0]
                 return reply
         j = "application/json"
+        m = re.fullmatch(r"/datasources/uid/([^/]+)", path)
+        if method == "DELETE" and m:
+            if m.group(1) not in self.datasources:
+                return 404, j, _json({"message": "Data source not found"})
+            self.datasources.remove(m.group(1))
+            return 200, j, _json({"message": "Data source deleted", "id": 9})
+        m = re.fullmatch(r"/folders/([^/]+)", path)
+        if method == "DELETE" and m:
+            if m.group(1) not in self.folders:
+                return 404, j, _json({"message": "Folder not found", "status": "not-found"})
+            self.folders.remove(m.group(1))
+            return 200, j, _json({"message": "Folder deleted", "id": 77, "title": "x"})
         if method == "POST" and re.fullmatch(r"/user/using/[^/]+", path):
             return 200, j, _json({"message": "Active organization changed"})
         if method == "POST" and path == "/dashboards/db":
@@ -165,6 +182,7 @@ class Grafana:
             )
         if method == "POST" and path == "/folders":
             data = json.loads(body)
+            self.folders.append("fold-77")
             return (
                 200,
                 j,
@@ -210,6 +228,7 @@ class Grafana:
                 "version": 1,
                 "readOnly": data.get("readOnly"),
             }
+            self.datasources.append("ds-uid-9")
             return 200, j, _json({"datasource": ds, "id": 9, "message": "Datasource added", "name": data.get("name")})
         return 404, j, _json({"message": "Not found"})
 
@@ -277,6 +296,7 @@ class Graylog:
         )
         self.index_sets = []
         self.connections = []
+        self.installations = []
         self.overrides = copy.deepcopy(overrides or {})
         self.counter = 0
 
@@ -324,12 +344,15 @@ class Graylog:
             pack = next((p for p in self.content_packs if p["id"] == m.group(1)), None)
             if pack is None:
                 return 404, j, _json({"type": "ApiError", "message": f"Content pack {m.group(1)} not found"})
+            created = []
             for e in pack.get("entities") or []:
                 kind = e.get("type", {}).get("name")
                 if kind == "stream":
                     self.streams.append({"id": self._id("st"), "title": entity_title(e)})
+                    created.append(("streams", self.streams[-1]["id"]))
                 elif kind == "input":
                     self.inputs.append({"id": self._id("in"), "title": entity_title(e)})
+                    created.append(("inputs", self.inputs[-1]["id"]))
                 elif kind == "pipeline":
                     self.pipelines.append(
                         {
@@ -341,7 +364,44 @@ class Graylog:
                             "created_at": "2026-10-16T00:00:00.000Z",
                         },
                     )
-            return 200, j, _json({"installation": {"_id": self._id("inst"), "content_pack_id": m.group(1)}, "entities_excluded": []})
+                    created.append(("pipelines", self.pipelines[-1]["id"]))
+            installation = {"_id": self._id("inst"), "content_pack_id": m.group(1)}
+            self.installations.append({**installation, "created": created})
+            return 200, j, _json({"installation": installation, "entities_excluded": []})
+        # The undo of a run (Rust's rollback; Python never deletes): an uninstall removes what
+        # the installation created and is still there, a stream's deletion its connections.
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)/installations", path)
+        if method == "GET" and m:
+            mine = [
+                {"_id": i["_id"], "content_pack_id": i["content_pack_id"]} for i in self.installations if i["content_pack_id"] == m.group(1)
+            ]
+            return 200, j, _json({"installations": mine, "total": len(mine)})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)/installations/([^/]+)", path)
+        if method == "DELETE" and m:
+            found = next((i for i in self.installations if i["_id"] == m.group(2)), None)
+            if found is None:
+                return 404, j, _json({"type": "ApiError", "message": f"Installation {m.group(2)} not found"})
+            self.installations.remove(found)
+            for kind, oid in found["created"]:
+                setattr(self, kind, [x for x in getattr(self, kind) if x["id"] != oid])
+            return 200, j, _json({"entities": [], "failed_entities": []})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)", path)
+        if method == "DELETE" and m:
+            self.content_packs = [p for p in self.content_packs if p["id"] != m.group(1)]
+            return 204, None, b""
+        m = re.fullmatch(r"/api/streams/([^/]+)", path)
+        if method == "DELETE" and m:
+            if not any(st["id"] == m.group(1) for st in self.streams):
+                return 404, j, _json({"type": "ApiError", "message": f"Stream <{m.group(1)}> not found!"})
+            self.streams = [st for st in self.streams if st["id"] != m.group(1)]
+            self.connections = [c for c in self.connections if c["stream_id"] != m.group(1)]
+            return 204, None, b""
+        m = re.fullmatch(r"/api/system/indices/index_sets/([^/]+)", path)
+        if method == "DELETE" and m:
+            if not any(i["id"] == m.group(1) for i in self.index_sets):
+                return 404, j, _json({"type": "ApiError", "message": f"Index set <{m.group(1)}> not found"})
+            self.index_sets = [i for i in self.index_sets if i["id"] != m.group(1)]
+            return 204, None, b""
         if method == "GET" and path == "/api/streams":
             return 200, j, _json({"streams": self.streams, "total": len(self.streams)})
         if method == "POST" and path == "/api/streams":
@@ -900,19 +960,46 @@ class Pair:
         await asyncio.sleep(0)
         return r, RECORDER.take()
 
-    async def same(self, name, method, path, tok=None, before=None, state=None, expect=None, rust=None, **kw):
+    async def same(self, name, method, path, tok=None, before=None, state=None, expect=None, rust=None, rollback=False, **kw):
         """Python, then Rust, each after `before()`; `state()` returns what the request left.
-        `expect=(python, rust)`: the statuses of a deliberate difference (bodies not compared)."""
+        `expect=(python, rust)`: the statuses of a deliberate difference (bodies not compared).
+        `rollback`: a run that fails after creating something (RUST_MIGRATION.md §4) — the same
+        answer, Python's requests then Rust's undo (deletes, the installations they read, the
+        organization switches), Python leaving objects behind and Rust none."""
         sides = []
         for client in (self.py, rust or self.rs):
             if before:
                 before()
+            dump = lambda: CREATION_DATE.sub(b'"creation_date": "<utcnow>"', json.dumps(state(), default=str).encode())  # noqa: E731
+            pre = dump() if state else None
             r, out = await self.call(client, method, path, tok, **kw)
             uuids = UuidMap()
             out = out_norm(out, uuids)
-            st = uuids.sub(CREATION_DATE.sub(b'"creation_date": "<utcnow>"', json.dumps(state(), default=str).encode())) if state else None
-            sides.append((r, out, st, uuids))
-        (r1, o1, s1, u1), (r2, o2, s2, u2) = sides
+            st = uuids.sub(dump()) if state else None
+            sides.append((r, out, st, uuids, pre))
+        (r1, o1, s1, u1, p1), (r2, o2, s2, u2, p2) = sides
+        if rollback:
+            b1, b2 = norm_body(r1.content, u1), norm_body(r2.content, u2)
+            undo = o2[len(o1) :]
+            undo_only = all(
+                m == "DELETE" or (m == "GET" and t.endswith("/installations")) or (m == "POST" and "/user/using/" in t)
+                for m, t, h, b in undo
+            )
+            ok = r1.status_code == r2.status_code and b1 == b2 and o2[: len(o1)] == o1 and undo and undo_only
+            if rollback is True:
+                ok = ok and s2 == p2 and s1 != p1
+            else:
+                # Only these parts rolled back; the rest as Python left it (a reused stream
+                # keeps the index set it was moved onto).
+                j1, j2, jp = json.loads(s1), json.loads(s2), json.loads(p2)
+                ok = ok and s1 != p1 and all(j2[k] == jp[k] for k in rollback) and all(j2[k] == j1[k] for k in j1 if k not in rollback)
+            check(
+                f"{name} [{r1.status_code}] [diff by design: rolled back]",
+                ok,
+                f"python {r1.status_code} {b1[:300]!r}\n        rust   {r2.status_code} {b2[:300]!r}\n        undo {[o[:2] for o in undo]}"
+                f"\n        python left {s1[:600]!r}\n        rust left   {s2[:600]!r}\n        before      {p2[:600]!r}",
+            )
+            return r1, r2
         if expect:
             ok = (r1.status_code, r2.status_code) == expect
             check(
@@ -976,7 +1063,35 @@ async def dashboard_checks(p, t_admin, t_analyst, t_unassigned):
         t_admin,
         json={"dashboards": [1], "organizationId": "x", "folderId": 1.5, "datasourceUid": 5, "grafana_url": None},
     )
-    await p.same("dashboards: empty list asks nothing", "POST", DASH, t_analyst, before=ok, json={"dashboards": []})
+    await p.same("dashboards: empty list asks nothing", "POST", DASH, t_admin, before=ok, json={"dashboards": []})
+    # Deliberate difference: a scoped caller's organization must be one of their customers'
+    # (customersmeta.customer_meta_grafana_org_id; Python wrote into any tenant's): §4.
+    await p.same(
+        "dashboards: an analyst, the organization of no customer of theirs",
+        "POST",
+        DASH,
+        t_analyst,
+        before=ok,
+        expect=(200, 403),
+        json={"dashboards": [], "organizationId": 4242},
+    )
+    await p.same(
+        "dashboards: an analyst without customers",
+        "POST",
+        DASH,
+        t_unassigned,
+        before=ok,
+        expect=(200, 403),
+        json={"dashboards": [], "organizationId": 7},
+    )
+    await p.same(
+        "dashboards: an analyst, their customer's organization",
+        "POST",
+        DASH,
+        t_analyst,
+        before=ok,
+        json={"dashboards": ["DUO_AUTH"], "organizationId": "7"},
+    )
     await p.same(
         "dashboards: defaults (org 0, folder 0, the template URL)",
         "POST",
@@ -989,7 +1104,7 @@ async def dashboard_checks(p, t_admin, t_analyst, t_unassigned):
         "dashboards: several, the datasource and URL replaced",
         "POST",
         DASH,
-        t_unassigned,
+        t_admin,
         before=ok,
         json={
             "dashboards": ["WAZUH_SUMMARY", "OFFICE365_SUMMARY", "SONICWALL_VPN", "WAZUH_SUMMARY", "MIMECAST_SUMMARY"],
@@ -1210,7 +1325,7 @@ def network_state():
         c=list(CUSTOMERS),
     )
     flags = rows("SELECT id, deployed FROM customer_network_connectors WHERE id IN :i ORDER BY id", i=NET_IDS)
-    return {"meta": meta, "deployed": flags, "graylog": GRAYLOG_NET.state()}
+    return {"meta": meta, "deployed": flags, "graylog": GRAYLOG_NET.state(), "grafana": GRAFANA.state()}
 
 
 def with_stream_and_input(title_stream, title_input):
@@ -1328,6 +1443,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(6, graylog={**s1, "pipelines": [pipeline]}),
         state=st,
+        rollback=("grafana",),
         json=forti,
     )
     await p.same(
@@ -1337,6 +1453,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(6, graylog=s1),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1346,6 +1463,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(6, graylog={"pipelines": [pipeline]}),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1355,6 +1473,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(6, graylog={**s1, "pipelines": [{**pipeline, "description": None}]}),
         state=st,
+        rollback=True,
         json=forti,
     )
     # Python's refusals in its order.
@@ -1420,6 +1539,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(setup=org_x),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1435,6 +1555,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
             },
         ),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1444,6 +1565,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(graylog={"overrides": {("PUT", "/api/streams/*"): (400, "application/json", _json({"message": "Invalid index set"}))}}),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1453,6 +1575,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(graylog={"overrides": {("POST", "/api/system/pipelines/connections/to_stream"): (204, None, b"")}}),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1462,6 +1585,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(graylog={"overrides": {("POST", "/api/system/content_packs/*/installations"): (500, "text/plain", b"boom")}}),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1471,6 +1595,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(indexer={("GET", "/_cluster/health"): (503, "application/json", _json({"error": "unavailable", "status": 503}))}),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1480,6 +1605,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(indexer={("GET", "/_nodes/_local"): (200, "application/json", _json({"nodes": {}}))}),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1493,6 +1619,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
             },
         ),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1502,6 +1629,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(grafana={("POST", "/folders"): (200, "application/json", _json({"id": 1, "uid": "u"}))}),
         state=st,
+        rollback=True,
         json=forti,
     )
     await p.same(
@@ -1511,6 +1639,7 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(grafana={("POST", "/dashboards/db"): (412, "application/json", _json({"message": "version-mismatch"}))}),
         state=st,
+        rollback=True,
         json=forti,
     )
 
@@ -1524,7 +1653,44 @@ async def network_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=net(setup=no_id1),
         state=st,
+        rollback=True,
         json=forti,
+    )
+
+    # The datasource reads the `Wazuh-Indexer` row by name, id 1 only when no row has the
+    # name (Python read id 1, whatever it was): §4.
+    def id1_elsewhere():
+        sql(
+            "UPDATE connectors SET connector_name = 'Parity-Not-The-Indexer', connector_url = 'http://127.0.0.1:9', "
+            "connector_username = 'id1-user', connector_password = 'id1-pass' WHERE id = 1",
+        )
+        set_connector("Wazuh-Indexer", INDEXER_URL, username="named-user", password="named-pass")
+
+    from app.connectors import cache as connector_cache
+
+    sides = []
+    for client in (p.py, p.rs):
+        net(setup=id1_elsewhere)()
+        # A Python process that has not resolved id 1 yet (it then reads it by the name it
+        # had when first seen).
+        connector_cache.invalidate_all()
+        r, out = await p.call(client, "POST", f"{NET}/fortinet", t_admin, json=forti)
+        ds = [json.loads(b) for m, t, h, b in out if m == "POST" and t.endswith("/datasources")]
+        sides.append((r.status_code, ds[0] if ds else None))
+    sql("DELETE FROM connectors WHERE connector_name = 'Wazuh-Indexer' AND id <> 1")
+    sql("UPDATE connectors SET connector_name = 'Wazuh-Indexer' WHERE id = 1")
+    (st1, ds1), (st2, ds2) = sides
+    check(
+        "fortinet: the datasource on the Wazuh-Indexer row, id 1 another connector [diff by design: by name]",
+        st1 == st2 == 200
+        and ds1
+        and ds2
+        and (ds1["url"], ds1["basicAuthUser"], ds1["secureJsonData"])
+        == ("http://127.0.0.1:9", "id1-user", {"basicAuthPassword": "id1-pass"})
+        and (ds2["url"], ds2["basicAuthUser"], ds2["secureJsonData"]) == (INDEXER_URL, "named-user", {"basicAuthPassword": "named-pass"})
+        and {k: v for k, v in ds1.items() if k not in ("url", "basicAuthUser", "secureJsonData")}
+        == {k: v for k, v in ds2.items() if k not in ("url", "basicAuthUser", "secureJsonData")},
+        f"python {st1} {ds1}\n        rust   {st2} {ds2}",
     )
 
     def no_network_graylog():
@@ -1604,7 +1770,7 @@ def integration_state():
         "WHERE job_id IN :j ORDER BY id",
         j=JOB_IDS,
     )
-    return {"meta": meta, "deployed": flags, "jobs": jobs, "metadata": metadata, "graylog": GRAYLOG.state()}
+    return {"meta": meta, "deployed": flags, "jobs": jobs, "metadata": metadata, "graylog": GRAYLOG.state(), "grafana": GRAFANA.state()}
 
 
 async def integration_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
@@ -1679,6 +1845,7 @@ async def integration_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=integ(setup=existing_meta),
         state=st,
+        rollback=True,
         json=body,
     )
     await p.same(
@@ -1710,6 +1877,7 @@ async def integration_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=integ(setup=no_meta_b),
         state=st,
+        rollback=True,
         json=body,
     )
     await p.same(
@@ -1719,6 +1887,7 @@ async def integration_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=integ(graylog={"overrides": {("POST", "/api/streams"): (400, "application/json", _json({"message": "Invalid title"}))}}),
         state=st,
+        rollback=True,
         json=body,
     )
     await p.same(
@@ -1728,6 +1897,7 @@ async def integration_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=integ(graylog={"overrides": {("POST", "/api/streams"): (201, "application/json", _json({"id": "x"}))}}),
         state=st,
+        rollback=True,
         json=body,
     )
     await p.same(
@@ -1737,6 +1907,7 @@ async def integration_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=integ(graylog={"overrides": {("POST", "/api/streams/*/resume"): (404, "application/json", _json({"message": "gone"}))}}),
         state=st,
+        rollback=True,
         json=body,
     )
     await p.same(
@@ -1764,6 +1935,7 @@ async def integration_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=integ(),
         state=st,
+        rollback=True,
         json={**body, "time_interval": 10**20},
     )
     # Deliberate difference: the body's customer must be the caller's (Python provisioned any).

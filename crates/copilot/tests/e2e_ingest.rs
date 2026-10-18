@@ -34,11 +34,22 @@ fn base_port() -> u16 {
         .unwrap_or(5710)
 }
 
-/// A stand-in on `INGEST_E2E_PORT + offset`.
+/// A stand-in on `INGEST_E2E_PORT + offset`, retried while the previous
+/// test's server lets the port go (wiremock closes its listener on its own
+/// thread, after the test that dropped it has ended).
 async fn stand_in(offset: u16) -> MockServer {
     let port = base_port() + offset;
-    let listener = std::net::TcpListener::bind(("127.0.0.1", port))
-        .unwrap_or_else(|e| panic!("cannot bind the stand-in on {port}: {e}"));
+    let mut tries = 0;
+    let listener = loop {
+        match std::net::TcpListener::bind(("127.0.0.1", port)) {
+            Ok(l) => break l,
+            Err(_) if tries < 50 => {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            Err(e) => panic!("cannot bind the stand-in on {port}: {e}"),
+        }
+    };
     MockServer::builder().listener(listener).start().await
 }
 

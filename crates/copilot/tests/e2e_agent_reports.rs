@@ -858,6 +858,62 @@ async fn vulnerability_sync_stats_and_deletes_follow_the_hosts_tenant() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["deleted_count"], 2);
 
+    // §4: a scoped analyst's sync of "all agents" covers their customers'
+    // agents only (Python synced every tenant's).
+    up.take();
+    let (status, body) = h
+        .call("POST", "/api/vulnerabilities/sync", Some(&analyst), None)
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["message"],
+        json!(
+            "Completed vulnerability sync for 1 agents using batch mode (size: 100) (all agents \
+             in database)"
+        )
+    );
+    let asked: Vec<Value> = up
+        .take()
+        .into_iter()
+        .filter(|r| r.path == "/wazuh-states-vulnerabilities-e2e/_search")
+        .map(|r| r.body)
+        .collect();
+    assert_eq!(
+        asked,
+        [json!({"query": {"bool": {"must": [{"match": {"agent.name": web}}]}}})]
+    );
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/vulnerabilities/sync/background",
+            Some(&analyst),
+            None,
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let mut seen = Vec::new();
+    for _ in 0..50 {
+        seen.extend(up.take());
+        if seen
+            .iter()
+            .any(|r| r.path == "/wazuh-states-vulnerabilities-e2e/_search")
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    seen.extend(up.take());
+    let asked: Vec<&Value> = seen
+        .iter()
+        .filter(|r| r.path == "/wazuh-states-vulnerabilities-e2e/_search")
+        .map(|r| &r.body)
+        .collect();
+    assert_eq!(
+        asked,
+        [&json!({"query": {"bool": {"must": [{"match": {"agent.name": web}}]}}})]
+    );
+
     let (status, body) = h
         .call(
             "POST",
@@ -1026,6 +1082,31 @@ async fn vulnerability_search_and_reports_stay_in_the_callers_customers() {
     .await;
     assert_eq!(status, 403, "the reports are the SOC's");
 
+    // §4: another tenant's customer is refused before the placeholder row
+    // (Python inserted it, then marked it failed).
+    let refused = format!("bg-refused-{s}");
+    let (status, body) = h
+        .call(
+            "POST",
+            "/api/vulnerabilities/reports/generate/background",
+            Some(&analyst),
+            Some(json!({"customer_code": h.code("beta"), "report_name": refused})),
+        )
+        .await;
+    assert_eq!(
+        (status.as_u16(), body["message"].clone()),
+        (
+            403,
+            json!(format!("Access denied to customer {}", h.code("beta")))
+        )
+    );
+    assert_eq!(
+        h.scalar_i64(&format!(
+            "SELECT COUNT(*) FROM vulnerability_reports WHERE report_name = '{refused}'"
+        ))
+        .await,
+        0
+    );
     // The background report: queued, then completed by the task.
     let (status, body) = h
         .call(
