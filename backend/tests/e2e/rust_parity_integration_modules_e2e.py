@@ -1104,7 +1104,7 @@ async def job_checks(t):
     rs = httpx.AsyncClient(base_url=f"http://127.0.0.1:{JOBS_PORT}", timeout=120)
     admin = {"Authorization": f"Bearer {t['admin']}"}
 
-    async def both(name, job_id, before=None, stub=None):
+    async def both(name, job_id, before=None, stub=None, expect=None):
         got = {}
         for tag, client in (("py", py), ("rs", rs)):
             seed_integrations()
@@ -1119,7 +1119,7 @@ async def job_checks(t):
             got[tag] = {"status": r.status_code, "body": r.content.decode(), "out": normalised(STUB_STATE.take()), "stamped": job_state()}
         check(
             f"job {name} [{got['py']['status']}, {len(got['py']['out'])} out]",
-            json.dumps(got["py"], default=str) == json.dumps(got["rs"], default=str),
+            expect(got) if expect else json.dumps(got["py"], default=str) == json.dumps(got["rs"], default=str),
             f"python {json.dumps(got['py'], default=str)[:3000]}\n        rust   {json.dumps(got['rs'], default=str)[:3000]}",
         )
         return got
@@ -1147,7 +1147,17 @@ async def job_checks(t):
         )
         await both("duo (failures ignored, stamped)", "invoke_duo_integration_collect")
         await both("darktrace", "invoke_darktrace_integration_collect")
-        await both("carbonblack (a manual run is Python's)", "invoke_carbonblack_integration_collection")
+        await both(
+            "carbonblack: Python's run route cannot find its function (a 500), Rust runs it (§4)",
+            "invoke_carbonblack_integration_collection",
+            expect=lambda got: got["py"]["status"] == 500
+            and "has no entry in get_function_by_name" in got["py"]["body"]
+            and not got["py"]["out"]
+            and got["rs"]["status"] == 200
+            and json.loads(got["rs"]["body"])["result"] == {"success": True, "message": "Carbonblack integration invoked."}
+            and len(got["rs"]["out"]) == 1
+            and got["rs"]["stamped"]["invoke_carbonblack_integration_collection"] is True,
+        )
         await both("mimecast: the first customer fails the run", "invoke_mimecast_integration")
         await both("mimecast: no customer (stamped)", "invoke_mimecast_integration", before=only())
         await both("mimecast ttp: the first customer fails the run", "invoke_mimecast_integration_ttp")
@@ -1215,14 +1225,14 @@ async def job_checks(t):
         check("python: a tick whose row is enabled runs", r.json() == {"outcome": "ran"} and len(STUB_STATE.take()) == 1, r.text)
         r = await rs.post("/api/scheduler/jobs/run/invoke_duo_integration_collect", headers=admin)
         check(
-            "rust: a manual run of a job Python owns is Python's",
+            "rust: a manual run of a job Python owns is run here, as Python's manual run is",
             r.status_code == 200
             and r.json()["result"] == {"success": True, "message": "Duo integration invoked."}
             and len(STUB_STATE.take()) == 1,
             r.text,
         )
 
-        # The CarbonBlack job has no route and its manual run is Python's (a 500 there: the run
+        # The CarbonBlack job has no route and Python's manual run of it fails (a 500: the run
         # route looks its function's name up), so its collection is compared on scheduled ticks:
         # Python's guard with the row enabled, then the Rust runner's once the row is handed over
         # and the interval brought down to a minute (the runner re-reads it every 30 s).
