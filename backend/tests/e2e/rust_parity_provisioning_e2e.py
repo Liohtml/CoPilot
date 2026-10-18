@@ -1209,12 +1209,15 @@ class Pair:
         nokey=False,
         expect=None,
         unordered=False,
+        rollback=False,
         **kw,
     ):
         """Python, then Rust, each after `before(side)`; `after(side)` returns the state the
         request left, compared too. `nokey`: Python without the WAF key and alert-forwarding
         settings, against the Rust instance started without them. `expect`: a deliberate
-        difference — `(python_status, rust_status)`, the bodies are not compared."""
+        difference — `(python_status, rust_status)`, the bodies are not compared. `rollback`: a
+        run that fails after creating something (RUST_MIGRATION.md §4) — the same answer,
+        Python's requests, then Rust's undo deleting what Python's run created and left."""
         saved = {}
         if nokey:
             for k in NOKEY_UNSET:
@@ -1239,6 +1242,26 @@ class Pair:
                 f"{name} [diff by design {expect}]",
                 ok,
                 f"python {r1.status_code} {r1.content[:400]!r}\n        rust   {r2.status_code} {r2.content[:400]!r}",
+            )
+            return r1, r2
+        if rollback:
+            o1, o2 = out_norm(out1), out_norm(out2)
+            undo = o2[len(o1) :]
+            created = {json.loads(b).get("id") for m, t, h, b in o1 if m == "POST" and t.endswith("/content_packs") and b[:1] == b"{"}
+            deleted = {t.split("/content_packs/", 1)[1] for m, t, h, b in undo if m == "DELETE" and "/content_packs/" in t}
+            ok = (
+                r1.status_code == r2.status_code
+                and body_norm(r1.content, masked) == body_norm(r2.content, masked)
+                and o2[: len(o1)] == o1
+                and bool(undo)
+                and all(m == "DELETE" or (m == "GET" and t.endswith("/installations")) for m, t, h, b in undo)
+                and created <= deleted
+            )
+            check(
+                f"{name} [{r1.status_code}] [diff by design: rolled back]",
+                ok,
+                f"python {r1.status_code} {r1.content[:300]!r}\n        rust   {r2.status_code} {r2.content[:300]!r}"
+                f"\n        created {created}\n        undo {[o[:2] for o in undo]}",
             )
             return r1, r2
         b1, b2 = body_norm(r1.content, masked), body_norm(r2.content, masked)
@@ -2282,7 +2305,9 @@ async def stack_checks(p, t_admin, t_analyst, t_analyst_b, t_portal):
         ),
         ("pipeline rule refused", {"overrides": {("POST", "/api/system/pipelines/rule"): gl_err(400, "parse error")}}),
     ):
-        await p.same(f"content pack: {label}", "POST", CP, t_analyst, json=WAZUH, before=graylog(**kw))
+        # A run that inserted the pack and then failed deletes it again in Rust (§4).
+        undone = label in ("install refused", "pipeline rules fail", "pipeline rules a bad shape", "pipeline rule refused")
+        await p.same(f"content pack: {label}", "POST", CP, t_analyst, json=WAZUH, before=graylog(**kw), rollback=undone)
 
     def no_graylog(side):
         GRAYLOG.reset()

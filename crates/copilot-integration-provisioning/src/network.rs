@@ -20,8 +20,13 @@
 //! 6. the Grafana datasource, folder and dashboards;
 //! 7. the `customer_network_connectors_meta` row, then `deployed`.
 //!
-//! Nothing is rolled back on a failure, as in Python. One deliberate
-//! difference: the body's `customer_code` must be one of the caller's
+//! What the run creates is rolled back newest-first when a later step
+//! fails ([`copilot_provisioning::rollback`]: the content packs it inserted
+//! with their installations, the stream they made, the index set, the
+//! datasource, the folder, the meta row, `deployed`), where Python left
+//! them for the retry to trip over; the answer is the failure's, as in
+//! Python. Two deliberate differences (RUST_MIGRATION.md §4): that
+//! rollback, and the body's `customer_code` must be one of the caller's
 //! customers (403 otherwise; Python provisioned any tenant).
 
 use copilot_auth::pyvalue::PyValue;
@@ -32,6 +37,7 @@ use copilot_graylog::GraylogClient;
 use copilot_graylog::client::NETWORK_CONNECTOR;
 use copilot_integrations::network_connectors::schema::connector_dump;
 use copilot_integrations::network_connectors::store::{CustomerConnector, customer_connectors};
+use copilot_provisioning::rollback::{self, Rollback, Undo, UndoTools, id_text};
 use copilot_upstream::model::{Model, construct, field, kwargs};
 use copilot_upstream::py::{PyExc, PyResult, int_of};
 use copilot_wazuh::WazuhState;
@@ -120,6 +126,18 @@ pub static NETWORKS: &[Network] = &[
         request: &PROVISION_SENTINELONE_REQUEST,
     },
 ];
+
+impl<'a> Tools<'a> {
+    /// What a rollback reaches.
+    pub fn undo(&self) -> UndoTools<'a> {
+        UndoTools {
+            db: self.db,
+            graylog: self.graylog,
+            grafana: self.grafana,
+            wazuh: Some(self.wazuh),
+        }
+    }
+}
 
 /// The tools a flow uses.
 #[derive(Debug, Clone, Copy)]
@@ -248,14 +266,20 @@ pub async fn provision(
         tls_cert_file,
         tls_key_file,
     };
-    provision_customer(
+    let mut rollback = Rollback::default();
+    let outcome = provision_customer(
         tools,
         network,
         &keywords,
         field(request, "hot_data_retention"),
         field(request, "index_replicas"),
+        &mut rollback,
     )
-    .await?;
+    .await;
+    if outcome.is_err() {
+        rollback.run(tools.undo()).await;
+    }
+    outcome?;
     Ok(kwargs(vec![
         ("success", PyValue::Bool(true)),
         ("message", PyValue::Str(network.message.into())),
@@ -269,6 +293,7 @@ async fn provision_customer(
     keywords: &Keywords,
     hot_data_retention: &PyValue,
     index_replicas: &PyValue,
+    rollback: &mut Rollback,
 ) -> PyResult<()> {
     let (db, gl, net) = (tools.db, tools.graylog, NETWORK_CONNECTOR);
     let code = keywords.customer_code.as_str();
@@ -279,7 +304,8 @@ async fn provision_customer(
             "Grafana organization ID not found. Please provision Grafana for the customer first.",
         ));
     }
-    graylog::provision_network_content_packs(gl, net, network.tag, keywords).await?;
+    let own_stream =
+        graylog::provision_network_content_packs(gl, net, network.tag, keywords, rollback).await?;
 
     // `get_stream_and_index_ids`.
     let stream_id =
@@ -296,6 +322,7 @@ async fn provision_customer(
         creation_date,
     })?;
     let index_id = graylog::create_index_set(gl, net, index_set).await?;
+    register_index_set(rollback, net, &index_id);
     let pack_stream_id =
         graylog::content_pack_id_by_name(gl, net, &format!("{name}_{}_STREAM", network.tag))
             .await?;
@@ -329,6 +356,14 @@ async fn provision_customer(
     };
 
     graylog::assign_stream_to_index(gl, net, &stream_id, &index_id).await?;
+    if own_stream {
+        // Graylog keeps an index set a stream is assigned to: the pack's
+        // stream goes first (its pack's uninstall then skips it).
+        register_stream(rollback, net, &stream_id);
+    } else if let Some(id) = rollback::id_text(&index_id) {
+        // A stream found and reused now writes into the new index set.
+        rollback.keep_index_set(&id);
+    }
     let pipeline_ids = graylog::pipeline_id(gl, net, network.tag).await?;
     graylog::connect_stream_to_pipeline(gl, net, &stream_id, &pipeline_ids).await?;
 
@@ -349,11 +384,61 @@ async fn provision_customer(
     .await?;
     meta.grafana_datasource_uid = datasource_uid.clone();
     let org = store::grafana_org_id(db, code).await?;
+    register_datasource(rollback, &org, &datasource_uid);
     let folder = grafana::create_folder(tools.grafana, &org, network.tag).await?;
+    register_folder(rollback, &org, &folder);
     provision_dashboards(tools, network.dashboards, code, &folder, &datasource_uid).await?;
     meta.grafana_dashboard_folder_id = field(&folder, "uid").clone();
-    store::insert_network_meta(db, &meta).await?;
-    store::set_network_deployed(db, code, network.service).await
+    let meta_id = store::insert_network_meta(db, &meta).await?;
+    rollback.add(
+        format!("{} meta row {meta_id}", network.tag),
+        Undo::Row {
+            table: "customer_network_connectors_meta",
+            id: meta_id,
+        },
+    );
+    store::set_network_deployed(db, code, network.service, rollback).await
+}
+
+/// An index set this run created.
+pub fn register_index_set(rollback: &mut Rollback, connector: &'static str, id: &PyValue) {
+    if let Some(id) = id_text(id) {
+        rollback.add(format!("index set {id}"), Undo::IndexSet { connector, id });
+    }
+}
+
+/// A stream this run created (or a pack it installed made).
+pub fn register_stream(rollback: &mut Rollback, connector: &'static str, id: &PyValue) {
+    if let Some(id) = id_text(id) {
+        rollback.add(format!("stream {id}"), Undo::Stream { connector, id });
+    }
+}
+
+/// A datasource this run created in `org`.
+pub fn register_datasource(rollback: &mut Rollback, org: &str, uid: &PyValue) {
+    if let Some(uid) = id_text(uid) {
+        rollback.add(
+            format!("datasource {uid}"),
+            Undo::Datasource {
+                org: org.to_string(),
+                uid,
+            },
+        );
+    }
+}
+
+/// A folder this run created in `org` (its `GrafanaFolderCreationResponse`
+/// dump: the undo deletes it by uid, the dashboards in it with it).
+pub fn register_folder(rollback: &mut Rollback, org: &str, folder: &PyValue) {
+    if let Some(uid) = id_text(field(folder, "uid")) {
+        rollback.add(
+            format!("folder {uid}"),
+            Undo::Folder {
+                org: org.to_string(),
+                uid,
+            },
+        );
+    }
 }
 
 /// `provision_dashboards(DashboardProvisionRequest(dashboards=[…],

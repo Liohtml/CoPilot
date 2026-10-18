@@ -4,9 +4,12 @@
 //!
 //! - the OpenSearch datasource: a fresh client, the service user switched to
 //!   the customer's organization (`get_customer_meta`, 404 without a meta
-//!   row), the URL and credentials of connector **id 1** (the Wazuh indexer
-//!   by convention, three `get_connector_attribute(connector_id=1, …)`
-//!   reads), the indexer's version (`GET /_nodes/_local?filter_path=…`),
+//!   row), the URL and credentials of the Wazuh indexer's connector — the
+//!   row named `Wazuh-Indexer`, the one `copilot-connectors` names (Python
+//!   read connector **id 1**, three `get_connector_attribute(connector_id=1,
+//!   …)` reads, which is that row only by convention; id 1 is still the
+//!   fallback when no row has the name, RUST_MIGRATION.md §4), the
+//!   indexer's version (`GET /_nodes/_local?filter_path=…`),
 //!   then `POST /datasources` with `GrafanaDatasource(...).model_dump()` —
 //!   `pplEnabled` is dropped by the model, `dataLinks` takes its default;
 //! - the folder (`POST /folders` with `{"title": …}`);
@@ -140,7 +143,7 @@ pub async fn create_datasource_on(
     spec: &Datasource,
 ) -> PyResult<PyValue> {
     grafana.switch_organization(api, org).await?;
-    let indexer = store::connector_by_id(db, 1).await?;
+    let indexer = indexer_connector(db).await?;
     let credentials = match indexer {
         Some(row) => (
             PyValue::Str(row.connector_url),
@@ -151,6 +154,21 @@ pub async fn create_datasource_on(
     };
     create_datasource_with(grafana, wazuh, api, spec, credentials).await
 }
+
+/// The Wazuh indexer's connector row: the one named `Wazuh-Indexer`, else
+/// (no row has the name) Python's connector id 1.
+pub async fn indexer_connector(db: &Db) -> PyResult<Option<copilot_db::connectors::ConnectorRow>> {
+    let by_name = copilot_db::connectors::find_by_name(db, INDEXER_CONNECTOR)
+        .await
+        .map_err(|e| PyExc::Other("OperationalError", e.to_string()))?;
+    match by_name {
+        Some(row) => Ok(Some(row)),
+        None => store::connector_by_id(db, 1).await,
+    }
+}
+
+/// The indexer's connector name (`copilot_wazuh`'s, the startup sync's).
+pub const INDEXER_CONNECTOR: &str = "Wazuh-Indexer";
 
 /// The indexer's URL, user and password as three `get_connector_attribute`
 /// reads give them (`None` each without the row).

@@ -5,7 +5,8 @@
 //! `app/connectors/portainer/services/stack.py`'s stack creation (`POST
 //! /api/portainer/create-wazuh-customer-stack`).
 //!
-//! `POST /provision`, in Python's order and with nothing rolled back:
+//! `POST /provision`, in Python's order; what it creates is rolled back
+//! newest-first when a later step fails (RUST_MIGRATION.md §4):
 //!
 //! 1. the query's customer exists (404), the body's ports unused by any
 //!    other customer when a worker is asked for (400);
@@ -38,6 +39,7 @@ use copilot_core::cloud_env::CloudEnv;
 use copilot_db::Db;
 use copilot_graylog::client::DEFAULT_CONNECTOR;
 use copilot_portainer::PortainerClient;
+use copilot_provisioning::rollback::{Rollback, Undo, id_text};
 use copilot_upstream::http::{PyHttp, PyRequest};
 use copilot_upstream::json::{Dumps, py_dumps};
 use copilot_upstream::model::{construct, construct_star, field, kwargs};
@@ -48,7 +50,9 @@ use http::Method;
 
 use crate::grafana::{self, Datasource};
 use crate::graylog::{self, IndexSet};
-use crate::network::Tools;
+use crate::network::{
+    Tools, register_datasource, register_folder, register_index_set, register_stream,
+};
 use schema::{
     CUSTOMER_PROVISION_META, GRAFANA_ORGANIZATION_CREATION, GRAFANA_ORGANIZATION_CREATION_QUALNAME,
     PROVISION_HAPROXY_REQUEST, PROVISION_WORKER_REQUEST,
@@ -234,9 +238,9 @@ pub fn iris_index(name: &str) -> String {
 }
 
 /// `update_customer_alert_settings_table(request, meta)`.
-async fn insert_alert_settings(db: &Db, request: &PyValue) -> PyResult<()> {
+async fn insert_alert_settings(db: &Db, request: &PyValue) -> PyResult<i64> {
     let name = text(request, "customer_name");
-    sqlx::query(
+    let done = sqlx::query(
         "INSERT INTO custom_alert_creation_settings (customer_code, customer_name, timefield, \
          iris_customer_id, iris_customer_name, iris_index, grafana_url, custom_message, nvd_url) \
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -254,7 +258,7 @@ async fn insert_alert_settings(db: &Db, request: &PyValue) -> PyResult<()> {
     .execute(db.pool())
     .await
     .map_err(db_err)?;
-    Ok(())
+    i64::try_from(done.last_insert_id()).map_err(db_err)
 }
 
 /// `update_customer_portainer_stack_id(customer_name, stack_id)`.
@@ -325,14 +329,23 @@ pub async fn wazuh_manager_version(c: Customer<'_>) -> PyResult<PyValue> {
 
 /// `create_wazuh_groups(request)`: `POST /groups` for each group, every
 /// failure only logged.
-async fn create_wazuh_groups(c: Customer<'_>, code: &str) {
+async fn create_wazuh_groups(c: Customer<'_>, code: &str, rollback: &mut Rollback) {
     for (group, _) in GROUP_TEMPLATES {
         let group_code = format!("{group}_{code}");
         tracing::info!("Creating group with code {group_code}");
         let body = kwargs(vec![("group_id", s(&group_code))]);
         let json = py_dumps(&body, Dumps::DEFAULT).unwrap_or_default();
         match manager::send_post_json(c.tools.wazuh, "/groups", json).await {
-            Ok(response) => tracing::info!("Response for {group_code}: {response}"),
+            Ok(response) => {
+                tracing::info!("Response for {group_code}: {response}");
+                // A group the manager created (not one it already had).
+                if response.get("success").and_then(serde_json::Value::as_bool) == Some(true) {
+                    rollback.add(
+                        format!("Wazuh group {group_code}"),
+                        Undo::WazuhGroup(group_code),
+                    );
+                }
+            }
             Err(e) => tracing::error!("Error creating group {group_code}: {e:?}"),
         }
     }
@@ -479,11 +492,22 @@ pub async fn provision(c: Customer<'_>, request: &PyValue) -> PyResult<PyValue> 
             ("wazuh_worker_provisioned", PyValue::Bool(false)),
         ]));
     }
-    provision_wazuh_customer(c, request).await
+    // What the run creates is undone, newest first, when a later step fails
+    // (RUST_MIGRATION.md §4: Python left it for the retry to trip over).
+    let mut rollback = Rollback::default();
+    let outcome = provision_wazuh_customer(c, request, &mut rollback).await;
+    if outcome.is_err() {
+        rollback.run(c.tools.undo()).await;
+    }
+    outcome
 }
 
 /// `provision_wazuh_customer(request)`.
-async fn provision_wazuh_customer(c: Customer<'_>, request: &PyValue) -> PyResult<PyValue> {
+async fn provision_wazuh_customer(
+    c: Customer<'_>,
+    request: &PyValue,
+    rollback: &mut Rollback,
+) -> PyResult<PyValue> {
     let (db, gl, conn) = (c.tools.db, c.tools.graylog, DEFAULT_CONNECTOR);
     verify_required_tools(c).await?;
     let name = text(request, "customer_name");
@@ -499,12 +523,14 @@ async fn provision_wazuh_customer(c: Customer<'_>, request: &PyValue) -> PyResul
         creation_date: graylog::creation_date(),
     })?;
     let index_set_id = graylog::create_index_set(gl, conn, index_set).await?;
+    register_index_set(rollback, conn, &index_set_id);
     let stream = wazuh_event_stream(request, &index_set_id)?;
     let stream_id = graylog::create_event_stream(gl, conn, stream).await?;
+    register_stream(rollback, conn, &stream_id);
     graylog::connect_stream_to_pipeline(gl, conn, &stream_id, &pipeline_ids).await?;
     // `start_stream` answers a model, never `False`: its outcome is not read.
     copilot_graylog::services::start_stream(gl, &stream_id.py_str()).await?;
-    create_wazuh_groups(c, &text(request, "customer_code")).await;
+    create_wazuh_groups(c, &text(request, "customer_code"), rollback).await;
     apply_group_configurations(c, request).await;
 
     // Grafana: the organization, the datasource, the EDR folder, the dashboards.
@@ -533,6 +559,12 @@ async fn provision_wazuh_customer(c: Customer<'_>, request: &PyValue) -> PyResul
         &answer,
     )?;
     let org_id = field(&organization, "orgId").clone();
+    if let Some(id) = id_text(&org_id) {
+        rollback.add(
+            format!("Grafana organization {id}"),
+            Undo::GrafanaOrganization { id },
+        );
+    }
     let api = c
         .tools
         .grafana
@@ -558,8 +590,10 @@ async fn provision_wazuh_customer(c: Customer<'_>, request: &PyValue) -> PyResul
         credentials,
     )
     .await?;
+    register_datasource(rollback, &org_id.py_str(), &datasource_uid);
     tracing::info!("Creating EDR folder and dashboards");
     let folder = grafana::create_folder(c.tools.grafana, &org_id.py_str(), "EDR").await?;
+    register_folder(rollback, &org_id.py_str(), &folder);
     let folder_id = field(&folder, "id").clone();
     let dashboards = construct(
         &copilot_grafana_dashboards::schema::DASHBOARD_PROVISION_REQUEST,
@@ -634,7 +668,21 @@ async fn provision_wazuh_customer(c: Customer<'_>, request: &PyValue) -> PyResul
         ),
     ];
     let id = insert_meta(db, &values).await?;
-    insert_alert_settings(db, request).await?;
+    rollback.add(
+        format!("customersmeta row {id}"),
+        Undo::Row {
+            table: "customersmeta",
+            id,
+        },
+    );
+    let settings = insert_alert_settings(db, request).await?;
+    rollback.add(
+        format!("custom_alert_creation_settings row {settings}"),
+        Undo::Row {
+            table: "custom_alert_creation_settings",
+            id: settings,
+        },
+    );
     let customer_meta = meta_dump(values, id, true);
     let answer = |message: String, worker: bool| {
         kwargs(vec![

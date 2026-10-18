@@ -25,6 +25,7 @@ use http::StatusCode;
 use crate::StackState;
 use crate::graylog;
 use crate::influx;
+use crate::rollback::{Rollback, UndoTools};
 use crate::schema::{self, CONTENT_PACKS_OVERVIEW, CheckRequest, ContentPackRequest};
 
 type Reader = Authorized<AdminOrAnalyst>;
@@ -110,12 +111,25 @@ async fn provision_content_pack(
     graylog::does_content_pack_exist(&s.graylog, name)
         .await
         .map_err(py)?;
-    graylog::provision_content_pack(&s.graylog, name)
-        .await
-        .map_err(py)?;
-    graylog::check_pipeline_rules(&s.graylog)
-        .await
-        .map_err(py)?;
+    // What this run inserts and installs is undone when a later step fails
+    // (RUST_MIGRATION.md §4: Python left the pack behind).
+    let mut rollback = Rollback::default();
+    let outcome = async {
+        graylog::provision_content_pack(&s.graylog, name, &mut rollback).await?;
+        graylog::check_pipeline_rules(&s.graylog, &mut rollback).await
+    }
+    .await;
+    if outcome.is_err() {
+        rollback
+            .run(UndoTools {
+                db: &s.ctx.db,
+                graylog: &s.graylog,
+                grafana: &s.grafana,
+                wazuh: None,
+            })
+            .await;
+    }
+    outcome.map_err(py)?;
     Ok(ok(kwargs(vec![
         ("success", PyValue::Bool(true)),
         (

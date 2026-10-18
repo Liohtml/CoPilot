@@ -19,9 +19,8 @@
 use copilot_auth::pyvalue::PyValue;
 use copilot_graylog::GraylogClient;
 use copilot_graylog::client::{EntityKind, Reply};
-use copilot_provisioning::graylog::{
-    does_content_pack_exist_on, insert_content_pack_on, install_content_pack_on,
-};
+use copilot_provisioning::graylog::{does_content_pack_exist_on, insert_and_install_on};
+use copilot_provisioning::rollback::Rollback;
 use copilot_provisioning::templates;
 use copilot_upstream::model::{construct, field, kwargs};
 use copilot_upstream::py::{PyExc, PyResult, getitem, int_of, iterate};
@@ -515,12 +514,18 @@ pub fn render_content_pack(template: &PyValue, replacements: &[(&str, String)]) 
 /// skipped when a content pack named after the *customer* exists (a 400 when
 /// it is not a processing pipeline), else rendered, inserted and — when
 /// Graylog took it — installed.
+///
+/// Each pack this run inserts is registered in `rollback` (its installation
+/// with it); the answer is whether the stream pack was among them — the
+/// stream it made is then this run's too.
 pub async fn provision_network_content_packs(
     c: &GraylogClient,
-    connector: &str,
+    connector: &'static str,
     name: &str,
     keywords: &Keywords,
-) -> PyResult<()> {
+    rollback: &mut Rollback,
+) -> PyResult<bool> {
+    let mut stream_pack_installed = false;
     for member in network_content_packs(name, keywords.protocol_type) {
         if does_content_pack_exist_on(c, connector, &keywords.customer_name).await? {
             continue;
@@ -528,14 +533,13 @@ pub async fn provision_network_content_packs(
         let template = templates::content_pack(member)
             .ok_or_else(|| PyExc::http(404, "Content pack JSON file not found"))?;
         let pack = render_content_pack(&template, &replacements(keywords));
-        let inserted = insert_content_pack_on(c, connector, &pack).await?;
-        let id = pack.get("id").cloned().unwrap_or(PyValue::None);
-        let rev = pack.get("rev").cloned().unwrap_or(PyValue::None);
-        if inserted {
-            install_content_pack_on(c, connector, &id, &rev).await?;
+        let before = rollback.descriptions().len();
+        insert_and_install_on(c, connector, &pack, false, rollback).await?;
+        if member.ends_with("_STREAM") && rollback.descriptions().len() > before {
+            stream_pack_installed = true;
         }
     }
-    Ok(())
+    Ok(stream_pack_installed)
 }
 
 #[cfg(test)]

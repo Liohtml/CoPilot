@@ -1268,3 +1268,219 @@ fn sent_body(requests: &[wiremock::Request], at: &str) -> Vec<u8> {
         .body
         .clone()
 }
+
+// --- a failed run is rolled back; the datasource reads the indexer by name -----------
+
+/// Graylog's and Grafana's answers to the undo of a run.
+async fn undo_ok(w: &World) {
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(
+            r"^/api/system/content_packs/[^/]+/installations$",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "installations": [{"_id": "inst-1", "content_pack_id": "x"}], "total": 1
+        })))
+        .mount(&w.graylog)
+        .await;
+    Mock::given(method("DELETE"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&w.graylog)
+        .await;
+    Mock::given(method("DELETE"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"message": "deleted"})))
+        .mount(&w.grafana)
+        .await;
+}
+
+/// A network provisioning whose folder Grafana refuses: what the run
+/// created is undone newest-first — the datasource, the stream its pack
+/// made, the index set, each pack it inserted (installation first) — and
+/// it answers what it answered without the rollback (Python left all of
+/// it behind; RUST_MIGRATION.md §4).
+#[tokio::test]
+async fn a_failed_network_provisioning_is_rolled_back() {
+    if !configured() {
+        return;
+    }
+    let h = harness_or_skip!(None);
+    let w = world(&h, "Graylog-Network").await;
+    h.seed().await;
+    let acme = h.code("acme");
+    let admin = h.token(&h.code("admin"), "admin");
+    seed_network(&h, 7640500, &acme, "Fortinet", &[("SYSLOG_PORT", "514")]).await;
+    seed_meta(&h, &acme, "7").await;
+    Mock::given(method("POST"))
+        .and(path("/api/folders"))
+        .respond_with(
+            ResponseTemplate::new(500).set_body_json(json!({"message": "folder store down"})),
+        )
+        .with_priority(1)
+        .mount(&w.grafana)
+        .await;
+    tools_ok(&w, "acme corp", "FORTINET").await;
+    undo_ok(&w).await;
+
+    let (st, answer) = h
+        .call(
+            "POST",
+            "/api/stack_provisioning/graylog/provision/fortinet",
+            Some(&admin),
+            Some(json!({"customer_code": acme, "tcp_enabled": true,
+                "hot_data_retention": 30, "index_replicas": 1})),
+        )
+        .await;
+    // `grafana_client`'s `GrafanaServerError`, which nothing catches: uvicorn's
+    // bare 500, with or without the rollback.
+    assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR, "{answer}");
+    assert_eq!(answer, json!("Internal Server Error"));
+    let sent = w.graylog.received_requests().await.unwrap();
+    let packs: Vec<String> = sent
+        .iter()
+        .filter(|r| r.method.as_str() == "POST" && r.url.path() == "/api/system/content_packs")
+        .map(|r| {
+            serde_json::from_slice::<Value>(&r.body).unwrap()["id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(packs.len(), 3);
+    let at = sent
+        .iter()
+        .position(|r| r.url.path() == "/api/system/pipelines/connections/to_stream")
+        .unwrap();
+    let mut want = vec![
+        "DELETE /api/streams/st-1".to_string(),
+        "DELETE /api/system/indices/index_sets/is-1".to_string(),
+    ];
+    for id in packs.iter().rev() {
+        want.push(format!("GET /api/system/content_packs/{id}/installations"));
+        want.push(format!(
+            "DELETE /api/system/content_packs/{id}/installations/inst-1"
+        ));
+        want.push(format!("DELETE /api/system/content_packs/{id}"));
+    }
+    assert_eq!(sent_paths(&sent[at + 1..]), want);
+    for r in &sent[at + 1..] {
+        assert_eq!(r.headers.get("authorization").unwrap(), BASIC);
+    }
+    let grafana = w.grafana.received_requests().await.unwrap();
+    let paths = sent_paths(&grafana);
+    assert_eq!(
+        paths[paths.len() - 2..],
+        [
+            "POST /api/user/using/7".to_string(),
+            "DELETE /api/datasources/uid/ds-uid".to_string()
+        ]
+    );
+    assert_eq!(
+        h.scalar_i64(&format!(
+            "SELECT COUNT(*) FROM customer_network_connectors_meta WHERE customer_code = '{acme}'"
+        ))
+        .await,
+        0
+    );
+    assert_eq!(
+        h.scalar_i64("SELECT deployed FROM customer_network_connectors WHERE id = 7640501")
+            .await,
+        0
+    );
+
+    // An undo that fails is logged and the others still run.
+    w.graylog.reset().await;
+    w.grafana.reset().await;
+    w.indexer.reset().await;
+    Mock::given(method("POST"))
+        .and(path("/api/folders"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({"message": "down"})))
+        .with_priority(1)
+        .mount(&w.grafana)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/streams/st-1"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({"message": "busy"})))
+        .with_priority(1)
+        .mount(&w.graylog)
+        .await;
+    tools_ok(&w, "acme corp", "FORTINET").await;
+    undo_ok(&w).await;
+    let (st, _) = h
+        .call(
+            "POST",
+            "/api/stack_provisioning/graylog/provision/fortinet",
+            Some(&admin),
+            Some(json!({"customer_code": acme, "tcp_enabled": true,
+                "hot_data_retention": 30, "index_replicas": 1})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
+    let sent = w.graylog.received_requests().await.unwrap();
+    let deletes = sent
+        .iter()
+        .filter(|r| r.method.as_str() == "DELETE")
+        .count();
+    assert_eq!(deletes, 1 + 1 + 3 * 2, "{:?}", sent_paths(&sent));
+
+    unseed_network(&h, &acme).await;
+    leave(&h, w).await;
+}
+
+/// The OpenSearch datasource takes the `Wazuh-Indexer` row's URL and
+/// credentials, whatever its id; Python read connector id 1 (§4).
+#[tokio::test]
+async fn the_datasource_reads_the_indexer_connector_by_name() {
+    if !configured() {
+        return;
+    }
+    let h = harness_or_skip!(None);
+    let w = world(&h, "Graylog-Network").await;
+    let id1_name: Option<String> = w.id1.as_ref().map(|r| r.1.clone());
+    // Id 1 is another connector now; the indexer's row is a new one.
+    h.exec(
+        "UPDATE connectors SET connector_name = 'E2E-NOT-THE-INDEXER', connector_url = \
+         'http://127.0.0.1:9', connector_username = 'id1-user', connector_password = 'id1-pass' \
+         WHERE id = 1",
+    )
+    .await;
+    let named = set_connector(&h, "Wazuh-Indexer", &w.indexer.uri()).await;
+    assert!(named.is_none());
+    h.exec(
+        "UPDATE connectors SET connector_username = 'named-user', connector_password = \
+         'named-pass' WHERE connector_name = 'Wazuh-Indexer'",
+    )
+    .await;
+    h.seed().await;
+    let acme = h.code("acme");
+    let admin = h.token(&h.code("admin"), "admin");
+    seed_network(&h, 7640600, &acme, "Fortinet", &[("SYSLOG_PORT", "514")]).await;
+    seed_meta(&h, &acme, "7").await;
+    tools_ok(&w, "acme corp", "FORTINET").await;
+
+    let (st, answer) = h
+        .call(
+            "POST",
+            "/api/stack_provisioning/graylog/provision/fortinet",
+            Some(&admin),
+            Some(json!({"customer_code": acme, "tcp_enabled": true,
+                "hot_data_retention": 30, "index_replicas": 1})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{answer}");
+    let grafana = w.grafana.received_requests().await.unwrap();
+    let ds: Value = serde_json::from_slice(&sent_body(&grafana, "/api/datasources")).unwrap();
+    assert_eq!(ds["url"], json!(w.indexer.uri()));
+    assert_eq!(ds["basicAuthUser"], json!("named-user"));
+    assert_eq!(
+        ds["secureJsonData"],
+        json!({"basicAuthPassword": "named-pass"})
+    );
+
+    unseed_network(&h, &acme).await;
+    restore_connector(&h, "Wazuh-Indexer", None).await;
+    h.exec(&format!(
+        "UPDATE connectors SET connector_name = '{}' WHERE id = 1",
+        id1_name.as_deref().unwrap_or("Wazuh-Indexer")
+    ))
+    .await;
+    leave(&h, w).await;
+}

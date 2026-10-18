@@ -257,6 +257,12 @@ class Manager:
         if path == "/groups" and method == "POST":
             self.groups.append(json.loads(body).get("group_id"))
             return 200, j, _json({"data": {"affected_items": [json.loads(body).get("group_id")], "total_affected_items": 1}, "error": 0})
+        if path == "/groups" and method == "DELETE":
+            # A rollback's undo (Rust; Python never deletes a group it made).
+            names = parse_qs(urlsplit(target).query).get("groups_list", [""])[0].split(",")
+            self.groups = [g for g in self.groups if g not in names]
+            self.group_configs = [c for c in self.group_configs if c[0] not in names]
+            return 200, j, _json({"data": {"affected_items": names, "total_affected_items": len(names)}, "error": 0})
         m = re.fullmatch(r"/groups/([^/]+)/configuration", path)
         if m and method == "PUT":
             self.group_configs.append((m.group(1), body.decode()))
@@ -332,6 +338,7 @@ class Graylog:
         self.index_sets = []
         self.streams = []
         self.connections = []
+        self.installations = []
         self.deleted = []
         self.overrides = copy.deepcopy(overrides or {})
         self.counter = 0
@@ -390,16 +397,50 @@ class Graylog:
                 v = (e.get("data") or {}).get(key)
                 return v.get("@value") if isinstance(v, dict) else v
 
+            created = []
             for e in pack.get("entities") or []:
                 kind = e.get("type", {}).get("name")
                 if kind == "stream":
                     self.streams.append({"id": self._id("st"), "title": value(e, "title"), "running": True})
+                    created.append(("streams", self.streams[-1]["id"]))
                 elif kind == "input":
                     self.inputs.append({"id": self._id("in"), "title": value(e, "title")})
+                    created.append(("inputs", self.inputs[-1]["id"]))
                 elif kind == "pipeline":
                     new = pipeline(self._id("pl"), value(e, "title"), value(e, "description"))
                     self.pipelines.append(new)
-            return 200, j, _json({"installation": {"_id": self._id("inst"), "content_pack_id": m.group(1)}, "entities_excluded": []})
+                    created.append(("pipelines", new["id"]))
+            installation = {"_id": self._id("inst"), "content_pack_id": m.group(1)}
+            self.installations.append({**installation, "created": created})
+            return 200, j, _json({"installation": installation, "entities_excluded": []})
+        # A rollback's undo (Rust's; Python never deletes): an uninstall removes what the
+        # installation created and is still there.
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)/installations", path)
+        if method == "GET" and m:
+            mine = [
+                {"_id": i["_id"], "content_pack_id": i["content_pack_id"]} for i in self.installations if i["content_pack_id"] == m.group(1)
+            ]
+            return 200, j, _json({"installations": mine, "total": len(mine)})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)/installations/([^/]+)", path)
+        if method == "DELETE" and m:
+            found = next((i for i in self.installations if i["_id"] == m.group(2)), None)
+            if found is None:
+                return 404, j, _json({"type": "ApiError", "message": f"Installation {m.group(2)} not found"})
+            self.installations.remove(found)
+            for kind, oid in found["created"]:
+                setattr(self, kind, [x for x in getattr(self, kind) if x["id"] != oid])
+            self.deleted.append(("installation", m.group(2)))
+            return 200, j, _json({"entities": [], "failed_entities": []})
+        m = re.fullmatch(r"/api/system/content_packs/([^/]+)", path)
+        if method == "DELETE" and m:
+            self.content_packs = [p for p in self.content_packs if p["id"] != m.group(1)]
+            self.deleted.append(("pack", m.group(1)))
+            return 204, None, b""
+        m = re.fullmatch(r"/api/system/pipelines/rule/([^/]+)", path)
+        if method == "DELETE" and m:
+            self.rules = [r for r in self.rules if r["id"] != m.group(1)]
+            self.deleted.append(("rule", m.group(1)))
+            return 204, None, b""
         if method == "GET" and path == "/api/streams":
             return 200, j, _json({"streams": self.streams, "total": len(self.streams)})
         if method == "GET" and path.startswith("/api/authz/roles/user/"):
@@ -472,6 +513,7 @@ class Graylog:
             return 200, j, _json(stream)
         if method == "DELETE" and m:
             self.streams = [s for s in self.streams if s["id"] != m.group(1)]
+            self.connections = [c for c in self.connections if c["stream_id"] != m.group(1)]
             self.deleted.append(("stream", m.group(1)))
             return 204, None, b""
         if method == "POST" and path == "/api/system/pipelines/connections/to_stream":
@@ -498,6 +540,7 @@ class Grafana:
         self.deleted = []
         self.users = []
         self.orgs = []
+        self.org_ids = []
 
     def state(self):
         return {
@@ -601,12 +644,24 @@ class Grafana:
         if method == "POST" and path == "/orgs":
             self.counter += 1
             self.orgs.append(json.loads(body).get("name"))
+            self.org_ids.append(40 + self.counter)
             return 200, j, _json({"message": "Organization created", "orgId": 40 + self.counter})
+        if method == "DELETE" and path.startswith("/orgs/"):
+            oid = path.rsplit("/", 1)[1]
+            if oid.isdigit() and int(oid) in self.org_ids:
+                at = self.org_ids.index(int(oid))
+                del self.org_ids[at], self.orgs[at]
+            self.deleted.append(("org", oid))
+            return 200, j, _json({"message": "Organization deleted"})
         if method == "DELETE" and path.startswith("/datasources/uid/"):
-            self.deleted.append(("datasource", path.rsplit("/", 1)[1]))
+            uid = path.rsplit("/", 1)[1]
+            self.datasources = [d for d in self.datasources if d["uid"] != uid]
+            self.deleted.append(("datasource", uid))
             return 200, j, _json({"message": "Data source deleted", "id": 9})
         if method == "DELETE" and path.startswith("/folders/"):
-            self.deleted.append(("folder", path.rsplit("/", 1)[1]))
+            uid = path.rsplit("/", 1)[1]
+            self.folders = [f for f in self.folders if f"fold-{f['id']}" != uid]
+            self.deleted.append(("folder", uid))
             return 200, j, _json({"message": "Folder deleted", "id": 71})
         return 404, j, _json({"message": "Not found"})
 
@@ -1341,6 +1396,16 @@ def out_norm(requests):
     return out
 
 
+def live(value):
+    """A state without what only accumulates (the stand-ins' delete logs, Grafana's users created
+    and deleted by the connector check, the dashboard counter): what a rollback restores."""
+    if isinstance(value, dict):
+        return {k: live(v) for k, v in value.items() if k not in ("deleted", "users", "dashboards")}
+    if isinstance(value, list):
+        return [live(v) for v in value]
+    return value
+
+
 class Pair:
     def __init__(self):
         self.py = httpx.AsyncClient(base_url=f"http://127.0.0.1:{PY_PORT}", timeout=120)
@@ -1356,19 +1421,60 @@ class Pair:
         await asyncio.sleep(0)
         return r, RECORDER.take()
 
-    async def same(self, name, method, path, tok=None, before=None, state=None, expect=None, rust=None, body_norm=None, **kw):
+    async def same(
+        self,
+        name,
+        method,
+        path,
+        tok=None,
+        before=None,
+        state=None,
+        expect=None,
+        rust=None,
+        body_norm=None,
+        py_state=None,
+        rollback=False,
+        **kw,
+    ):
         """Python, then Rust, each after `before()`; `state()` returns what the request left.
         `expect=(python, rust)`: the statuses of a deliberate difference (bodies not compared);
-        `body_norm(bytes)` masks what may differ in both answers (an AUTO_INCREMENT id)."""
+        `body_norm(bytes)` masks what may differ in both answers (an AUTO_INCREMENT id);
+        `py_state(state)` turns what Python left into what Rust leaves by design (§4);
+        `rollback`: a run that fails after creating something (§4) — the same answer, Python's
+        requests then Rust's undo, Python leaving objects behind and Rust none."""
         sides = []
         for client in (self.py, rust or self.rs):
             if before:
                 before()
+            pre = live(json.loads(json.dumps(state(), default=str))) if state else None
             r, out = await self.call(client, method, path, tok, **kw)
             uuids = UuidMap()
             out = uuids.out(out_norm(out))
-            st = uuids.sub(json.dumps(state(), default=str).encode()).decode() if state else None
-            sides.append((r, out, st))
+            left = state() if state else None
+            if left is not None and py_state and client is self.py:
+                left = py_state(left)
+            st = uuids.sub(json.dumps(left, default=str).encode()).decode() if state else None
+            sides.append((r, out, st, pre, live(json.loads(json.dumps(left, default=str))) if state else None))
+        (r1, o1, s1, p1, l1), (r2, o2, s2, p2, l2) = [x[:5] for x in sides]
+        if rollback:
+            b1, b2 = norm_body(r1.content), norm_body(r2.content)
+            if body_norm:
+                b1, b2 = body_norm(b1), body_norm(b2)
+            undo = o2[len(o1) :]
+            undo_only = all(
+                m == "DELETE" or (m == "GET" and t.endswith("/installations")) or (m == "POST" and "/user/using/" in t)
+                for m, t, h, b in undo
+            )
+            ok = r1.status_code == r2.status_code and b1 == b2 and o2[: len(o1)] == o1 and bool(undo) and undo_only
+            ok = ok and l2 == p2 and l1 != p1
+            check(
+                f"{name} [{r1.status_code}] [diff by design: rolled back]",
+                ok,
+                f"python {r1.status_code} {b1[:300]!r}\n        rust   {r2.status_code} {b2[:300]!r}\n        undo {[o[:2] for o in undo]}"
+                f"\n        python left {json.dumps(l1)[:900]}\n        rust left   {json.dumps(l2)[:900]}\n        before      {json.dumps(p2)[:900]}",
+            )
+            return r1, r2
+        sides = [x[:3] for x in sides]
         (r1, o1, s1), (r2, o2, s2) = sides
         if expect:
             ok = (r1.status_code, r2.status_code) == expect
@@ -1400,7 +1506,8 @@ class Pair:
             ok = False
             at = next((i for i, (x, y) in enumerate(zip(s1, s2)) if x != y), min(len(s1), len(s2)))
             detail += f"\n        state python {s1[max(0, at - 200) : at + 400]}\n        state rust   {s2[max(0, at - 200) : at + 400]}"
-        check(f"{name} [{r1.status_code}]", ok, detail)
+        label = f"{name} [{r1.status_code}]" + (" [diff by design: state]" if py_state else "")
+        check(label, ok, detail)
         if os.environ.get("PARITY_VERBOSE"):
             print(f"        {b1[:600]!r}\n        outbound {[(m, p, b[:200]) for m, p, h, b in o1]}")
         return r1, r2
@@ -2356,8 +2463,11 @@ async def aws_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         json=body,
     )
 
-    # The delete of a deployed instance (Rust's own since this port).
+    # The delete of a deployed instance (Rust's own since this port). While another
+    # customer's AWS row shares the service row, both backends end in the service delete's
+    # IntegrityError (the whole delete rolled back).
     delete = {"customer_code": CUST_A, "integration_name": "AWS"}
+
     await p.same(
         "aws delete: a deployed instance (its buckets, streams, index sets, datasources and folder)",
         "DELETE",
@@ -2401,6 +2511,35 @@ async def aws_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         state=st,
         json=delete,
     )
+
+    # The service's only instance: deleted on both backends; Python leaves the instance's
+    # metadata row behind, Rust deletes it with the instance (§4, "Python response artefact").
+    def aws_service_back():
+        sql("INSERT IGNORE INTO integration_services (id, service_name, auth_type) VALUES (:i, 'AWS', 'OAuth')", i=INT_SERVICES["AWS"])
+
+    def meta_left_by_python(left):
+        left = dict(left)
+        left["meta"] = [
+            m for m in left["meta"] if not (m["customer_code"] == CUST_A and m["integration_name"] == "AWS" and m["instance_name"] is None)
+        ]
+        return left
+
+    only = aws_world(
+        config=aws_ossec(*OWN_BUCKETS),
+        rows_=(),
+        setup=lambda: (aws_service_back(), insert_integration(*AWS_A), aws_deployed()),
+    )
+    await p.same(
+        "aws delete: the service's only instance (its metadata row deleted with it)",
+        "DELETE",
+        DELETE_URL,
+        t_admin,
+        before=only,
+        state=st,
+        py_state=meta_left_by_python,
+        json=delete,
+    )
+    aws_service_back()
 
 
 # --- CrowdStrike, Defender for Endpoint, Bitdefender -----------------------------------------------------
@@ -2585,6 +2724,7 @@ async def collector_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=collectors(gravityzone_text=True),
         state=st,
+        rollback=True,
         json=a,
     )
     await p.same(
@@ -2599,6 +2739,7 @@ async def collector_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
             ),
         ),
         state=st,
+        rollback=True,
         json=a,
     )
     await p.same(
@@ -2608,6 +2749,7 @@ async def collector_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         t_admin,
         before=collectors(graylog={"overrides": {("GET", "/api/streams"): (200, "application/json", _json({"streams": [], "total": 0}))}}),
         state=st,
+        rollback=True,
         json=a,
     )
     await p.same(
@@ -2928,6 +3070,7 @@ async def customer_checks(p, t_admin, t_analyst, t_analyst_b, t_unassigned):
         state=st,
         body_norm=mask_meta_id,
         params=query,
+        rollback=True,
         json=customer_body(CUST_C, name_c, provision_ha_proxy=True, wazuh_logs_port=None),
     )
     await p.same(

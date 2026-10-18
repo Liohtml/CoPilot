@@ -34,13 +34,17 @@ use copilot_integrations::integrations::schema::{
 };
 use copilot_integrations::integrations::services::create_meta_validated;
 use copilot_integrations::integrations::store::{CustomerIntegration, customer_integrations};
+use copilot_provisioning::rollback::{Rollback, Undo};
 use copilot_upstream::model::{Field, Model, Ty, construct, field, kwargs};
 use copilot_upstream::py::{PyExc, PyResult};
 use copilot_web::{ApiError, AppContext, CurrentUser};
 
 use crate::grafana::{self, Datasource};
 use crate::graylog::{self, IndexSet};
-use crate::network::{Tools, provision_dashboards};
+use crate::network::{
+    Tools, provision_dashboards, register_datasource, register_folder, register_index_set,
+    register_stream,
+};
 use crate::store;
 
 /// Where a job's interval comes from.
@@ -407,11 +411,15 @@ async fn customer_name(ctx: &AppContext, code: &str) -> PyResult<String> {
 
 /// `provision_<x>(request, session)` — the integration's objects, its meta
 /// row and `deployed`.
+///
+/// What it creates is registered in `rollback` (the caller unwinds it when
+/// this or the jobs' hand-off fails, RUST_MIGRATION.md §4).
 pub async fn provision(
     ctx: &AppContext,
     tools: Tools<'_>,
     integration: &Integration,
     code: &str,
+    rollback: &mut Rollback,
 ) -> Result<(), ApiError> {
     let (gl, conn) = (tools.graylog, DEFAULT_CONNECTOR);
     // `build_index_set_config`: the keyword arguments in order.
@@ -438,6 +446,7 @@ pub async fn provision(
     let index_set_id = graylog::create_index_set(gl, conn, index_set)
         .await
         .map_err(py)?;
+    register_index_set(rollback, conn, &index_set_id);
     let stream_title = format!(
         "{} - {}",
         customer_name(ctx, code).await.map_err(py)?,
@@ -461,6 +470,7 @@ pub async fn provision(
     let stream_id = graylog::create_event_stream(gl, conn, stream)
         .await
         .map_err(py)?;
+    register_stream(rollback, conn, &stream_id);
     copilot_graylog::services::start_stream(gl, &stream_id.py_str())
         .await
         .map_err(py)?;
@@ -482,9 +492,11 @@ pub async fn provision(
     .await
     .map_err(py)?;
     let org = store::grafana_org_id(tools.db, code).await.map_err(py)?;
+    register_datasource(rollback, &org, &datasource_uid);
     let folder = grafana::create_folder(tools.grafana, &org, integration.folder)
         .await
         .map_err(py)?;
+    register_folder(rollback, &org, &folder);
     provision_dashboards(
         tools,
         integration.dashboards,
@@ -515,10 +527,61 @@ pub async fn provision(
     // refused would leave Python's session in need of a rollback, failing
     // the update below (unreachable: every value is an id Graylog or Grafana
     // gave, the organization and the customer's code).
-    create_meta_validated(ctx, &meta).await?;
-    set_deployed(ctx, code, integration.meta_name)
+    let created = create_meta_validated(ctx, &meta).await?;
+    if field(&created, "success").truthy() {
+        let id: Option<i64> = sqlx::query_scalar(
+            "SELECT id FROM customer_integrations_meta WHERE customer_code = ? AND \
+             integration_name = ? AND instance_name IS NULL ORDER BY id DESC LIMIT 1",
+        )
+        .bind(code)
+        .bind(integration.meta_name)
+        .persistent(false)
+        .fetch_optional(ctx.db.pool())
+        .await
+        .map_err(|e| py(db(e)))?;
+        if let Some(id) = id {
+            rollback.add(
+                format!("{} meta row {id}", integration.meta_name),
+                Undo::Row {
+                    table: "customer_integrations_meta",
+                    id,
+                },
+            );
+        }
+    }
+    set_deployed_undoable(ctx, code, integration.meta_name, rollback)
         .await
         .map_err(py)
+}
+
+/// [`set_deployed`], the rows it moves from `0` registered in `rollback`.
+pub async fn set_deployed_undoable(
+    ctx: &AppContext,
+    code: &str,
+    service: &str,
+    rollback: &mut Rollback,
+) -> PyResult<()> {
+    let ids: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM customer_integrations WHERE customer_code = ? AND \
+         integration_service_name = ? AND deployed = 0",
+    )
+    .bind(code)
+    .bind(service)
+    .persistent(false)
+    .fetch_all(ctx.db.pool())
+    .await
+    .map_err(db)?;
+    set_deployed(ctx, code, service).await?;
+    if !ids.is_empty() {
+        rollback.add(
+            format!("customer_integrations {ids:?} deployed"),
+            Undo::Deployed {
+                table: "customer_integrations",
+                ids,
+            },
+        );
+    }
+    Ok(())
 }
 
 /// `update_customer_integration_table(code, session)`: every row of the

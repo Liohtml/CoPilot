@@ -286,6 +286,23 @@ fn zip(members: &[(&str, &[u8])]) -> Vec<u8> {
     out
 }
 
+/// One Wazuh agent of `code`.
+async fn agent(h: &Harness, agent_id: &str, hostname: &str, code: &str) {
+    sqlx::query(
+        "INSERT INTO agents (agent_id, ip_address, os, hostname, label, critical_asset, \
+         wazuh_last_seen, velociraptor_id, velociraptor_last_seen, wazuh_agent_version, \
+         wazuh_agent_status, velociraptor_agent_version, customer_code, quarantined) VALUES \
+         (?, '10.0.0.1', 'Linux', ?, 'l', 0, UTC_TIMESTAMP(), 'C.1', UTC_TIMESTAMP(), 'v4', \
+         'active', 'v', ?, 0)",
+    )
+    .bind(agent_id)
+    .bind(hostname)
+    .bind(code)
+    .execute(h.db.pool())
+    .await
+    .unwrap();
+}
+
 // --- 1. Mimecast: the SIEM download and the TTP URL pages ----------------------------------
 
 fn region(api: &str) -> Value {
@@ -776,4 +793,71 @@ async fn sap_siem_with_one_key_collects() {
     ))
     .await;
     wipe_integrations(&h).await;
+}
+
+// --- 3. The Customer Portal: a user without a role, an offset past every agent -------------
+
+#[tokio::test]
+async fn portal_me_without_a_role_and_agents_past_the_end() {
+    let h = harness_or_skip!(None);
+    h.seed().await;
+    let acme = h.code("acme");
+    let roleless = format!("roleless{}", h.suffix);
+    h.exec(&format!(
+        "INSERT INTO `user` (username, password, email, created_at, role_id) \
+         VALUES ('{roleless}', 'x', 'r@example.com', UTC_TIMESTAMP(), NULL)"
+    ))
+    .await;
+    let token = h.token(&roleless, "customer_user");
+    let (st, body) = h
+        .call("GET", "/api/customer_portal/me", Some(&token), None)
+        .await;
+    assert_eq!(st, 403, "{body}");
+    assert_eq!(
+        body["message"],
+        format!("Access denied - user {roleless} has no role")
+    );
+
+    // Three agents of acme; pages past the end are empty, whatever the
+    // offset (MySQL refuses one beyond 64 bits: Python's 500).
+    for n in 0..3 {
+        agent(
+            &h,
+            &format!("fs{n}{}", h.suffix),
+            &format!("fs-host-{n}{}", h.suffix),
+            &acme,
+        )
+        .await;
+    }
+    let portal = h.token(&format!("portal{}", h.suffix), "customer_user");
+    let page = |p: &str| {
+        let (h, portal) = (&h, &portal);
+        let uri = format!("/api/customer_portal/agents?page={p}&page_size=100");
+        async move { h.call("GET", &uri, Some(portal), None).await }
+    };
+    let (st, first) = page("1").await;
+    assert_eq!(st, 200, "{first}");
+    assert_eq!(first["total"], 3);
+    assert_eq!(first["agents"].as_array().unwrap().len(), 3);
+    let (st, past) = page("2").await;
+    assert_eq!(st, 200);
+    assert_eq!(past["agents"], json!([]));
+    for huge in [
+        "184467440737095518",
+        "1000000000000000000000",
+        "99999999999999999999999999999999999999999",
+    ] {
+        let (st, body) = page(huge).await;
+        assert_eq!(st, 200, "{huge}: {body}");
+        let mut want = past.clone();
+        want["agents"] = json!([]);
+        assert_eq!(body, want, "{huge}");
+    }
+    h.exec(&format!(
+        "DELETE FROM agents WHERE agent_id IN ('fs0{s}', 'fs1{s}', 'fs2{s}')",
+        s = h.suffix
+    ))
+    .await;
+    h.exec(&format!("DELETE FROM `user` WHERE username = '{roleless}'"))
+        .await;
 }
