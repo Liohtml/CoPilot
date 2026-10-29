@@ -479,10 +479,17 @@ def check_image() -> None:
         fail("crates/copilot/Dockerfile has no HEALTHCHECK on /_copilot/health")
     elif '"/_copilot/health"' not in APP_RS.read_text():
         fail("the HEALTHCHECK probes /_copilot/health, which app.rs does not route")
+    # docker.yml pushes under the repository owner's ghcr.io namespace, lower-cased: the
+    # Compose files' `ghcr.io/socfortress` in the upstream repository, the owner's on a fork.
     workflow = DOCKER_WORKFLOW.read_text()
+    if "namespace=ghcr.io/${OWNER,,}" not in workflow:
+        fail(".github/workflows/docker.yml does not derive its ghcr.io namespace from the repository owner")
     for image in (RUST_IMAGE, PYTHON_IMAGE):
-        if image not in workflow:
-            fail(f".github/workflows/docker.yml does not push {image}, which the Compose files run")
+        namespace, name = image.rsplit("/", 1)
+        if namespace != "ghcr.io/socfortress":
+            fail(f"{image} is not under ghcr.io/socfortress, the namespace docker.yml pushes to upstream")
+        if "${{ needs.registry.outputs.namespace }}/" + name not in workflow:
+            fail(f".github/workflows/docker.yml does not push {name}, which the Compose files run")
 
 
 # Breakages the layout checks must catch: (what, file, old text, new text, a word of the failure).

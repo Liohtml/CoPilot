@@ -4,34 +4,59 @@ on:
     push:
         branches: [main]
 
+# The images go to ghcr.io under the repository owner's namespace, lower-cased
+# (`ghcr.io/socfortress/…` upstream; `ghcr.io/<owner>/…` on a fork). The login
+# uses the REPO_OWNER / REPO_TOKEN secrets when they are set and the workflow's
+# own GITHUB_TOKEN otherwise, which can push to packages of the same owner.
+permissions:
+    contents: read
+    packages: write
+
+env:
+    # Empty when the secret is not set: the Discord steps are then skipped.
+    DISCORD_WEBHOOK_ID: ${{ secrets.DISCORD_WEBHOOK_ID }}
+
 jobs:
+    registry:
+        runs-on: ubuntu-latest
+        outputs:
+            namespace: ${{ steps.namespace.outputs.namespace }}
+        steps:
+            - name: Image namespace
+              id: namespace
+              env:
+                  OWNER: ${{ github.repository_owner }}
+              run: echo "namespace=ghcr.io/${OWNER,,}" >> "$GITHUB_OUTPUT"
+
     build-backend:
+        needs: registry
         runs-on: ubuntu-latest
 
         steps:
             - name: Check out code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v4
 
             - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v1
+              uses: docker/setup-buildx-action@v3
 
             - name: Login to GitHub Container Registry
-              uses: docker/login-action@v1
+              uses: docker/login-action@v3
               with:
                   registry: ghcr.io
-                  username: ${{ secrets.REPO_OWNER }}
-                  password: ${{ secrets.REPO_TOKEN }}
+                  username: ${{ secrets.REPO_OWNER || github.actor }}
+                  password: ${{ secrets.REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
             - name: Build and push Docker image
-              uses: docker/build-push-action@v2
+              uses: docker/build-push-action@v6
               with:
                   context: ./backend
                   push: true
-                  tags: ghcr.io/socfortress/copilot-backend:latest
+                  tags: ${{ needs.registry.outputs.namespace }}/copilot-backend:latest
                   build-args: |
                       COPILOT_API_KEY=${{ secrets.COPILOT_API_KEY }}
 
             - name: Notify Discord
+              if: env.DISCORD_WEBHOOK_ID != ''
               uses: appleboy/discord-action@v1.0.0
               with:
                   webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
@@ -39,30 +64,32 @@ jobs:
                   message: "Docker image for backend has been updated."
 
     build-frontend:
+        needs: registry
         runs-on: ubuntu-latest
 
         steps:
             - name: Check out code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v4
 
             - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v1
+              uses: docker/setup-buildx-action@v3
 
             - name: Login to GitHub Container Registry
-              uses: docker/login-action@v1
+              uses: docker/login-action@v3
               with:
                   registry: ghcr.io
-                  username: ${{ secrets.REPO_OWNER }}
-                  password: ${{ secrets.REPO_TOKEN }}
+                  username: ${{ secrets.REPO_OWNER || github.actor }}
+                  password: ${{ secrets.REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
             - name: Build and push Docker image
-              uses: docker/build-push-action@v2
+              uses: docker/build-push-action@v6
               with:
                   context: ./frontend
                   push: true
-                  tags: ghcr.io/socfortress/copilot-frontend:latest
+                  tags: ${{ needs.registry.outputs.namespace }}/copilot-frontend:latest
 
             - name: Notify Discord
+              if: env.DISCORD_WEBHOOK_ID != ''
               uses: appleboy/discord-action@v1.0.0
               with:
                   webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
@@ -70,60 +97,65 @@ jobs:
                   message: "Docker image for frontend has been updated."
 
     build-customer-portal:
-      runs-on: ubuntu-latest
-
-      steps:
-          - name: Check out code
-            uses: actions/checkout@v2
-
-          - name: Set up Docker Buildx
-            uses: docker/setup-buildx-action@v1
-
-          - name: Login to GitHub Container Registry
-            uses: docker/login-action@v1
-            with:
-                registry: ghcr.io
-                username: ${{ secrets.REPO_OWNER }}
-                password: ${{ secrets.REPO_TOKEN }}
-
-          - name: Build and push Docker image
-            uses: docker/build-push-action@v2
-            with:
-                context: ./customer-portal
-                push: true
-                tags: ghcr.io/socfortress/copilot-customer-portal:latest
-
-          - name: Notify Discord
-            uses: appleboy/discord-action@v1.0.0
-            with:
-                webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
-                webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
-                message: "Docker image for customer portal has been updated."
-    build-inspector:
+        needs: registry
         runs-on: ubuntu-latest
 
         steps:
             - name: Check out code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v4
 
             - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v1
+              uses: docker/setup-buildx-action@v3
 
             - name: Login to GitHub Container Registry
-              uses: docker/login-action@v1
+              uses: docker/login-action@v3
               with:
                   registry: ghcr.io
-                  username: ${{ secrets.REPO_OWNER }}
-                  password: ${{ secrets.REPO_TOKEN }}
+                  username: ${{ secrets.REPO_OWNER || github.actor }}
+                  password: ${{ secrets.REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
             - name: Build and push Docker image
-              uses: docker/build-push-action@v2
+              uses: docker/build-push-action@v6
+              with:
+                  context: ./customer-portal
+                  push: true
+                  tags: ${{ needs.registry.outputs.namespace }}/copilot-customer-portal:latest
+
+            - name: Notify Discord
+              if: env.DISCORD_WEBHOOK_ID != ''
+              uses: appleboy/discord-action@v1.0.0
+              with:
+                  webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
+                  webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
+                  message: "Docker image for customer portal has been updated."
+
+    build-inspector:
+        needs: registry
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Check out code
+              uses: actions/checkout@v4
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ secrets.REPO_OWNER || github.actor }}
+                  password: ${{ secrets.REPO_TOKEN || secrets.GITHUB_TOKEN }}
+
+            - name: Build and push Docker image
+              uses: docker/build-push-action@v6
               with:
                   context: ./inspector
                   push: true
-                  tags: ghcr.io/socfortress/copilot-inspector:latest
+                  tags: ${{ needs.registry.outputs.namespace }}/copilot-inspector:latest
 
             - name: Notify Discord
+              if: env.DISCORD_WEBHOOK_ID != ''
               uses: appleboy/discord-action@v1.0.0
               with:
                   webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
@@ -131,33 +163,35 @@ jobs:
                   message: "Docker image for inspector has been updated."
 
     build-inspector-runner:
+        needs: registry
         runs-on: ubuntu-latest
 
         steps:
             - name: Check out code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v4
 
             - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v1
+              uses: docker/setup-buildx-action@v3
 
             - name: Login to GitHub Container Registry
-              uses: docker/login-action@v1
+              uses: docker/login-action@v3
               with:
                   registry: ghcr.io
-                  username: ${{ secrets.REPO_OWNER }}
-                  password: ${{ secrets.REPO_TOKEN }}
+                  username: ${{ secrets.REPO_OWNER || github.actor }}
+                  password: ${{ secrets.REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
             - name: Build and push Docker image
-              uses: docker/build-push-action@v2
+              uses: docker/build-push-action@v6
               with:
                   # inspector-runner/Dockerfile COPYs BOTH inspector-runner/ and
                   # inspector/, so the build context must be the repo root.
                   context: .
                   file: ./inspector-runner/Dockerfile
                   push: true
-                  tags: ghcr.io/socfortress/copilot-inspector-runner:latest
+                  tags: ${{ needs.registry.outputs.namespace }}/copilot-inspector-runner:latest
 
             - name: Notify Discord
+              if: env.DISCORD_WEBHOOK_ID != ''
               uses: appleboy/discord-action@v1.0.0
               with:
                   webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
@@ -171,6 +205,7 @@ jobs:
     # merge-rust-backend below. The build context is the repository root, filtered
     # by crates/copilot/Dockerfile.dockerignore.
     build-rust-backend:
+        needs: registry
         strategy:
             fail-fast: true
             matrix:
@@ -182,7 +217,7 @@ jobs:
         runs-on: ${{ matrix.runner }}
         timeout-minutes: 150
         env:
-            IMAGE: ghcr.io/socfortress/copilot-rs
+            IMAGE: ${{ needs.registry.outputs.namespace }}/copilot-rs
             # Uncompressed; ScoutSuite's venv alone is about 1 GiB.
             SIZE_BUDGET_MIB: 2560
 
@@ -204,8 +239,8 @@ jobs:
               uses: docker/login-action@v3
               with:
                   registry: ghcr.io
-                  username: ${{ secrets.REPO_OWNER }}
-                  password: ${{ secrets.REPO_TOKEN }}
+                  username: ${{ secrets.REPO_OWNER || github.actor }}
+                  password: ${{ secrets.REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
             - name: Build and push by digest
               id: build
@@ -250,10 +285,10 @@ jobs:
                   retention-days: 1
 
     merge-rust-backend:
-        needs: build-rust-backend
+        needs: [registry, build-rust-backend]
         runs-on: ubuntu-latest
         env:
-            IMAGE: ghcr.io/socfortress/copilot-rs
+            IMAGE: ${{ needs.registry.outputs.namespace }}/copilot-rs
 
         steps:
             - name: Download digests
@@ -270,8 +305,8 @@ jobs:
               uses: docker/login-action@v3
               with:
                   registry: ghcr.io
-                  username: ${{ secrets.REPO_OWNER }}
-                  password: ${{ secrets.REPO_TOKEN }}
+                  username: ${{ secrets.REPO_OWNER || github.actor }}
+                  password: ${{ secrets.REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
             - name: Create the multi-arch tag
               working-directory: ${{ runner.temp }}/digests
@@ -284,6 +319,7 @@ jobs:
               run: docker buildx imagetools inspect "${IMAGE}:latest"
 
             - name: Notify Discord
+              if: env.DISCORD_WEBHOOK_ID != ''
               uses: appleboy/discord-action@v1.0.0
               with:
                   webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}

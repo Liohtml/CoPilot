@@ -677,7 +677,7 @@ Tests: `tests/test_soc_management_{domain,analytics,lifecycle,metrics,routes,inc
 
 ### CI (`.github/workflows/`)
 
-- `docker.yml` — image builds → `ghcr.io/socfortress/copilot-{backend,frontend,customer-portal,inspector,inspector-runner}:latest`, and the Rust backend `copilot-rs:latest` (built natively on amd64 and arm64 runners, pushed by digest, checked against its 2560 MiB size budget, joined into one multi-arch tag; `COPILOT_API_KEY` passed as a build argument like the Python image's)
+- `docker.yml` — image builds → `ghcr.io/socfortress/copilot-{backend,frontend,customer-portal,inspector,inspector-runner}:latest`, and the Rust backend `copilot-rs:latest` (the namespace is the repository owner's, lower-cased, so a fork pushes to its own `ghcr.io/<owner>/…`; the login uses `REPO_OWNER`/`REPO_TOKEN` when set, else the workflow's `GITHUB_TOKEN`, and the Discord notice is skipped without its webhook secret) (built natively on amd64 and arm64 runners, pushed by digest, checked against its 2560 MiB size budget, joined into one multi-arch tag; `COPILOT_API_KEY` passed as a build argument like the Python image's)
 - `rust.yml` — fmt, clippy, the MSRV check (1.85), the unit tests, every `crates/copilot/tests/e2e*.rs` suite against a MySQL service loaded from the fixture (wkhtmltopdf, DejaVu Sans and Playwright 1.59's Chromium headless shell installed, so the report suites run their success paths), and `deployment` (`scripts/check-compose.py`, hadolint on `crates/copilot/Dockerfile`)
 - `pre-commit.yml` — runs the hooks above on PRs
 - `docs-pages.yml` — mkdocs → GitHub Pages from `docs/` (`mkdocs.yml`)
