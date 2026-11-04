@@ -75,6 +75,8 @@ CoPilot is designed to be a single pane of glass for your security operations. T
 
 You can reach us on [Discord](https://discord.gg/UN3pNBzaEQ) or by [📧](mailto:info@socfortress.co) if you have any question, issue or idea!
 
+A security vulnerability in this port (the Rust backend under `crates/`, or the Compose and deployment files) must not be filed as a public issue. Report it privately, as [SECURITY.md](SECURITY.md) describes: <https://github.com/Liohtml/CoPilot/security/advisories/new>. The frontends and the SOCFortress images are upstream; that policy says where those reports go.
+
 Check out our full video tutorial series on [![YouTube](https://img.shields.io/badge/YouTube-%23FF0000.svg?style=for-the-badge&logo=YouTube&logoColor=white)](https://www.youtube.com/watch?v=qQbex2zAhWI&list=PLB6hQ_WpB6U0e5oSLXJMcxmSzz7n3zvD-&ab_channel=TaylorWalton)
 
 ## License

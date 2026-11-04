@@ -37,8 +37,10 @@ services:
       dockerfile: inspector-runner/Dockerfile
     image: ghcr.io/socfortress/copilot-inspector-runner:latest
     restart: unless-stopped
+    # Loopback only. The backend on the compose network uses inspector-runner:9000.
+    # Host 9000 is MinIO, so a client on this machine uses 127.0.0.1:9100.
     ports:
-      - "9100:9000"                        # host 9100 -> container 9000 (host 9000 is taken by MinIO)
+      - "127.0.0.1:9100:9000"
     environment:
       INSPECTOR_MODE: container            # container (prod) | service (dev only)
       FILE_ANALYSIS_DEV_MODE: "false"

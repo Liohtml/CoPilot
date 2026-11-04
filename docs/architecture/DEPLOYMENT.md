@@ -12,11 +12,11 @@ operator's procedures — install, upgrade, rollback, what changed — see
 | Backend init (one-shot) | `copilot-backend-init` | hands the data directory (MinIO's `minio-data/` aside) and ScoutSuite's reports to the image's uid 10001, then exits; `copilot-backend` waits for it | none | the same two mounts |
 | Python backend (opt-in) | `copilot-backend-legacy` | FastAPI (`backend/`, image `ghcr.io/socfortress/copilot-backend`), the reference implementation; profile `legacy` | none (the rollback overlay publishes `5000`) | `./data/copilot-backend-data/logs:/opt/logs`, the same data directory and reports volume |
 | Frontend (Nginx) | `copilot-frontend` | UI + TLS termination + reverse proxy to backend | `80:80`, `443:443` | none by default |
-| MySQL | `copilot-mysql` | Primary relational DB | `3306:3306` | named volume `mysql-data:/var/lib/mysql` |
-| MinIO | `copilot-minio` | Object storage for case/artifact files | `9000:9000` (S3 API), container also uses `9001` console | `./data/data/minio-data:/data` |
+| MySQL | `copilot-mysql` | Primary relational DB | `127.0.0.1:3306:3306` (loopback only; other containers use `copilot-mysql:3306`) | named volume `mysql-data:/var/lib/mysql` |
+| MinIO | `copilot-minio` | Object storage for case/artifact files | `127.0.0.1:9000:9000` (S3 API, loopback only); container also uses `9001` console, not published | `./data/data/minio-data:/data` |
 | Nuclei module | `copilot-nuclei-module` | External module container | none | none |
 | MCP service | `copilot-mcp` | MCP/OpenAI-adjacent service + optional subservers | none exposed by compose | `./data/copilot-mcp/api.config.yaml:/app/velociraptor-config.yaml:ro` |
-| Inspection plane | `inspector-runner`, `docker-socket-proxy` | File Analysis' Tier 1 inspector (see `CLAUDE.md`, File Analysis) | `9100:9000` | none |
+| Inspection plane | `inspector-runner`, `docker-socket-proxy` | File Analysis' Tier 1 inspector (see `CLAUDE.md`, File Analysis) | `127.0.0.1:9100:9000` (loopback only; the backend uses `inspector-runner:9000`) | none |
 | Customer portal (optional) | `copilot-customer-portal` | Separate customer-facing UI | example `8443:443` (commented) | none by default |
 
 ## Layouts
@@ -37,7 +37,11 @@ every variable it needs (and its own `environment:` sets only variables it
 reads, no test-only stand-in anywhere), every volume exists and the data
 directory and the reports are mounted where the binary looks for them,
 read-write and shared with the Python backend, and the images are the ones
-`docker.yml` pushes. It also checks that every variable the Rust sources read
+`docker.yml` pushes. `copilot-mysql`, `copilot-minio` and `inspector-runner`
+may publish a host port only on `127.0.0.1` (or not at all). A `${VAR:-…}`
+fallback for a `*_TOKEN` or `*_PASSWORD` variable is a failure, and
+`.env.example` must set the four `MCP_*_AUTH_TOKEN` variables without the old
+published defaults. It also checks that every variable the Rust sources read
 is in `crates/copilot-core/src/env_vars.rs` and that `.env.example` documents
 them, and that the image copies every file the release build embeds from
 `backend/`.

@@ -26,10 +26,21 @@ Talon or any other caller: the Rust service keeps the Python service's name
 git clone https://github.com/socfortress/CoPilot.git
 cd CoPilot
 cp .env.example .env
-nano .env            # at least JWT_SECRET, the MySQL and MinIO passwords, SERVER_HOST
+nano .env            # JWT_SECRET, the MySQL and MinIO passwords, SERVER_HOST,
+                     # and the four MCP_*_AUTH_TOKEN values (each: openssl rand -hex 32)
 docker compose pull
 docker compose up -d
 ```
+
+`docker compose` refuses to start while `MCP_OPENSEARCH_AUTH_TOKEN`,
+`MCP_MYSQL_AUTH_TOKEN`, `MCP_WAZUH_AUTH_TOKEN` or `MCP_VELOCIRAPTOR_AUTH_TOKEN`
+is missing or empty. Generate a different value for each with
+`openssl rand -hex 32`.
+
+MySQL (`127.0.0.1:3306`), MinIO (`127.0.0.1:9000`) and the inspector runner
+(`127.0.0.1:9100`) are reachable from this machine only. Containers use the
+Compose names `copilot-mysql`, `copilot-minio` and `inspector-runner`, so the
+UI and the API do not need those ports on any other interface.
 
 On its first start the backend creates the schema, the MinIO buckets, the
 connector and integration catalogs and the `admin` user, whose password it
@@ -98,9 +109,25 @@ What else happens on the first start of the Rust backend:
   not touched, nor are symbolic links followed.
 - **The scheduler moves.** The jobs (`scheduled_job_metadata`) run in the Rust
   backend. Pause and Start in *Platform → Scheduler* work as before.
-- **Your `.env` keeps working.** The Rust backend reads the same variables.
+- **Your `.env` keeps working** for the backend's own variables.
   Compare it with the new `.env.example`, which documents every variable the
   backend reads, and let `copilot doctor` point out the ones it does not know.
+- **MySQL, MinIO and the inspector runner are loopback-only.** Host ports
+  `3306`, `9000` and `9100` stay available at `127.0.0.1` on the machine
+  running Docker (a local client, `curl http://127.0.0.1:9100/health`). They
+  are not reachable from other hosts. Containers on the Compose network are
+  unchanged (`copilot-mysql`, `copilot-minio`, `inspector-runner`). To use
+  the database from another machine, tunnel to `127.0.0.1` rather than
+  publishing the port on `0.0.0.0`.
+- **The four MCP auth tokens are required.** `docker compose up` stops with
+  `MCP_*_AUTH_TOKEN is missing a value` until `.env` sets
+  `MCP_OPENSEARCH_AUTH_TOKEN`, `MCP_MYSQL_AUTH_TOKEN`, `MCP_WAZUH_AUTH_TOKEN`
+  and `MCP_VELOCIRAPTOR_AUTH_TOKEN`. Generate each with `openssl rand -hex 32`.
+  If those variables are still `secret-token`, `mysql-token`, `wazuh-token`
+  or `velociraptor-token`, replace them: those strings shipped in the old
+  example and are not secret. An `.env` that already set its own values needs
+  no change. `OPENSEARCH_PASSWORD` and `WAZUH_PROD_PASSWORD` still fall back
+  to `WAZUH_INDEXER_PASSWORD` and `WAZUH_MANAGER_PASSWORD` when they are unset.
 
 ## Roll back
 
