@@ -26,6 +26,12 @@ The variables the binary knows are the table in `crates/copilot-core/src/env_var
    test-only one anywhere; every volume exists, the data directory and ScoutSuite's reports are
    mounted where the binary looks for them (read-write, the init step handing them to the image's
    uid) and shared with the Python backend; the images are the ones `docker.yml` pushes.
+   `copilot-mysql`, `copilot-minio` and `inspector-runner` publish a host port only on loopback
+   (or none). A `${NAME:-…}` fallback whose name ends in `_TOKEN` or `_PASSWORD` is a failure
+   (it ships a credential when `.env` omits the variable), in these files and in
+   `inspector-runner/docker-compose.fragment.yml`. `docker-compose.yml` requires each
+   `MCP_*_AUTH_TOKEN` with `${NAME:?…}`, and `.env.example` sets the four without
+   assigning the old published defaults.
 4. **The image.** Every file the release build embeds from outside `crates/` is copied by
    `crates/copilot/Dockerfile` and allowed by its `.dockerignore`, the runtime user's uid is the
    one the init step hands the data to, and the `HEALTHCHECK` probes the route the binary serves.
@@ -54,6 +60,20 @@ DOCKERIGNORE = ROOT / "crates" / "copilot" / "Dockerfile.dockerignore"
 DOCKER_WORKFLOW = ROOT / ".github" / "workflows" / "docker.yml"
 APP_RS = ROOT / "crates" / "copilot" / "src" / "app.rs"
 COMPOSE_FILES = ("docker-compose.yml", "docker-compose.rust.yml", "docker-compose.legacy.yml")
+FRAGMENT = ROOT / "inspector-runner" / "docker-compose.fragment.yml"
+# So `docker compose config` can interpolate `${MCP_*_AUTH_TOKEN:?…}` while `.env` is empty
+# or still has the blanks from `.env.example`. A real `docker compose up` does not get these.
+COMPOSE_RENDER_ENV = {
+    "MCP_OPENSEARCH_AUTH_TOKEN": "check-compose-placeholder",
+    "MCP_MYSQL_AUTH_TOKEN": "check-compose-placeholder",
+    "MCP_WAZUH_AUTH_TOKEN": "check-compose-placeholder",
+    "MCP_VELOCIRAPTOR_AUTH_TOKEN": "check-compose-placeholder",
+}
+MCP_AUTH_TOKENS = tuple(COMPOSE_RENDER_ENV)
+LOOPBACK_HOSTS = {"127.0.0.1", "::1"}
+INTERNAL_SERVICES = ("copilot-mysql", "copilot-minio", "inspector-runner")
+# Values this tree used to ship. Comments may name them; an assignment may not.
+BANNED_TOKEN_VALUES = {"secret-token", "mysql-token", "wazuh-token", "velociraptor-token"}
 
 RUST_IMAGE = "ghcr.io/socfortress/copilot-rs"
 PYTHON_IMAGE = "ghcr.io/socfortress/copilot-backend"
@@ -253,6 +273,18 @@ def check_env_example() -> None:
     for name in REQUIRED:
         if name not in assigned:
             fail(f".env.example does not set {name} (required by the Rust backend)")
+    for name in MCP_AUTH_TOKENS:
+        if name not in assigned:
+            fail(f".env.example does not set {name} (compose requires it; generate with openssl rand -hex 32)")
+    for lineno, line in enumerate(ENV_EXAMPLE.read_text().splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", stripped)
+        if match and match.group(2).strip() in BANNED_TOKEN_VALUES and (
+            match.group(1).endswith("_TOKEN") or match.group(1).endswith("_PASSWORD")
+        ):
+            fail(f".env.example:{lineno}: {match.group(1)} is still the published default {match.group(2).strip()}")
 
 
 # --------------------------------------------------------------------------- 3. the layouts
@@ -266,6 +298,7 @@ def compose_config(workdir: Path, files: list[str], profiles: list[str], env: di
         args += ["--profile", p]
     args += ["config", "--format", "json"]
     clean = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "DOCKER_CONFIG", "DOCKER_HOST")}
+    clean.update(COMPOSE_RENDER_ENV)
     clean.update(env)
     out = subprocess.run(args, cwd=workdir, env=clean, capture_output=True, text=True)
     if out.returncode != 0:
@@ -346,6 +379,43 @@ def check_layout(label: str, config: dict, explicit: dict, workdir: Path) -> Non
         for volume in service.get("volumes") or []:
             if volume.get("type") == "volume" and volume.get("source") not in declared:
                 fail(f"{label}: {name} mounts the undeclared volume {volume.get('source')}")
+    check_internal_publish(label, services)
+
+
+def check_internal_publish(label: str, services: dict) -> None:
+    """MySQL, MinIO and the inspector runner stay off the host's other interfaces."""
+    for name in INTERNAL_SERVICES:
+        service = services.get(name)
+        if not service:
+            continue
+        for port in service.get("ports") or []:
+            host_ip = str(port.get("host_ip") or "")
+            if host_ip not in LOOPBACK_HOSTS:
+                published = port.get("published")
+                target = port.get("target")
+                where = host_ip or "0.0.0.0"
+                fail(
+                    f"{label}: {name} publishes {where}:{published}->{target}; "
+                    "bind it to 127.0.0.1 or drop the host port"
+                )
+
+
+def check_secret_fallbacks(path: Path) -> None:
+    """`${NAME:-…}` for a token or password ships a credential when `.env` omits it."""
+    for lineno, line in enumerate(path.read_text().splitlines(), 1):
+        if line.lstrip().startswith("#"):
+            continue
+        for name in re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\:-", line):
+            if name.endswith("_TOKEN") or name.endswith("_PASSWORD"):
+                fail(f"{path.name}:{lineno}: {name} uses a :- default; set it in .env (no fallback)")
+
+
+def check_required_mcp_tokens(path: Path) -> None:
+    """Compose must refuse to start when an MCP auth token is unset or empty (`${NAME:?…}`)."""
+    text = "\n".join(line for line in path.read_text().splitlines() if not line.lstrip().startswith("#"))
+    for name in MCP_AUTH_TOKENS:
+        if f"${{{name}:?" not in text:
+            fail(f"{path.name}: {name} is not required with ${{{name}:?…}}; compose would start without it")
 
 
 def check_mounts(label: str, name: str, service: dict, services: dict, workdir: Path) -> None:
@@ -415,6 +485,11 @@ def check_layouts(edits: dict[str, tuple[str, str]] | None = None) -> None:
                     fail(f"self-test: {f} no longer holds {old!r}")
                 text = text.replace(old, new)
             (work / f).write_text(text)
+        for f in COMPOSE_FILES:
+            check_secret_fallbacks(work / f)
+        check_required_mcp_tokens(work / "docker-compose.yml")
+        if FRAGMENT.is_file():
+            check_secret_fallbacks(FRAGMENT)
         layouts = [
             ("base", ["docker-compose.yml"], [], {}),
             ("base + legacy profile", ["docker-compose.yml"], [LEGACY_PROFILE], {}),
@@ -537,6 +612,20 @@ SELF_TEST = [
         "                    - copilot-backend\n",
         "                    - copilot-python\n",
         "answer to",
+    ),
+    (
+        "MySQL published on every interface",
+        "docker-compose.yml",
+        '"127.0.0.1:3306:3306"',
+        '"3306:3306"',
+        "publishes",
+    ),
+    (
+        "an MCP token falls back to a default",
+        "docker-compose.yml",
+        "${MCP_WAZUH_AUTH_TOKEN:?set MCP_WAZUH_AUTH_TOKEN in .env}",
+        "${MCP_WAZUH_AUTH_TOKEN:-wazuh-token}",
+        ":- default",
     ),
 ]
 

@@ -61,6 +61,16 @@ nano .env
 
 At minimum, set `JWT_SECRET`, the MySQL and MinIO passwords, and make sure `SERVER_HOST` is correct for your environment. `.env.example` documents every variable the backend reads.
 
+Generate the four MCP auth tokens and paste them into `.env`. Compose will not start while any of them is unset or empty. Use a different value for each:
+
+```bash
+openssl rand -hex 32
+```
+
+The variables are `MCP_OPENSEARCH_AUTH_TOKEN`, `MCP_MYSQL_AUTH_TOKEN`, `MCP_WAZUH_AUTH_TOKEN` and `MCP_VELOCIRAPTOR_AUTH_TOKEN`.
+
+MySQL (`3306`), MinIO's S3 API (`9000`) and the file-analysis runner (`9100`) are published on `127.0.0.1` only. The UI stays on `443` and the API on `5000`. A client on this machine can still reach the three internal ports; other hosts cannot. Containers keep using the Compose service names (`copilot-mysql`, `copilot-minio`, `inspector-runner`), so the stack itself does not need those ports on the network.
+
 ### 4) Start CoPilot
 
 ```bash
@@ -237,7 +247,7 @@ docker compose pull
 docker compose up -d
 ```
 
-The first upgrade to the Rust backend has one extra step when the database is older than the last Python schema; see [Running CoPilot on the Rust backend](/getting-started/rust-backend#upgrade-an-existing-deployment). The same page explains how to roll back.
+The first upgrade to the Rust backend has one extra step when the database is older than the last Python schema; see [Running CoPilot on the Rust backend](/getting-started/rust-backend#upgrade-an-existing-deployment). The same page explains how to roll back, and the migration for loopback-only MySQL / MinIO / inspector ports and for the required `MCP_*_AUTH_TOKEN` values.
 
 If you need a clean restart (rare):
 
