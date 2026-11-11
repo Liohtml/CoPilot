@@ -20,6 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Enables Pages (source: GitHub Actions) on a repository where it is not
+      # yet, so a fresh fork's first deploy does not fail with "Not Found".
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

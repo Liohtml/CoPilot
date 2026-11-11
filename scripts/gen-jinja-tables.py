@@ -317,15 +317,14 @@ def main():
         items = ", ".join(f"({n}, {rust_str(m)})" for n, m in counts)
         print(f"    ({rust_str(tname)}, {rust_str(name)}, &[{items}], {rust_str(kw)}),")
     print("];")
-    print()
     for const, what, obj in SAMPLES:
         names = attrs(obj)
+        print()
         print(f"/// The attributes `hasattr` finds on {what}.")
         print(f"pub const ATTRS_{const}: &[&str] = &[")
         for n in names:
             print(f"    {rust_str(n)},")
         print("];")
-        print()
 
 
 main()
